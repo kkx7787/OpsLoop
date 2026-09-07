@@ -2,8 +2,8 @@
 #   postgres : 운영 데이터. 인시던트·조치·판정은 영구 보존한다.
 #   api      : FastAPI. 콘솔이 붙는 지점.
 #
-# 외부에 여는 포트는 API 하나뿐이다. DB는 컨테이너 네트워크 안에만 있고
-# 호스트 포트로 노출하지 않는다. 수집 노드에서 붙일 때만 5432 를 연다.
+# 인터넷에서 들어올 수 있는 포트는 API(8000) 하나뿐이다.
+# DB(5432)는 VPC 안에서만 열리며, 보안그룹으로 수집 노드만 허용한다.
 
 services:
   postgres:
@@ -19,7 +19,9 @@ services:
       - pgdata:/var/lib/postgresql/data
       - ./schema.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
     ports:
-      - "127.0.0.1:5432:5432"     # 호스트 루프백만. 외부 노출 아님
+      # VPC 내부에서 수집 노드가 붙는다. 인터넷 노출이 아니며, 접근 통제는
+      # 보안그룹에서 한다 (opsloop-honeypot-sg 로부터의 5432 만 허용).
+      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U opsloop -d opsloop"]
       interval: 10s

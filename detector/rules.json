@@ -30,7 +30,7 @@
       "type": "session_compound",
       "enabled": true,
       "params": {
-        "expr": "login_success = 1 AND command_count > 0"
+        "expr": "login_success AND command_count > 0"
       },
       "rationale": "로그인 성공 264건 중 247건이 명령을 실행. 접속만 확인하고 끊은 17건과 구분된다."
     },
