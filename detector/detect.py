@@ -163,8 +163,45 @@ def signals_baseline_deviation(cur, rule, since, until):
     return out
 
 
+def signals_actor_rate(cur, rule, since, until):
+    """동일 출발지의 이벤트 누적 빈도를 본다.
+
+    관측 결과 봇은 한 세션에 로그인 1회만 시도하고 끊는다. 무차별 대입이
+    세션 안이 아니라 세션들 사이에 퍼져 있어, 세션 단위 임계치로는 잡히지 않는다.
+    그래서 IP 단위로 고정 시간창을 잘라 누적 횟수를 센다.
+    """
+    p = rule["params"]
+    window = p["window_seconds"]
+    w, prm = range_clause(since, until, "ts")
+    ids = p["eventids"]
+    ph = ",".join("?" * len(ids))
+    rows = cur.execute(
+        f"SELECT ts, src_ip, session FROM events "
+        f"WHERE {w} AND eventid IN ({ph}) AND src_ip IS NOT NULL ORDER BY src_ip, ts",
+        prm + ids,
+    ).fetchall()
+
+    buckets = {}
+    for ts, ip, sess in rows:
+        t = parse_ts(ts)
+        if t is None:
+            continue
+        slot = int(t.timestamp()) // window
+        buckets.setdefault((ip, slot), []).append((ts, sess))
+
+    out = []
+    for (ip, slot), items in buckets.items():
+        if len(items) >= p["threshold"]:
+            items.sort()
+            out.append((items[0][0], ip, items[0][1],
+                        {"count": len(items), "window_seconds": window,
+                         "threshold": p["threshold"]}))
+    return out
+
+
 COLLECTORS = {
     "session_threshold": signals_session_threshold,
+    "actor_rate": signals_actor_rate,
     "session_compound": signals_session_compound,
     "event_match": signals_event_match,
     "baseline_deviation": signals_baseline_deviation,
@@ -217,8 +254,12 @@ def run(conn, rules_doc, since, until, verbose=True):
         if collector is None:
             raise ValueError(f"{rule['id']}: 알 수 없는 규칙 유형 {rule['type']}")
 
+        # 규칙이 자체 통합 창을 지정하면 그 값을 쓴다.
+        # 고정 시간창으로 신호를 만드는 규칙(actor_rate)은 슬롯 경계 때문에
+        # 전역 창과 같은 값을 쓰면 연속 활동이 쪼개진다.
+        rule_gap = rule.get("aggregation_gap_seconds", gap)
         signals = collector(cur, rule, since, until)
-        groups = aggregate(signals, gap)
+        groups = aggregate(signals, rule_gap)
         n_new = 0
 
         for ip, items in groups:
@@ -244,26 +285,26 @@ def run(conn, rules_doc, since, until, verbose=True):
             else:
                 skipped += 1
         created += n_new
-        summary.append((rule["id"], rule["name"], len(signals), len(groups), n_new))
+        summary.append((rule["id"], rule["name"], len(signals), len(groups), n_new, rule_gap))
 
     conn.commit()
 
     if verbose:
-        print("=" * 72)
+        print("=" * 82)
         print(f" 탐지 실행  규칙버전 {version}   범위 {since or '전체'} ~ {until or '전체'}")
         print("=" * 72)
-        print(f"{'규칙':<6} {'이름':<18} {'신호':>8} {'인시던트':>10} {'신규':>8}  압축률")
-        print("-" * 72)
+        print(f"{'규칙':<6} {'이름':<18} {'신호':>8} {'인시던트':>10} {'신규':>8}  압축률   통합창")
+        print("-" * 82)
         tot_s = tot_i = 0
-        for rid, name, ns, ni, nn in summary:
+        for rid, name, ns, ni, nn, g in summary:
             comp = f"{100*(1-ni/ns):5.1f}%" if ns else "    -"
-            print(f"{rid:<6} {name:<18} {ns:>8,} {ni:>10,} {nn:>8,}  {comp}")
+            print(f"{rid:<6} {name:<18} {ns:>8,} {ni:>10,} {nn:>8,}  {comp}  {g//60:>4}분")
             tot_s += ns; tot_i += ni
-        print("-" * 72)
+        print("-" * 82)
         comp = f"{100*(1-tot_i/tot_s):5.1f}%" if tot_s else "-"
         print(f"{'합계':<25} {tot_s:>8,} {tot_i:>10,} {created:>8,}  {comp}")
         print(f"\n  기존 인시던트와 동일해 건너뛴 항목 {skipped:,}건 (멱등)")
-        print(f"  통합 창: {gap}초 ({gap//60}분)\n")
+        print(f"  기본 통합 창: {gap}초 ({gap//60}분), 규칙별 지정이 있으면 그 값을 쓴다\n")
     return summary
 
 
