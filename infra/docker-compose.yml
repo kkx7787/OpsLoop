@@ -1,0 +1,51 @@
+# OpsLoop 앱 노드 (EC2-2)
+#   postgres : 운영 데이터. 인시던트·조치·판정은 영구 보존한다.
+#   api      : FastAPI. 콘솔이 붙는 지점.
+#
+# 외부에 여는 포트는 API 하나뿐이다. DB는 컨테이너 네트워크 안에만 있고
+# 호스트 포트로 노출하지 않는다. 수집 노드에서 붙일 때만 5432 를 연다.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: opsloop-db
+    restart: always
+    environment:
+      POSTGRES_DB: opsloop
+      POSTGRES_USER: opsloop
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 를 .env 에 설정하세요}
+      TZ: UTC
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./schema.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
+    ports:
+      - "127.0.0.1:5432:5432"     # 호스트 루프백만. 외부 노출 아님
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opsloop -d opsloop"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+
+  api:
+    build: ../app
+    container_name: opsloop-api
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://opsloop:${POSTGRES_PASSWORD}@postgres:5432/opsloop
+      TZ: UTC
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+
+volumes:
+  pgdata:
