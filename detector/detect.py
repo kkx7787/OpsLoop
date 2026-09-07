@@ -25,7 +25,7 @@ import json
 import os
 import sqlite3
 import statistics
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 
 DEFAULT_DB = os.path.expanduser("~/opsloop/data/opsloop.db")
 DEFAULT_RULES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rules.json")
@@ -76,7 +76,7 @@ CREATE INDEX IF NOT EXISTS idx_ver_incident ON verdicts(incident_key);
 
 
 def now():
-    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def parse_ts(s):
