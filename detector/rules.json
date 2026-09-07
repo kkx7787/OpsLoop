@@ -1,0 +1,55 @@
+{
+  "rule_version": "v1",
+  "note": "임계치는 analyze.py 의 관측 분포에서 도출한다. 변경 시 rule_version 을 올리고 이전 버전을 남긴다.",
+  "aggregation": {
+    "window_gap_seconds": 1800,
+    "comment": "동일 IP·동일 규칙의 신호가 이 간격 안에 이어지면 하나의 인시던트로 묶는다. analyze.py 의 '동일 IP 연속 세션 간격' 분포에서 결정."
+  },
+  "rules": [
+    {
+      "id": "R001",
+      "name": "SSH 무차별 대입",
+      "severity": "medium",
+      "type": "session_threshold",
+      "enabled": true,
+      "params": { "field": "login_attempts", "op": ">=", "value": 3 },
+      "rationale": "세션당 로그인 시도 분포의 상위 구간. analyze.py 출력을 보고 조정한다."
+    },
+    {
+      "id": "R002",
+      "name": "침해 후 행위",
+      "severity": "high",
+      "type": "session_compound",
+      "enabled": true,
+      "params": { "expr": "login_success = 1 AND command_count > 0" },
+      "rationale": "로그인에 성공하고 실제로 명령을 실행한 세션. 스캐너와 실제 침투를 가르는 경계."
+    },
+    {
+      "id": "R003",
+      "name": "악성코드 투하",
+      "severity": "critical",
+      "type": "event_match",
+      "enabled": true,
+      "params": { "eventid_like": "cowrie.session.file_%" },
+      "rationale": "파일 업로드·다운로드는 감염 시도. 건수가 적고 심각도가 높아 억제하지 않는다."
+    },
+    {
+      "id": "R004",
+      "name": "프록시 남용 시도",
+      "severity": "high",
+      "type": "event_match",
+      "enabled": true,
+      "params": { "eventid": "cowrie.direct-tcpip.request" },
+      "rationale": "침해 호스트를 경유지로 삼으려는 시도. 실제 중계는 차단되나 의도가 명확하다."
+    },
+    {
+      "id": "R005",
+      "name": "기준선 이탈",
+      "severity": "medium",
+      "type": "baseline_deviation",
+      "enabled": true,
+      "params": { "bucket": "hour", "sigma": 3.0, "min_buckets": 24 },
+      "rationale": "시간당 이벤트 수가 이동평균 + 3σ 를 넘는 구간. 규칙에 없는 새로운 캠페인을 잡기 위한 보완 장치."
+    }
+  ]
+}
