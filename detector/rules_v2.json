@@ -44,12 +44,13 @@
       "params": {
         "expr": "login_success AND command_count > 0",
         "noop_command_patterns": [
-          "^\\s*echo\\b",
+          "^\\s*echo(\\s|$)",
           "^\\s*true\\s*$",
           "^\\s*:\\s*$",
           "^\\s*exit\\s*$",
           "^\\s*$"
-        ]
+        ],
+        "_regex_note": "PostgreSQL 정규식에서 \\b 는 단어 경계가 아니라 백스페이스다. 단어 경계는 \\y 이며, 여기서는 이식성을 위해 (\\s|$) 로 쓴다."
       },
       "rationale": "명령을 실행했다는 것과 무언가를 했다는 것은 다르다. 단일 행위자가 111회 실행한 명령이 전부 `echo xsec` 이었다. 자격증명이 먹히는지 확인하는 봇의 서명이지 침해 후 행위가 아니다. 반면 다른 행위자는 `cat /etc/os-release` 와 `nproc` 를 실행했다. 시스템 정보를 수집하는 실제 정찰이다. v1 은 둘을 같은 무게로 셌다. 무의미한 명령만 있는 세션을 제외한다.",
       "changed_from_v1": "noop_command_patterns 추가"
