@@ -53,8 +53,23 @@ CIRCULAR = {
     "R004": "규칙 조건이 경유 시도이고 판정 기준의 위협 조건도 같다",
 }
 
+# 두벌식 자판에서 한/영 전환을 잊고 누른 키를 알아듣는다.
+# 판정 중 매번 전환하는 것은 도구가 감당할 몫이지 사람이 감당할 몫이 아니다.
+HANGUL = {"ㅅ": "t", "ㅜ": "n", "ㄹ": "f", "ㄴ": "s", "ㅂ": "q", "ㅁ": "a", "ㅛ": "y"}
+
 BAR = "=" * 78
 DIV = "-" * 78
+
+
+def keypress(raw):
+    """입력을 한 글자 명령으로 정규화한다. 한글 자모도 받는다."""
+    v = raw.strip().lower()
+    if len(v) == 1 and v in HANGUL:
+        return HANGUL[v]
+    # 'ㅅt' 처럼 전환 직후 두 글자가 들어온 경우 뒤의 영문을 쓴다
+    if len(v) == 2 and v[0] in HANGUL and v[1].isascii():
+        return v[1]
+    return v
 
 
 def db_url(arg):
@@ -84,7 +99,7 @@ def local(ts):
 #  증거 수집
 # ────────────────────────────────────────────────────────────────
 
-def gather(cur, ip, first_ts, last_ts, rule_id, severity):
+def gather(cur, inc_key, ip, first_ts, last_ts, sessions):
     """인시던트 구간에서 그 출발지가 실제로 한 일을 모은다.
 
     규칙이 남긴 evidence 는 규칙이 본 것만 담고 있다. 판정하려면 규칙이
@@ -95,33 +110,37 @@ def gather(cur, ip, first_ts, last_ts, rule_id, severity):
     if not ip:
         return ev
 
-    cur.execute("""
+    # 인시던트 기간만으로 조회하면 안 된다. 세션 하나에서 나온 인시던트는
+    # first_ts 와 last_ts 가 같아 폭이 0 초이고, 그 세션의 로그인·명령은
+    # 몇 초 뒤에 일어나 범위 밖으로 빠진다. 증거가 통째로 비어 보인다.
+    # 규칙이 근거로 삼은 세션을 함께 조건에 넣어 그 세션 전체를 본다.
+    scope = "(session = ANY(%s) OR ts BETWEEN %s AND %s)"
+    args = (ip, sessions or [], first_ts, last_ts)
+
+    cur.execute(f"""
         SELECT eventid, count(*) FROM events
-        WHERE src_ip = %s AND ts BETWEEN %s AND %s
-        GROUP BY eventid""", (ip, first_ts, last_ts))
+        WHERE src_ip = %s AND {scope}
+        GROUP BY eventid""", args)
     ev["counts"] = dict(cur.fetchall())
 
-    cur.execute("""
+    cur.execute(f"""
         SELECT username, password, count(*) FROM events
-        WHERE src_ip = %s AND ts BETWEEN %s AND %s
+        WHERE src_ip = %s AND {scope}
           AND eventid IN ('cowrie.login.failed', 'cowrie.login.success')
-        GROUP BY username, password ORDER BY count(*) DESC LIMIT 6""",
-        (ip, first_ts, last_ts))
+        GROUP BY username, password ORDER BY count(*) DESC LIMIT 6""", args)
     ev["creds"] = cur.fetchall()
 
-    cur.execute("""
+    cur.execute(f"""
         SELECT input, count(*) FROM events
-        WHERE src_ip = %s AND ts BETWEEN %s AND %s
+        WHERE src_ip = %s AND {scope}
           AND eventid = 'cowrie.command.input' AND input IS NOT NULL
-        GROUP BY input ORDER BY count(*) DESC LIMIT 6""",
-        (ip, first_ts, last_ts))
+        GROUP BY input ORDER BY count(*) DESC LIMIT 6""", args)
     ev["commands"] = cur.fetchall()
 
-    cur.execute("""
+    cur.execute(f"""
         SELECT eventid, shasum, url FROM events
-        WHERE src_ip = %s AND ts BETWEEN %s AND %s
-          AND eventid LIKE 'cowrie.session.file_%%' LIMIT 5""",
-        (ip, first_ts, last_ts))
+        WHERE src_ip = %s AND {scope}
+          AND eventid LIKE 'cowrie.session.file_%%' LIMIT 5""", args)
     ev["files"] = cur.fetchall()
 
     cur.execute("""
@@ -133,19 +152,24 @@ def gather(cur, ip, first_ts, last_ts, rule_id, severity):
     cur.execute("SELECT 1 FROM blocklist WHERE actor_ip = %s AND released_at IS NULL", (ip,))
     ev["blocked"] = cur.fetchone() is not None
 
-    # 이미 위협으로 판정된, 같은 출발지의 겹치는 인시던트. 있으면 이 알림은
-    # 새 정보를 주지 않았을 가능성이 있다. 알림 중복은 규칙 조건과 무관한
-    # 증거이므로, 조건이 겹치는 규칙에서도 순환 없이 물을 수 있다.
+    # 같은 출발지의 겹치는 인시던트들을 하나의 에피소드로 보고, 그중 심각도가
+    # 가장 높은 것(동률이면 가장 이른 것)을 대표로 삼는다. 대표가 아닌 것은
+    # 관제자에게 새 정보를 주지 않은 알림이다.
+    #
+    # 이 계산은 사람의 판정이 아니라 인시던트 자체에서 나오므로 첫 건부터
+    # 답이 있고, 규칙 조건과도 무관하다. 조건이 겹치는 규칙에서도 순환 없이
+    # 물을 수 있는 유일한 질문이 이것이다.
     cur.execute("""
-        SELECT i.rule_id, i.severity FROM incidents i
-        JOIN verdicts v ON v.incident_key = i.incident_key
-        WHERE i.actor_ip = %s AND v.verdict = 'threat'
-          AND i.first_ts <= %s AND i.last_ts >= %s
-        ORDER BY i.first_ts LIMIT 1""",
-        (ip, last_ts, first_ts))
+        SELECT incident_key, rule_id FROM incidents
+        WHERE actor_ip = %s
+          AND first_ts <= %s + interval '15 minutes'
+          AND last_ts  >= %s - interval '15 minutes'
+        ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1
+                               WHEN 'medium' THEN 2 ELSE 3 END, first_ts
+        LIMIT 1""", (ip, last_ts, first_ts))
     row = cur.fetchone()
-    if row and SEV_ORDER.get(row[1], 9) <= SEV_ORDER.get(severity, 9):
-        ev["covered_by"] = row[0]
+    if row and row[0] != inc_key:
+        ev["covered_by"] = row[1]
 
     return ev
 
@@ -166,29 +190,26 @@ def propose(rule_id, ev):
     facts = (f"로그인 실패 {fails} · 성공 {oks} · 명령 {cmds} · "
              f"파일 {files} · 경유시도 {proxy}")
 
+    # 1순위: 중복인가. 규칙 조건과 무관한 증거라 어느 규칙에나 쓸 수 있다.
     if ev["covered_by"]:
         return "non_actionable", [
             facts,
-            f"같은 출발지의 {ev['covered_by']} 인시던트가 이미 위협으로 판정됐고 구간이 겹친다",
-            "따로 뜰 값어치가 없었던 알림이다. 조치는 이미 그쪽에서 이뤄진다"]
+            f"같은 출발지·같은 구간에서 {ev['covered_by']} 가 더 높은 심각도로 이미 떴다",
+            "이 알림은 새 정보를 주지 않았다. 조치는 대표 인시던트 쪽에서 이뤄진다"]
 
-    if rule_id in CIRCULAR:
-        return None, [
-            facts,
-            f"제안 없음 — {CIRCULAR[rule_id]}",
-            "여기서 위협 판정은 규칙의 정확성을 증명하지 않는다.",
-            "이 알림이 따로 뜰 값어치가 있었는지를 직접 보고 정하세요."]
-
-    # 빈도·통계로 걸린 규칙은 그 뒤에 무엇을 했는지로 판정한다. 서로 다른 증거다.
+    # 2순위: 대표 알림이다. 뒤이은 행위로 판정한다.
     if cmds or files or proxy:
         why = []
         if cmds: why.append(f"명령 {cmds}회")
         if files: why.append(f"파일 {files}건")
         if proxy: why.append(f"경유 시도 {proxy}회")
-        return "threat", [
-            facts,
-            f"빈도로 걸렸고 뒤이어 실제 행위가 있었다 ({', '.join(why)})",
-            "규칙이 본 것과 다른 증거로 확인된 침해다"]
+        lines = [facts, f"이 에피소드의 대표 알림이고 실제 행위가 있었다 ({', '.join(why)})"]
+        if rule_id in CIRCULAR:
+            lines.append(f"※ {CIRCULAR[rule_id]}.")
+            lines.append("   이 위협 판정은 규칙의 정확성이 아니라 중복이 아님을 뜻한다")
+        else:
+            lines.append("규칙이 본 것과 다른 증거로 확인된 침해다")
+        return "threat", lines
 
     if oks:
         return "non_actionable", [
@@ -308,24 +329,48 @@ def triage(conn, rule_id, limit, operator):
     print("  제안이 붙은 것은 엔터로 수락, 다르게 보이면 t/n/f 로 뒤집습니다.")
     print("  제안이 없는 것은 조건과 판정 근거가 겹치는 규칙이라 직접 보셔야 합니다.\n")
 
-    taken = flipped = skipped = judged = 0
+    taken = flipped = skipped = judged = auto_done = 0
+    auto = False
     for i, row in enumerate(rows, 1):
         key, rid, ip, n_sig, sev = row[0], row[1], row[5], row[8], row[4]
-        # 앞선 판정이 이 인시던트의 중복 여부를 바꾸므로 매번 다시 본다.
-        ev = gather(cur, ip, row[6], row[7], rid, sev)
+        sessions = list((row[10] or {}).get("sessions") or [])
+        ev = gather(cur, key, ip, row[6], row[7], sessions)
         suggestion, basis = propose(rid, ev)
+
+        # 일괄 수락 중이면 제안이 있는 것만 조용히 기록하고 넘어간다.
+        # 제안이 없는 것은 남겨둔다. 판단이 필요한 것을 자동으로 넘기지 않는다.
+        if auto:
+            if suggestion:
+                record(conn, key, ip, suggestion, basis[1] + " [일괄 수락]",
+                       float(n_sig), operator, suggestion, False)
+                taken += 1; judged += 1; auto_done += 1
+            else:
+                skipped += 1
+            continue
+
         show(row, i, len(rows), ev, suggestion, basis)
 
         prompt = ("  [Enter] 제안 수락  [t] 위협  [n] 무시 가능  [f] 오탐  "
-                  "[s] 건너뜀  [q] 종료 > ") if suggestion else \
+                  "[a] 남은 것 전부 제안대로  [s] 건너뜀  [q] 종료 > ") if suggestion else \
                  ("  [t] 위협  [n] 무시 가능  [f] 오탐  [s] 건너뜀  [q] 종료 > ")
 
         while True:
-            ans = input(prompt).strip().lower()
+            ans = keypress(input(prompt))
             if ans == "q":
                 break
             if ans == "s":
                 skipped += 1
+                break
+            if ans == "a" and suggestion:
+                left = len(rows) - i + 1
+                yn = keypress(input(f"  남은 {left}건을 제안대로 기록합니다. "
+                                f"제안이 없는 건은 남겨둡니다. [y/N] > "))
+                if yn != "y":
+                    continue
+                auto = True
+                record(conn, key, ip, suggestion, basis[1] + " [일괄 수락]",
+                       float(n_sig), operator, suggestion, False)
+                taken += 1; judged += 1; auto_done += 1
                 break
             if ans == "" and suggestion:
                 verdict, note = suggestion, basis[1]
@@ -344,7 +389,7 @@ def triage(conn, rule_id, limit, operator):
 
             block = False
             if verdict == "threat" and ip:
-                block = input("  이 출발지를 차단 목록에 올릴까요? [y/N] > ").strip().lower() == "y"
+                block = keypress(input("  이 출발지를 차단 목록에 올릴까요? [y/N] > ")) == "y"
             record(conn, key, ip, verdict, note, float(n_sig), operator, suggestion, block)
             judged += 1
             print(f"  기록됨: {LABEL[verdict]}" + ("  · 차단" if block else ""))
@@ -353,7 +398,8 @@ def triage(conn, rule_id, limit, operator):
         if ans == "q":
             break
 
-    print(f"\n  판정 {judged}건 · 건너뜀 {skipped}건")
+    print(f"\n  판정 {judged}건 · 건너뜀 {skipped}건"
+          + (f"  (그중 일괄 수락 {auto_done}건)" if auto_done else ""))
     if taken + flipped:
         print(f"  제안이 붙은 {taken + flipped}건 중 수락 {taken} · 뒤집음 {flipped}"
               f"  (뒤집힌 비율 {100 * flipped / (taken + flipped):.0f}%)")
