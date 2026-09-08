@@ -1,0 +1,12 @@
+# 이 파일을 terraform.tfvars 로 복사해 값을 채운다.
+# terraform.tfvars 는 저장소에 올리지 않는다.
+
+vpc_id     = "vpc-0287cb7f6aa207aaa"
+subnet_id  = "subnet-020fc2995ea8a4895"
+admin_cidr = "122.128.133.26/32"    # 개발용 API 접근. 회선이 바뀌면 갱신
+
+# AMI 는 가져오기 이후 실제 값으로 채운다.
+#   terraform state show aws_instance.honeypot | grep '^ *ami'
+honeypot_ami = "ami-xxxxxxxxxxxxxxxxx"
+app_ami      = "ami-xxxxxxxxxxxxxxxxx"
+
