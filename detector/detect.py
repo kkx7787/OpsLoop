@@ -227,8 +227,21 @@ def run(conn, rules_doc, since, until, verbose=True):
             first_ts, last_ts = items[0][0], items[-1][0]
             sessions = sorted({i[1] for i in items if i[1]})
             key = f"{rule['id']}|{version}|{ip or '-'}|{first_ts.isoformat()}"
+            # 임계치와 비교되는 값을 신호 전체에서 뽑아 남긴다. 표본 몇 개만
+            # 보고 나중에 다시 계산하면 큰 인시던트에서 최댓값을 놓친다.
+            metrics = [i[2] for i in items if isinstance(i[2], dict)]
+            counts = [m["count"] for m in metrics if "count" in m]
+            devs = [(m["count"] - m["mean"]) / m["sigma"]
+                    for m in metrics if m.get("sigma")]
+            observed = {}
+            if counts:
+                observed["observed_count_max"] = max(counts)
+            if devs:
+                observed["observed_sigma_max"] = round(max(devs), 2)
+
             evidence = json.dumps(
-                {"sample": [i[2] for i in items[:5]], "sessions": sessions[:10]},
+                {"sample": [i[2] for i in items[:5]], "sessions": sessions[:10],
+                 **observed},
                 ensure_ascii=False, default=str)
             rows.append((key, rule["id"], version, rule["name"], rule["severity"], ip,
                          first_ts, last_ts, len(items), len(sessions), evidence))

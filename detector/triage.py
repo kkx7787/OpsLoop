@@ -91,6 +91,39 @@ def ensure_column(conn):
     cur.close()
 
 
+def observed_of(evidence, signal_count):
+    """그 규칙이 임계치와 비교하는 값을 증거에서 꺼낸다.
+
+    신호 수를 관측값으로 쓰면 안 된다. R001 에서 신호 수는 "임계치를 넘은
+    시간창이 몇 개인가"이지 "그 창에서 몇 번 시도했는가"가 아니다. 임계치와
+    비교되지 않는 값으로 임계치를 도출하면 결과가 무의미하다.
+
+    돌려주는 값: (관측값, 단위 설명)
+    """
+    e = evidence or {}
+    # 탐지기가 신호 전체에서 계산해 남긴 값이 있으면 그것을 쓴다.
+    if e.get("observed_sigma_max") is not None:
+        return float(e["observed_sigma_max"]), "표준편차 배수"
+    if e.get("observed_count_max") is not None:
+        return float(e["observed_count_max"]), "시간창 최대 누적 횟수"
+
+    # 없으면 표본에서 추정한다. v1 시점 인시던트가 여기 해당한다.
+    samples = [x for x in (e.get("sample") or []) if isinstance(x, dict)]
+    if samples:
+        head = samples[0]
+        # 기준선 이탈: 평균에서 몇 표준편차 떨어졌는가. sigma 파라미터와 비교된다.
+        if "limit" in head and head.get("sigma"):
+            vals = [(x["count"] - x["mean"]) / x["sigma"]
+                    for x in samples if x.get("sigma")]
+            if vals:
+                return max(vals), "표준편차 배수"
+        # 빈도 규칙: 시간창 안의 누적 횟수. threshold 와 비교된다.
+        if "count" in head and "threshold" in head:
+            return float(max(x["count"] for x in samples)), "시간창 최대 누적 횟수"
+    # 임계치가 없는 규칙. 남겨두되 임계치 도출에는 쓰지 않는다.
+    return float(signal_count), "알림 신호 수"
+
+
 def local(ts):
     return ts.astimezone().strftime("%m-%d %H:%M:%S")
 
@@ -230,7 +263,7 @@ def propose(rule_id, ev):
 #  화면
 # ────────────────────────────────────────────────────────────────
 
-def show(row, idx, total, ev, suggestion, basis):
+def show(row, idx, total, ev, suggestion, basis, observed, unit):
     (key, rid, ver, rname, sev, ip, first_ts, last_ts, n_sig, n_sess, _, _) = row
 
     print("\n" + BAR)
@@ -241,6 +274,8 @@ def show(row, idx, total, ev, suggestion, basis):
     print(f"  기간     {local(first_ts)} ~ {local(last_ts)}"
           f"   ({int((last_ts - first_ts).total_seconds())}초)")
     print(f"  규모     신호 {n_sig}건 · 세션 {n_sess}개")
+    if unit != "알림 신호 수":
+        print(f"  관측값   {observed:g}  ({unit} · 이 값이 임계치와 비교된다)")
 
     if ev["creds"]:
         print("\n  로그인 시도")
@@ -333,7 +368,9 @@ def triage(conn, rule_id, limit, operator):
     auto = False
     for i, row in enumerate(rows, 1):
         key, rid, ip, n_sig, sev = row[0], row[1], row[5], row[8], row[4]
-        sessions = list((row[10] or {}).get("sessions") or [])
+        evidence = row[10] or {}
+        sessions = list(evidence.get("sessions") or [])
+        observed, unit = observed_of(evidence, n_sig)
         ev = gather(cur, key, ip, row[6], row[7], sessions)
         suggestion, basis = propose(rid, ev)
 
@@ -342,13 +379,13 @@ def triage(conn, rule_id, limit, operator):
         if auto:
             if suggestion:
                 record(conn, key, ip, suggestion, basis[1] + " [일괄 수락]",
-                       float(n_sig), operator, suggestion, False)
+                       observed, operator, suggestion, False)
                 taken += 1; judged += 1; auto_done += 1
             else:
                 skipped += 1
             continue
 
-        show(row, i, len(rows), ev, suggestion, basis)
+        show(row, i, len(rows), ev, suggestion, basis, observed, unit)
 
         prompt = ("  [Enter] 제안 수락  [t] 위협  [n] 무시 가능  [f] 오탐  "
                   "[a] 남은 것 전부 제안대로  [s] 건너뜀  [q] 종료 > ") if suggestion else \
@@ -369,7 +406,7 @@ def triage(conn, rule_id, limit, operator):
                     continue
                 auto = True
                 record(conn, key, ip, suggestion, basis[1] + " [일괄 수락]",
-                       float(n_sig), operator, suggestion, False)
+                       observed, operator, suggestion, False)
                 taken += 1; judged += 1; auto_done += 1
                 break
             if ans == "" and suggestion:
@@ -390,7 +427,7 @@ def triage(conn, rule_id, limit, operator):
             block = False
             if verdict == "threat" and ip:
                 block = keypress(input("  이 출발지를 차단 목록에 올릴까요? [y/N] > ")) == "y"
-            record(conn, key, ip, verdict, note, float(n_sig), operator, suggestion, block)
+            record(conn, key, ip, verdict, note, observed, operator, suggestion, block)
             judged += 1
             print(f"  기록됨: {LABEL[verdict]}" + ("  · 차단" if block else ""))
             break
@@ -448,8 +485,27 @@ def thresholds(conn):
 
     조치가 필요했던 것들의 최솟값과 불필요했던 것들의 최댓값 사이가 후보다.
     두 분포가 겹치면 임계치로는 나눌 수 없고 조건 자체를 바꿔야 한다.
+
+    임계치가 없는 조건형 규칙(event_match, session_compound)은 이 표에서
+    제외한다. 낮출 임계치가 없는 규칙에 "임계치를 낮출 여지"라고 쓰면
+    읽는 사람을 잘못된 조치로 이끈다.
     """
     cur = conn.cursor()
+
+    # 규칙 정의를 DB 에서 읽어 어떤 규칙에 임계치가 있는지 판별한다.
+    # 코드에 규칙 목록을 박으면 규칙이 바뀔 때마다 여기도 고쳐야 한다.
+    kinds = {}
+    cur.execute("SELECT rule_version, definition FROM rule_versions")
+    for ver, doc in cur.fetchall():
+        for r in (doc or {}).get("rules", []):
+            kinds[(ver, r["id"])] = (r.get("type"), r.get("params", {}))
+
+    TUNABLE = {
+        "actor_rate":         ("threshold", "시간창 최대 누적 횟수"),
+        "baseline_deviation": ("sigma",     "표준편차 배수"),
+        "session_threshold":  ("threshold", "세션 지표"),
+    }
+
     cur.execute("""
         SELECT i.rule_id, i.rule_version,
                min(v.observed_value) FILTER (WHERE v.verdict = 'threat'),
@@ -465,21 +521,49 @@ def thresholds(conn):
     if not rows:
         print("\n  판정 기록이 없습니다. 먼저 triage 를 돌리세요.\n"); cur.close(); return
 
-    print(f"\n{'규칙':<6} {'버전':<5} {'위협 관측값':>13} {'n':>4} "
-          f"{'비위협 관측값':>15} {'n':>4}  판단")
-    print(BAR)
-    for rid, ver, t_min, t_max, t_n, o_min, o_max, o_n in rows:
-        t = f"{t_min:.0f}~{t_max:.0f}" if t_n else "-"
-        o = f"{o_min:.0f}~{o_max:.0f}" if o_n else "-"
-        if not t_n:
-            note = "위협 판정 없음. 규칙 재검토"
-        elif not o_n:
-            note = "전부 위협. 임계치 낮출 여지"
-        elif o_max < t_min:
-            note = f"분리됨. 임계치 후보 {int(o_max) + 1}"
-        else:
-            note = "분포 겹침. 조건 변경 필요"
-        print(f"{rid:<6} {ver:<5} {t:>13} {t_n:>4} {o:>15} {o_n:>4}  {note}")
+    tunable, fixed = [], []
+    for r in rows:
+        kind, params = kinds.get((r[1], r[0]), (None, {}))
+        (tunable if kind in TUNABLE else fixed).append((r, kind, params))
+
+    if tunable:
+        print(f"\n  임계치가 있는 규칙 — 판정 분포에서 다음 값을 도출한다")
+        print(BAR)
+        print(f"{'규칙':<6} {'현재':>7} {'위협':>12} {'n':>3} {'비위협':>12} {'n':>3}  판단")
+        print(DIV)
+        for r, kind, params in tunable:
+            rid, ver, t_min, t_max, t_n, o_min, o_max, o_n = r
+            field, unit = TUNABLE[kind]
+            now = params.get(field, "-")
+            t = f"{t_min:g}~{t_max:g}" if t_n else "-"
+            o = f"{o_min:g}~{o_max:g}" if o_n else "-"
+            if not t_n:
+                note = "위협 판정이 없다. 규칙을 유지할 근거가 없다"
+            elif not o_n:
+                note = "전부 위협. 임계치를 낮춰 더 잡을 여지"
+            elif o_max < t_min:
+                cand = o_max + (1 if float(o_max).is_integer() else 0.1)
+                note = f"분리됨. 임계치 후보 {cand:g} (현재 {now})"
+            else:
+                note = "분포 겹침. 임계치로는 못 나눈다. 조건 변경"
+            print(f"{rid:<6} {str(now):>7} {t:>12} {t_n:>3} {o:>12} {o_n:>3}  {note}")
+            print(f"{'':6} {'':>7} 관측 단위: {unit}")
+
+    if fixed:
+        print(f"\n  임계치가 없는 조건형 규칙 — 임계치 조정 대상이 아니다")
+        print(BAR)
+        print(f"{'규칙':<6} {'유형':<18} {'위협':>5} {'비위협':>7}  판단")
+        print(DIV)
+        for r, kind, _ in fixed:
+            rid, ver, _, _, t_n, _, _, o_n = r
+            if o_n and not t_n:
+                note = "전부 비조치. 규칙을 없애거나 조건을 좁힌다"
+            elif o_n:
+                note = "일부가 비조치. 조건을 좁힐 여지"
+            else:
+                note = "전부 위협. 다만 조건과 판정 근거가 같은지 확인할 것"
+            print(f"{rid:<6} {str(kind or '-'):<18} {t_n:>5} {o_n:>7}  {note}")
+
     print("\n  분리됨 : 관측값만으로 위협과 비위협이 갈린다. 임계치를 올리면 된다")
     print("  겹침   : 같은 값에 두 판정이 모두 있다. 임계치로는 못 나눈다\n")
     cur.close()
