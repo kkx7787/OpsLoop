@@ -82,21 +82,45 @@ def signals_session_threshold(cur, rule, since, until):
 
 
 def signals_session_compound(cur, rule, since, until):
+    """세션 지표의 논리식으로 거른다.
+
+    v2 에서 조건 하나가 붙었다. 명령을 실행했다는 것과 무언가를 했다는 것은
+    다르다. 관측된 봇 상당수가 로그인 후 `echo` 한 줄만 찍고 끊는다.
+    자격증명이 먹히는지 확인하는 행위이지 침해 후 행위가 아니다.
+    noop_command_patterns 에 걸리지 않는 명령이 하나라도 있어야 신호가 된다.
+    """
+    p = rule["params"]
     w, prm = range_clause(since, until, "first_ts")
+    cond, extra = f"({p['expr']})", []
+    noop = p.get("noop_command_patterns")
+    if noop:
+        cond += (" AND EXISTS (SELECT 1 FROM events e WHERE e.session = sessions.session"
+                 " AND e.eventid = 'cowrie.command.input' AND e.input IS NOT NULL"
+                 " AND e.input !~* ALL(%s))")
+        extra.append(noop)
     cur.execute(
         f"SELECT first_ts, src_ip, session, login_attempts, command_count "
-        f"FROM sessions WHERE {w} AND ({rule['params']['expr']})", prm)
+        f"FROM sessions WHERE {w} AND {cond}", prm + extra)
     return [(ts, ip, s, {"login_attempts": la, "command_count": cc})
             for ts, ip, s, la, cc in cur.fetchall()]
 
 
 def signals_event_match(cur, rule, since, until):
+    """이벤트 하나로 성립하는 규칙.
+
+    v2 에서 제외 목록이 붙었다. 파일 이동 이벤트가 있다는 것과 악성코드가
+    들어왔다는 것은 다르다. 빈 파일(0바이트)의 해시가 반복 관측되었고,
+    이것을 critical 로 올리는 것은 규칙이 겨냥한 현상이 아니다.
+    """
     p = rule["params"]
     w, prm = range_clause(since, until, "ts")
     if "eventid" in p:
         cond, extra = "eventid = %s", [p["eventid"]]
     else:
         cond, extra = "eventid LIKE %s", [p["eventid_like"]]
+    for pref in p.get("exclude_shasum_prefixes", []):
+        cond += " AND (shasum IS NULL OR shasum NOT LIKE %s)"
+        extra.append(pref + "%")
     cur.execute(
         f"SELECT ts, src_ip, session, eventid, coalesce(shasum, url, input, message) "
         f"FROM events WHERE {w} AND {cond}", prm + extra)
@@ -111,8 +135,31 @@ def signals_baseline_deviation(cur, rule, since, until):
     """
     p = rule["params"]
     w, prm = range_clause(since, until, "ts")
+
+    # v2: 이미 다른 규칙이 잡은 행위자를 기준선에서 뺀다.
+    #
+    # 이 규칙은 "규칙에 없는 새 패턴"을 잡으라고 넣었는데, v1 에서 잡은 두 건이
+    # 모두 기존 규칙이 이미 잡은 IP 하나의 폭주였다. 전체 이벤트로 기준선을
+    # 계산하면 한 행위자의 활동이 기준선을 흔들고, 그 흔들림을 자기가 다시
+    # 잡는다. 새 패턴이 아니라 기존 규칙의 그림자를 잡는 것이다.
+    #
+    # 같은 실행 안에서 앞선 규칙들이 만든 인시던트를 본다. 그래서 이 규칙은
+    # 규칙 목록의 마지막에 있어야 한다.
+    excl = []
+    if p.get("exclude_alerted_actors"):
+        cur.execute(
+            "SELECT DISTINCT host(actor_ip) FROM incidents "
+            "WHERE rule_version = %s AND rule_id <> %s AND actor_ip IS NOT NULL",
+            (p["_version"], rule["id"]))
+        excl = [r[0] for r in cur.fetchall()]
+
+    cond = w
+    if excl:
+        cond += " AND (src_ip IS NULL OR host(src_ip) <> ALL(%s))"
+        prm = prm + [excl]
+
     cur.execute(
-        f"SELECT date_trunc('hour', ts) h, count(*) FROM events WHERE {w} GROUP BY 1 ORDER BY 1",
+        f"SELECT date_trunc('hour', ts) h, count(*) FROM events WHERE {cond} GROUP BY 1 ORDER BY 1",
         prm)
     rows = cur.fetchall()
     if len(rows) < p.get("min_buckets", 24):
@@ -124,7 +171,8 @@ def signals_baseline_deviation(cur, rule, since, until):
     limit = mean + p["sigma"] * sd
     return [(h, None, None,
              {"bucket": h.isoformat(), "count": c, "mean": round(mean, 1),
-              "sigma": round(sd, 1), "limit": round(limit, 1)})
+              "sigma": round(sd, 1), "limit": round(limit, 1),
+              "excluded_actors": len(excl)})
             for h, c in rows if c > limit]
 
 
@@ -194,6 +242,58 @@ def aggregate(signals, gap_seconds):
     return groups
 
 
+SEVERITY_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+
+
+def suppress(cur, rules_doc, staged):
+    """더 높은 심각도 알림에 흡수되는 인시던트를 지운다.
+
+    판정 결과 R001 의 비조치율이 100% 였다. 관측값은 임계치의 5배까지
+    올라갔는데도 전부 "무시 가능"이었고, 이유는 모두 같았다. 같은 행위자에
+    대해 같은 시간대에 더 심각한 알림이 이미 떠 있었다.
+
+    임계치를 올려서 해결되는 문제가 아니다. 관측값 전 구간이 비위협이므로
+    임계치를 올리면 규칙이 아무것도 잡지 않게 될 뿐이다. 문제는 값이 아니라
+    같은 사건을 여러 규칙이 각자 보고한다는 데 있다.
+
+    그래서 값이 아니라 구조를 바꾼다. 규칙은 그대로 두고, 인시던트를 만드는
+    단계에서 상위 심각도 알림에 흡수시킨다. 규칙을 지우지 않는 이유는 분명하다.
+    상위 알림이 없을 때는 이 규칙이 유일한 탐지이기 때문이다.
+    허니팟은 대부분의 비밀번호를 통과시켜 무차별 대입이 거의 항상 로그인
+    성공으로 이어지지만, 실제 서버에서는 실패만 반복하는 쪽이 다수다.
+    """
+    conf = rules_doc["suppression"]
+    if not conf.get("absorb_by_higher_severity"):
+        return {}
+    gap = conf.get("window_seconds", 900)
+
+    flat = [(rule["id"], r) for rule, rows, _, _ in staged for r in rows]
+    victims, counts = [], {}
+
+    for rid, r in flat:
+        rank, ip, first_ts, last_ts = SEVERITY_RANK[r[4]], r[5], r[6], r[7]
+        if ip is None:
+            continue
+        for orid, o in flat:
+            if o[0] == r[0] or o[5] != ip:
+                continue
+            if SEVERITY_RANK[o[4]] < rank and \
+               (o[6] - last_ts).total_seconds() <= gap and \
+               (first_ts - o[7]).total_seconds() <= gap:
+                victims.append(r[0])
+                counts[rid] = counts.get(rid, 0) + 1
+                break
+
+    if victims:
+        # 판정이 붙은 인시던트는 지우지 않는다. 사람이 내린 판단이 사라지면
+        # 폐루프의 근거가 함께 사라진다. 새 버전에서만 억제가 적용된다.
+        cur.execute("""DELETE FROM incidents i WHERE i.incident_key = ANY(%s)
+                       AND NOT EXISTS (SELECT 1 FROM verdicts v
+                                       WHERE v.incident_key = i.incident_key)""",
+                    (victims,))
+    return counts
+
+
 def run(conn, rules_doc, since, until, verbose=True):
     version = rules_doc["rule_version"]
     gap = rules_doc["aggregation"]["window_gap_seconds"]
@@ -208,6 +308,7 @@ def run(conn, rules_doc, since, until, verbose=True):
 
     created = skipped = 0
     summary = []
+    staged = []   # (rule, rows, signal_count)
 
     for rule in rules_doc["rules"]:
         if not rule.get("enabled", True):
@@ -219,6 +320,7 @@ def run(conn, rules_doc, since, until, verbose=True):
         # 고정 시간창으로 신호를 만드는 규칙은 슬롯 경계 때문에 전역 창과
         # 같은 값을 쓰면 연속 활동이 쪼개진다. 규칙별 지정을 우선한다.
         rule_gap = rule.get("aggregation_gap_seconds", gap)
+        rule.setdefault("params", {})["_version"] = version
         signals = collector(cur, rule, since, until)
         groups = aggregate(signals, rule_gap)
 
@@ -246,22 +348,27 @@ def run(conn, rules_doc, since, until, verbose=True):
             rows.append((key, rule["id"], version, rule["name"], rule["severity"], ip,
                          first_ts, last_ts, len(items), len(sessions), evidence))
 
-        cur.execute("SELECT count(*) FROM incidents WHERE rule_id = %s AND rule_version = %s",
-                    (rule["id"], version))
-        before = cur.fetchone()[0]
+        staged.append((rule, rows, len(signals), rule_gap))
+
+        # 이 규칙의 인시던트를 바로 넣는다. 뒤 규칙(기준선 이탈)이 앞 규칙의
+        # 결과를 보아야 하므로 억제 판단보다 적재가 먼저다. 억제된 것은
+        # 아래에서 지운다.
         execute_batch(cur, """
             INSERT INTO incidents (incident_key, rule_id, rule_version, rule_name, severity,
                                    actor_ip, first_ts, last_ts, signal_count, session_count,
                                    evidence)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)
             ON CONFLICT (incident_key) DO NOTHING""", rows, page_size=200)
+
+    suppressed = suppress(cur, rules_doc, staged) if rules_doc.get("suppression") else {}
+
+    for rule, rows, n_signals, rule_gap in staged:
         cur.execute("SELECT count(*) FROM incidents WHERE rule_id = %s AND rule_version = %s",
                     (rule["id"], version))
-        n_new = cur.fetchone()[0] - before
-
-        created += n_new
-        skipped += len(rows) - n_new
-        summary.append((rule["id"], rule["name"], len(signals), len(groups), n_new, rule_gap))
+        n_now = cur.fetchone()[0]
+        n_sup = suppressed.get(rule["id"], 0)
+        created += n_now
+        summary.append((rule["id"], rule["name"], n_signals, len(rows), n_now, rule_gap, n_sup))
 
     conn.commit()
     cur.close()
@@ -270,17 +377,19 @@ def run(conn, rules_doc, since, until, verbose=True):
         print("=" * 82)
         print(f" 탐지 실행  규칙버전 {version}   범위 {since or '전체'} ~ {until or '전체'}")
         print("=" * 82)
-        print(f"{'규칙':<6} {'이름':<18} {'신호':>8} {'인시던트':>10} {'신규':>8}  압축률   통합창")
+        print(f"{'규칙':<6} {'이름':<18} {'신호':>8} {'통합':>8} {'억제':>6} {'인시던트':>9}  압축률   통합창")
         print("-" * 82)
-        tot_s = tot_i = 0
-        for rid, name, ns, ni, nn, g in summary:
-            comp = f"{100 * (1 - ni / ns):5.1f}%" if ns else "    -"
-            print(f"{rid:<6} {name:<18} {ns:>8,} {ni:>10,} {nn:>8,}  {comp}  {g // 60:>4}분")
-            tot_s += ns; tot_i += ni
+        tot_s = tot_i = tot_x = 0
+        for rid, name, ns, ni, nn, g, nx in summary:
+            comp = f"{100 * (1 - (ni - nx) / ns):5.1f}%" if ns else "    -"
+            print(f"{rid:<6} {name:<18} {ns:>8,} {ni:>8,} {nx:>6,} {nn:>9,}  {comp}  {g // 60:>4}분")
+            tot_s += ns; tot_i += ni; tot_x += nx
         print("-" * 82)
-        comp = f"{100 * (1 - tot_i / tot_s):5.1f}%" if tot_s else "-"
-        print(f"{'합계':<25} {tot_s:>8,} {tot_i:>10,} {created:>8,}  {comp}")
-        print(f"\n  기존과 동일해 건너뛴 항목 {skipped:,}건 (멱등)")
+        comp = f"{100 * (1 - (tot_i - tot_x) / tot_s):5.1f}%" if tot_s else "-"
+        print(f"{'합계':<25} {tot_s:>8,} {tot_i:>8,} {tot_x:>6,} {created:>9,}  {comp}")
+        if tot_x:
+            print(f"\n  억제 {tot_x}건 — 같은 행위자·같은 구간에 더 높은 심각도 알림이 있어")
+            print(f"  관제자에게 새 정보를 주지 않는 인시던트를 만들지 않았다")
         print(f"  기본 통합 창 {gap}초 ({gap // 60}분), 규칙별 지정이 있으면 그 값을 쓴다\n")
     return summary
 

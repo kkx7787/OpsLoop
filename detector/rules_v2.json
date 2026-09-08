@@ -1,0 +1,101 @@
+{
+  "rule_version": "v2",
+  "note": "판정 32건에서 도출. v1 은 '이벤트가 있었다'와 '의미 있는 일이 일어났다'를 구분하지 않았다. 세 규칙에서 같은 성질의 결함이 각각 다른 지표로 드러났고(R003 오탐률 25%, R002 순환, R005 비조치율 100%), v2 는 그 구분을 각 규칙의 조건에 넣는다. R001 은 조건이 아니라 구조 문제였으므로 억제로 처리한다.",
+  "derived_from": {
+    "judged_incidents": 32,
+    "rule_version": "v1",
+    "criteria": "docs/2026-09-08-판정-기준.md",
+    "proposal_accept_rate": 1.0
+  },
+  "aggregation": {
+    "window_gap_seconds": 900,
+    "comment": "동일 IP 연속 세션 간격의 p95 가 757초. 15분이면 정상적인 연속 활동을 하나로 묶으면서 과도한 병합은 피한다."
+  },
+  "suppression": {
+    "absorb_by_higher_severity": true,
+    "window_seconds": 900,
+    "rationale": "R001 의 비조치율이 100% 였다. 관측값이 임계치의 5배(28회)인 인시던트까지 전부 '무시 가능'이었고 이유는 모두 같았다. 같은 행위자에 대해 같은 시간대에 더 심각한 알림이 이미 떠 있었다. 관측값 전 구간이 비위협이므로 임계치를 올리는 것으로는 해결되지 않는다. 값이 아니라 같은 사건을 여러 규칙이 각자 보고하는 구조가 문제이므로, 인시던트를 만드는 단계에서 상위 심각도 알림에 흡수시킨다."
+  },
+  "rules": [
+    {
+      "id": "R001",
+      "name": "SSH 무차별 대입",
+      "severity": "medium",
+      "type": "actor_rate",
+      "enabled": true,
+      "params": {
+        "eventids": [
+          "cowrie.login.failed",
+          "cowrie.login.success"
+        ],
+        "window_seconds": 900,
+        "threshold": 5
+      },
+      "rationale": "임계치를 v1 그대로 둔다. 판정 분포에서 위협과 비위협이 갈리지 않았으므로 임계치를 옮길 근거가 없고, 옮기면 근거 없이 탐지 범위만 줄인다. 이 규칙의 문제는 값이 아니라 중복이며 억제로 처리한다. 규칙을 지우지 않는 이유는 상위 알림이 없을 때 이것이 유일한 탐지이기 때문이다. 허니팟은 대부분의 비밀번호를 통과시켜 무차별 대입이 거의 항상 로그인 성공으로 이어지지만, 실제 서버에서는 실패만 반복하는 쪽이 다수다. 지금 데이터에서 쓸모없어 보이는 것이 이식 환경에서도 그렇다는 뜻은 아니다.",
+      "aggregation_gap_seconds": 1800,
+      "changed_from_v1": "없음. 억제 도입으로 결과가 달라진다."
+    },
+    {
+      "id": "R002",
+      "name": "침해 후 행위",
+      "severity": "high",
+      "type": "session_compound",
+      "enabled": true,
+      "params": {
+        "expr": "login_success AND command_count > 0",
+        "noop_command_patterns": [
+          "^\\s*echo\\b",
+          "^\\s*true\\s*$",
+          "^\\s*:\\s*$",
+          "^\\s*exit\\s*$",
+          "^\\s*$"
+        ]
+      },
+      "rationale": "명령을 실행했다는 것과 무언가를 했다는 것은 다르다. 단일 행위자가 111회 실행한 명령이 전부 `echo xsec` 이었다. 자격증명이 먹히는지 확인하는 봇의 서명이지 침해 후 행위가 아니다. 반면 다른 행위자는 `cat /etc/os-release` 와 `nproc` 를 실행했다. 시스템 정보를 수집하는 실제 정찰이다. v1 은 둘을 같은 무게로 셌다. 무의미한 명령만 있는 세션을 제외한다.",
+      "changed_from_v1": "noop_command_patterns 추가"
+    },
+    {
+      "id": "R003",
+      "name": "악성코드 투하",
+      "severity": "critical",
+      "type": "event_match",
+      "enabled": true,
+      "params": {
+        "eventid_like": "cowrie.session.file_%",
+        "exclude_shasum_prefixes": [
+          "e3b0c44298fc1c14"
+        ]
+      },
+      "rationale": "v1 의 오탐률 25%가 전부 여기서 나왔다. 판정 8건 중 2건이 빈 파일(0바이트) 업로드였고, 그 해시 e3b0c442... 는 빈 입력의 SHA-256 이다. 파일 이동 이벤트가 있다는 것과 악성코드가 들어왔다는 것은 다르며, 내용이 없는 파일을 critical 로 올리는 것은 규칙이 겨냥한 현상이 아니다. 관측값 분포로는 나눌 수 없었다. 위협도 신호 1건, 오탐도 신호 1건이라 임계치가 개입할 자리가 없고 조건을 바꾸는 것이 유일한 처방이었다.",
+      "changed_from_v1": "exclude_shasum_prefixes 추가"
+    },
+    {
+      "id": "R004",
+      "name": "프록시 남용 시도",
+      "severity": "high",
+      "type": "event_match",
+      "enabled": true,
+      "params": {
+        "eventid": "cowrie.direct-tcpip.request"
+      },
+      "rationale": "판정 1건으로 근거가 부족해 변경하지 않는다. 표본이 없는 상태에서 규칙을 손대면 개선이 아니라 추측이다.",
+      "changed_from_v1": "없음"
+    },
+    {
+      "id": "R005",
+      "name": "기준선 이탈",
+      "severity": "medium",
+      "type": "baseline_deviation",
+      "enabled": true,
+      "params": {
+        "bucket": "hour",
+        "sigma": 3.0,
+        "min_buckets": 24,
+        "exclude_alerted_actors": true
+      },
+      "rationale": "비조치율 100%. 이 규칙은 '규칙에 없는 새 패턴'을 잡으라고 넣었는데, v1 이 잡은 2건이 모두 기존 규칙이 이미 잡은 IP 하나의 폭주였다(각각 216/220건, 308/308건). 전체 이벤트로 기준선을 계산하면 한 행위자의 활동이 기준선을 흔들고 그 흔들림을 자기가 다시 잡는다. 새 패턴이 아니라 기존 규칙의 그림자다. 이미 알림이 난 행위자를 뺀 잔여 트래픽에서 기준선을 계산한다. sigma 는 그대로 둔다. 관측값 3.34 와 4.72 가 모두 비위협이었지만 그것은 값이 커서가 아니라 대상이 틀렸기 때문이고, 대상을 고친 뒤에 값을 다시 볼 일이다.",
+      "changed_from_v1": "exclude_alerted_actors 추가",
+      "depends_on_order": "이 규칙은 같은 실행에서 앞선 규칙들이 만든 인시던트를 참조하므로 목록의 마지막에 있어야 한다."
+    }
+  ]
+}
