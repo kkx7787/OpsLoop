@@ -45,7 +45,8 @@ ON CONFLICT (line_hash) DO NOTHING
 
 REBUILD_SESSIONS = """
 INSERT INTO sessions (session, src_ip, protocol, first_ts, last_ts, duration_ms,
-                      login_attempts, login_success, command_count, downloads, provenance)
+                      login_attempts, login_success, command_count, downloads, provenance,
+                      sensor)
 SELECT
     session,
     max(src_ip),
@@ -57,9 +58,12 @@ SELECT
     bool_or(eventid = 'cowrie.login.success'),
     count(*) FILTER (WHERE eventid = 'cowrie.command.input'),
     count(*) FILTER (WHERE eventid LIKE 'cowrie.session.file_%%'),
-    max(provenance)
+    max(provenance),
+    'cowrie'
 FROM events
-WHERE session IS NOT NULL
+-- 한 표에 두 종류의 로그가 있다. 범위를 나누지 않으면 이 재집계가 디코이
+-- 세션까지 덮어쓰고, 웹 이벤트는 여기 조건에 걸리지 않으므로 전부 0 이 된다.
+WHERE session IS NOT NULL AND sensor = 'cowrie'
 GROUP BY session
 ON CONFLICT (session) DO UPDATE SET
     src_ip         = EXCLUDED.src_ip,
@@ -71,7 +75,8 @@ ON CONFLICT (session) DO UPDATE SET
     login_success  = EXCLUDED.login_success,
     command_count  = EXCLUDED.command_count,
     downloads      = EXCLUDED.downloads,
-    provenance     = EXCLUDED.provenance
+    provenance     = EXCLUDED.provenance,
+    sensor         = EXCLUDED.sensor
 """
 
 

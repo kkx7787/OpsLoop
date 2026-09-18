@@ -48,6 +48,7 @@ set -euo pipefail
 set -a; . /etc/opsloop/collector.env; set +a
 cd "$REPO"
 python3 parser/parse_cowrie.py --load
+python3 parser/parse_decoy.py --load
 python3 detector/detect.py --run
 EOF
 sudo chmod 755 /usr/local/bin/opsloop-collect
