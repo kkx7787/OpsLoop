@@ -24,6 +24,7 @@ import re
 import secrets
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import parse_qsl
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -42,6 +43,30 @@ WEAK_CREDENTIALS = {
 }
 
 FILENAME_RE = re.compile(rb'filename="([^"]*)"')
+
+# 요청 본문에서 읽을 최대 크기. 폼은 작다. 크면 공격이거나 오작동이다.
+MAX_FORM = 64 * 1024
+
+
+async def form_fields(request: Request) -> dict:
+    """urlencoded 폼을 직접 해석한다.
+
+    프레임워크의 폼 해석기는 다중 파트 라이브러리를 요구하고, 그 라이브러리가
+    곧 공격 표면이 된다. 여기서 필요한 것은 짧은 키·값 몇 개뿐이므로 표준
+    라이브러리로 처리한다. 잘못된 입력이 와도 예외를 내지 않는다. 공격자가
+    보내는 것은 정상 형식이 아닐 때가 더 많고, 그 사실 자체가 관측 대상이다.
+    """
+    body = b""
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) >= MAX_FORM:
+            body = body[:MAX_FORM]
+            break
+    try:
+        text = body.decode("utf-8", "replace")
+        return dict(parse_qsl(text, keep_blank_values=True))
+    except Exception:
+        return {}
 
 app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -98,7 +123,13 @@ async def record_request(request: Request, call_next):
         # 쿠키가 아직 없으므로 log_event 가 읽지 못한다. 직접 넘긴다.
         log_event(request, "decoy.session.connect", session=sid)
 
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except Exception:
+        # 처리 중 죽더라도 요청이 있었다는 사실은 남긴다.
+        log_event(request, "decoy.request", session=sid, http_status=500,
+                  message="처리 중 예외")
+        raise
 
     request.scope.setdefault("decoy_sid", sid)
     log_event(request, "decoy.request", session=sid, http_status=response.status_code)
@@ -165,7 +196,7 @@ async def login_form():
 
 @app.post("/admin/login")
 async def login(request: Request):
-    form = await request.form()
+    form = await form_fields(request)
     username = str(form.get("username", ""))[:128]
     password = str(form.get("password", ""))[:128]
 
@@ -269,7 +300,7 @@ async def tools_form(request: Request):
 @app.post("/admin/tools/run")
 async def tools_run(request: Request):
     """입력을 실행하지 않는다. 기록하고 정해진 문구만 돌려준다."""
-    form = await request.form()
+    form = await form_fields(request)
     command = str(form.get("command", ""))[:2048]
     log_event(request, "decoy.action.command", input=command)
     return page("진단", NAV + """
