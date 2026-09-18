@@ -22,15 +22,21 @@ from datetime import datetime, timezone
 from typing import Literal, Optional
 
 import asyncpg
-from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
+
+import auth
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 NOTIFY_CHANNEL = "opsloop_incident"
 
 ACTIONS = Literal["block_ip", "unblock_ip", "acknowledge", "suppress_rule", "escalate", "note"]
-VERDICTS = Literal["threat", "non_actionable", "false_positive"]
+# 판정값 다섯 개. 정확히 탐지했으나 악의가 없는 경우(양성 정탐)와 근거가
+# 부족한 경우(미결)를 오탐과 섞으면 규칙 정확도가 실제와 달라진다.
+VERDICTS = Literal["threat", "non_actionable", "false_positive",
+                   "benign_positive", "undetermined"]
 SEVERITIES = Literal["critical", "high", "medium", "low"]
 STATUSES = Literal["open", "acknowledged", "resolved", "suppressed"]
 
@@ -107,6 +113,113 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+OPEN_PATHS = ("/health", "/login", "/logout", "/docs", "/openapi.json")
+
+LOGIN_PAGE = """<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>OpsLoop</title>
+<style>
+ body{font-family:system-ui,sans-serif;background:#f4f5f7;color:#232f3e;margin:0}
+ .box{max-width:360px;margin:96px auto;background:#fff;border:1px solid #dfe3e8;padding:32px}
+ h1{font-size:18px;margin:0 0 4px} p.s{color:#6e7681;font-size:13px;margin:0 0 24px}
+ label{display:block;font-size:13px;margin:12px 0 4px}
+ input{width:100%;padding:8px;border:1px solid #c9ced6;box-sizing:border-box}
+ button{margin-top:16px;padding:8px 20px;background:#232f3e;color:#fff;border:0;width:100%}
+ .e{color:#dd3522;font-size:13px;margin-top:12px}
+</style></head><body><div class="box">
+<h1>OpsLoop 관제 콘솔</h1><p class="s">판정과 조치는 계정에 기록됩니다.</p>
+<form method="post" action="/login">
+ <label>아이디</label><input name="username" autocomplete="username">
+ <label>비밀번호</label><input name="password" type="password" autocomplete="current-password">
+ <button type="submit">로그인</button>
+</form><!--ERROR--></div></body></html>"""
+
+
+@app.middleware("http")
+async def require_session(request: Request, call_next):
+    """열어 둔 경로를 뺀 나머지는 세션을 요구한다.
+
+    화면과 API 의 실패 방식을 나눈다. 화면은 로그인으로 보내고 API 는 401 을
+    돌려준다. 화면에서 401 을 받으면 사용자는 아무것도 못 하고, API 가
+    로그인 HTML 을 받으면 파싱에서 엉뚱한 곳이 깨진다.
+    """
+    path = request.url.path
+    if path in OPEN_PATHS or path.startswith("/ws"):
+        return await call_next(request)
+
+    session = auth.read(request.cookies.get(auth.COOKIE, ""))
+    if session is None:
+        if path.startswith("/api"):
+            return JSONResponse({"detail": "인증이 필요합니다"}, status_code=401)
+        return RedirectResponse("/login", status_code=302)
+
+    request.state.user = session
+    return await call_next(request)
+
+
+def require_role(request: Request, *roles: str) -> dict:
+    """되돌리는 행위와 기준을 바꾸는 행위를 나눈다 (화면 설계 9장)."""
+    user = getattr(request.state, "user", None)
+    if user is None:
+        raise HTTPException(status_code=401, detail="인증이 필요합니다")
+    if user["r"] not in roles:
+        raise HTTPException(status_code=403, detail=f"권한이 없습니다 ({user['r']})")
+    return user
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_form():
+    return LOGIN_PAGE.replace("<!--ERROR-->", "")
+
+
+@app.post("/login")
+async def login(request: Request):
+    form = await auth.form_fields(request)
+    username = str(form.get("username", ""))[:128]
+    password = str(form.get("password", ""))[:256]
+
+    user = await auth.authenticate(app.state.pool, username, password)
+    if user is None:
+        await auth.log_event(app.state.pool, request, "console.login.failed",
+                             username=username, status=401)
+        return HTMLResponse(
+            LOGIN_PAGE.replace("<!--ERROR-->",
+                               '<p class="e">아이디 또는 비밀번호가 올바르지 않습니다.</p>'),
+            status_code=401)
+
+    token = auth.issue(user["username"], user["role"])
+    await auth.log_event(app.state.pool, request, "console.login.success",
+                         username=user["username"], status=302, session=token[:17])
+    response = RedirectResponse("/", status_code=302)
+    response.set_cookie(auth.COOKIE, token, httponly=True, samesite="lax",
+                        max_age=auth.SESSION_HOURS * 3600)
+    return response
+
+
+@app.post("/logout")
+async def logout(request: Request):
+    user = getattr(request.state, "user", None)
+    await auth.log_event(app.state.pool, request, "console.logout",
+                         username=user["u"] if user else None, status=302)
+    response = RedirectResponse("/login", status_code=302)
+    response.delete_cookie(auth.COOKIE)
+    return response
+
+
+@app.get("/", response_class=HTMLResponse)
+async def shell(request: Request):
+    user = request.state.user
+    return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>OpsLoop</title>
+<style>body{{font-family:system-ui,sans-serif;margin:0;background:#f4f5f7;color:#232f3e}}
+ header{{background:#232f3e;color:#fff;padding:12px 20px;display:flex;justify-content:space-between}}
+ main{{padding:24px}}</style></head><body>
+<header><strong>OpsLoop</strong><span>{user['u']} · {user['r']}
+ <form method="post" action="/logout" style="display:inline">
+ <button style="background:none;border:0;color:#9dc3e6;cursor:pointer">로그아웃</button></form>
+</span></header>
+<main><p>화면 구현 예정 (WBS 3.6.2~3.6.4)</p></main></body></html>"""
 
 
 def row_to_dict(r: asyncpg.Record) -> dict:
@@ -271,7 +384,8 @@ ACTION_STATUS = {
 
 
 @app.post("/api/incidents/{incident_key:path}/actions", status_code=201)
-async def add_action(incident_key: str, body: ActionIn):
+async def add_action(incident_key: str, body: ActionIn, request: Request):
+    require_role(request, "operator", "admin")
     async with app.state.pool.acquire() as c:
         async with c.transaction():
             inc = await c.fetchrow(
@@ -311,7 +425,8 @@ async def add_action(incident_key: str, body: ActionIn):
 
 
 @app.post("/api/incidents/{incident_key:path}/verdict", status_code=201)
-async def add_verdict(incident_key: str, body: VerdictIn):
+async def add_verdict(incident_key: str, body: VerdictIn, request: Request):
+    require_role(request, "operator", "admin")
     async with app.state.pool.acquire() as c:
         exists = await c.fetchval(
             "SELECT 1 FROM incidents WHERE incident_key = $1", incident_key)
@@ -345,6 +460,11 @@ async def blocklist(active_only: bool = True):
 
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
+    # 실시간 보드도 인증 대상이다. 미들웨어는 웹소켓 연결을 거치지 않으므로
+    # 여기서 직접 본다.
+    if auth.read(ws.cookies.get(auth.COOKIE, "")) is None:
+        await ws.close(code=1008)
+        return
     await hub.join(ws)
     try:
         await ws.send_json({"type": "hello", "data": {"channel": NOTIFY_CHANNEL}})
