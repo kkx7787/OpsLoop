@@ -16,6 +16,9 @@ OpsLoop - 인시던트 검토 도구 (WBS 2.5 / 폐루프 입력부)
        "이 알림이 따로 뜰 값어치가 있었는가", 즉 중복 여부다.
     3. 오탐(false_positive)은 절대 제안하지 않는다. 규칙이 틀렸다는 판단은
        규칙을 만든 쪽이 스스로 내릴 수 없다.
+    4. 양성 정탐(benign_positive)도 제안하지 않는다. 행위자가 조사 기관인지는
+       역방향 조회와 정방향 재확인을 거쳐야 하고, 이름은 소유자가 마음대로
+       정할 수 있어 자동 판정의 근거로 삼기에 위험하다.
 
   수락과 뒤집기를 나눠 기록한다. 뒤집힌 비율이 낮으면 기준이 잘 잡힌 것이고,
   높으면 기준 문서를 고쳐야 한다는 뜻이다. 이 비율 자체가 지표다.
@@ -31,6 +34,7 @@ OpsLoop - 인시던트 검토 도구 (WBS 2.5 / 폐루프 입력부)
 import argparse
 import os
 import sys
+import time
 
 try:
     import psycopg2
@@ -41,6 +45,12 @@ VERDICTS = {
     "t": ("threat", "실제 위협"),
     "n": ("non_actionable", "무시 가능"),
     "f": ("false_positive", "오탐"),
+    # 정확히 탐지했고 악의도 없는 경우. 조사 기관의 스캐너가 여기 해당한다.
+    # 오탐으로 기록하면 규칙 정확도가 실제보다 낮게 집계되어 멀쩡한 규칙을
+    # 고치게 되고, 위협으로 기록하면 대응 대상이 부풀려진다.
+    "b": ("benign_positive", "양성 정탐"),
+    # 근거가 부족한 경우. 억지 판정은 없는 판정보다 나쁘다. 지표에서 제외된다.
+    "u": ("undetermined", "미결"),
 }
 LABEL = {v: l for v, l in VERDICTS.values()}
 SEV_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
@@ -55,7 +65,8 @@ CIRCULAR = {
 
 # 두벌식 자판에서 한/영 전환을 잊고 누른 키를 알아듣는다.
 # 판정 중 매번 전환하는 것은 도구가 감당할 몫이지 사람이 감당할 몫이 아니다.
-HANGUL = {"ㅅ": "t", "ㅜ": "n", "ㄹ": "f", "ㄴ": "s", "ㅂ": "q", "ㅁ": "a", "ㅛ": "y"}
+HANGUL = {"ㅅ": "t", "ㅜ": "n", "ㄹ": "f", "ㄴ": "s", "ㅂ": "q", "ㅁ": "a", "ㅛ": "y",
+          "ㅠ": "b", "ㅕ": "u"}
 
 BAR = "=" * 78
 DIV = "-" * 78
@@ -87,6 +98,12 @@ def ensure_column(conn):
     """
     cur = conn.cursor()
     cur.execute("ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS proposed text")
+    cur.execute("ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS decision_seconds integer")
+    # 판정값 확장. 제약을 그대로 두면 새 값이 거부된다.
+    cur.execute("ALTER TABLE verdicts DROP CONSTRAINT IF EXISTS verdicts_verdict_check")
+    cur.execute("""ALTER TABLE verdicts ADD CONSTRAINT verdicts_verdict_check
+                   CHECK (verdict IN ('threat', 'non_actionable', 'false_positive',
+                                      'benign_positive', 'undetermined'))""")
     conn.commit()
     cur.close()
 
@@ -315,12 +332,14 @@ def show(row, idx, total, ev, suggestion, basis, observed, unit):
 #  기록
 # ────────────────────────────────────────────────────────────────
 
-def record(conn, key, ip, verdict, reason, observed, operator, proposed, block):
+def record(conn, key, ip, verdict, reason, observed, operator, proposed, block,
+           seconds=None):
     cur = conn.cursor()
     cur.execute("""
-        INSERT INTO verdicts (incident_key, verdict, reason, observed_value, operator, proposed)
-        VALUES (%s,%s,%s,%s,%s,%s)""",
-        (key, verdict, reason, observed, operator, proposed))
+        INSERT INTO verdicts (incident_key, verdict, reason, observed_value, operator,
+                              proposed, decision_seconds)
+        VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+        (key, verdict, reason, observed, operator, proposed, seconds))
 
     if block and ip:
         cur.execute("INSERT INTO actions (incident_key, action, operator, note) "
@@ -386,10 +405,14 @@ def triage(conn, rule_id, limit, operator):
             continue
 
         show(row, i, len(rows), ev, suggestion, basis, observed, unit)
+        # 판정 비용을 수치로 말하려면 재야 한다. 화면을 띄운 시점부터 센다.
+        shown_at = time.monotonic()
 
         prompt = ("  [Enter] 제안 수락  [t] 위협  [n] 무시 가능  [f] 오탐  "
-                  "[a] 남은 것 전부 제안대로  [s] 건너뜀  [q] 종료 > ") if suggestion else \
-                 ("  [t] 위협  [n] 무시 가능  [f] 오탐  [s] 건너뜀  [q] 종료 > ")
+                  "[b] 양성 정탐  [u] 미결  [a] 남은 것 전부 제안대로  "
+                  "[s] 건너뜀  [q] 종료 > ") if suggestion else \
+                 ("  [t] 위협  [n] 무시 가능  [f] 오탐  [b] 양성 정탐  [u] 미결  "
+                  "[s] 건너뜀  [q] 종료 > ")
 
         while True:
             ans = keypress(input(prompt))
@@ -427,7 +450,8 @@ def triage(conn, rule_id, limit, operator):
             block = False
             if verdict == "threat" and ip:
                 block = keypress(input("  이 출발지를 차단 목록에 올릴까요? [y/N] > ")) == "y"
-            record(conn, key, ip, verdict, note, observed, operator, suggestion, block)
+            record(conn, key, ip, verdict, note, observed, operator, suggestion, block,
+                   seconds=round(time.monotonic() - shown_at))
             judged += 1
             print(f"  기록됨: {LABEL[verdict]}" + ("  · 차단" if block else ""))
             break
@@ -511,9 +535,11 @@ def thresholds(conn):
                min(v.observed_value) FILTER (WHERE v.verdict = 'threat'),
                max(v.observed_value) FILTER (WHERE v.verdict = 'threat'),
                count(*)              FILTER (WHERE v.verdict = 'threat'),
-               min(v.observed_value) FILTER (WHERE v.verdict <> 'threat'),
-               max(v.observed_value) FILTER (WHERE v.verdict <> 'threat'),
-               count(*)              FILTER (WHERE v.verdict <> 'threat')
+               -- 미결은 판정이 아니므로 분포에서 뺀다. 근거가 부족해 보류한 건을
+               -- 비위협 쪽에 세면 임계치가 그만큼 잘못된 표본 위에서 도출된다.
+               min(v.observed_value) FILTER (WHERE v.verdict NOT IN ('threat', 'undetermined')),
+               max(v.observed_value) FILTER (WHERE v.verdict NOT IN ('threat', 'undetermined')),
+               count(*)              FILTER (WHERE v.verdict NOT IN ('threat', 'undetermined'))
         FROM incidents i JOIN verdicts v ON v.incident_key = i.incident_key
         WHERE v.observed_value IS NOT NULL
         GROUP BY i.rule_id, i.rule_version ORDER BY i.rule_id""")

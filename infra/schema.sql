@@ -113,7 +113,8 @@ CREATE TABLE IF NOT EXISTS verdicts (
     id             bigserial PRIMARY KEY,
     incident_key   text        NOT NULL REFERENCES incidents (incident_key) ON DELETE CASCADE,
     verdict        text        NOT NULL
-                   CHECK (verdict IN ('threat', 'non_actionable', 'false_positive')),
+                   CHECK (verdict IN ('threat', 'non_actionable', 'false_positive',
+                                      'benign_positive', 'undetermined')),
     reason         text,
     observed_value double precision,
     operator       text,
@@ -124,6 +125,18 @@ CREATE TABLE IF NOT EXISTS verdicts (
 );
 -- 기존 데이터베이스에도 적용한다. 멱등이다.
 ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS proposed text;
+
+-- 판정값 확장 (2026-09-18)
+--   benign_positive : 규칙이 겨냥한 것을 정확히 잡았고 악의도 없다. 조사 기관의
+--                     스캐너가 여기 해당한다. 오탐으로 세면 규칙 정확도가 실제보다
+--                     낮게 집계되어 멀쩡한 규칙을 고치게 된다.
+--   undetermined    : 근거가 부족하다. 억지 판정은 없는 판정보다 나쁘므로 값으로
+--                     남기되 지표에서는 제외한다.
+ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS decision_seconds integer;
+ALTER TABLE verdicts DROP CONSTRAINT IF EXISTS verdicts_verdict_check;
+ALTER TABLE verdicts ADD CONSTRAINT verdicts_verdict_check
+      CHECK (verdict IN ('threat', 'non_actionable', 'false_positive',
+                         'benign_positive', 'undetermined'));
 CREATE INDEX IF NOT EXISTS idx_ver_incident ON verdicts (incident_key);
 CREATE INDEX IF NOT EXISTS idx_ver_verdict  ON verdicts (verdict);
 
@@ -148,10 +161,20 @@ SELECT
     count(*) FILTER (WHERE v.verdict = 'threat')                    AS threats,
     count(*) FILTER (WHERE v.verdict = 'non_actionable')            AS non_actionable,
     count(*) FILTER (WHERE v.verdict = 'false_positive')            AS false_positives,
+    -- 미결은 판정이 아니므로 분모에서 뺀다. 양성 정탐은 정확한 탐지이므로
+    -- 분모에는 남기고 분자에서만 뺀다. 둘을 같이 취급하면 규칙의 정확도가
+    -- 실제와 달라진다.
     round(100.0 * count(*) FILTER (WHERE v.verdict = 'false_positive')
-          / NULLIF(count(v.id), 0), 1)                              AS false_positive_rate,
-    round(100.0 * count(*) FILTER (WHERE v.verdict IN ('non_actionable', 'false_positive'))
-          / NULLIF(count(v.id), 0), 1)                              AS non_action_rate
+          / NULLIF(count(v.id) FILTER (WHERE v.verdict <> 'undetermined'), 0), 1)
+                                                                    AS false_positive_rate,
+    round(100.0 * count(*) FILTER (WHERE v.verdict IN ('non_actionable', 'false_positive',
+                                                       'benign_positive'))
+          / NULLIF(count(v.id) FILTER (WHERE v.verdict <> 'undetermined'), 0), 1)
+                                                                    AS non_action_rate,
+    -- 새 열은 뒤에 붙인다. 뷰는 기존 열의 이름과 순서를 바꾸면 교체되지 않는다.
+    count(*) FILTER (WHERE v.verdict = 'benign_positive')           AS benign_positives,
+    count(*) FILTER (WHERE v.verdict = 'undetermined')              AS undetermined,
+    count(v.id) FILTER (WHERE v.verdict <> 'undetermined')          AS judged_effective
 FROM incidents i
 LEFT JOIN verdicts v ON v.incident_key = i.incident_key
 GROUP BY i.rule_id, i.rule_version;
