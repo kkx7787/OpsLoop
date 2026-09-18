@@ -38,6 +38,17 @@ resource "aws_vpc_security_group_ingress_rule" "honeypot_telnet" {
   ip_protocol       = "tcp"
 }
 
+# 웹 디코이. 관문 방화벽을 세우기 전까지는 이 규칙이 노출 지점이다.
+# 방화벽 이전 후에는 이 규칙을 지우고, 전달은 방화벽이 맡는다.
+resource "aws_vpc_security_group_ingress_rule" "decoy_http" {
+  security_group_id = aws_security_group.honeypot.id
+  description       = "web decoy"
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 8080
+  to_port           = 8080
+  ip_protocol       = "tcp"
+}
+
 # 아웃바운드는 최소 집합만 남긴다.
 # 침해 시 제3자를 향한 경유지로 쓰이는 것을 막기 위해서다.
 resource "aws_vpc_security_group_egress_rule" "honeypot_https" {
