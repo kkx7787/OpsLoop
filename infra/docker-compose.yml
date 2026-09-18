@@ -41,6 +41,10 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgresql://opsloop:${POSTGRES_PASSWORD}@postgres:5432/opsloop
+      # 세션 쿠키 서명 키. 없으면 기동마다 새로 만들어져 재시작 시 로그인이 풀리고,
+      # 콘솔을 두 대로 이중화하면 노드마다 키가 달라 다른 노드로 넘어가는 순간
+      # 로그아웃된다. 두 노드가 같은 값을 가져야 하므로 비어 있으면 기동을 막는다.
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET 를 .env 에 설정하세요}
       TZ: UTC
     ports:
       - "8000:8000"
