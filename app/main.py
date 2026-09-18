@@ -117,6 +117,27 @@ app.add_middleware(
 
 OPEN_PATHS = ("/health", "/login", "/logout", "/docs", "/openapi.json")
 
+# 규칙 조건과 판정 근거가 겹치는 규칙. 여기서 나오는 위협 판정은 규칙의
+# 정확성을 증명하지 않는다. 같은 것을 두 번 센 것이다. detector/triage.py 와
+# 같은 판단이며, 콘솔도 같은 경고를 보여야 판정자가 같은 기준으로 본다.
+CIRCULAR = {
+    "R002": "규칙 조건이 '로그인 성공 + 명령 실행'이고 판정 기준의 위협 조건도 같다",
+    "R003": "규칙 조건이 파일 이동이고 판정 기준의 위협 조건도 같다",
+    "R004": "규칙 조건이 경유 시도이고 판정 기준의 위협 조건도 같다",
+}
+
+# 인시던트 구간 앞뒤로 볼 여유. 한 세션에서 나온 인시던트는 폭이 0초라
+# 구간만 보면 그 세션의 로그인과 명령이 범위 밖으로 빠진다.
+# 매개변수에 interval 을 더할 때는 형을 밝힌다. 밝히지 않으면 PostgreSQL 이
+# date · timestamp · timestamptz 중 무엇의 연산인지 정하지 못해 질의가 실패한다.
+WINDOW_BEFORE = "5 minutes"
+WINDOW_AFTER = "30 minutes"
+
+# "규칙이 보지 않은 증거"로 보여줄 행위. 접속·요청 같은 배경 이벤트는 빼고
+# 실제로 무언가를 한 흔적만 남긴다.
+BEHAVIOR_LIKE = ["%.login.success", "%.command.input", "%.session.file_%",
+                 "%direct-tcpip%", "%.action.%"]
+
 LOGIN_PAGE = """<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>OpsLoop</title>
 <style>
@@ -252,36 +273,57 @@ async def list_incidents(
     actor_ip: Optional[str] = None,
     since: Optional[datetime] = None,
     until: Optional[datetime] = None,
+    judged: Optional[bool] = None,
+    sort: Literal["pending", "severity", "recent"] = "pending",
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
+    """기본 정렬은 미판정 경과 시간이다. 심각도순이 아니다.
+
+    판정이 사람의 일인 이상 가장 오래 밀린 건이 가장 위험하다. 심각도순으로
+    두면 낮은 등급의 오래된 건이 영영 아래에 깔린다. (화면 설계 4장)
+    """
     where, params = [], []
 
     def add(clause, value):
         params.append(value)
         where.append(clause.format(n=len(params)))
 
-    if status:       add("status = ${n}", status)
-    if severity:     add("severity = ${n}", severity)
-    if rule_id:      add("rule_id = ${n}", rule_id)
-    if rule_version: add("rule_version = ${n}", rule_version)
-    if actor_ip:     add("actor_ip = ${n}::inet", actor_ip)
-    if since:        add("first_ts >= ${n}", since)
-    if until:        add("first_ts < ${n}", until)
+    if status:       add("i.status = ${n}", status)
+    if severity:     add("i.severity = ${n}", severity)
+    if rule_id:      add("i.rule_id = ${n}", rule_id)
+    if rule_version: add("i.rule_version = ${n}", rule_version)
+    if actor_ip:     add("i.actor_ip = ${n}::inet", actor_ip)
+    if since:        add("i.first_ts >= ${n}", since)
+    if until:        add("i.first_ts < ${n}", until)
+    if judged is True:  where.append("v.verdict IS NOT NULL")
+    if judged is False: where.append("v.verdict IS NULL")
 
     w = ("WHERE " + " AND ".join(where)) if where else ""
+    order = {
+        "pending":  "(v.verdict IS NULL) DESC, i.first_ts ASC",
+        "severity": "CASE i.severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 "
+                    "WHEN 'medium' THEN 2 ELSE 3 END, i.first_ts DESC",
+        "recent":   "i.first_ts DESC",
+    }[sort]
+    # 최근 판정 하나만 붙인다. 재판정이 생겨도 목록에는 마지막 판단이 보여야 한다.
+    base = f"""FROM incidents i
+        LEFT JOIN LATERAL (
+            SELECT verdict FROM verdicts WHERE incident_key = i.incident_key
+            ORDER BY created_at DESC LIMIT 1) v ON true
+        {w}"""
     params.extend([limit, offset])
 
     async with app.state.pool.acquire() as c:
-        total = await c.fetchval(f"SELECT count(*) FROM incidents {w}", *params[:-2])
+        total = await c.fetchval(f"SELECT count(*) {base}", *params[:-2])
         rows = await c.fetch(f"""
-            SELECT incident_key, rule_id, rule_version, rule_name, severity,
-                   host(actor_ip) AS actor_ip, first_ts, last_ts,
-                   signal_count, session_count, status, created_at
-            FROM incidents {w}
-            ORDER BY CASE severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1
-                                   WHEN 'medium' THEN 2 ELSE 3 END,
-                     first_ts DESC
+            SELECT i.incident_key, i.rule_id, i.rule_version, i.rule_name, i.severity,
+                   host(i.actor_ip) AS actor_ip, i.first_ts, i.last_ts,
+                   i.signal_count, i.session_count, i.status, i.created_at,
+                   v.verdict,
+                   extract(epoch FROM (now() - i.first_ts))::bigint AS pending_seconds
+            {base}
+            ORDER BY {order}
             LIMIT ${len(params) - 1} OFFSET ${len(params)}""", *params)
 
     return {"total": total, "limit": limit, "offset": offset,
@@ -312,11 +354,59 @@ async def get_incident(incident_key: str):
             WHERE actor_ip = $1::inet AND incident_key <> $2
             ORDER BY first_ts DESC LIMIT 20""", inc["actor_ip"], incident_key)
 
+        actor = inc["actor_ip"]
+        window = (inc["first_ts"], inc["last_ts"])
+
+        # ② 규칙이 보지 않은 증거. 규칙이 본 것만으로 판정하면 규칙의 시야를
+        #    그대로 물려받는다. 같은 구간에 같은 출발지가 실제로 한 일을 모은다.
+        behavior = await c.fetch(f"""
+            SELECT ts, sensor, eventid, session, username, input, url, shasum,
+                   http_method, http_status
+            FROM events
+            WHERE src_ip = $1::inet AND provenance = 'real'
+              AND ts BETWEEN $2::timestamptz - interval '{WINDOW_BEFORE}' AND $3::timestamptz + interval '{WINDOW_AFTER}'
+              AND eventid LIKE ANY($4::text[])
+            ORDER BY ts LIMIT 200""", actor, *window, BEHAVIOR_LIKE) if actor else []
+
+        # ③ 행위자 이력. 허니팟·디코이에 접근한 이력은 결정적 근거다. 그 자산에
+        #    접근한 출발지가 정상 사용자일 가능성은 사실상 없다.
+        history = await c.fetchrow("""
+            SELECT min(ts) AS first_seen, max(ts) AS last_seen, count(*) AS events,
+                   array_agg(DISTINCT sensor) AS sensors,
+                   count(DISTINCT session) AS sessions
+            FROM events WHERE src_ip = $1::inet AND provenance = 'real'""",
+            actor) if actor else None
+        rules_hit = await c.fetch("""
+            SELECT rule_id, count(*) AS incidents FROM incidents
+            WHERE actor_ip = $1::inet GROUP BY rule_id ORDER BY incidents DESC""",
+            actor) if actor else []
+        blocked = await c.fetchrow("""
+            SELECT reason, method, created_at, expires_at, released_at, enforced_at
+            FROM blocklist WHERE actor_ip = $1::inet""", actor) if actor else None
+
+        # ④ 원문. 요약이 아니라 근거가 된 원본 줄이다.
+        raw = await c.fetch(f"""
+            SELECT ts, sensor, eventid, session, username, password IS NOT NULL AS has_password,
+                   input, url, shasum, http_method, http_status, user_agent, message
+            FROM events
+            WHERE src_ip = $1::inet
+              AND ts BETWEEN $2::timestamptz - interval '{WINDOW_BEFORE}' AND $3::timestamptz + interval '{WINDOW_AFTER}'
+            ORDER BY ts LIMIT 300""", actor, *window) if actor else []
+
     d = row_to_dict(inc)
     d["evidence"] = json.loads(inc["evidence"]) if inc["evidence"] else None
     d["actions"] = [row_to_dict(r) for r in actions]
     d["verdicts"] = [row_to_dict(r) for r in verdicts]
     d["related"] = [row_to_dict(r) for r in related]
+    d["behavior"] = [row_to_dict(r) for r in behavior]
+    d["actor"] = {
+        "history": row_to_dict(history) if history else None,
+        "rules": [row_to_dict(r) for r in rules_hit],
+        "blocked": row_to_dict(blocked) if blocked else None,
+    }
+    # 비밀번호 원문은 화면에 내지 않는다. 타인의 실제 자격증명일 수 있다.
+    d["raw"] = [row_to_dict(r) for r in raw]
+    d["circular"] = CIRCULAR.get(inc["rule_id"])
     return d
 
 
