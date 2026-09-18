@@ -177,6 +177,35 @@ def load(conn, files, exclusions):
     return inserted, len(rows) - inserted, malformed, n_sessions
 
 
+def reclassify(conn, exclusions):
+    """이미 적재된 행의 출처를 제외 목록에 맞춰 다시 매긴다.
+
+    provenance 는 적재 시점에 정해지고, 중복 방지 때문에 재적재로는 바뀌지
+    않는다. 테스트한 뒤에 제외 목록에 넣으면 그 전에 들어간 행은 실측으로
+    남는다. 목록이 정본이므로 여기에 맞춘다. 다른 센서의 행은 건드리지
+    않는다. 각 파서가 자기 센서의 행에만 책임을 진다.
+    """
+    with conn.cursor() as cur:
+        if exclusions:
+            cur.execute("""UPDATE events SET provenance = 'fixture'
+                           WHERE sensor = %s AND provenance = 'real'
+                             AND host(src_ip) = ANY(%s)""",
+                        (SENSOR, list(exclusions)))
+            to_fixture = cur.rowcount
+            cur.execute("""UPDATE events SET provenance = 'real'
+                           WHERE sensor = %s AND provenance = 'fixture'
+                             AND NOT (host(src_ip) = ANY(%s))""",
+                        (SENSOR, list(exclusions)))
+        else:
+            to_fixture = 0
+            cur.execute("""UPDATE events SET provenance = 'real'
+                           WHERE sensor = %s AND provenance = 'fixture'""", (SENSOR,))
+        to_real = cur.rowcount
+        cur.execute(REBUILD_SESSIONS)
+    conn.commit()
+    return to_fixture, to_real
+
+
 def where_range(since, until, col):
     clauses = [f"sensor = '{SENSOR}'", "provenance = 'real'"]
     params = []
@@ -269,14 +298,22 @@ def main():
     ap.add_argument("--exclusions", default=DEFAULT_EXCLUSIONS)
     ap.add_argument("--load", action="store_true", help="로그를 읽어 적재")
     ap.add_argument("--report", action="store_true", help="요약 리포트 출력")
+    ap.add_argument("--reclassify", action="store_true",
+                    help="이미 적재된 행의 출처를 제외 목록에 맞춰 다시 매김")
     ap.add_argument("--since")
     ap.add_argument("--until")
     args = ap.parse_args()
 
-    if not args.load and not args.report:
+    if not args.load and not args.report and not args.reclassify:
         args.load = args.report = True
 
     conn = psycopg2.connect(db_url(args.url))
+
+    if args.reclassify:
+        ex = load_exclusions(args.exclusions)
+        fx, rl = reclassify(conn, ex)
+        print(f"재분류: 실측 -> 제외 {fx:,} 건 · 제외 -> 실측 {rl:,} 건 "
+              f"(제외 IP {len(ex)}개)\n")
 
     if args.load:
         files = sorted(glob.glob(args.logs))
