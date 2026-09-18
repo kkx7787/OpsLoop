@@ -151,6 +151,51 @@ CREATE TABLE IF NOT EXISTS blocklist (
 );
 CREATE INDEX IF NOT EXISTS idx_block_active ON blocklist (released_at) WHERE released_at IS NULL;
 
+-- 차단의 집행 정보 (2026-09-18)
+--   요청과 실제 차단은 다르다. 규칙을 넣었다고 트래픽이 막힌다는 보장이 없으므로
+--   집행 결과를 따로 남기고 화면에서도 요청과 구분해 보여준다.
+ALTER TABLE blocklist ADD COLUMN IF NOT EXISTS method       text;
+ALTER TABLE blocklist ADD COLUMN IF NOT EXISTS requested_by text;
+ALTER TABLE blocklist ADD COLUMN IF NOT EXISTS enforced_at  timestamptz;
+ALTER TABLE blocklist ADD COLUMN IF NOT EXISTS enforce_note text;
+
+-- 수집 노드 등록
+--   에이전트는 설치 후 발급받은 토큰으로 자신을 등록한다. 등록되지 않은
+--   에이전트가 붙으면 그 자체가 알림 대상이므로 목록이 있어야 한다.
+--   토큰은 원문을 저장하지 않는다. 저장하면 DB 가 곧 자격증명 보관소가 된다.
+CREATE TABLE IF NOT EXISTS nodes (
+    node_id       text PRIMARY KEY,
+    hostname      text,
+    role          text,
+    sensor        text,
+    token_hash    text,
+    registered_at timestamptz NOT NULL DEFAULT now(),
+    last_seen_at  timestamptz,
+    status        text NOT NULL DEFAULT 'active'
+                  CHECK (status IN ('active', 'stale', 'revoked'))
+);
+CREATE INDEX IF NOT EXISTS idx_nodes_last_seen ON nodes (last_seen_at DESC);
+
+-- 미판정 대기 목록
+--   대시보드의 첫 화면이 쓰는 값이다. 판정이 사람의 일인 이상 밀린 시간이
+--   곧 위험이므로, 건수가 아니라 경과 시간을 기준으로 정렬한다.
+CREATE OR REPLACE VIEW unjudged_incidents AS
+SELECT
+    i.incident_key,
+    i.rule_id,
+    i.rule_version,
+    i.rule_name,
+    i.severity,
+    i.actor_ip,
+    i.first_ts,
+    i.last_ts,
+    i.signal_count,
+    i.status,
+    extract(epoch FROM (now() - i.first_ts))::bigint AS pending_seconds
+FROM incidents i
+LEFT JOIN verdicts v ON v.incident_key = i.incident_key
+WHERE v.id IS NULL;
+
 -- 규칙 버전별 판정 집계. 리플레이 평가의 출력 지점.
 CREATE OR REPLACE VIEW rule_quality AS
 SELECT
