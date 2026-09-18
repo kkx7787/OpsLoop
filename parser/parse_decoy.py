@@ -192,6 +192,8 @@ def report(conn, since, until):
     w, p = where_range(since, until, "ts")
     ws, ps = where_range(since, until, "first_ts")
 
+    # psycopg2 는 %% 를 매개변수 자리표시자로 읽는다. LIKE 패턴의 % 는
+    # %% 로 적어야 하며, 빠뜨리면 형식 지정자로 해석되어 질의가 터진다.
     def q(sql, params=()):
         cur.execute(sql, params)
         return cur.fetchall()
@@ -225,18 +227,18 @@ def report(conn, since, until):
             print(f"   {cnt:>6,}  {label}")
 
     section("이벤트 유형", q(f"SELECT eventid, count(*) c FROM events WHERE {w} GROUP BY 1 ORDER BY c DESC LIMIT 12", p))
-    section("요청 경로 TOP 15", q(f"SELECT url, count(*) c FROM events WHERE {w} AND eventid LIKE '%.request' GROUP BY 1 ORDER BY c DESC LIMIT 15", p))
+    section("요청 경로 TOP 15", q(f"SELECT url, count(*) c FROM events WHERE {w} AND eventid LIKE '%%.request' GROUP BY 1 ORDER BY c DESC LIMIT 15", p))
     section("상태코드", q(f"SELECT http_status, count(*) c FROM events WHERE {w} AND http_status IS NOT NULL GROUP BY 1 ORDER BY c DESC", p))
     section("클라이언트 문자열 TOP 10", q(f"SELECT user_agent, count(*) c FROM events WHERE {w} AND user_agent IS NOT NULL GROUP BY 1 ORDER BY c DESC LIMIT 10", p))
     section("출발지 TOP 10", q(f"SELECT src_ip, count(*) c FROM events WHERE {w} AND src_ip IS NOT NULL GROUP BY 1 ORDER BY c DESC LIMIT 10", p))
     section("시도된 계정 TOP 10", q(f"SELECT username, count(*) c FROM events WHERE {w} AND username IS NOT NULL GROUP BY 1 ORDER BY c DESC LIMIT 10", p))
-    section("로그인 이후 행위", q(f"SELECT eventid, count(*) c FROM events WHERE {w} AND eventid LIKE '%.action.%' GROUP BY 1 ORDER BY c DESC", p))
+    section("로그인 이후 행위", q(f"SELECT eventid, count(*) c FROM events WHERE {w} AND eventid LIKE '%%.action.%%' GROUP BY 1 ORDER BY c DESC", p))
     section("일자별 이벤트", q(f"SELECT to_char(ts, 'YYYY-MM-DD'), count(*) c FROM events WHERE {w} GROUP BY 1 ORDER BY 1", p))
 
     # 규칙 후보의 임계치는 관측 분포에서 나온다. 값을 먼저 정하고 분포를
     # 나중에 보면 근거가 "분포의 어디쯤"이라는 상대적인 것이 된다.
     print("\n-- 임계치 재료: 출발지별 15분 창 분포 --")
-    for label, cond in [("로그인 실패 (R101)", "eventid LIKE '%.login.failed'"),
+    for label, cond in [("로그인 실패 (R101)", "eventid LIKE '%%.login.failed'"),
                         ("404 응답 (R102)", "http_status = 404")]:
         rows = q(f"""
             WITH b AS (
