@@ -176,6 +176,19 @@ CREATE TABLE IF NOT EXISTS nodes (
 );
 CREATE INDEX IF NOT EXISTS idx_nodes_last_seen ON nodes (last_seen_at DESC);
 
+-- 콘솔 사용자
+--   판정과 조치가 계정에 귀속되어야 이력이 근거가 된다. 되돌리는 행위와
+--   기준을 바꾸는 행위를 분리하기 위해 역할을 셋으로 나눈다.
+--   가입 화면은 두지 않는다. 계정은 명령줄로만 만든다.
+CREATE TABLE IF NOT EXISTS console_users (
+    username      text PRIMARY KEY,
+    password_hash text        NOT NULL,
+    role          text        NOT NULL DEFAULT 'operator'
+                  CHECK (role IN ('viewer', 'operator', 'admin')),
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    last_login_at timestamptz
+);
+
 -- 미판정 대기 목록
 --   대시보드의 첫 화면이 쓰는 값이다. 판정이 사람의 일인 이상 밀린 시간이
 --   곧 위험이므로, 건수가 아니라 경과 시간을 기준으로 정렬한다.
