@@ -41,7 +41,6 @@ ALTER TABLE events ADD COLUMN IF NOT EXISTS http_status integer;
 ALTER TABLE events ADD COLUMN IF NOT EXISTS user_agent  text;
 ALTER TABLE events ADD COLUMN IF NOT EXISTS sensor      text NOT NULL DEFAULT 'cowrie';
 CREATE INDEX IF NOT EXISTS idx_events_sensor_ts ON events (sensor, ts DESC);
-ALTER TABLE sessions ADD COLUMN IF NOT EXISTS sensor text NOT NULL DEFAULT 'cowrie';
 
 CREATE TABLE IF NOT EXISTS sessions (
     session        text PRIMARY KEY,
@@ -58,6 +57,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_first_ts ON sessions (first_ts DESC);
 CREATE INDEX IF NOT EXISTS idx_sessions_src_ip   ON sessions (src_ip);
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS sensor text NOT NULL DEFAULT 'cowrie';
 
 -- 규칙 버전 이력. 임계치를 왜 바꿨는지가 남아야 개선을 주장할 수 있다.
 CREATE TABLE IF NOT EXISTS rule_versions (
@@ -81,13 +81,17 @@ CREATE TABLE IF NOT EXISTS incidents (
     session_count integer,
     evidence      jsonb,
     status        text        NOT NULL DEFAULT 'open'
-                  CHECK (status IN ('open', 'acknowledged', 'resolved', 'suppressed')),
+                  CHECK (status IN ('open', 'acknowledged', 'in_progress', 'resolved', 'suppressed')),
     created_at    timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_inc_rule    ON incidents (rule_id, rule_version);
 CREATE INDEX IF NOT EXISTS idx_inc_ts      ON incidents (first_ts DESC);
 CREATE INDEX IF NOT EXISTS idx_inc_actor   ON incidents (actor_ip);
 CREATE INDEX IF NOT EXISTS idx_inc_status  ON incidents (status, severity);
+-- 조치중 상태 추가 (2026-09-18). 차단은 종결이 아니며, 종결은 판정이 기록될 때만 일어난다.
+ALTER TABLE incidents DROP CONSTRAINT IF EXISTS incidents_status_check;
+ALTER TABLE incidents ADD CONSTRAINT incidents_status_check
+      CHECK (status IN ('open', 'acknowledged', 'in_progress', 'resolved', 'suppressed'));
 
 -- 조치 기록. 폐루프의 입력.
 CREATE TABLE IF NOT EXISTS actions (

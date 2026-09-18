@@ -38,7 +38,7 @@ ACTIONS = Literal["block_ip", "unblock_ip", "acknowledge", "suppress_rule", "esc
 VERDICTS = Literal["threat", "non_actionable", "false_positive",
                    "benign_positive", "undetermined"]
 SEVERITIES = Literal["critical", "high", "medium", "low"]
-STATUSES = Literal["open", "acknowledged", "resolved", "suppressed"]
+STATUSES = Literal["open", "acknowledged", "in_progress", "resolved", "suppressed"]
 
 
 class Hub:
@@ -452,30 +452,41 @@ async def rule_quality():
 #  조치와 판정 - 폐루프의 입력
 # ----------------------------------------------------------------------
 
+# 판정자와 조치자는 본문이 아니라 세션에서 가져온다. 본문 값을 믿으면 남의 이름으로
+# 판정할 수 있고, 판정이 계정에 귀속된다는 전제가 깨진다.
 class ActionIn(BaseModel):
     action: ACTIONS
-    operator: str = Field(default="operator", max_length=64)
     note: Optional[str] = Field(default=None, max_length=1000)
+    # 차단은 되돌릴 수 있는 완화 조치다. 만료 없는 차단은 언젠가 정상 사용자를 막는다.
+    expires_hours: int = Field(default=24, ge=1, le=720)
 
 
 class VerdictIn(BaseModel):
     verdict: VERDICTS
     reason: Optional[str] = Field(default=None, max_length=1000)
     observed_value: Optional[float] = None
-    operator: str = Field(default="operator", max_length=64)
+    # 뒤집힘 비율과 판정 비용을 재려면 제안값과 소요 시간이 판정과 함께 남아야 한다.
+    proposed: Optional[VERDICTS] = None
+    decision_seconds: Optional[int] = Field(default=None, ge=0, le=86400)
 
 
 # 조치가 인시던트 상태를 어떻게 바꾸는지. 규칙을 코드 한 곳에 모아둔다.
+# 차단은 종결이 아니다. 종결은 판정이 기록될 때만 일어난다.
 ACTION_STATUS = {
     "acknowledge": "acknowledged",
-    "block_ip": "resolved",
+    "block_ip": "in_progress",
     "suppress_rule": "suppressed",
 }
+
+# 되돌리는 행위와 기준을 바꾸는 행위는 admin 만 한다.
+ADMIN_ACTIONS = {"unblock_ip", "suppress_rule"}
 
 
 @app.post("/api/incidents/{incident_key:path}/actions", status_code=201)
 async def add_action(incident_key: str, body: ActionIn, request: Request):
-    require_role(request, "operator", "admin")
+    user = require_role(request, "operator", "admin")
+    if body.action in ADMIN_ACTIONS:
+        require_role(request, "admin")
     async with app.state.pool.acquire() as c:
         async with c.transaction():
             inc = await c.fetchrow(
@@ -488,7 +499,7 @@ async def add_action(incident_key: str, body: ActionIn, request: Request):
                 INSERT INTO actions (incident_key, action, operator, note)
                 VALUES ($1, $2, $3, $4)
                 RETURNING id, action, operator, note, created_at""",
-                incident_key, body.action, body.operator, body.note)
+                incident_key, body.action, user["u"], body.note)
 
             new_status = ACTION_STATUS.get(body.action)
             if new_status:
@@ -498,12 +509,15 @@ async def add_action(incident_key: str, body: ActionIn, request: Request):
             # 차단은 목록에 실제 상태로 남는다. 조치가 기록으로만 끝나지 않게.
             if body.action == "block_ip" and inc["actor_ip"]:
                 await c.execute("""
-                    INSERT INTO blocklist (actor_ip, reason, incident_key)
-                    VALUES ($1::inet, $2, $3)
+                    INSERT INTO blocklist (actor_ip, reason, incident_key, requested_by, expires_at)
+                    VALUES ($1::inet, $2, $3, $4, now() + make_interval(hours => $5))
                     ON CONFLICT (actor_ip) DO UPDATE
                     SET reason = EXCLUDED.reason, incident_key = EXCLUDED.incident_key,
+                        requested_by = EXCLUDED.requested_by, expires_at = EXCLUDED.expires_at,
+                        method = NULL, enforced_at = NULL, enforce_note = NULL,
                         released_at = NULL, created_at = now()""",
-                    inc["actor_ip"], body.note or "console", incident_key)
+                    inc["actor_ip"], body.note or "console", incident_key, user["u"],
+                    body.expires_hours)
             elif body.action == "unblock_ip" and inc["actor_ip"]:
                 await c.execute(
                     "UPDATE blocklist SET released_at = now() WHERE actor_ip = $1::inet",
@@ -516,17 +530,24 @@ async def add_action(incident_key: str, body: ActionIn, request: Request):
 
 @app.post("/api/incidents/{incident_key:path}/verdict", status_code=201)
 async def add_verdict(incident_key: str, body: VerdictIn, request: Request):
-    require_role(request, "operator", "admin")
+    user = require_role(request, "operator", "admin")
     async with app.state.pool.acquire() as c:
-        exists = await c.fetchval(
-            "SELECT 1 FROM incidents WHERE incident_key = $1", incident_key)
-        if not exists:
-            raise HTTPException(404, "인시던트를 찾을 수 없습니다")
-        rec = await c.fetchrow("""
-            INSERT INTO verdicts (incident_key, verdict, reason, observed_value, operator)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id, verdict, reason, observed_value, operator, created_at""",
-            incident_key, body.verdict, body.reason, body.observed_value, body.operator)
+        async with c.transaction():
+            exists = await c.fetchval(
+                "SELECT 1 FROM incidents WHERE incident_key = $1", incident_key)
+            if not exists:
+                raise HTTPException(404, "인시던트를 찾을 수 없습니다")
+            rec = await c.fetchrow("""
+                INSERT INTO verdicts (incident_key, verdict, reason, observed_value, operator,
+                                      proposed, decision_seconds)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                RETURNING id, verdict, reason, observed_value, operator, proposed,
+                          decision_seconds, created_at""",
+                incident_key, body.verdict, body.reason, body.observed_value, user["u"],
+                body.proposed, body.decision_seconds)
+            # 판정이 곧 종결이다. 판정 없이 종결되는 경로를 두지 않는다.
+            await c.execute("UPDATE incidents SET status = 'resolved' WHERE incident_key = $1",
+                            incident_key)
 
     payload = row_to_dict(rec) | {"incident_key": incident_key}
     await hub.broadcast({"type": "verdict.created", "data": payload})
