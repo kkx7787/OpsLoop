@@ -31,6 +31,18 @@ CREATE INDEX IF NOT EXISTS idx_events_src_ip   ON events (src_ip);
 CREATE INDEX IF NOT EXISTS idx_events_session  ON events (session);
 CREATE INDEX IF NOT EXISTS idx_events_prov_ts  ON events (provenance, ts DESC);
 
+-- 웹 계층 로그 소스(디코이 · 관제 콘솔)를 위한 확장 (2026-09-18)
+--   Cowrie 는 SSH 로그를, 디코이와 콘솔은 HTTP 로그를 남긴다. 같은 표에 담되
+--   웹에만 있는 필드를 열로 추가한다. 기존 행은 전부 비어 있어도 무방하다.
+--   sensor 를 두는 이유는 집계를 섞지 않기 위해서다. 정상이 없는 환경(디코이)과
+--   정상이 있는 환경(콘솔)의 수치를 한 덩어리로 평균 내면 둘 다 의미를 잃는다.
+ALTER TABLE events ADD COLUMN IF NOT EXISTS http_method text;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS http_status integer;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS user_agent  text;
+ALTER TABLE events ADD COLUMN IF NOT EXISTS sensor      text NOT NULL DEFAULT 'cowrie';
+CREATE INDEX IF NOT EXISTS idx_events_sensor_ts ON events (sensor, ts DESC);
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS sensor text NOT NULL DEFAULT 'cowrie';
+
 CREATE TABLE IF NOT EXISTS sessions (
     session        text PRIMARY KEY,
     src_ip         inet,
