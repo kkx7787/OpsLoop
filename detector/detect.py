@@ -15,6 +15,9 @@ OpsLoop - 탐지 엔진 (WBS 2.3 / PostgreSQL)
      "조치가 탐지를 개선했다"를 나중에 증명할 수 있다.
   5. 규칙은 params.sensors 로 발생원을 한정한다. 실행마다 detector_runs 에 한 행을
      남겨 "적재 뒤에 탐지가 돌았는가"를 DB 가 답한다.
+  6. IP 가 아닌 대상(사람 user:<이름> · 노드 node:<id>)은 신호의 detail._target 에 담아
+     incidents.target 에 넣고 actor_ip 는 비운다. 콘솔은 actor_ip 가 있을 때만 차단 목록에
+     넣으므로 이런 인시던트로는 콘솔 · 인프라 주소를 막을 수 없다.
 
 사용
   export DATABASE_URL='postgresql://opsloop:PASSWORD@호스트:5432/opsloop'
@@ -32,7 +35,7 @@ import json
 import os
 import statistics
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 try:
     import psycopg2
@@ -83,7 +86,13 @@ def rule_sensors(rule, default=None):
 #  규칙별 신호 수집
 #  각 함수는 (ts, actor_ip, session, detail) 튜플 목록을 돌려준다
 #  params.sensors 가 있으면 그 발생원(events · sessions 의 sensor)만 본다
+#  detail 의 제어 필드(CONTROL_FIELDS)는 run() 이 읽고 evidence 에 넣기 전에 뺀다
+#    _target  IP 가 아닌 대상. 묶음 · 키 · incidents.target 에 쓴다
+#    _end     신호가 끝난 시각. last_ts 를 그 시각까지 늘린다 (노드 수신이 돌아온 시각)
 # ----------------------------------------------------------------------
+
+CONTROL_FIELDS = ("_target", "_end")
+
 
 def signals_session_threshold(cur, rule, since, until):
     p = rule["params"]
@@ -201,21 +210,114 @@ def signals_actor_rate(cur, rule, since, until):
     관측 결과 봇은 한 세션에 로그인 1회만 시도하고 끊는다. 무차별 대입이
     세션 안이 아니라 세션들 사이에 퍼져 있어, 세션 단위 임계치로는 잡히지 않는다.
     그래서 IP 단위로 고정 시간창을 잘라 누적 횟수를 센다.
+
+    params.http_status(정수 목록)가 있으면 그 응답 코드의 요청만 센다 (w1 R102 404 반복).
+    자리는 eventid 조건 바로 뒤다. 없으면 문장과 인자가 전과 한 글자도 같다.
     """
     p = rule["params"]
     window = p["window_seconds"]
     w, prm = range_clause(since, until, "ts", rule_sensors(rule))
-    # 행을 모두 올리지 않고 DB 에서 (출발지, 시간창) 별로 센다. 매분 도는 규칙(n1)이 전체 기간을 다시 봐도
+    status, extra = "", []
+    if "http_status" in p:
+        codes = p["http_status"]
+        if not (isinstance(codes, list) and codes
+                and all(isinstance(c, int) and not isinstance(c, bool) for c in codes)):
+            raise ValueError(f"{rule['id']}: http_status 는 비어 있지 않은 정수 목록이어야 합니다")
+        status, extra = " AND http_status = ANY(%s)", [codes]
+    # 행을 모두 올리지 않고 DB 에서 (출발지, 시간창) 별로 센다. 매분 도는 규칙(w1)이 전체 기간을 다시 봐도
     # 메모리는 신호 수만큼만 쓴다. 창 번호는 예전 계산(초 단위 시각 ÷ 창, 내림)과 같고, 신호의 시각 · 세션은
     # 그 창에서 가장 이른 행의 것이다
     cur.execute(
         f"SELECT min(ts), src_ip, (array_agg(session ORDER BY ts))[1], count(*) FROM events "
-        f"WHERE {w} AND eventid = ANY(%s) AND src_ip IS NOT NULL "
+        f"WHERE {w} AND eventid = ANY(%s) AND src_ip IS NOT NULL{status} "
         f"GROUP BY src_ip, floor(extract(epoch FROM ts) / %s) "
         f"HAVING count(*) >= %s ORDER BY src_ip, min(ts)",
-        prm + [p["eventids"], window, p["threshold"]])
+        prm + [p["eventids"]] + extra + [window, p["threshold"]])
     return [(ts, ip, sess, {"count": n, "window_seconds": window, "threshold": p["threshold"]})
             for ts, ip, sess, n in cur.fetchall()]
+
+
+def signals_operator_rate(cur, rule, since, until):
+    """한 사람(username)이 앞 window_seconds 초 안에 같은 관리 행위를 몇 번 했는가 (a1 R201 차단 대량 해제).
+
+    출발지로 묶지 않는다. 감사 이벤트(sensor=audit)의 출발지는 DB 에 붙은 콘솔 VM 이다. 출발지로 묶으면
+    콘솔 주소가 차단 대상이 되고, HAProxy 가 A · B 에 번갈아 보내 한 사람의 행위가 둘로 갈린다.
+    창은 행마다 뒤로 센다(미끄럼 창). 고정 창은 경계에서 2+2 로 갈려 임계치를 피할 수 있다.
+    신호의 시각은 임계치에 닿은 행의 시각이라, 이벤트가 늦게 끼어들지 않는 한 다시 돌려도 키가 같다.
+    대상은 detail._target(user:<행위자>)이고 actor_ip 는 비운다. items 는 창 안 행위의 입력과 DB 접속 출발지다.
+    items 는 DB 에서 최근 20건(ROWS 창)만 모아 창 밖 것을 거른다. 창 전체를 모으면 대량 해제 N건에 N² 로 커진다.
+    """
+    p = rule["params"]
+    window = p["window_seconds"]
+    w, prm = range_clause(since, until, "ts", rule_sensors(rule))
+    cur.execute(
+        f"SELECT ts, username, n, item_ts, items FROM ("
+        f"SELECT ts, username, count(*) OVER win AS n, array_agg(ts) OVER last20 AS item_ts, "
+        f"array_agg(concat_ws(' ', coalesce(input, '-'), 'db_client=' || host(src_ip))) OVER last20 AS items "
+        f"FROM events WHERE {w} AND eventid = ANY(%s) AND username IS NOT NULL "
+        f"WINDOW win AS (PARTITION BY username ORDER BY ts "
+        f"RANGE BETWEEN make_interval(secs => %s) PRECEDING AND CURRENT ROW), "
+        f"last20 AS (PARTITION BY username ORDER BY ts ROWS BETWEEN 19 PRECEDING AND CURRENT ROW)"
+        f") AS x WHERE n >= %s ORDER BY username, ts",
+        prm + [p["eventids"], window, p["threshold"]])
+    out = []
+    for ts, who, n, item_ts, items in cur.fetchall():
+        lo = ts - timedelta(seconds=window)
+        keep = [it for t, it in zip(item_ts, items) if t >= lo]
+        out.append((ts, None, None, {"_target": f"user:{who}", "count": n, "window_seconds": window,
+                                     "threshold": p["threshold"], "items": keep[-20:]}))
+    return out
+
+
+def signals_node_silence(cur, rule, since, until):
+    """지표를 올리던 노드의 수신이 threshold_seconds 넘게 끊긴 구간 (i1 R301).
+
+    대상은 활성 노드 가운데 지표(metrics)를 선언한 노드이고, 마지막 등록(registered_at) 뒤에 받은 지표만 본다.
+    폐기 뒤 재등록하면 폐기 기간이 공백으로 소급되지 않는다. 노드가 지표를 만든 시각(ts)이 아니라 다리가 받아
+    넣은 시각(node_metrics.loaded_at)을 본다. 에이전트가 밀린 줄을 나중에 한꺼번에 보내면 ts 에는 공백이
+    없지만 그동안 관제는 아무것도 받지 못했다. 노드별 적재 시각 사이 [마지막 수신, 다음 수신)이 공백이고,
+    다음 수신이 아직 없으면 기준 시각(until 과 지금 중 이른 쪽)까지로 잰다.
+
+    관제 쪽이 함께 멈춘 공백은 버린다. 맥 절전처럼 data-01 도 멈췄으면 노드가 아니라 관제가 멈춘 것이다.
+    공백 안에서 탐지가 돈 분(detector_runs.started_at 을 분으로 자른 DISTINCT)이
+    threshold_seconds / 60 × alive_ratio 이상일 때만 신호다.
+
+    신호의 시각은 공백 시작(마지막 수신)이라 진행 중에 낸 키와 복구 뒤에 다시 돌린 키가 같다.
+    복구 시각은 _end 로 넘겨 last_ts 에 남긴다. node_metrics 에는 provenance 가 없어 range_clause 를 쓰지
+    않고, since · until 은 공백 시작 시각에만 건다. 적재 시각 계열은 전 기간으로 본다.
+    """
+    p = rule["params"]
+    threshold, ratio = p["threshold_seconds"], p["alive_ratio"]
+    if not (isinstance(threshold, int) and not isinstance(threshold, bool) and threshold > 0):
+        raise ValueError(f"{rule['id']}: threshold_seconds 는 양의 정수여야 합니다")
+    if not (isinstance(ratio, (int, float)) and not isinstance(ratio, bool) and 0 <= ratio <= 1):
+        raise ValueError(f"{rule['id']}: alive_ratio 는 0 이상 1 이하의 수여야 합니다")
+    rng, extra = "", []
+    if since:
+        rng += " AND g.gap_start >= %s"; extra.append(since)
+    if until:
+        rng += " AND g.gap_start < %s"; extra.append(until)
+    cur.execute(
+        "WITH r AS (SELECT least(%s::timestamptz, now()) AS ref), "
+        "l AS (SELECT DISTINCT m.node_id, m.loaded_at FROM node_metrics m "
+        "JOIN nodes n ON n.node_id = m.node_id "
+        "WHERE n.status = 'active' AND 'metrics' = ANY(n.logs) AND m.loaded_at >= n.registered_at), "
+        "g AS (SELECT node_id, loaded_at AS gap_start, "
+        "lead(loaded_at) OVER (PARTITION BY node_id ORDER BY loaded_at) AS gap_end FROM l), "
+        "s AS (SELECT g.node_id, g.gap_start, g.gap_end, coalesce(g.gap_end, r.ref) AS gap_stop "
+        "FROM g, r WHERE coalesce(g.gap_end, r.ref) - g.gap_start > make_interval(secs => %s)"
+        f"{rng}) "
+        "SELECT s.node_id, s.gap_start, s.gap_end, "
+        "(SELECT count(DISTINCT date_trunc('minute', d.started_at)) FROM detector_runs d "
+        "WHERE d.started_at >= s.gap_start AND d.started_at < s.gap_stop) "
+        "FROM s ORDER BY s.node_id, s.gap_start",
+        [until, threshold] + extra)
+    # 1500초 × 0.28 이 7.000000000000001분이 되어 7분을 떨어뜨리지 않게 자리를 줄여 비교한다
+    need = round(threshold / 60 * ratio, 6)
+    return [(start, None, None,
+             {"_target": f"node:{node}", "_end": end, "last_receipt": start.isoformat(),
+              "alive_minutes": alive, "threshold_seconds": threshold, "ongoing": end is None})
+            for node, start, end, alive in cur.fetchall() if alive >= need]
 
 
 COLLECTORS = {
@@ -224,6 +326,8 @@ COLLECTORS = {
     "session_compound": signals_session_compound,
     "event_match": signals_event_match,
     "baseline_deviation": signals_baseline_deviation,
+    "operator_rate": signals_operator_rate,
+    "node_silence": signals_node_silence,
 }
 
 
@@ -232,30 +336,55 @@ COLLECTORS = {
 # ----------------------------------------------------------------------
 
 def aggregate(signals, gap_seconds):
-    """동일 대상(IP)의 신호를 시간 간격으로 묶는다.
+    """동일 대상(IP, _target)의 신호를 시간 간격으로 묶는다. [((ip, target), items)] 를 돌려준다.
 
     간격이 gap_seconds 이내로 이어지면 같은 인시던트로 본다.
     한 IP 가 사흘 내내 두드려도 끊김 없이 이어지면 인시던트 하나다.
+    _target 이 없는 신호는 (ip, None) 으로 묶여 묶음과 순서가 IP 로만 묶던 때와 같다.
     """
-    by_ip = {}
+    by_key = {}
     for ts, ip, sess, detail in signals:
-        by_ip.setdefault(ip, []).append((ts, sess, detail))
+        target = detail.get("_target") if isinstance(detail, dict) else None
+        by_key.setdefault((ip, target), []).append((ts, sess, detail))
 
     groups = []
-    for ip, items in by_ip.items():
+    for key, items in by_key.items():
         items.sort(key=lambda x: x[0])
         cur_group = [items[0]]
         for prev, nxt in zip(items, items[1:]):
             if (nxt[0] - prev[0]).total_seconds() <= gap_seconds:
                 cur_group.append(nxt)
             else:
-                groups.append((ip, cur_group))
+                groups.append((key, cur_group))
                 cur_group = [nxt]
-        groups.append((ip, cur_group))
+        groups.append((key, cur_group))
     return groups
 
 
+def strip_control(detail):
+    """evidence 에 넣을 detail. 제어 필드가 없으면 받은 것을 그대로 돌려준다."""
+    if isinstance(detail, dict) and any(k in detail for k in CONTROL_FIELDS):
+        return {k: v for k, v in detail.items() if k not in CONTROL_FIELDS}
+    return detail
+
+
 SEVERITY_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+
+# 인시던트 적재. INSERT_BASE 는 대상 열이 생기기 전 문장을 글자 그대로 옮긴 것이다(허니팟 v1 · v2 가 쓴다).
+# _target 이 있는 행만 INSERT_TARGET 으로 target 열을 함께 넣는다.
+INSERT_BASE = """
+            INSERT INTO incidents (incident_key, rule_id, rule_version, rule_name, severity,
+                                   actor_ip, first_ts, last_ts, signal_count, session_count,
+                                   evidence)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)
+            ON CONFLICT (incident_key) DO NOTHING"""
+
+INSERT_TARGET = """
+            INSERT INTO incidents (incident_key, rule_id, rule_version, rule_name, severity,
+                                   actor_ip, first_ts, last_ts, signal_count, session_count,
+                                   evidence, target)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s)
+            ON CONFLICT (incident_key) DO NOTHING"""
 
 
 def suppress(cur, rules_doc, staged):
@@ -340,14 +469,17 @@ def run(conn, rules_doc, since, until, verbose=True):
         signals = collector(cur, rule, since, until)
         groups = aggregate(signals, rule_gap)
 
-        rows = []
-        for ip, items in groups:
-            first_ts, last_ts = items[0][0], items[-1][0]
+        rows, target_rows = [], []
+        for (ip, target), items in groups:
+            # 끝난 시각(_end)이 있는 신호는 last_ts 를 거기까지 늘린다. 없으면 전처럼 마지막 신호 시각이다
+            ends = [i[2]["_end"] for i in items if isinstance(i[2], dict) and i[2].get("_end") is not None]
+            first_ts, last_ts = items[0][0], max([items[-1][0]] + ends)
             sessions = sorted({i[1] for i in items if i[1]})
-            key = f"{rule['id']}|{version}|{ip or '-'}|{first_ts.isoformat()}"
+            key = f"{rule['id']}|{version}|{target or ip or '-'}|{first_ts.isoformat()}"
+            details = [strip_control(i[2]) for i in items]
             # 임계치와 비교되는 값을 신호 전체에서 뽑아 남긴다. 표본 몇 개만
             # 보고 나중에 다시 계산하면 큰 인시던트에서 최댓값을 놓친다.
-            metrics = [i[2] for i in items if isinstance(i[2], dict)]
+            metrics = [d for d in details if isinstance(d, dict)]
             counts = [m["count"] for m in metrics if "count" in m]
             devs = [(m["count"] - m["mean"]) / m["sigma"]
                     for m in metrics if m.get("sigma")]
@@ -358,23 +490,24 @@ def run(conn, rules_doc, since, until, verbose=True):
                 observed["observed_sigma_max"] = round(max(devs), 2)
 
             evidence = json.dumps(
-                {"sample": [i[2] for i in items[:5]], "sessions": sessions[:10],
+                {"sample": details[:5], "sessions": sessions[:10],
                  **observed},
                 ensure_ascii=False, default=str)
-            rows.append((key, rule["id"], version, rule["name"], rule["severity"], ip,
-                         first_ts, last_ts, len(items), len(sessions), evidence))
+            row = (key, rule["id"], version, rule["name"], rule["severity"], ip,
+                   first_ts, last_ts, len(items), len(sessions), evidence)
+            if target is None:
+                rows.append(row)
+            else:
+                target_rows.append(row + (target,))
 
-        staged.append((rule, rows, len(signals), rule_gap))
+        staged.append((rule, rows + target_rows, len(signals), rule_gap))
 
         # 이 규칙의 인시던트를 바로 넣는다. 뒤 규칙(기준선 이탈)이 앞 규칙의
         # 결과를 보아야 하므로 억제 판단보다 적재가 먼저다. 억제된 것은
-        # 아래에서 지운다.
-        execute_batch(cur, """
-            INSERT INTO incidents (incident_key, rule_id, rule_version, rule_name, severity,
-                                   actor_ip, first_ts, last_ts, signal_count, session_count,
-                                   evidence)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)
-            ON CONFLICT (incident_key) DO NOTHING""", rows, page_size=200)
+        # 아래에서 지운다. 대상 행이 없는 규칙은 전과 같은 문장 하나만 낸다.
+        execute_batch(cur, INSERT_BASE, rows, page_size=200)
+        if target_rows:
+            execute_batch(cur, INSERT_TARGET, target_rows, page_size=200)
 
     suppressed = suppress(cur, rules_doc, staged) if rules_doc.get("suppression") else {}
 
