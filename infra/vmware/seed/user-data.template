@@ -1,0 +1,36 @@
+#cloud-config
+# 기본 VM 무인 설치 (Ubuntu autoinstall). 이 이미지를 연결 복제해 4대를 만든다.
+autoinstall:
+  version: 1
+  locale: en_US.UTF-8
+  keyboard: {layout: us}
+  timezone: Asia/Seoul
+  identity:
+    hostname: opsloop-base
+    username: ops
+    # 콘솔 로그인용 임시 비밀번호. 이미지 만들 때 입력받아 해시로 넣는다 (SSH 는 키 인증만 허용)
+    password: "__PWHASH__"
+  ssh:
+    install-server: true
+    allow-pw: false
+    authorized-keys:
+      - "__SSHKEY__"
+  packages:
+    - open-vm-tools
+    - nftables
+    - rsync
+    - curl
+    - chrony
+    - python3
+    - jq
+  storage:
+    layout: {name: lvm}
+  user-data:
+    disable_root: true
+  late-commands:
+    # 복제본마다 주소를 따로 주므로 설치기가 만든 네트워크 설정을 비운다
+    - rm -f /target/etc/netplan/*.yaml
+    - echo 'network: {config: disabled}' > /target/etc/cloud/cloud.cfg.d/99-disable-network-config.cfg
+    # 복제본이 같은 machine-id 를 갖지 않게 비운다
+    - truncate -s 0 /target/etc/machine-id
+    - curtin in-target -- systemctl enable nftables

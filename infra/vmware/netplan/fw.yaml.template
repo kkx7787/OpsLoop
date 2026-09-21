@@ -1,0 +1,27 @@
+# 내부 방화벽 겸 부하분산기. 인터페이스는 MAC 으로 구분한다 (복제 시 스크립트가 채운다).
+#   uplink  : NAT (vmnet8)      · 인터넷으로 나가는 유일한 경로
+#   service : 서비스망 vmnet2   · 192.168.50.1
+#   data    : 데이터망 vmnet3   · 192.168.60.1
+#   mgmt    : 관리망   vmnet4   · 192.168.70.254 (192.168.70.1 은 Mac)
+network:
+  version: 2
+  ethernets:
+    uplink:
+      match: {macaddress: "__MAC_UPLINK__"}
+      set-name: uplink
+      dhcp4: true
+    service:
+      match: {macaddress: "__MAC_SERVICE__"}
+      set-name: service
+      dhcp4: false
+      addresses: [192.168.50.1/24]
+    data:
+      match: {macaddress: "__MAC_DATA__"}
+      set-name: data
+      dhcp4: false
+      addresses: [192.168.60.1/24]
+    mgmt:
+      match: {macaddress: "__MAC_MGMT__"}
+      set-name: mgmt
+      dhcp4: false
+      addresses: [192.168.70.254/24]
