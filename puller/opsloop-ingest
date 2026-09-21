@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# 데이터 노드 적재 한 회차: 원장 가져오기 → 파싱 → 탐지 (WBS 3.4)
+# opsloop-ingest.service 가 opsloop-pull 사용자로 5분마다 돌린다.
+set -uo pipefail
+APP=/opt/opsloop/app
+HOME_DIR=${OPSLOOP_HOME:-/var/lib/opsloop}
+
+say() {  # systemd 아래에서는 등급 접두사를 붙인다
+  if [ -n "${JOURNAL_STREAM:-}" ]; then echo "<$1>$2"; else echo "$2"; fi
+}
+
+# 1. 가져오기. S3 읽기 키는 이 하위 셸에만 둔다 (파서 · 탐지기는 키를 보지 못한다)
+( set -a; . /etc/opsloop/s3-pull.env; set +a; exec python3 "$APP/puller/pull.py" )
+PULL=$?
+if [ "$PULL" -ne 0 ] && [ "$PULL" -ne 10 ]; then
+  say 3 "가져오기 실패 (종료 코드 $PULL)"
+  exit "$PULL"
+fi
+
+# 2. 받은 편지함의 조각만 파싱한다. 적재가 끝나면 편지함에서만 빼고 미러에는 남긴다.
+#    파싱이 실패하면 편지함에 그대로 남아 다음 회차에 다시 적재된다 (line_hash 로 중복 없음)
+set -e
+set -a; . /etc/opsloop/collector.env; set +a
+cd "$APP"
+for s in cowrie decoy; do
+  box="$HOME_DIR/inbox/$s"
+  [ -d "$box" ] || continue
+  mapfile -t batch < <(find "$box" -maxdepth 1 -type f -name '*.jsonl' | sort)
+  [ "${#batch[@]}" -gt 0 ] || continue
+  python3 "parser/parse_$s.py" --load --logs "$box/*.jsonl"
+  rm -f -- "${batch[@]}"
+done
+
+# 3. 원장에 구멍이 있으면 탐지를 보류한다. 중간이 빈 채로 탐지하면 쪼개진 인시던트가 남는다
+if [ "$PULL" -eq 10 ]; then
+  say 3 "원장 구멍: 탐지 보류"
+  exit 10
+fi
+python3 detector/detect.py --run

@@ -1,0 +1,10 @@
+[Unit]
+Description=OpsLoop 원장 가져오기 주기 실행
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target
