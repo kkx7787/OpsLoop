@@ -12,6 +12,10 @@ push  POST /loki/api/v1/push  (Bearer 에이전트 키)
   4. 키 해시가 캐시에 없으면 401 unknown (등록 토큰을 push 에 쓴 경우 포함), 폐기면 revoked, active 가 아니면 inactive
   5. 출발지가 nodes.addr 와 다르면 401 addr_mismatch
   6. 길이 없음 411 · 4MiB 초과 413 · 노드별 하루(UTC) 200MiB 초과 429. 등록 노드 자신의 문제라 R202 가 아니다
+  6'. 형식은 Loki push 규격 두 가지만 받는다: protobuf + snappy(Alloy 가 보내는 것), 인코딩 없는 JSON.
+     gzip · deflate 등은 415 로 거부한다. 그대로 넘기면 4MiB 가 수 GB 로 풀려 Loki 가 메모리 초과로 죽는다 (압축 폭탄).
+     snappy 는 압축률이 낮고(최대 약 21배) Loki 의 max_recv_msg_size(8MiB)가 풀린 크기에도 걸린다.
+     넘긴 바이트는 Loki 응답과 상관없이 하루 용량에 센다
   7. X-Scope-OrgID 를 토큰이 증명한 node_id 로 덮어써(에이전트가 보낸 값은 버린다) Loki 에 넘기고,
      Loki 의 응답 코드를 그대로 돌려준다. Loki 에 닿지 않으면 503
   1 ~ 6 에서 답할 때는 본문을 읽지 않고 연결을 닫는다. 표식 문자열이 든 본문도 Loki 에 닿지 않는다.
@@ -116,6 +120,8 @@ ENROLL_SQL = "SELECT enroll_node(%s, %s, %s, %s::inet)"
 # fullmatch 로만 쓴다. 숫자는 [0-9] 로 쓴다 (\d · isdigit 은 다른 문자 체계의 숫자도 받는다)
 HEX64 = re.compile(r"[0-9a-f]{64}")
 NODE_ID = re.compile(r"[\x21-\x7e]{1,128}")
+# (Content-Type, Content-Encoding) 허용 조합. Alloy 는 protobuf + snappy 를 보낸다
+PUSH_FORMATS = {("application/x-protobuf", "snappy"), ("application/x-protobuf", ""), ("application/json", "")}
 ENROLL_TOKEN = re.compile(r"olE_[A-Za-z0-9_-]{43}")   # nodes.py issue 가 만드는 형식 (olE_ + token_urlsafe(32))
 LENGTH = re.compile(r"[0-9]{1,15}")
 HVAL = re.compile(r"[\x21-\x7e][\x20-\x7e]{0,255}")
@@ -683,6 +689,12 @@ class Handler(BaseHTTPRequestHandler):
         node, fp = self._authorize()
         if node is None:
             return
+        enc = (self.headers.get("Content-Encoding") or "").strip().lower()
+        enc = "" if enc == "identity" else enc
+        ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+        if (ctype, enc) not in PUSH_FORMATS:
+            reason = "content_encoding" if enc and ctype in ("application/x-protobuf", "application/json") else "content_type"
+            return self._reject(reason, fp, node.node_id, code=415)
         n = content_length(self.headers)
         if n is None:
             return self._throttle(411, "length_required", fp, node.node_id)
@@ -694,16 +706,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._throttle(429, "busy", fp, node.node_id)
         try:
             body = self._read_body(n)
-            code, data, ctype = gate.forward(node.node_id, body, self.headers.get("Content-Type"),
-                                             self.headers.get("Content-Encoding"))
+            # Loki 가 받든 거절하든 넘긴 만큼 센다. 실패한 전달을 빼면 거절될 본문을 끝없이 보낼 수 있다
+            gate.charge(node.node_id, n)
+            code, data, rtype = gate.forward(node.node_id, body, self.headers.get("Content-Type"), enc or None)
             del body
         finally:
             gate.release(n)
         if 200 <= code < 300:
-            gate.charge(node.node_id, n)
             gate.count("pass")
             gate.count("pass_bytes", n)
-        self._send_raw(code, data, ctype, close=code == 503)
+        self._send_raw(code, data, rtype, close=code == 503)
 
     # --- enroll ---
     def _enroll(self):

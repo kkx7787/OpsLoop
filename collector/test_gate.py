@@ -139,6 +139,8 @@ def body_json(data):
 
 def req_head(path=gate.PUSH, token=None, length=None, method="POST", extra=""):
     head = f"{method} {path} HTTP/1.1\r\nHost: x\r\nUser-Agent: Alloy/v1.19.2\r\n"
+    if path == gate.PUSH and "Content-Type" not in extra:
+        head += "Content-Type: application/x-protobuf\r\n"
     if token is not None:
         head += f"Authorization: Bearer {token}\r\n"
     if length is not None:
@@ -287,8 +289,27 @@ class ForwardTest(GateCase):
         self.assertEqual(headers.get_all("X-Scope-OrgID"), ["web-01"])
         self.assertIsNone(headers.get("Authorization"))
         self.assertEqual(headers.get("Content-Type"), "application/x-protobuf")
-        self.assertEqual(headers.get("Content-Encoding"), "snappy")
+        self.assertEqual(headers.get("Content-Encoding"), "snappy")          # Alloy 가 실제로 보내는 조합
         self.assertEqual(self.ledger(), [])
+
+    def test_압축_인코딩은_415_거부하고_넘기지_않는다(self):
+        import gzip
+        bomb = gzip.compress(b"a" * (8 * 1024 * 1024))           # 8MiB 가 수 KB 로 줄어든다
+        for enc in ("gzip", "deflate", "br", "GZIP ", "x-snappy-framed"):
+            code, body, _ = self.push(body=bomb, headers={"Content-Encoding": enc})
+            self.assertEqual((code, json.loads(body)["result"]), (415, "content_encoding"))
+        self.assertEqual(self.loki.got, [])
+        self.assertEqual({r["reason"] for r in self.ledger()}, {"content_encoding"})
+        self.assertEqual(self.ledger()[0]["eventid"], "collector.agent.rejected")
+
+    def test_예상_밖의_형식은_415(self):
+        for ctype in ("text/plain", "application/octet-stream", ""):
+            code, _, _ = self.push(headers={"Content-Type": ctype})
+            self.assertEqual(code, 415, ctype)
+        self.assertEqual(self.loki.got, [])
+        self.assertEqual(self.push(headers={"Content-Type": "application/json; charset=utf-8"})[0], 204)
+        # snappy 는 protobuf 에만. JSON 에 붙이면 거부
+        self.assertEqual(self.push(headers={"Content-Type": "application/json", "Content-Encoding": "snappy"})[0], 415)
 
     def test_연결을_다시_쓴다(self):
         c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
@@ -353,15 +374,16 @@ class LimitTest(GateCase):
         self.assertEqual((row["eventid"], row["reason"]), ("collector.agent.throttled", "daily_quota"))
         self.assertEqual(len(self.loki.got), 2)
 
-    def test_Loki_가_거절한_바이트는_용량에_넣지_않는다(self):
+    def test_Loki_가_거절한_바이트도_용량에_넣는다(self):
+        # 거절될 본문을 끝없이 보내 Loki 를 괴롭히는 것을 막는다
         old = gate.DAILY_QUOTA
-        gate.DAILY_QUOTA = 150
+        gate.DAILY_QUOTA = 250
         try:
             self.loki.reply = (500, b"boom")
-            for _ in range(3):
+            for _ in range(2):
                 self.assertEqual(self.push(body=b"a" * 100)[0], 500)
             self.loki.reply = (204, b"")
-            self.assertEqual(self.push(body=b"a" * 100)[0], 204)
+            self.assertEqual(self.push(body=b"a" * 100)[0], 429)
         finally:
             gate.DAILY_QUOTA = old
 
