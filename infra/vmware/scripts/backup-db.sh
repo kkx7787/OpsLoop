@@ -4,6 +4,9 @@
 # 기본 VM 이 깨지면 함께 잃는다. 그래서 사본은 VM 밖(Mac)에 둔다.
 # 관리망 ssh 로 Mac 이 안쪽에서 끌어온다. 안쪽 노드가 밖으로 쓰는 경로는 만들지 않는다.
 #
+# 관제 대상 로그의 원장(Loki)과 수집 관문 원장도 같은 폴더의 ledger/ 로 받는다 (LEDGER=0 이면 건너뛴다).
+# 허니팟 원장은 S3(버저닝 · 삭제 금지)에 있으므로 받지 않는다.
+#
 # 사용: infra/vmware/scripts/backup-db.sh [보관 폴더]      기본 ~/opsloop-backup, 최근 14개 보관
 #       VERIFY=restore infra/vmware/scripts/backup-db.sh   받은 덤프를 임시 DB 에 실제로 복원해
 #                                                          운영 DB 와 건수를 대조한다
@@ -65,3 +68,12 @@ echo "백업 $(du -h "$out" | cut -f1) $out · 표 $tables 개"
 
 # 오래된 것부터 지워 최근 KEEP 개만 남긴다 (.unverified 는 건드리지 않는다)
 ls -1t "$DEST"/opsloop-*.dump 2>/dev/null | tail -n +"$((KEEP + 1))" | while read -r f; do rm -f -- "$f"; done
+
+if [ "${LEDGER:-1}" = 1 ]; then
+  # 원장은 추가만 되므로 사본 하나를 따라 맞춘다. 쓰는 중에 받은 마지막 파일은 다음 회차가 덮는다.
+  # 데이터 노드에서 지운 파일은 Mac 사본에서 지우지 않는다 (--delete 없음)
+  mkdir -p "$DEST/ledger"
+  rsync -a --rsync-path="sudo -n rsync" -e "ssh -F $HOME/.ssh/config.opsloop -o BatchMode=yes" \
+    data01:/var/lib/opsloop/loki data01:/var/lib/opsloop/gate data01:/var/lib/opsloop/admin "$DEST/ledger/"
+  echo "원장 사본 $(du -sh "$DEST/ledger" | cut -f1) $DEST/ledger (loki · gate · admin)"
+fi

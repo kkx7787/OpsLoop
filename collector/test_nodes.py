@@ -102,7 +102,7 @@ class Base(unittest.TestCase):
     def setUp(self):
         self.t = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.t, True)
-        env = {"GATE_DIR": self.t, "SUDO_USER": "tester", "USER": "root"}
+        env = {"OPSLOOP_ADMIN_DIR": self.t, "SUDO_USER": "tester", "USER": "root"}
         p = mock.patch.dict(os.environ, env)
         p.start()
         self.addCleanup(p.stop)
@@ -167,6 +167,27 @@ class IssueTest(Base):
         self.assertEqual(len(lines), 1)
         self.assertRegex(lines[0], TOKEN_RE)
         self.assertTrue(out.endswith("\n"))
+
+    def test_표준_출력이_터미널이면_발급하지_않는다(self):
+        class Tty(io.StringIO):
+            def isatty(self):
+                return True
+        out, err = Tty(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = nodes.main(list(ISSUE))
+        self.assertEqual(rc, nodes.EXIT_USAGE)
+        self.assertEqual(out.getvalue(), "")
+        self.assertEqual(self.connects, 0)                  # DB 도 바꾸지 않는다
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = nodes.main(list(ISSUE) + ["--allow-tty"])
+        self.assertEqual(rc, 0)
+        self.assertRegex(out.getvalue().strip(), TOKEN_RE)
+
+    def test_원장에_못_쓰면_3_토큰은_나온다(self):
+        os.environ["OPSLOOP_ADMIN_DIR"] = os.path.join(self.t, "없음")
+        rc, out, _ = self.run_cli(*ISSUE)
+        self.assertEqual(rc, nodes.EXIT_LEDGER)
+        self.assertRegex(out.strip(), TOKEN_RE)
 
     def test_DB_에는_해시만_간다(self):
         _, out, err = self.run_cli(*ISSUE)
@@ -518,7 +539,7 @@ class LedgerTest(Base):
         self.assertEqual(os.path.getsize(other), 0)
 
     def test_폴더가_없으면_경고만(self):
-        os.environ["GATE_DIR"] = os.path.join(self.t, "없음")
+        os.environ["OPSLOOP_ADMIN_DIR"] = os.path.join(self.t, "없음")
         with contextlib.redirect_stderr(io.StringIO()):
             self.assertFalse(nodes.ledger("issue", {}))
 

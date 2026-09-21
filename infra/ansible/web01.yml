@@ -103,15 +103,31 @@
     - name: 구성 · 첫 수신 확인
       block:
         # --- 1. 구성 창 ---
+        # 다른 호스트(방화벽 · 데이터 노드)에 위임하는 명령에 들어가는 값은 인벤토리에서만 온다.
+        # 그래도 형식을 한 번 더 확인하고, 셸을 거치지 않는 argv 형으로만 넘긴다
+        - name: 위임 명령에 쓸 값 확인 (주소 · 노드 이름)
+          ansible.builtin.assert:
+            that:
+              - node_addr is string and node_addr is match('^(25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])(\.(25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])){3}$')
+              - node_id is string and node_id is match('^[a-z0-9][a-z0-9-]{0,31}$')
+            quiet: true
+
+        - name: 방화벽에 구성 창 집합이 있는지 (없으면 nftables.conf 새 판을 먼저 적용한다)
+          ansible.builtin.command:
+            argv: [nft, list, set, inet, filter, provision]
+          delegate_to: "{{ fw_host }}"
+          changed_when: false
+
+        - name: 남은 구성 창 원소 지우기
+          ansible.builtin.command:
+            argv: [nft, delete, element, inet, filter, provision, "{ {{ node_addr }} }"]
+          delegate_to: "{{ fw_host }}"
+          changed_when: false
+          failed_when: false
+
         - name: 구성 창 열기 (방화벽 · 30분 뒤 저절로 닫힘)
-          ansible.builtin.shell: |
-            set -e
-            if ! nft list set inet filter provision >/dev/null 2>&1; then
-              echo "방화벽에 provision 집합이 없다. infra/vmware/fw/nftables.conf 새 판을 먼저 적용한다" >&2
-              exit 1
-            fi
-            nft delete element inet filter provision '{ {{ node_addr }} }' 2>/dev/null || true
-            nft add element inet filter provision '{ {{ node_addr }} timeout 30m }'
+          ansible.builtin.command:
+            argv: [nft, add, element, inet, filter, provision, "{ {{ node_addr }} timeout 30m }"]
           delegate_to: "{{ fw_host }}"
           changed_when: false
 

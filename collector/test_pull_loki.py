@@ -5,7 +5,7 @@
 파서는 계약(7장)대로 만든 가짜로 먼저 돌리고, 저장소에 parser/parse_agent.py 가 있으면 진짜로 한 번 더 돌린다.
 
 보는 것
-  - 창과 워터마크: 처음 등록 시각-5분, 그다음 워터마크-5분, 15회째 워터마크-75분. 테넌트 머리글 · 조회식
+  - 창과 워터마크: 처음 등록 시각-5분, 그다음 워터마크-5분, 15회째 워터마크-100분. 테넌트 머리글 · 조회식
   - 5000건씩 이어 읽기: 경계에서 같은 시각의 줄을 다시 받아도 한 번만 센다. 겹쳐 읽는 구간도 두 번 세지 않는다
   - 선언하지 않은 job 은 적재하지 않고 undeclared 로만 센다
   - 수신 기록(receipt): 사유별 수 · seq 공백 · first_loaded_at 은 한 번만
@@ -142,6 +142,7 @@ class FakeLoki:
     def __init__(self):
         self.data = {}
         self.requests = []
+        self.fail_over = None        # limit 이 이 값보다 크면 500 (Loki 내부 gRPC 한도 흉내)
         outer = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -154,6 +155,13 @@ class FakeLoki:
                 tenant = self.headers.get("X-Scope-OrgID")
                 outer.requests.append({"path": u.path, "tenant": tenant, **q})
                 start, end, limit = int(q["start"]), int(q["end"]), int(q["limit"])
+                if outer.fail_over is not None and limit > outer.fail_over:
+                    body = b"rpc error: code = ResourceExhausted desc = grpc: received message larger than max"
+                    self.send_response(500)
+                    self.send_header("Content-Length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
                 rows = sorted((e for e in outer.data.get(tenant, []) if start <= e[1] < end), key=lambda e: e[1])
                 streams = {}
                 for labels, ts, line in rows[:limit]:
@@ -235,6 +243,18 @@ class FakeStore:
             self.db.clock += 1
             n["first_loaded_at"] = n["first_loaded_at"] or self.db.clock
             n["last_loaded_at"] = n["last_seen_at"] = self.db.clock
+
+    def savepoint(self):
+        self._mark = len(self.undo)
+
+    def release(self):
+        pass
+
+    def rollback_to(self):
+        while len(self.undo) > self._mark:
+            u = self.undo.pop()
+            if u[0] == "node":
+                self.db.nodes[u[1]] = u[2]
 
     def commit(self):
         self.undo = []
@@ -337,7 +357,10 @@ class BridgeTest(unittest.TestCase):
         self.clock = T0 + 10 * MIN
         self.logs = []
         m = self.m = load_bridge()
+        self.admin = os.path.join(self.t, "admin")
+        os.makedirs(self.admin, exist_ok=True)
         m.APP, m.HOME, m.GATE_DIR, m.DB_ENV, m.LOKI_URL = self.app, self.home, self.gate, dbenv, self.loki.url
+        m.ADMIN_DIR = self.admin
         m.connect = lambda url: FakeStore(self.db, m.merge_receipt)
         m.now_ns = lambda: self.clock
         m.log = lambda msg, level=6: self.logs.append((level, msg))
@@ -371,8 +394,10 @@ class BridgeTest(unittest.TestCase):
     def events(self, sensor=None):
         return [e for e in self.db.events.values() if sensor is None or e["sensor"] == sensor]
 
-    def write_ledger(self, name, text, mode="a"):
-        with open(os.path.join(self.gate, name), mode, encoding="utf-8") as f:
+    def write_ledger(self, name, text, mode="a", folder=None):
+        # 관리 원장(admin-*)은 root 전용 폴더에, 관문 원장은 관문 폴더에 둔다
+        folder = folder or (self.admin if name.startswith("admin-") else self.gate)
+        with open(os.path.join(folder, name), mode, encoding="utf-8") as f:
             f.write(text)
 
     # ------------------------------------------------------------------
@@ -405,7 +430,7 @@ class BridgeTest(unittest.TestCase):
         end = self.clock - 10 * NS
         self.clock += MIN
         self.assertEqual(self.run_bridge(), 0)               # 15회째
-        self.assertEqual(int(self.loki.of("web-01")[-1]["start"]), end - 75 * MIN)
+        self.assertEqual(int(self.loki.of("web-01")[-1]["start"]), end - self.m.DEEP)
         self.assertEqual(self.state()["runs"], 15)
         self.assertEqual(self.state()["nodes"]["web-01"]["watermark"], self.clock - 10 * NS)
         self.assertEqual(len(self.detects()), 30)
@@ -556,8 +581,17 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(self.run_bridge(), 1)
         self.assertEqual(len(self.events("collector")), 6)
 
-        os.unlink(path)                                                     # 지운 파일은 상태에서도 뺀다
+        # 관문 폴더에 둔 admin-* 는 관문이 만든 위조다. 읽지 않는다
         self.m.ADMIN_UID = os.getuid()
+        self.assertEqual(self.run_bridge(), 0)                              # 앞에서 거부했던 관리 원장 줄을 이제 읽는다
+        self.write_ledger("admin-2026-09-22.jsonl", admin_line("collector.admin.revoke") + "\n", folder=self.gate)
+        before = len(self.events("collector"))
+        self.run_bridge()
+        self.assertEqual(len(self.events("collector")), before)
+        self.assertTrue(any("제자리" in msg for _lv, msg in self.logs))
+        os.unlink(os.path.join(self.gate, "admin-2026-09-22.jsonl"))
+
+        os.unlink(path)                                                     # 지운 파일은 상태에서도 뺀다
         self.assertEqual(self.run_bridge(), 0)
         self.assertNotIn(name, self.state()["ledgers"])
 
@@ -625,6 +659,37 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(self.loki.of("web-01")[-1]["limit"], "5")
 
 
+    def test_Loki_5xx_면_건수를_줄여_다시_묻는다(self):
+        self.add_node()
+        ts = self.clock - 2 * MIN
+        for i in range(20):
+            self.loki.add("web-01", "nginx", ts + i, nginx_line(i))
+        self.loki.fail_over = 50
+        self.assertEqual(self.run_bridge(), 0)
+        self.assertEqual(len(self.events()), 20)
+        self.assertEqual(self.loki.of("web-01")[-1]["limit"], "50")
+
+    def test_가장_작은_건수에서도_5xx_면_실패하고_줄은_건너뛰지_않는다(self):
+        self.add_node()
+        ts = self.clock - 2 * MIN
+        self.loki.add("web-01", "nginx", ts, nginx_line(1))
+        self.loki.fail_over = 0
+        self.assertNotEqual(self.run_bridge(), 0)
+        self.loki.fail_over = None
+        self.assertEqual(self.run_bridge(), 0)
+        self.assertEqual(len(self.events()), 1)
+
+    def test_지표_번호_극단값에도_적재는_계속(self):
+        self.add_node()
+        ts = self.clock - 2 * MIN
+        for i, seq in enumerate((0, 2**63 - 1, 5)):
+            self.loki.add("web-01", "metrics", ts + i, metrics_line(seq))
+        self.assertEqual(self.run_bridge(), 0)
+        if getattr(self, "AGENT", None) == "real":            # 실제 파서는 2^53 을 넘는 번호를 받지 않는다
+            seqs = sorted(r["seq"] for r in self.db.node_metrics.values())
+            self.assertEqual(seqs, [0, 5])
+
+
 class RealAgentTest(BridgeTest):
     """저장소의 parser/parse_agent.py 로 같은 시험을 돈다 (계약 7장과 다리가 맞물리는지)."""
     AGENT = "real"
@@ -687,7 +752,7 @@ class PgStoreTest(unittest.TestCase):
                     cur._rows = [(params[0],)]
                 elif sql.startswith("SELECT receipt"):
                     cur._rows = [({"metrics": {"lines": 1}},)]
-                elif "coalesce(max(seq)" in sql:
+                elif "max(seq)" in sql:
                     cur._rows = [(2,)]
                 elif sql.startswith("SELECT node_id"):
                     cur._rows = [("web-01", HOST, ["nginx"], T0_DT)]

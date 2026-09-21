@@ -8,7 +8,7 @@ opsloop-agents.service 가 opsloop-pull 사용자로 1분마다 돌린다. 등�
 한 회차
   1. logs 가 있는 active · revoked 노드를 읽는다.
   2. 노드마다 Loki 테넌트(X-Scope-OrgID=node_id)를 query_range {job=~".+"} 로 읽는다 (forward, 5000건씩).
-     창은 [워터마크-5분, 지금-10초). 15회에 한 번은 워터마크-75분부터 본다
+     창은 [워터마크-5분, 지금-10초). 15회에 한 번은 워터마크-100분부터 본다
      (Alloy 재시도 한계 약 58분보다 길게 잡아, 늦게 도착한 묶음을 줍는다).
      5000건이 차면 마지막 시각부터 이어 읽는다. 커밋한 뒤에만 워터마크를 올린다.
      줄은 parser/parse_agent.py 로 바꾸고 INSERT ... ON CONFLICT (line_hash) DO NOTHING RETURNING 으로 신규를 센다.
@@ -16,7 +16,8 @@ opsloop-agents.service 가 opsloop-pull 사용자로 1분마다 돌린다. 등�
   3. nodes.receipt[job] 에 수신 기록을 더한다 (줄 · 신규 · 건너뛴 사유별 수 · seq 공백).
      겹쳐 읽는 구간을 두 번 세지 않도록, 스트림마다 이미 센 마지막 시각과 그 시각의 줄 해시를 기억한다.
      신규가 생기면 first_loaded_at(비었을 때만) · last_loaded_at · last_seen_at 을 갱신한다.
-  4. 관문 원장(collector-*.jsonl)과 관리 원장(admin-*.jsonl)을 파일마다 (inode, 오프셋) 으로 이어 읽어 events 에 넣는다.
+  4. 관문 원장($GATE_DIR/collector-*.jsonl)과 관리 원장($OPSLOOP_ADMIN_DIR/admin-*.jsonl)을 파일마다
+     (inode, 오프셋) 으로 이어 읽어 events 에 넣는다. 관리 원장은 관문이 쓸 수 없는 root 전용 폴더에서만 읽는다.
      쓰는 중인 마지막 줄(줄바꿈 없음)은 다음 회차에 읽는다.
   5. detect.py 를 rules_self.json(s1) · rules_node.json(n1) 으로 차례로 돈다.
   Loki 가 응답하지 않아도 4 · 5 는 한다.
@@ -42,6 +43,7 @@ opsloop-agents.service 가 opsloop-pull 사용자로 1분마다 돌린다. 등�
   DATABASE_URL    없으면 OPSLOOP_DB_ENV(기본 /etc/opsloop/collector.env)에서 읽는다 (역할 opsloop)
   LOKI_URL        기본 http://127.0.0.1:3100
   GATE_DIR        기본 /var/lib/opsloop/gate
+  OPSLOOP_ADMIN_DIR 기본 /var/lib/opsloop/admin
   OPSLOOP_HOME    기본 /var/lib/opsloop
   OPSLOOP_APP     기본 /opt/opsloop/app (parser/parse_agent.py · detector/detect.py 를 여기서 찾는다)
 """
@@ -68,13 +70,14 @@ APP = os.environ.get("OPSLOOP_APP", "/opt/opsloop/app")
 HOME = os.environ.get("OPSLOOP_HOME", "/var/lib/opsloop")
 LOKI_URL = os.environ.get("LOKI_URL", "http://127.0.0.1:3100").rstrip("/")
 GATE_DIR = os.environ.get("GATE_DIR", "/var/lib/opsloop/gate")
+ADMIN_DIR = os.environ.get("OPSLOOP_ADMIN_DIR", "/var/lib/opsloop/admin")
 DB_ENV = os.environ.get("OPSLOOP_DB_ENV", "/etc/opsloop/collector.env")
 RULESETS = ("rules_self.json", "rules_node.json")     # s1 (R202 미등록 에이전트) · n1 (R101 최소판)
 
 NS = 10 ** 9
 LAG = 10 * NS                  # 지금-10초까지만 본다 (Loki 가 막 받은 묶음이 조회에 덜 잡힐 수 있다)
 OVERLAP = 5 * 60 * NS
-DEEP = 75 * 60 * NS
+DEEP = 100 * 60 * NS            # Alloy 재시도 한계(20회, 약 58분) + 깊은 조회 주기(15분) + 여유
 DEEP_EVERY = 15
 CHUNK = 6 * 3600 * NS          # 한 번에 묻는 창의 최대 길이. 오래 멈췄다 돌아와도 Loki 조회 길이 한도에 걸리지 않게 나눈다
 LIMIT = 5000                   # Loki max_entries_limit_per_query 기본값
@@ -305,7 +308,8 @@ class PgStore:
         gaps = None
         if "metrics" in deltas:
             # 늦게 온 지표가 공백을 메우면 저절로 줄어든다. seq 는 재부팅 뒤에도 이어진다 (metrics.seq)
-            self.cur.execute("SELECT coalesce(max(seq) - min(seq) + 1 - count(DISTINCT seq), 0) "
+            # numeric 으로 센다. 장악된 노드가 0 과 2^63-1 같은 번호를 넣어도 bigint 넘침으로 적재가 멈추지 않게 한다
+            self.cur.execute("SELECT coalesce(least(max(seq)::numeric - min(seq) + 1 - count(DISTINCT seq), 2147483647), 0) "
                              "FROM node_metrics WHERE node_id = %s AND seq IS NOT NULL", (node_id,))
             gaps = int(self.cur.fetchone()[0])
         rec = merge_receipt(old, deltas, declared, gaps)
@@ -316,6 +320,15 @@ class PgStore:
                    last_seen_at    = CASE WHEN %s THEN now() ELSE last_seen_at END
                WHERE node_id = %s""",
             (json.dumps(rec, ensure_ascii=False), loaded, loaded, loaded, node_id))
+
+    def savepoint(self):
+        self.cur.execute("SAVEPOINT ol_receipt")
+
+    def release(self):
+        self.cur.execute("RELEASE SAVEPOINT ol_receipt")
+
+    def rollback_to(self):
+        self.cur.execute("ROLLBACK TO SAVEPOINT ol_receipt")
 
     def commit(self):
         self.conn.commit()
@@ -503,7 +516,14 @@ def process_page(store, agent, node, entries, streams, exclusions, warned):
         warned["bad"] = True
     touched = {k: d for k, d in deltas.items() if any(d[c] for c in COUNTERS)}
     if touched or new:
-        store.update_receipt(node_id, touched, logs, bool(new))
+        # 수신 기록은 부가 정보다. 갱신이 실패해도 적재한 줄과 워터마크는 그대로 진행한다
+        store.savepoint()
+        try:
+            store.update_receipt(node_id, touched, logs, bool(new))
+            store.release()
+        except Exception as e:
+            store.rollback_to()
+            log(f"{node_id}: 수신 기록을 고치지 못했다. 적재는 계속한다 ({type(e).__name__}: {safe(e)})", 3)
     store.commit()
 
     lines = sum(d["lines"] for d in deltas.values())
@@ -562,6 +582,14 @@ def pull_node(store, agent, node, nst, exclusions, now, deep, save, since=None, 
                 limit = max(MIN_LIMIT, limit // 10)
                 log(f"{node_id}: 응답이 너무 커서 한 번에 {limit}건씩 읽는다", 4)
                 continue
+            except LokiError as e:
+                # Loki 가 5xx 를 내면(내부 gRPC 한도 등) 같은 건수로 다시 묻지 않고 줄여 본다.
+                # 가장 작은 건수에서도 실패하면 이번 회차는 실패로 끝내고 다음 회차에 다시 한다 (줄을 건너뛰지 않는다)
+                if str(e).startswith("HTTP 5") and limit > MIN_LIMIT:
+                    limit = max(MIN_LIMIT, limit // 10)
+                    log(f"{node_id}: Loki 오류({safe(e)[:80]}). 한 번에 {limit}건씩 다시 읽는다", 4)
+                    continue
+                raise
             if bad and not warned.get("shape"):
                 log(f"{node_id}: 형식이 틀린 Loki 항목 {bad}개를 건너뛴다", 4)
                 warned["shape"] = True
@@ -598,9 +626,9 @@ def pull_node(store, agent, node, nst, exclusions, now, deep, save, since=None, 
 #  관문 · 관리 원장
 # ----------------------------------------------------------------------
 
-def read_ledger_file(store, agent, name, kind, led, budget, save):
+def read_ledger_file(store, agent, name, kind, led, budget, save, folder=None):
     """원장 파일 하나의 새 줄을 넣는다. ({lines, new, bad, forged}, 읽은 바이트) 또는 (None, 0)."""
-    path = os.path.join(GATE_DIR, name)
+    path = os.path.join(folder or (ADMIN_DIR if kind == "admin" else GATE_DIR), name)
     try:
         # 관문이 폴더 주인이다. 심볼릭 링크 · FIFO 를 심어 다른 파일을 읽히거나 멈추게 하지 못하게 한다
         fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
@@ -690,27 +718,36 @@ def read_ledger_file(store, agent, name, kind, led, budget, save):
 def read_ledgers(store, agent, state, save):
     """관문 · 관리 원장의 새 줄을 넣는다. 끝까지 문제없으면 True."""
     led = state["ledgers"]
-    try:
-        names = sorted(os.listdir(GATE_DIR))
-    except FileNotFoundError:
-        log(f"관문 원장 폴더 {GATE_DIR} 가 없다", 4)
-        return True
-    except OSError as e:
-        log(f"관문 원장 폴더를 읽지 못했다 ({safe(e)})", 3)
-        return False
+    files = []                      # (이름, 종류, 폴더)
     ok = True
+    for folder, want in ((GATE_DIR, "collector"), (ADMIN_DIR, "admin")):
+        try:
+            names = sorted(os.listdir(folder))
+        except FileNotFoundError:
+            log(f"원장 폴더 {folder} 가 없다", 4)
+            continue
+        except OSError as e:
+            log(f"원장 폴더 {folder} 를 읽지 못했다 ({safe(e)})", 3)
+            ok = False
+            continue
+        for name in names:
+            m = LEDGER_RE.fullmatch(name)
+            if not m:
+                continue
+            if m.group(1) != want:
+                # 관문 폴더의 admin-* 는 관문이 만든 것이다 (관리 원장은 root 전용 폴더에만 있다)
+                log(f"원장 {safe(name)} 이 제자리({want} 폴더)가 아니다. 위조 의심으로 읽지 않는다", 3)
+                continue
+            files.append((name, want, folder))
     budget = LEDGER_BYTES
     tot = dict.fromkeys(("lines", "new", "bad", "forged"), 0)
     present = set()
-    for name in names:
-        m = LEDGER_RE.fullmatch(name)
-        if not m:
-            continue
+    for name, kind, folder in files:
         present.add(name)
         if budget <= 0:
             log("원장 읽기 한도를 넘었다. 나머지는 다음 회차에 읽는다", 4)
             break
-        res, used = read_ledger_file(store, agent, name, m.group(1), led, budget, save)
+        res, used = read_ledger_file(store, agent, name, kind, led, budget, save, folder)
         budget -= used
         if res is None:
             ok = False
@@ -750,17 +787,17 @@ def run_detect(env):
 #  한 회차
 # ----------------------------------------------------------------------
 
-def run(node=None, since=None):
+def run(node=None, since=None, ledgers_from_start=False):
     os.makedirs(HOME, exist_ok=True)
     lock = open(os.path.join(HOME, "agents.lock"), "a")
     try:
         fcntl.flock(lock, fcntl.LOCK_EX)        # 타이머 회차와 손 실행(--since)이 겹치지 않게 기다린다
-        return _run(node, since)
+        return _run(node, since, ledgers_from_start)
     finally:
         lock.close()
 
 
-def _run(node, since):
+def _run(node, since, ledgers_from_start=False):
     cleanup_temp(HOME)
     state_path = os.path.join(HOME, "agents-state.json")
     state = load_state(state_path)
@@ -809,7 +846,9 @@ def _run(node, since):
             log(f"노드 {safe(node)} 가 없거나 active · revoked 가 아니거나 logs 가 비었다", 3)
             failed = True
         now = now_ns()
-        deadline = time.monotonic() + RUN_SECONDS
+        # 타이머 회차에만 시간 한도를 둔다. 손으로 하는 재생성(--since)은 끝까지 읽는다
+        # (한도에 걸리면 진행 위치가 남지 않아 다시 돌려도 같은 곳에서 멈춘다. 그동안 타이머 회차는 잠금을 기다린다)
+        deadline = None if since is not None else time.monotonic() + RUN_SECONDS
         for n in nodes:
             node_id = n[0]
             if not isinstance(node_id, str) or not NODE_RE.fullmatch(node_id):
@@ -833,6 +872,10 @@ def _run(node, since):
                     store.rollback()
                 except Exception:
                     pass
+        if ledgers_from_start:
+            # DB 를 백업에서 복원한 뒤: 원장을 처음부터 다시 넣는다. 이미 있는 줄은 line_hash 로 걸러진다
+            state["ledgers"] = {}
+            log("관문 · 관리 원장을 처음부터 다시 읽는다")
         try:
             if not read_ledgers(store, agent, state, save):
                 failed = True
@@ -865,6 +908,8 @@ def main():
     ap = argparse.ArgumentParser(description="OpsLoop 관제 대상 로그 다리 (Loki · 관문 원장 → events, 자기 탐지)")
     ap.add_argument("--node", help="이 노드만 읽는다")
     ap.add_argument("--since", help="--node 와 함께. 그 시각(ISO 8601)부터 다시 읽는다 (재생성)")
+    ap.add_argument("--ledgers-from-start", action="store_true",
+                    help="관문 · 관리 원장을 처음부터 다시 읽는다 (DB 를 백업에서 복원한 뒤)")
     args = ap.parse_args()
     since = None
     if args.since:
@@ -877,7 +922,7 @@ def main():
     if os.geteuid() == 0:
         # root 로 돌면 상태 파일이 root 소유가 되어 타이머(opsloop-pull)가 다음부터 쓰지 못한다
         sys.exit("root 로 돌리지 않는다: sudo -u opsloop-pull python3 " + os.path.abspath(__file__) + " ...")
-    sys.exit(run(args.node, since))
+    sys.exit(run(args.node, since, ledgers_from_start=args.ledgers_from_start))
 
 
 if __name__ == "__main__":
