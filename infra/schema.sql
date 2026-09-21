@@ -240,3 +240,360 @@ SELECT
 FROM incidents i
 LEFT JOIN verdicts v ON v.incident_key = i.incident_key
 GROUP BY i.rule_id, i.rule_version;
+
+-- 관제 대상 수집 (이슈 #11 · 2026-09-21)
+--   에이전트는 수집 관문(opsloop-gate)을 거쳐 Loki 에 쓰고, 다리(opsloop-agents)가 events ·
+--   node_metrics 로 옮긴다. 노드는 발급(pending) → 자기 등록(active) → 폐기(revoked) 순으로 간다.
+--   등록 토큰과 에이전트 키는 둘 다 원문을 두지 않고 sha256 16진수만 둔다.
+--   registered_at 은 발급 시각이 아니라 자기 등록이 끝난 시각이다. 발급만 된 노드는 비어 있다.
+--   receipt 는 다리가 로그(job)마다 남기는 수신 기록이다 (first_line_at · lines · malformed …).
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS addr            inet;
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS logs            text[] NOT NULL DEFAULT '{}';
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS agent_fp        text;
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS first_loaded_at timestamptz;
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS last_loaded_at  timestamptz;
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS receipt         jsonb  NOT NULL DEFAULT '{}';
+ALTER TABLE nodes ALTER COLUMN registered_at DROP NOT NULL;
+ALTER TABLE nodes ALTER COLUMN registered_at DROP DEFAULT;
+-- 행을 넣었다고 수집이 허용되면 안 된다. 활성화는 enroll_node 만 한다
+ALTER TABLE nodes ALTER COLUMN status SET DEFAULT 'pending';
+ALTER TABLE nodes DROP CONSTRAINT IF EXISTS nodes_status_check;
+ALTER TABLE nodes ADD CONSTRAINT nodes_status_check
+      CHECK (status IN ('pending', 'active', 'stale', 'revoked'));
+-- 키 하나가 두 노드를 증명하면 관문이 테넌트를 정할 수 없다
+CREATE UNIQUE INDEX IF NOT EXISTS uq_nodes_token_hash ON nodes (token_hash) WHERE token_hash IS NOT NULL;
+
+-- 등록 토큰 발급 이력. 1회용이며 만료 · 취소 · 사용 시각과 사용한 출발지가 남는다
+CREATE TABLE IF NOT EXISTS node_enrollments (
+    id          bigserial PRIMARY KEY,
+    node_id     text        NOT NULL REFERENCES nodes (node_id) ON DELETE CASCADE,
+    token_hash  text        NOT NULL UNIQUE,
+    issued_by   text,
+    issued_at   timestamptz NOT NULL DEFAULT now(),
+    expires_at  timestamptz NOT NULL,
+    used_at     timestamptz,
+    used_from   inet,
+    canceled_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS idx_enroll_node ON node_enrollments (node_id, issued_at DESC);
+
+-- 노드 지표 (metrics.py 1분). 줄 해시가 키라서 다시 적재해도 한 번만 들어간다
+CREATE TABLE IF NOT EXISTS node_metrics (
+    line_hash     text PRIMARY KEY,
+    node_id       text        NOT NULL,
+    ts            timestamptz NOT NULL,
+    seq           bigint,
+    cpu_pct       real,
+    mem_used_pct  real,
+    mem_avail_mb  integer,
+    swap_used_pct real,
+    disk_root_pct real,
+    load1         real,
+    nginx_active  boolean,
+    sshd_active   boolean
+);
+CREATE INDEX IF NOT EXISTS idx_node_metrics_node_ts ON node_metrics (node_id, ts DESC);
+
+-- 탐지 실행 기록. "적재 뒤에 탐지가 돌았는가"를 DB 가 답한다 (첫 수신 확인 4단계)
+CREATE TABLE IF NOT EXISTS detector_runs (
+    id           bigserial PRIMARY KEY,
+    rule_version text        NOT NULL,
+    since        timestamptz,
+    until        timestamptz,
+    started_at   timestamptz NOT NULL,
+    finished_at  timestamptz NOT NULL,
+    incidents    integer
+);
+CREATE INDEX IF NOT EXISTS idx_detector_runs_started ON detector_runs (started_at DESC);
+
+-- 자기 등록. 관문은 sha256(등록 토큰), node_id, sha256(에이전트 키), 출발지를 넘기기만 한다.
+--   SECURITY DEFINER 라 소유자 권한으로 돈다. search_path 를 고정해 호출자가 만든 같은 이름의
+--   표 · 함수로 바꿔치지 못하게 하고, PUBLIC 실행 권한은 회수한다.
+--   잠금 순서는 nodes → node_enrollments 다. nodes.py(issue · cancel · revoke)도 같은 순서로
+--   잠가서 동시에 돌아도 교착이 생기지 않는다.
+--   결과: ok · bad_key · enroll_unknown · enroll_canceled · enroll_node · enroll_expired ·
+--         addr_mismatch · enroll_used
+CREATE OR REPLACE FUNCTION enroll_node(p_token_hash text, p_node_id text,
+                                       p_agent_sha256 text, p_from inet)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_node text;
+    nd     nodes%ROWTYPE;
+    en     node_enrollments%ROWTYPE;
+BEGIN
+    -- 형식이 틀린 키 해시로는 아무것도 보지 않는다
+    IF p_agent_sha256 IS NULL OR p_agent_sha256 !~ '^[0-9a-f]{64}$' THEN
+        RETURN 'bad_key';
+    END IF;
+
+    SELECT node_id INTO v_node FROM node_enrollments WHERE token_hash = p_token_hash;
+    IF NOT FOUND THEN
+        RETURN 'enroll_unknown';
+    END IF;
+    SELECT * INTO nd FROM nodes WHERE node_id = v_node FOR UPDATE;
+    SELECT * INTO en FROM node_enrollments WHERE token_hash = p_token_hash FOR UPDATE;
+    IF NOT FOUND OR nd.node_id IS NULL THEN
+        RETURN 'enroll_unknown';        -- 그 사이 노드가 지워졌다
+    END IF;
+
+    IF en.canceled_at IS NOT NULL THEN
+        RETURN 'enroll_canceled';
+    END IF;
+    IF en.node_id IS DISTINCT FROM p_node_id THEN
+        RETURN 'enroll_node';
+    END IF;
+    IF en.expires_at <= now() THEN
+        RETURN 'enroll_expired';
+    END IF;
+    IF p_from IS NULL OR nd.addr IS NULL OR host(p_from) <> host(nd.addr) THEN
+        RETURN 'addr_mismatch';
+    END IF;
+    IF en.used_at IS NOT NULL THEN
+        -- 응답이 중간에 사라져 같은 키로 다시 온 경우다. 바꿀 것이 없으므로 ok 만 돌려준다.
+        -- 그 사이 폐기된 노드는 이 길로 되살리지 않는다
+        IF host(en.used_from) = host(p_from) AND nd.token_hash = p_agent_sha256
+           AND nd.status = 'active' THEN
+            RETURN 'ok';
+        END IF;
+        RETURN 'enroll_used';
+    END IF;
+
+    -- 쓸 수 없는 키: 등록 토큰(원문이 관리자 쪽에 있다), 다른 노드의 키, 이 노드에서 폐기된 키
+    IF EXISTS (SELECT 1 FROM node_enrollments WHERE token_hash = p_agent_sha256)
+       OR EXISTS (SELECT 1 FROM nodes WHERE token_hash = p_agent_sha256 AND node_id <> nd.node_id)
+       OR (nd.status = 'revoked' AND nd.token_hash = p_agent_sha256) THEN
+        RETURN 'bad_key';
+    END IF;
+
+    BEGIN
+        UPDATE nodes
+           SET token_hash = p_agent_sha256, agent_fp = left(p_agent_sha256, 8),
+               status = 'active', registered_at = now()
+         WHERE node_id = nd.node_id;
+    EXCEPTION WHEN unique_violation THEN
+        RETURN 'bad_key';               -- 같은 키를 동시에 다른 노드에 등록하려 했다
+    END;
+    UPDATE node_enrollments SET used_at = now(), used_from = p_from WHERE id = en.id;
+    -- 살아 있는 등록 토큰을 남기지 않는다. 같은 노드의 나머지 미사용 토큰은 취소한다
+    UPDATE node_enrollments SET canceled_at = now()
+     WHERE node_id = nd.node_id AND id <> en.id AND used_at IS NULL AND canceled_at IS NULL;
+    RETURN 'ok';
+END;
+$$;
+REVOKE ALL ON FUNCTION enroll_node(text, text, text, inet) FROM PUBLIC;
+
+-- 첫 수신 확인. nodes.py check, Ansible 마지막 작업, 나중의 S-13 이 같은 판정을 쓴다.
+--   네 단계를 차례로 보고, 앞 단계가 통과하지 못하면 뒤 단계는 ok = NULL, detail = '대기' 다.
+--     1 등록      status=active, 키 해시 있음, 등록 토큰이 만료 전에 쓰였고 그 출발지가 addr
+--     2 첫 로그   선언한 로그마다 receipt[로그].first_line_at 있음 (다리가 Loki 에서 실제 줄을 본 시각)
+--     3 형식 변환 nonce 가 든 nginx.request(204) · sshd.login.success · node_metrics 가 하나 이상이고
+--                 receipt 의 모든 로그에서 malformed · repeated 가 0. foreign_host 는 건수만 보인다
+--     4 규칙 적용 첫 적재 뒤에 시작한 detector_runs 가 있고, 그 규칙 버전에 이 노드의 eventid 와 맞는
+--                 활성 규칙이 있음 (eventid 같음 · eventid_like · eventids 포함,
+--                 params.sensors 가 있으면 노드 포함). 맞는 규칙을 '버전:ID' 로 보인다
+CREATE OR REPLACE FUNCTION node_first_receipt(p_node text, p_nonce text)
+RETURNS TABLE (step int, name text, ok boolean, detail text)
+LANGUAGE plpgsql
+STABLE
+SET search_path = public, pg_temp
+AS $$
+#variable_conflict use_column
+DECLARE
+    names    text[]    := ARRAY['등록', '첫 로그', '형식 변환', '규칙 적용'];
+    oks      boolean[] := ARRAY[NULL, NULL, NULL, NULL]::boolean[];
+    dets     text[]    := ARRAY['대기', '대기', '대기', '대기'];
+    nd       nodes%ROWTYPE;
+    en       node_enrollments%ROWTYPE;
+    rc       jsonb;
+    bad      text[];
+    v_text   text;
+    v_fh     text;
+    n_probe  bigint := 0;
+    n_login  bigint;
+    n_metric bigint;
+    v_evs    text[];
+    v_runs   text;
+BEGIN
+    <<checks>>
+    BEGIN
+        -- 1 등록
+        SELECT * INTO nd FROM nodes WHERE node_id = p_node;
+        IF NOT FOUND THEN
+            oks[1] := false;
+            dets[1] := '노드 없음 (nodes.py issue 로 발급부터)';
+            EXIT checks;
+        END IF;
+        bad := '{}';
+        IF nd.status <> 'active' THEN
+            bad := array_append(bad, format('status=%s', nd.status));
+        END IF;
+        IF nd.token_hash IS NULL THEN
+            bad := array_append(bad, '에이전트 키 해시 없음');
+        END IF;
+        SELECT * INTO en FROM node_enrollments
+         WHERE node_id = p_node AND used_at IS NOT NULL
+         ORDER BY used_at DESC LIMIT 1;
+        IF NOT FOUND THEN
+            SELECT format('쓴 등록 토큰 없음 (발급 %s · 만료 %s · 취소 %s)', count(*),
+                          count(*) FILTER (WHERE canceled_at IS NULL AND expires_at <= now()),
+                          count(*) FILTER (WHERE canceled_at IS NOT NULL))
+              INTO v_text
+              FROM node_enrollments WHERE node_id = p_node;
+            bad := array_append(bad, v_text);
+        ELSE
+            IF en.used_at > en.expires_at THEN
+                bad := array_append(bad, '만료 뒤에 쓰인 등록 토큰');
+            END IF;
+            IF en.used_from IS NULL OR nd.addr IS NULL OR host(en.used_from) <> host(nd.addr) THEN
+                bad := array_append(bad, format('등록 출발지 %s ≠ addr %s',
+                                                coalesce(host(en.used_from), '-'),
+                                                coalesce(host(nd.addr), '-')));
+            END IF;
+        END IF;
+        IF cardinality(bad) > 0 THEN
+            oks[1] := false;
+            dets[1] := array_to_string(bad, ' · ');
+            EXIT checks;
+        END IF;
+        oks[1] := true;
+        dets[1] := format('키 %s · %s 에서 %s 등록', nd.agent_fp, host(en.used_from),
+                          to_char(en.used_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS"Z"'));
+
+        -- 2 첫 로그
+        rc := CASE WHEN jsonb_typeof(nd.receipt) = 'object' THEN nd.receipt ELSE '{}'::jsonb END;
+        IF cardinality(nd.logs) = 0 THEN
+            oks[2] := false;
+            dets[2] := '선언한 로그 없음 (nodes.py issue --logs)';
+            EXIT checks;
+        END IF;
+        SELECT string_agg(u.l, ', ' ORDER BY u.o) INTO v_text
+          FROM unnest(nd.logs) WITH ORDINALITY AS u(l, o)
+         WHERE (rc -> u.l ->> 'first_line_at') IS NULL;
+        IF v_text IS NOT NULL THEN
+            oks[2] := false;
+            dets[2] := format('아직 줄이 없는 로그: %s', v_text);
+            EXIT checks;
+        END IF;
+        oks[2] := true;
+        SELECT string_agg(format('%s %s', u.l, rc -> u.l ->> 'first_line_at'), ' · ' ORDER BY u.o)
+          INTO v_text
+          FROM unnest(nd.logs) WITH ORDINALITY AS u(l, o);
+        dets[2] := v_text;
+
+        -- 3 형식 변환
+        bad := '{}';
+        IF coalesce(p_nonce, '') = '' THEN
+            bad := array_append(bad, 'nonce 없음');
+        ELSE
+            -- nonce 는 글자 그대로 비교한다 (LIKE 의 % · _ · \ 를 무력화)
+            SELECT count(*) INTO n_probe
+              FROM events
+             WHERE sensor = p_node AND eventid = 'nginx.request' AND http_status = 204
+               AND url LIKE '%/opsloop-first-receipt/'
+                            || replace(replace(replace(p_nonce, '\', '\\'), '%', '\%'), '_', '\_');
+            IF n_probe = 0 THEN
+                bad := array_append(bad, 'nonce 요청(204) 없음');
+            END IF;
+        END IF;
+        SELECT count(*) INTO n_login FROM events WHERE sensor = p_node AND eventid = 'sshd.login.success';
+        IF n_login = 0 THEN
+            bad := array_append(bad, 'SSH 로그인 성공 줄 없음');
+        END IF;
+        SELECT count(*) INTO n_metric FROM node_metrics WHERE node_id = p_node;
+        IF n_metric = 0 THEN
+            bad := array_append(bad, '지표 행 없음');
+        END IF;
+        SELECT string_agg(format('%s %s=%s', k.k, j.key, j.value -> k.k), ', ' ORDER BY k.k, j.key)
+          INTO v_text
+          FROM jsonb_each(rc) AS j, unnest(ARRAY['malformed', 'repeated']) AS k(k)
+         WHERE jsonb_typeof(j.value) = 'object'
+           AND (j.value -> k.k) IS NOT NULL AND (j.value -> k.k) <> '0'::jsonb;
+        IF v_text IS NOT NULL THEN
+            bad := array_append(bad, v_text);
+        END IF;
+        SELECT string_agg(format('%s=%s', j.key, j.value -> 'foreign_host'), ', ' ORDER BY j.key)
+          INTO v_fh
+          FROM jsonb_each(rc) AS j
+         WHERE jsonb_typeof(j.value) = 'object'
+           AND (j.value -> 'foreign_host') IS NOT NULL AND (j.value -> 'foreign_host') <> '0'::jsonb;
+        IF cardinality(bad) > 0 THEN
+            oks[3] := false;
+            dets[3] := array_to_string(bad, ' · ') || coalesce(' · foreign_host ' || v_fh, '');
+            EXIT checks;
+        END IF;
+        oks[3] := true;
+        dets[3] := format('nonce 요청 %s · SSH 로그인 %s · 지표 %s행', n_probe, n_login, n_metric)
+                   || coalesce(' · foreign_host ' || v_fh, '');
+
+        -- 4 규칙 적용
+        IF nd.first_loaded_at IS NULL THEN
+            oks[4] := false;
+            dets[4] := '첫 적재 시각 없음 (다리 opsloop-agents 확인)';
+            EXIT checks;
+        END IF;
+        SELECT string_agg(format('%s %s회', r.rule_version, r.n), ', ' ORDER BY r.rule_version)
+          INTO v_runs
+          FROM (SELECT rule_version, count(*) AS n FROM detector_runs
+                 WHERE started_at > nd.first_loaded_at GROUP BY rule_version) AS r;
+        IF v_runs IS NULL THEN
+            oks[4] := false;
+            dets[4] := format('첫 적재(%s) 뒤 탐지 실행 없음',
+                              to_char(nd.first_loaded_at AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS"Z"'));
+            EXIT checks;
+        END IF;
+        SELECT array_agg(DISTINCT eventid ORDER BY eventid) INTO v_evs FROM events WHERE sensor = p_node;
+        SELECT string_agg(DISTINCT format('%s:%s', rv.rule_version, x.rule ->> 'id'), ', ')
+          INTO v_text
+          FROM rule_versions AS rv
+         CROSS JOIN LATERAL jsonb_array_elements(
+                   CASE WHEN jsonb_typeof(rv.definition -> 'rules') = 'array'
+                        THEN rv.definition -> 'rules' ELSE '[]'::jsonb END) AS x(rule)
+         WHERE rv.rule_version IN (SELECT rule_version FROM detector_runs
+                                    WHERE started_at > nd.first_loaded_at)
+           AND jsonb_typeof(x.rule) = 'object'
+           AND (x.rule -> 'enabled') IS DISTINCT FROM 'false'::jsonb
+           AND (NOT coalesce((x.rule -> 'params') ? 'sensors', false)
+                OR coalesce((x.rule -> 'params' -> 'sensors') ? p_node, false))
+           AND EXISTS (SELECT 1 FROM unnest(v_evs) AS e(eventid)
+                        WHERE e.eventid = (x.rule -> 'params' ->> 'eventid')
+                           OR e.eventid LIKE (x.rule -> 'params' ->> 'eventid_like')
+                           OR coalesce((x.rule -> 'params' -> 'eventids') ? e.eventid, false));
+        IF v_text IS NULL THEN
+            oks[4] := false;
+            dets[4] := format('이 노드를 보는 규칙 없음 (노드 eventid: %s · 첫 적재 뒤 실행: %s)',
+                              coalesce(array_to_string(v_evs[1:10], ', '), '-'), v_runs);
+            EXIT checks;
+        END IF;
+        oks[4] := true;
+        dets[4] := v_text;
+    END checks;
+
+    FOR i IN 1..4 LOOP
+        step := i;
+        name := names[i];
+        ok := oks[i];
+        detail := dets[i];
+        RETURN NEXT;
+    END LOOP;
+END;
+$$;
+
+-- 관문 역할(opsloop_gate)의 권한은 nodes 네 열 읽기와 enroll_node 실행뿐이다.
+--   역할은 비밀번호 때문에 여기서 만들지 않는다. 운영자가 만든 뒤 이 파일을 다시 적용한다.
+--   먼저 표 권한을 모두 거둬, 여러 번 적용해도 위 두 권한만 남게 한다.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'opsloop_gate') THEN
+        EXECUTE format('GRANT CONNECT ON DATABASE %I TO opsloop_gate', current_database());
+        GRANT USAGE ON SCHEMA public TO opsloop_gate;
+        REVOKE ALL ON ALL TABLES IN SCHEMA public FROM opsloop_gate;
+        REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM opsloop_gate;
+        GRANT SELECT (node_id, token_hash, status, addr) ON nodes TO opsloop_gate;
+        GRANT EXECUTE ON FUNCTION enroll_node(text, text, text, inet) TO opsloop_gate;
+    END IF;
+END
+$$;

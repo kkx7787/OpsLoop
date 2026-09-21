@@ -1,0 +1,10 @@
+[Unit]
+Description=OpsLoop 노드 지표 1분 주기
+
+[Timer]
+# 매분 0초. 기본 정확도(1분)로 두면 실행이 몰리거나 한 분을 건너뛰어 seq 공백처럼 보인다
+OnCalendar=*-*-* *:*:00
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

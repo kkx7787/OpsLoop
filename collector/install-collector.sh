@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+# 데이터 노드에 관제 대상 수집(수집 관문 · 1분 다리 · 관리 CLI)을 설치한다. 관문 · 타이머는 켜지 않는다 (확인 후 직접 켠다).
+# 여러 번 돌려도 된다. 이미 있는 사용자 · 비밀번호 · 설정은 지키고, 무엇을 했는지 찍는다.
+#
+# 먼저 같은 커밋으로 puller/install-ingest.sh 를 돌려 parser · detector · puller 와 /etc/opsloop/collector.env 를 깔아 둔다.
+# install-ingest.sh 는 /opt/opsloop/app 을 통째로 바꾸므로 collector/ 가 빠진다. 그 뒤에는 이 스크립트를 다시 돌린다.
+#
+# 관문 DB 역할(opsloop_gate)의 비밀번호는 여기서 만들어 /etc/opsloop/gate.env 에만 둔다.
+# 화면 · 셸 이력 · 명령행 인자(ps)에 남기지 않는다. DB 에는 표준 입력으로 SCRAM 검증값만 넘긴다
+# (문장이 실패해 서버 로그에 남아도 비밀번호가 아니다).
+#
+# 사용 (Mac, 저장소 루트):
+#   C=$(git rev-parse --short HEAD)
+#   git archive "$C" parser detector puller collector infra/schema.sql \
+#     | ssh -F ~/.ssh/config.opsloop data01 "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol \
+#         && sudo bash /tmp/ol/puller/install-ingest.sh $C && sudo bash /tmp/ol/collector/install-collector.sh $C"
+set -euo pipefail
+VERSION=${1:?커밋}
+SRC="$(cd "$(dirname "$0")/.." && pwd)"
+DB=opsloop-db                  # compose/data.yml 의 PostgreSQL 컨테이너
+LOKI=opsloop-loki
+DB_HOST=192.168.60.11          # DB 는 이 주소에만 묶여 있다
+APP=/opt/opsloop/app
+STATE=/var/lib/opsloop
+GATE_DIR=$STATE/gate
+GATE_ENV=/etc/opsloop/gate.env
+PSQL=(docker exec -i -e "PGOPTIONS=-c client_min_messages=warning" "$DB" psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -qAt)
+
+echo "== 사전 확인"
+[ "$(id -u)" = 0 ] || { echo "root 로 돌린다 (sudo bash $0 $VERSION)" >&2; exit 1; }
+for f in collector/pull_loki.py collector/opsloop-agents.service collector/opsloop-agents.timer infra/schema.sql; do
+  [ -e "$SRC/$f" ] || { echo "받은 파일에 $f 가 없다. git archive 에 collector infra/schema.sql 을 넣는다" >&2; exit 1; }
+done
+missing=0
+for p in "$APP" /etc/default/opsloop-ingest /etc/opsloop/collector.env; do
+  [ -e "$p" ] || { echo "  없음: $p" >&2; missing=1; }
+done
+[ "$missing" = 0 ] || { echo "puller/install-ingest.sh 를 같은 커밋으로 먼저 돌린다" >&2; exit 1; }
+[ "$(docker inspect -f '{{.State.Running}}' "$DB" 2>/dev/null)" = true ] || { echo "DB 컨테이너 $DB 가 돌고 있지 않다" >&2; exit 1; }
+python3 -c 'import psycopg2' 2>/dev/null || { export DEBIAN_FRONTEND=noninteractive; apt-get update -qq && apt-get install -y -qq python3-psycopg2; }
+command -v setfacl >/dev/null || { export DEBIAN_FRONTEND=noninteractive; apt-get install -y -qq acl; }
+echo "  확인 끝 (원본 $SRC, 커밋 $VERSION)"
+
+echo "== 사용자 · 폴더"
+if id opsloop-pull >/dev/null 2>&1; then echo "  사용자 opsloop-pull 있음"; else
+  useradd --system --shell /usr/sbin/nologin --home /var/lib/opsloop opsloop-pull; echo "  사용자 opsloop-pull 만들었다"; fi
+if id opsloop-gate >/dev/null 2>&1; then echo "  사용자 opsloop-gate 있음"; else
+  useradd --system --shell /usr/sbin/nologin --home-dir /nonexistent --no-create-home opsloop-gate
+  echo "  사용자 opsloop-gate 만들었다"; fi
+# 관문은 원장 폴더까지 지나가기만 하면 된다. /var/lib/opsloop 의 다른 파일(미러 · 상태)은 읽지 못하게
+# 그룹 대신 ACL 로 지나가기(x)만 준다. install-ingest.sh 가 750 으로 되돌려도 ACL 은 남는다
+if getfacl -cp "$STATE" 2>/dev/null | grep -qx 'user:opsloop-gate:--x'; then
+  echo "  $STATE 지나가기 권한(opsloop-gate) 있음"
+else
+  setfacl -m u:opsloop-gate:x "$STATE"; echo "  $STATE 에 opsloop-gate 지나가기 권한을 줬다 (ACL)"
+fi
+before=$(stat -c '%U:%G %a' "$GATE_DIR" 2>/dev/null || echo 없음)
+# setgid: 관문 · nodes.py 가 만든 원장 파일이 opsloop-pull 그룹을 받아 다리가 읽는다
+install -d -o opsloop-gate -g opsloop-pull -m 2750 "$GATE_DIR"
+after=$(stat -c '%U:%G %a' "$GATE_DIR")
+[ "$before" = "$after" ] && echo "  $GATE_DIR 그대로 ($after)" || echo "  $GATE_DIR $before → $after"
+install -d -o root -g opsloop-pull -m 750 /etc/opsloop
+
+echo "== 코드 $VERSION → $APP/collector (root 소유. 파이프라인이 자기 코드를 바꿀 수 없다)"
+rm -rf "$APP/.collector.new"
+cp -r "$SRC/collector" "$APP/.collector.new"
+find "$APP/.collector.new" -name '__pycache__' -prune -exec rm -rf {} +
+echo "$VERSION" > "$APP/.collector.new/VERSION"
+chown -R root:root "$APP/.collector.new"
+chmod -R u+rwX,go+rX,go-w "$APP/.collector.new"
+for f in nodes.py gate.py pull_loki.py; do
+  if [ -e "$APP/.collector.new/$f" ]; then chmod 755 "$APP/.collector.new/$f"; fi
+done
+rm -rf "$APP/collector.old"
+if [ -d "$APP/collector" ]; then mv "$APP/collector" "$APP/collector.old"; echo "  이전 판은 $APP/collector.old"; fi
+mv "$APP/.collector.new" "$APP/collector"
+ls "$APP/collector" | sed 's/^/    /'
+app_ver=$(cat "$APP/VERSION" 2>/dev/null || echo 없음)
+[ "$app_ver" = "$VERSION" ] || echo "  경고: parser · detector 는 커밋 $app_ver 이다. 같은 커밋으로 install-ingest.sh 를 돌리고 이 스크립트를 다시 돌린다"
+for f in parser/parse_agent.py parser/exclusions.txt detector/detect.py detector/rules_self.json detector/rules_node.json; do
+  [ -e "$APP/$f" ] || echo "  경고: $APP/$f 가 없다. 다리가 적재 · 탐지를 하지 못한다"
+done
+grep -q -- '--quiet' "$APP/detector/detect.py" 2>/dev/null || echo "  경고: detect.py 가 --quiet 를 모른다 (구판). 다리의 탐지가 실패한다"
+
+echo "== 관문 DB 접속 정보 ($GATE_ENV)"
+rm -f "$GATE_ENV.tmp"
+if [ -s "$GATE_ENV" ]; then
+  echo "  있음. 비밀번호는 그대로 둔다"
+else
+  ( umask 077
+    python3 - "$DB_HOST" > "$GATE_ENV.tmp" <<'PY'
+import secrets, sys
+# URL 안전 문자만 나오므로 인코딩이 필요 없다
+print(f"DATABASE_URL=postgresql://opsloop_gate:{secrets.token_urlsafe(32)}@{sys.argv[1]}:5432/opsloop")
+PY
+  )
+  chown root:opsloop-gate "$GATE_ENV.tmp"
+  chmod 640 "$GATE_ENV.tmp"
+  mv "$GATE_ENV.tmp" "$GATE_ENV"
+  echo "  새 비밀번호로 만들었다 (0640 root:opsloop-gate. 화면에는 찍지 않는다)"
+fi
+
+# gate.env 로 실제 로그인이 되는지. 비밀번호는 파일에서만 읽는다
+gate_login() {
+  python3 - "$GATE_ENV" <<'PY' >/dev/null 2>&1
+import sys, psycopg2
+env = dict(l.strip().split("=", 1) for l in open(sys.argv[1], encoding="utf-8") if "=" in l and not l.startswith("#"))
+psycopg2.connect(env["DATABASE_URL"].strip(), connect_timeout=10).close()
+PY
+}
+
+echo "== DB 역할 opsloop_gate"
+role=$("${PSQL[@]}" -c "SELECT 1 FROM pg_roles WHERE rolname = 'opsloop_gate'")
+if [ "$role" = 1 ] && gate_login; then
+  echo "  있음. gate.env 로 로그인된다. 그대로 둔다"
+else
+  # 역할이 없거나 비밀번호가 gate.env 와 다르다. gate.env 의 비밀번호로 SCRAM 검증값을 만들어 표준 입력으로만 넘긴다
+  python3 - "$GATE_ENV" <<'PY' | "${PSQL[@]}" >/dev/null 2>&1 || { echo "  역할을 만들거나 고치지 못했다 (오류 문장은 검증값을 담을 수 있어 찍지 않는다)" >&2; exit 1; }
+import base64, hashlib, hmac, os, sys, urllib.parse
+env = {}
+for line in open(sys.argv[1], encoding="utf-8"):
+    line = line.strip()
+    if line and not line.startswith("#") and "=" in line:
+        k, v = line.split("=", 1)
+        env[k.strip()] = v.strip()
+u = urllib.parse.urlsplit(env.get("DATABASE_URL", ""))
+pw = urllib.parse.unquote(u.password or "")
+if u.username != "opsloop_gate" or not pw:
+    sys.exit(1)
+# PostgreSQL 이 저장하는 형식 그대로: SCRAM-SHA-256$반복:솔트$StoredKey:ServerKey (RFC 5802 · 7677)
+salt, it = os.urandom(16), 4096
+salted = hashlib.pbkdf2_hmac("sha256", pw.encode("utf-8"), salt, it)
+client = hmac.new(salted, b"Client Key", "sha256").digest()
+server = hmac.new(salted, b"Server Key", "sha256").digest()
+b64 = lambda x: base64.b64encode(x).decode()
+verifier = f"SCRAM-SHA-256${it}:{b64(salt)}${b64(hashlib.sha256(client).digest())}:{b64(server)}"
+attrs = "LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT CONNECTION LIMIT 10"
+print(f"""DO $ol$ BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'opsloop_gate') THEN
+    ALTER ROLE opsloop_gate WITH {attrs} PASSWORD '{verifier}';
+  ELSE
+    CREATE ROLE opsloop_gate WITH {attrs} PASSWORD '{verifier}';
+  END IF;
+END $ol$;""")
+PY
+  if [ "$role" = 1 ]; then echo "  비밀번호를 gate.env 에 맞췄다"; else echo "  만들었다 (접속 10개 한도, 권한은 스키마가 준다)"; fi
+fi
+
+echo "== 스키마 ($SRC/infra/schema.sql, 여러 번 돌려도 안전)"
+"${PSQL[@]}" < "$SRC/infra/schema.sql" >/dev/null
+echo "  적용했다"
+priv=$("${PSQL[@]}" -F ' ' -c "SELECT has_column_privilege('opsloop_gate','nodes','token_hash','SELECT'),
+  has_function_privilege('opsloop_gate','enroll_node(text,text,text,inet)','EXECUTE'),
+  has_table_privilege('opsloop_gate','events','SELECT'),
+  has_function_privilege('public','enroll_node(text,text,text,inet)','EXECUTE')")
+if [ "$priv" = "t t f f" ]; then
+  echo "  관문 권한: nodes 네 열 읽기 · enroll_node 실행만 (PUBLIC 실행 없음)"
+else
+  echo "  경고: 관문 권한이 예상과 다르다 (nodes 읽기 · enroll 실행 · events 읽기 · PUBLIC 실행 = $priv, 기대 t t f f)" >&2
+fi
+
+echo "== systemd 단위 (켜지 않는다)"
+for u in opsloop-gate.service opsloop-agents.service opsloop-agents.timer; do
+  if [ ! -e "$SRC/collector/$u" ]; then echo "  $u: 원본에 없어 건너뛴다"; continue; fi
+  if cmp -s "$SRC/collector/$u" "/etc/systemd/system/$u"; then echo "  $u 그대로"; else
+    install -m 644 "$SRC/collector/$u" "/etc/systemd/system/$u"; echo "  $u 설치했다"; fi
+done
+systemctl daemon-reload
+for u in opsloop-gate.service opsloop-agents.timer; do
+  echo "  $u: $(systemctl is-enabled "$u" 2>/dev/null || true) / $(systemctl is-active "$u" 2>/dev/null || true)"
+done
+
+echo "== 접속 확인"
+gate_login && echo "  관문 역할(opsloop_gate) 로그인 성공" || echo "  관문 역할 로그인 실패 ($DB_HOST:5432)" >&2
+sudo -u opsloop-pull python3 - <<'PY' && echo "  다리(opsloop-pull) DB 접속 · 파서 읽기 성공" || echo "  다리 확인 실패" >&2
+import sys
+sys.path.insert(0, "/opt/opsloop/app/collector")
+import pull_loki, psycopg2
+url = pull_loki.read_env(pull_loki.DB_ENV)["DATABASE_URL"]
+psycopg2.connect(url, connect_timeout=10).close()
+pull_loki.load_agent()
+PY
+echo "  Loki 컨테이너 $LOKI: $(docker inspect -f '{{.State.Status}}' "$LOKI" 2>/dev/null || echo 없음)"
+[ -d "$STATE/loki" ] || echo "  참고: Loki 데이터 폴더 $STATE/loki 는 운영자가 만든다"
+
+echo "설치 완료 ($VERSION). 관문 · 타이머는 켜지 않았다."
+echo "  관문 켜기   sudo systemctl enable --now opsloop-gate.service"
+echo "  다리 한 번  sudo systemctl start opsloop-agents.service; journalctl -u opsloop-agents -n 40"
+echo "  다리 켜기   sudo systemctl enable --now opsloop-agents.timer"

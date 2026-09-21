@@ -1,0 +1,38 @@
+[Unit]
+Description=OpsLoop 수집 관문 (에이전트 키 · 출발지를 본문보다 먼저 확인하고 Loki 로 넘긴다)
+Wants=network-online.target
+# 192.168.60.11 이 붙은 뒤에 듣는다. PostgreSQL · Loki 는 docker 컨테이너다 (없어도 관문은 뜨고 503 으로 답한다)
+After=network-online.target docker.service
+
+[Service]
+Type=simple
+User=opsloop-gate
+Group=opsloop-gate
+EnvironmentFile=/etc/opsloop/gate.env
+# 스레드마다 malloc 영역이 늘지 않게 하고, 큰 본문 버퍼는 mmap 으로 받아 바로 돌려준다 (MemoryMax 64M 안에서)
+Environment=MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=131072
+ExecStart=/usr/bin/python3 /opt/opsloop/app/collector/gate.py
+# 노드 캐시를 곧바로 다시 읽는다. nodes.py 는 systemctl kill -s HUP opsloop-gate 로 같은 일을 한다
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+# 처리기를 걸기 직전에 HUP 을 받아 죽은 경우도 다시 띄운다 (on-failure 는 HUP 종료를 정상으로 본다)
+RestartForceExitStatus=SIGHUP
+TimeoutStopSec=30
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/opsloop/gate
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+SystemCallFilter=@system-service
+MemoryMax=64M
+
+[Install]
+WantedBy=multi-user.target

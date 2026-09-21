@@ -1,0 +1,47 @@
+# Loki (opsloop-loki) · 관제 대상 로그의 원장 (WBS 3.4.2 · 이슈 #11)
+#   - 테넌트 하나가 노드 하나다. 테넌트는 앞단 수집 관문(192.168.60.11:3101)이 토큰으로 확인한 노드 이름으로 붙인다.
+#   - Loki 자체에는 인증이 없으므로 루프백(127.0.0.1:3100)에만 게시한다. 관문과 다리만 여기에 닿는다.
+#   - 보존 삭제는 하지 않는다 (원장). 메모리가 빠듯한 노드라 결과 캐시 · 패턴 수집기를 끈다.
+auth_enabled: true
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9095
+  log_level: warn
+
+common:
+  path_prefix: /loki
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+
+schema_config:
+  configs:
+    - from: 2026-09-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  ingestion_rate_mb: 1
+  ingestion_burst_size_mb: 2
+  max_entries_limit_per_query: 5000
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+
+query_range:
+  cache_results: false
+
+pattern_ingester:
+  enabled: false
+
+analytics:
+  reporting_enabled: false

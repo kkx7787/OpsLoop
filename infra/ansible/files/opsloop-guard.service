@@ -1,0 +1,21 @@
+[Unit]
+Description=OpsLoop 콘솔 호스트 가드 (서비스망 직접 접속 차단)
+Documentation=file:/etc/opsloop/console-guard.nft
+# 기본 nftables.service(부팅 때 flush ruleset)가 돈 뒤, docker 가 포트를 게시하기 전에 건다
+DefaultDependencies=no
+Wants=network-pre.target
+After=local-fs.target nftables.service
+Before=network-pre.target docker.service shutdown.target
+Conflicts=shutdown.target
+# nftables.service 를 다시 시작하면 flush ruleset 으로 가드도 지워진다. 그때 따라서 다시 건다
+PartOf=nftables.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/opsloop/console-guard.nft
+ExecReload=/usr/sbin/nft -f /etc/opsloop/console-guard.nft
+# ExecStop 은 두지 않는다. 단위를 멈춰도 가드는 남는다 (풀려면 nft delete table inet console_guard)
+
+[Install]
+WantedBy=sysinit.target

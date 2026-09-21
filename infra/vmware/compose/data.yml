@@ -1,5 +1,5 @@
 # 데이터 노드 (opsloop-data-01 · 데이터망 192.168.60.11)
-#   운영 데이터베이스. 판정 · 조치 · 차단 기록은 원문 로그에서 재생성되지 않으므로
+#   운영 데이터베이스와 관제 대상 로그 원장(Loki). 판정 · 조치 · 차단 기록은 원문 로그에서 재생성되지 않으므로
 #   이 노드가 백업 1순위다 (기획안 7.4).
 services:
   postgres:
@@ -25,7 +25,27 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1G
+          # 2GB 노드에 Loki · 적재 회차가 함께 돈다 (실사용 약 80MB)
+          memory: 768M
+
+  # 관제 대상(web-01) 로그의 원장. 루프백에만 게시하고, 앞단 수집 관문(3101)이 토큰을 확인한다
+  loki:
+    image: grafana/loki:3.7.8
+    container_name: opsloop-loki
+    restart: always
+    command: ["-config.file=/etc/loki/loki.yaml"]
+    environment:
+      GOMEMLIMIT: 300MiB
+      TZ: UTC
+    volumes:
+      - ./loki.yaml:/etc/loki/loki.yaml:ro
+      - /var/lib/opsloop/loki:/loki
+    ports:
+      - "127.0.0.1:3100:3100"
+    deploy:
+      resources:
+        limits:
+          memory: 384M
 
 volumes:
   pgdata:

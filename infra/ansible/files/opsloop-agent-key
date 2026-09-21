@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""web-01 에이전트 키 만들기 (WBS 3.4.3).
+
+키 파일이 없을 때만 "olA_" + 32바이트 난수(urlsafe base64)를 만들고, 있으면 그대로 둔다.
+표준 출력에는 키의 sha256(소문자 16진수) 한 줄만 낸다. 원문은 어디에도 출력하지 않는다.
+키는 이 노드 밖으로 나가지 않는다. 데이터 노드에는 sha256 만 등록한다 (opsloop-enroll).
+
+파일  /etc/alloy/opsloop.token  root:alloy 0640, 줄바꿈 없이 키만 (Alloy 의 bearer_token_file)
+  - 임시 파일에 권한부터 맞추고 쓴 뒤 fsync 하고 link 로 건다. link 는 이미 있으면 실패하므로
+    두 번 동시에 돌아도 먼저 건 키가 남고 덮어쓰지 않는다.
+  - 있는 파일의 형식이 틀리면 고치지 않고 실패한다. 지우고 다시 돌리면 새 키가 생기며, 다시 등록해야 한다.
+  - 심볼릭 링크는 따라가지 않는다.
+
+안내는 표준 오류로 낸다. "새 에이전트 키를 만들었다" 가 있으면 새로 만든 것이다 (Ansible 이 바뀜으로 센다).
+
+종료 코드  0 정상 · 1 키 파일 형식이 틀림 · 2 준비 안 됨 (그룹 없음 등)
+
+환경변수
+  OPSLOOP_TOKEN_FILE   키 파일 (기본 /etc/alloy/opsloop.token)
+  OPSLOOP_TOKEN_GROUP  읽기 그룹 (기본 alloy)
+"""
+import grp
+import hashlib
+import os
+import re
+import secrets
+import stat
+import sys
+
+PATH = os.environ.get("OPSLOOP_TOKEN_FILE", "/etc/alloy/opsloop.token")
+GROUP = os.environ.get("OPSLOOP_TOKEN_GROUP", "alloy")
+KEY_RE = re.compile(r"olA_[A-Za-z0-9_-]{43}")
+MAX = 4096
+
+
+def log(msg):
+    print(msg, file=sys.stderr, flush=True)
+
+
+def sha256_hex(key):
+    return hashlib.sha256(key.encode("utf-8")).hexdigest()
+
+
+def read_key(path):
+    """키 원문. 형식이 틀리면 ValueError. 앞뒤 공백은 Alloy 도 떼고 보내므로 떼고 본다."""
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise ValueError("일반 파일이 아니다")
+        raw = os.read(fd, MAX + 1)
+    finally:
+        os.close(fd)
+    key = raw.decode("ascii", "replace").strip()
+    if len(raw) > MAX or not KEY_RE.fullmatch(key):
+        raise ValueError("olA_ 키 형식이 아니다")
+    return key
+
+
+def fsync_dir(path):
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def create(path, gid):
+    """새 키를 건다. 이미 있으면 거짓 (그대로 둔다)."""
+    d = os.path.dirname(path) or "."
+    tmp = os.path.join(d, f".{os.path.basename(path)}.{os.getpid()}.tmp")
+    key = "olA_" + secrets.token_urlsafe(32)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        os.fchown(fd, -1, gid)
+        os.fchmod(fd, 0o640)
+        os.write(fd, key.encode("ascii"))
+        os.fsync(fd)
+    except BaseException:
+        os.close(fd)
+        os.unlink(tmp)
+        raise
+    os.close(fd)
+    try:
+        os.link(tmp, path)
+        created = True
+    except FileExistsError:
+        created = False
+    finally:
+        os.unlink(tmp)
+    fsync_dir(d)
+    return created
+
+
+def main():
+    try:
+        gid = grp.getgrnam(GROUP).gr_gid
+    except KeyError:
+        log(f"그룹 {GROUP} 이 없다. Alloy 패키지를 먼저 설치한다")
+        return 2
+    created = False
+    if not os.path.lexists(PATH):
+        try:
+            created = create(PATH, gid)
+        except OSError as e:
+            log(f"키 파일을 만들지 못했다: {e.strerror}")
+            return 2
+    try:
+        key = read_key(PATH)
+    except (OSError, ValueError) as e:
+        log(f"키 파일 {PATH} 을 쓸 수 없다 ({e}). 지우고 다시 돌리면 새 키가 생기고, 다시 등록해야 한다")
+        return 1
+    h = sha256_hex(key)
+    del key
+    if created:
+        log(f"새 에이전트 키를 만들었다 (지문 {h[:8]})")
+    else:
+        log(f"에이전트 키가 이미 있다 (지문 {h[:8]})")
+    print(h, flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

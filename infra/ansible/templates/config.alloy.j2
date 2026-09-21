@@ -1,0 +1,41 @@
+// OpsLoop {{ node_id }} 수집 에이전트 (Ansible 이 templates/config.alloy.j2 로 만든다. 손으로 고치지 않는다)
+//
+// 세 파일을 job 라벨만 붙여 수집 관문으로 보낸다. 다른 라벨(filename 은 자동)은 다리가 믿지 않는다.
+// 줄 내용은 바꾸지 않는다. 데이터 노드의 중복 방지 기준이 원문 줄의 sha1 이기 때문이다 (stage 없음).
+// 테넌트(X-Scope-OrgID)는 보내지 않는다. 관문이 토큰이 증명한 node_id 로 붙인다.
+
+logging {
+  level  = "warn"
+  format = "logfmt"
+}
+
+local.file_match "opsloop" {
+  path_targets = [
+    {"__path__" = "/var/log/nginx/opsloop.json", "job" = "nginx"},
+    {"__path__" = "/var/log/auth.log", "job" = "auth"},
+    {"__path__" = "/var/log/opsloop/metrics.jsonl", "job" = "metrics"},
+  ]
+  sync_period = "10s"
+}
+
+// 위치 파일이 없으면 처음부터 읽는다 (기본 VM 시절 auth.log 줄은 다리가 foreign_host 로 센다)
+loki.source.file "opsloop" {
+  targets    = local.file_match.opsloop.targets
+  forward_to = [loki.write.gate.receiver]
+}
+
+// 재시도: 0.5초부터 두 배씩, 최대 5분 간격으로 20회 (약 58분). 다리의 75분 되읽기 창이 이보다 길다.
+// 429 는 다시 보내고, 그 밖의 4xx(401 거부 등)는 다시 보내지 않는다.
+// 묶음은 1MiB 로 못 박는다 (기본값과 같다). Loki 순간 한도(ingestion_burst_size_mb 2)와 관문 상한(4MiB)보다 작아야
+// 한 묶음이 429 · 413 으로 되돌아오지 않는다.
+loki.write "gate" {
+  endpoint {
+    url                 = "{{ gate_url }}/loki/api/v1/push"
+    bearer_token_file   = "{{ token_file }}"
+    batch_size          = "1MiB"
+    min_backoff_period  = "500ms"
+    max_backoff_period  = "5m"
+    max_backoff_retries = 20
+    remote_timeout      = "10s"
+  }
+}
