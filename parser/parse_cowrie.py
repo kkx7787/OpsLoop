@@ -21,6 +21,7 @@ cowrie.json / cowrie.json.YYYY-MM-DD 를 읽어 PostgreSQL 로 정규화한다.
 import argparse
 import glob
 import hashlib
+import ipaddress
 import json
 import os
 import sys
@@ -98,26 +99,59 @@ def load_exclusions(path):
     return ips
 
 
+INT4 = (-2**31, 2**31 - 1)
+BATCH = 5000   # 이만큼 모이면 DB 로 흘려보낸다. 큰 조각이 와도 메모리가 한없이 늘지 않는다
+
+
 def norm_ts(raw):
     if not raw:
         return None
     try:
         return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(timezone.utc)
-    except (ValueError, AttributeError):
+    except (ValueError, AttributeError, OverflowError):
         return None
 
 
 def to_int(v):
+    """정수 열(integer)에 들어갈 값. 범위를 벗어나거나 무한대면 비운다."""
     try:
-        return int(v)
-    except (TypeError, ValueError):
+        n = int(v)
+    except (TypeError, ValueError, OverflowError):
         return None
+    return n if INT4[0] <= n <= INT4[1] else None
 
 
-def load(conn, files, exclusions):
-    rows = []
-    malformed = 0
+def text(v, n=None):
+    """DB 에 넣을 글자 값. 공격자가 넣은 비밀번호 · 명령에는 내용 제한이 없다.
 
+    - NUL(\\x00) 은 PostgreSQL 글자 열에 들어가지 못해 적재 전체가 실패한다. 지운다.
+    - 문자열이 아닌 값은 JSON 글자로 바꾼다. 그대로 넘기면 형 오류로 실패한다.
+    - n 이 있으면 자른다. 색인이 걸린 열(세션 · 이벤트 ID)만 자른다.
+    line_hash 는 원문 줄로 계산하므로 이 정리는 중복 판정에 영향이 없다.
+    """
+    if v is None:
+        return None
+    if not isinstance(v, str):
+        v = json.dumps(v, ensure_ascii=False)
+    v = v.replace("\x00", "")
+    return v if n is None or len(v) <= n else v[:n]
+
+
+def ip_or_none(v):
+    """inet 열에 들어갈 값. 주소가 아니면 비운다 (그대로 넘기면 적재 전체가 실패한다)."""
+    if not isinstance(v, str):
+        return None
+    try:
+        ipaddress.ip_address(v)
+    except ValueError:
+        return None
+    return v
+
+
+def parse_lines(files, exclusions, stats=None):
+    """파일을 읽어 적재할 행을 하나씩 내준다. DB 에 의존하지 않는다."""
+    stats = stats if stats is not None else {}
+    stats.setdefault("malformed", 0)
     for path in files:
         try:
             fh = open(path, encoding="utf-8", errors="replace")
@@ -131,30 +165,46 @@ def load(conn, files, exclusions):
                     continue
                 try:
                     ev = json.loads(line)
-                except json.JSONDecodeError:
-                    malformed += 1
+                except (json.JSONDecodeError, RecursionError):
+                    stats["malformed"] += 1
+                    continue
+                if not isinstance(ev, dict):
+                    stats["malformed"] += 1
                     continue
                 eventid = ev.get("eventid")
                 ts = norm_ts(ev.get("timestamp"))
-                if not eventid or ts is None:
-                    malformed += 1
+                if not isinstance(eventid, str) or not eventid.startswith("cowrie.") or ts is None:
+                    stats["malformed"] += 1
                     continue
-                src_ip = ev.get("src_ip")
-                rows.append((
+                src_ip = ip_or_none(ev.get("src_ip"))
+                yield (
                     hashlib.sha1(line.encode("utf-8")).hexdigest(),
-                    ts, eventid, ev.get("session"), src_ip,
+                    ts, text(eventid, 64), text(ev.get("session"), 128), src_ip,
                     to_int(ev.get("src_port")), to_int(ev.get("dst_port")),
-                    ev.get("protocol"), ev.get("username"), ev.get("password"),
-                    ev.get("input"), ev.get("url"), ev.get("shasum"),
+                    text(ev.get("protocol"), 32), text(ev.get("username")), text(ev.get("password")),
+                    text(ev.get("input")), text(ev.get("url")), text(ev.get("shasum"), 128),
                     to_int(ev.get("duration_ms")),
                     "fixture" if src_ip in exclusions else "real",
-                    ev.get("message"),
-                ))
+                    text(ev.get("message")),
+                )
 
+
+def load(conn, files, exclusions):
+    stats = {"malformed": 0}
+    total = 0
     with conn.cursor() as cur:
         cur.execute("SELECT count(*) FROM events")
         before = cur.fetchone()[0]
-        execute_batch(cur, INSERT_EVENT, rows, page_size=500)
+        batch = []
+        for row in parse_lines(files, exclusions, stats):
+            batch.append(row)
+            if len(batch) >= BATCH:
+                execute_batch(cur, INSERT_EVENT, batch, page_size=500)
+                total += len(batch)
+                batch = []
+        if batch:
+            execute_batch(cur, INSERT_EVENT, batch, page_size=500)
+            total += len(batch)
         cur.execute("SELECT count(*) FROM events")
         after = cur.fetchone()[0]
         cur.execute(REBUILD_SESSIONS)
@@ -163,7 +213,7 @@ def load(conn, files, exclusions):
     conn.commit()
 
     inserted = after - before
-    return inserted, len(rows) - inserted, malformed, n_sessions
+    return inserted, total - inserted, stats["malformed"], n_sessions
 
 
 def where_range(since, until, col):
@@ -235,9 +285,16 @@ def report(conn, since, until):
     cur.close()
 
 
+def read_file_list(src):
+    fh = sys.stdin if src == "-" else open(src, encoding="utf-8")
+    with fh:
+        return [line.rstrip("\n") for line in fh if line.strip()]
+
+
 def main():
     ap = argparse.ArgumentParser(description="OpsLoop Cowrie 로그 파서 (PostgreSQL)")
     ap.add_argument("--logs", default=DEFAULT_GLOB)
+    ap.add_argument("--files-from", help="적재할 파일 목록 (한 줄에 하나, '-' 는 표준 입력). --logs 대신 쓴다")
     ap.add_argument("--db-url", dest="url", help="미지정 시 환경변수 DATABASE_URL 사용")
     ap.add_argument("--exclusions", default=DEFAULT_EXCLUSIONS)
     ap.add_argument("--load", action="store_true", help="로그를 읽어 적재")
@@ -252,9 +309,9 @@ def main():
     conn = psycopg2.connect(db_url(args.url))
 
     if args.load:
-        files = sorted(glob.glob(args.logs))
+        files = read_file_list(args.files_from) if args.files_from else sorted(glob.glob(args.logs))
         if not files:
-            sys.exit(f"로그 파일을 찾지 못했습니다: {args.logs}")
+            sys.exit(f"로그 파일을 찾지 못했습니다: {args.files_from or args.logs}")
         exclusions = load_exclusions(args.exclusions)
         print(f"적재 대상 {len(files)}개 파일, 제외 IP {len(exclusions)}개")
         ins, dup, bad, nsess = load(conn, files, exclusions)

@@ -285,11 +285,14 @@ def suppress(cur, rules_doc, staged):
                 break
 
     if victims:
-        # 판정이 붙은 인시던트는 지우지 않는다. 사람이 내린 판단이 사라지면
-        # 폐루프의 근거가 함께 사라진다. 새 버전에서만 억제가 적용된다.
+        # 사람이 손댄 인시던트는 지우지 않는다. 판정뿐 아니라 조치(확인 · 차단 · 메모)도 그렇다.
+        # actions 는 incidents 에 ON DELETE CASCADE 로 걸려 있어, 지우면 조치 기록이 함께 사라지고
+        # 이 기록은 원문에서 다시 만들 수 없다. 새 버전에서만 억제가 적용된다.
         cur.execute("""DELETE FROM incidents i WHERE i.incident_key = ANY(%s)
                        AND NOT EXISTS (SELECT 1 FROM verdicts v
-                                       WHERE v.incident_key = i.incident_key)""",
+                                       WHERE v.incident_key = i.incident_key)
+                       AND NOT EXISTS (SELECT 1 FROM actions a
+                                       WHERE a.incident_key = i.incident_key)""",
                     (victims,))
     return counts
 

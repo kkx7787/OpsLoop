@@ -120,13 +120,13 @@ def put_once(s3, bucket, key, body, metadata):
 
 
 def upload_file(s3, bucket, host, sensor, path, state, dry_run):
-    """한 파일의 새 부분을 올린다. 올린 바이트 수를 돌려준다."""
+    """한 파일의 새 부분을 올린다. (올린 바이트 수, 실제로 연 파일의 inode, 연 시점 크기) 를 돌려준다."""
     fh, st = open_regular(path)
     ino = str(st.st_ino)
     total = 0
     with fh:
         if st.st_size == 0:
-            return 0
+            return 0, ino, 0
         prev = state.get(ino)
         ent = prev
         if prev is not None:
@@ -194,7 +194,7 @@ def upload_file(s3, bucket, host, sensor, path, state, dry_run):
             log(f"경고: {path} 이번 회차 상한 {RUN_CAP:,} B 도달. 나머지는 다음 회차로")
     if not dry_run:
         state[ino] = ent
-    return total
+    return total, ino, st.st_size
 
 
 def main():
@@ -228,30 +228,46 @@ def main():
     state = load_state(state_path)
     grand = 0
     files = {}
+    done = {}            # 이름 → 이번 회차에 실제로 연 inode
+    incomplete = []      # 이번 회차가 "끝난 회차"가 아닌 이유
     for sensor, path in sources(spec):
         try:
-            n = upload_file(s3, bucket, host, sensor, path, state, args.dry_run)
+            n, ino, size = upload_file(s3, bucket, host, sensor, path, state, args.dry_run)
         except Exception as e:           # 한 파일 실패가 나머지를 막지 않게 한다
             log(f"실패 {path}: {e}")
+            incomplete.append(f"실패 {os.path.basename(path)}")
             continue
         finally:
             if not args.dry_run:
                 save_state(state_path, state)   # 성공한 만큼은 바로 남긴다
         grand += n
-        try:
-            st = os.stat(path)
-        except FileNotFoundError:
-            continue                        # 그 사이 이름이 바뀌었다. 다음 회차에 새 이름으로 잡힌다
-        ent = state.get(str(st.st_ino), {})
-        files[os.path.basename(path)] = {"sensor": sensor, "ino": str(st.st_ino),
-                                         "gen": ent.get("gen", 0), "size": st.st_size,
+        done[os.path.basename(path)] = ino
+        ent = state.get(ino, {})
+        files[os.path.basename(path)] = {"sensor": sensor, "ino": ino,
+                                         "gen": ent.get("gen", 0), "size": size,
                                          "offset": ent.get("offset", 0)}
 
+    # 도는 사이에 회전이 끼어들었는지 본다. 이름이 새로 생겼거나 같은 이름이 다른 파일을 가리키면
+    # 이번에 올린 것이 한 시점의 모습이 아니다 (회전된 파일의 꼬리를 못 올렸을 수 있다)
+    for sensor, path in sources(spec):
+        name = os.path.basename(path)
+        try:
+            ino = str(os.stat(path, follow_symlinks=False).st_ino)
+        except FileNotFoundError:
+            continue
+        if done.get(name) != ino and f"실패 {name}" not in incomplete:
+            incomplete.append(f"회전 {name}")
+
     if not args.dry_run:
-        hb = {"ts": datetime.now(timezone.utc).isoformat(), "host": host, "files": files}
-        s3.put_object(Bucket=bucket, Key=f"hb/v1/host={host}/latest.json",
-                      Body=json.dumps(hb, ensure_ascii=False).encode(),
-                      ContentType="application/json")
+        if incomplete:
+            # 생존 신호는 "여기까지 끝났다"는 표시다. 끝나지 않은 회차에는 쓰지 않는다.
+            # 풀러는 지난 신호 이후 조각을 받지 않고 기다린다. 계속되면 풀러 쪽에서 신호 멈춤으로 드러난다
+            log(f"경고: 이번 회차가 끝나지 않아 생존 신호를 쓰지 않는다 ({', '.join(incomplete)})")
+        else:
+            hb = {"ts": datetime.now(timezone.utc).isoformat(), "host": host, "files": files}
+            s3.put_object(Bucket=bucket, Key=f"hb/v1/host={host}/latest.json",
+                          Body=json.dumps(hb, ensure_ascii=False).encode(),
+                          ContentType="application/json")
     log(f"완료 · 이번 회차 {grand:,} B")
 
 
