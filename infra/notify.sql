@@ -6,6 +6,10 @@
 --
 -- 제약: NOTIFY 페이로드는 8000 바이트를 넘을 수 없다. 그래서 인시던트
 -- 전체가 아니라 식별자와 요약만 보낸다. 상세는 콘솔이 REST 로 가져간다.
+--
+-- target 은 IP 가 아닌 대상(user:<이름> · node:<id>)이다 (schema.sql 이슈 #14 블록).
+-- NEW.target 으로 읽지 않고 행을 jsonb 로 바꿔 꺼낸다. 이 파일이 그 블록보다 먼저 적용되면
+-- NEW.target 은 모든 인시던트 INSERT(허니팟 v1 · v2 포함)를 실패시키지만, 이렇게 하면 NULL 로 나간다.
 
 CREATE OR REPLACE FUNCTION notify_incident() RETURNS trigger AS $$
 BEGIN
@@ -15,6 +19,7 @@ BEGIN
         'rule_name',    NEW.rule_name,
         'severity',     NEW.severity,
         'actor_ip',     host(NEW.actor_ip),
+        'target',       to_jsonb(NEW) ->> 'target',
         'first_ts',     NEW.first_ts,
         'last_ts',      NEW.last_ts,
         'signal_count', NEW.signal_count,

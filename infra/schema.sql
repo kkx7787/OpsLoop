@@ -597,3 +597,131 @@ BEGIN
     END IF;
 END
 $$;
+
+-- 규칙군 확장 (이슈 #14 · 2026-09-22)
+--   w1(웹 · 인증) · a1(차단 목록 감사) · i1(노드 수신 끊김)이 쓰는 열 · 함수 · 트리거다. 여러 번 적용해도 결과가 같다.
+--   허니팟 v1 · v2 의 입력과 적재 문장은 바뀌지 않는다. 새 열은 비어 있거나 기본값을 받는다.
+--   이 블록을 먼저 적용하고 코드를 깐다. 새 탐지기의 대상 적재(a1 · i1)와 R301, 콘솔 · triage 는 새 열을 읽고 쓴다.
+
+-- IP 가 아닌 대상 (user:<이름> · node:<id>). 탐지기가 신호의 detail._target 을 여기 넣고 actor_ip 는 비운다.
+--   콘솔은 actor_ip 가 있을 때만 차단 목록에 넣으므로, 이런 인시던트로는 콘솔 · 인프라 주소를 막을 수 없다
+ALTER TABLE incidents ADD COLUMN IF NOT EXISTS target text;
+CREATE INDEX IF NOT EXISTS idx_inc_target ON incidents (target) WHERE target IS NOT NULL;
+
+-- 다리가 지표를 넣은 시각 (R301 노드 수신 끊김). ts 는 노드가 만든 시각이라, 밀린 줄을 나중에 한꺼번에 받으면
+--   ts 에는 공백이 없어도 그동안 관제는 아무것도 받지 못했다. 다리의 INSERT 열 목록은 그대로 두고 기본값으로 채운다.
+--   기존 행은 넣은 시각을 모르므로 ts 로 채운다. DO 블록 하나(한 트랜잭션)로 묶어, 열을 더한 뒤 기본값을 걸기 전에
+--   다리가 넣은 행이 비어 NOT NULL 이 실패하는 일이 없게 한다. 두 번째부터는 채울 행이 없다
+DO $$
+BEGIN
+    ALTER TABLE node_metrics ADD COLUMN IF NOT EXISTS loaded_at timestamptz;
+    UPDATE node_metrics SET loaded_at = ts WHERE loaded_at IS NULL;
+    ALTER TABLE node_metrics ALTER COLUMN loaded_at SET DEFAULT now();
+    ALTER TABLE node_metrics ALTER COLUMN loaded_at SET NOT NULL;
+END
+$$;
+CREATE INDEX IF NOT EXISTS idx_node_metrics_node_loaded ON node_metrics (node_id, loaded_at);
+
+-- 차단 목록 감사 (a1 R201 차단 대량 해제의 입력)
+--   차단의 해제 · 만료 변경을 DB 트리거가 events 에 남긴다 (sensor = 'audit'). 콘솔을 거치지 않은 psql 직접 변경도 남는다.
+--   누가 했는지는 앱이 트랜잭션 안에서 set_config('opsloop.actor', <사용자>, true) 로 넘긴다 (app/main.py add_action).
+--   넘기지 않았으면 'db:<DB 역할>' 이다. triage.py 도 판정자를 넘긴다. triage 의 차단은 만료가 없으므로(영구)
+--   살아 있는 콘솔 차단에 다시 걸면 extended 가 남는다.
+--     console.block.released   살아 있는 차단을 풀거나 지웠다          R201 이 센다
+--     console.block.shortened  살아 있는 차단의 만료를 앞당겼다        R201 이 센다
+--     console.block.extended   살아 있는 차단의 만료를 늦췄다
+--   만료는 어디서도 집행하지 않고 활성은 released_at IS NULL 로만 정한다. 그래서 살아 있는 차단을 푸는 것은
+--   만료가 지났든 아니든 해제(released)다. 만료가 지났는지는 input 의 past_expiry 로만 남긴다. 호출자가 넣은
+--   해제 시각(미래 · 과거)으로 분류가 갈리지 않는다. 만료를 집행하는 작업(3.9)이 생기면 그 해제를 따로 가른다.
+--   살아 있는 차단의 주소(actor_ip)를 바꾸는 것도 원래 주소의 해제로 남긴다 (how=readdress).
+--   이미 풀린 차단을 다시 풀거나 풀린 차단을 새로 거는 것은 남기지 않는다.
+--   sensor 를 console 로 두지 않는다. v1 · v2 R005(기준선)는 sensors 가 없으면 cowrie · decoy · console 을 세므로
+--   console 로 두면 허니팟 규칙의 입력이 바뀐다. audit 는 탐지기의 BASELINE_SENSORS 밖이다.
+--   계정(console_users) 감사는 아직 두지 않는다.
+--
+--   잔여 위험 (T-8): 콘솔 · 다리의 DB 역할 opsloop 는 슈퍼유저다. session_replication_role = replica 나
+--   ALTER TABLE … DISABLE TRIGGER 로 이 감사와 아래 추가 전용 보호를 끌 수 있고, TRUNCATE 는 행 트리거에 걸리지 않는다.
+--   앱 경로와 실수는 남기지만 슈퍼유저의 의도적인 우회는 막지 못한다.
+ALTER TABLE blocklist ADD COLUMN IF NOT EXISTS released_by text;
+
+CREATE OR REPLACE FUNCTION audit_event(p_eventid text, p_input text) RETURNS void
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v_ts    timestamptz := clock_timestamp();
+    -- set_config(…, true) 가 끝난 연결에서는 NULL 이 아니라 '' 가 돌아온다
+    v_actor text := coalesce(nullif(current_setting('opsloop.actor', true), ''), 'db:' || session_user);
+BEGIN
+    INSERT INTO events (line_hash, ts, eventid, src_ip, username, input, provenance, sensor)
+    VALUES (encode(sha256(convert_to(concat_ws('|', 'audit', p_eventid, v_ts::text,
+                                               txid_current()::text, v_actor, p_input), 'UTF8')), 'hex'),
+            v_ts, p_eventid, inet_client_addr(), left(v_actor, 128),
+            left(format('by=%s %s', v_actor, p_input), 1024), 'real', 'audit')
+    ON CONFLICT (line_hash) DO NOTHING;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION audit_blocklist() RETURNS trigger
+LANGUAGE plpgsql
+SET search_path = public, pg_temp
+AS $$
+DECLARE
+    v text;
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        IF OLD.released_at IS NULL THEN          -- 살아 있는 차단을 지우는 것도 해제다
+            PERFORM audit_event('console.block.released',
+                                format('ip=%s incident=%s how=delete past_expiry=%s', host(OLD.actor_ip),
+                                       coalesce(OLD.incident_key, '-'),
+                                       CASE WHEN OLD.expires_at <= now() THEN 'yes' ELSE 'no' END));
+        END IF;
+        RETURN NULL;
+    END IF;
+    IF OLD.released_at IS NULL AND NEW.actor_ip IS DISTINCT FROM OLD.actor_ip THEN
+        -- 주소를 바꾸면 원래 주소의 차단이 풀린다. 해제 · 만료 변경이 함께 있어도 이 한 줄로 남긴다
+        PERFORM audit_event('console.block.released',
+                            format('ip=%s incident=%s how=readdress to=%s', host(OLD.actor_ip),
+                                   coalesce(OLD.incident_key, '-'), host(NEW.actor_ip)));
+    ELSIF OLD.released_at IS NULL AND NEW.released_at IS NOT NULL THEN
+        SELECT verdict INTO v FROM verdicts WHERE incident_key = NEW.incident_key
+         ORDER BY created_at DESC LIMIT 1;
+        PERFORM audit_event('console.block.released',
+            format('ip=%s incident=%s verdict=%s past_expiry=%s', host(NEW.actor_ip),
+                   coalesce(NEW.incident_key, '-'), coalesce(v, 'none'),
+                   CASE WHEN OLD.expires_at <= now() THEN 'yes' ELSE 'no' END));
+    ELSIF OLD.released_at IS NULL AND NEW.released_at IS NULL
+          AND NEW.expires_at IS DISTINCT FROM OLD.expires_at THEN
+        PERFORM audit_event(
+            CASE WHEN NEW.expires_at IS NOT NULL AND (OLD.expires_at IS NULL OR NEW.expires_at < OLD.expires_at)
+                 THEN 'console.block.shortened' ELSE 'console.block.extended' END,
+            format('ip=%s from=%s to=%s', host(NEW.actor_ip), coalesce(OLD.expires_at::text, 'none'),
+                   coalesce(NEW.expires_at::text, 'none')));
+    END IF;
+    RETURN NULL;
+END;
+$$;
+
+-- CREATE OR REPLACE TRIGGER 로 바꾼다 (PostgreSQL 14+). DROP 뒤 CREATE 는 그 사이의 해제를 놓친다
+CREATE OR REPLACE TRIGGER trg_audit_blocklist
+    AFTER UPDATE OF released_at, expires_at, actor_ip OR DELETE ON blocklist
+    FOR EACH ROW EXECUTE FUNCTION audit_blocklist();
+
+-- 감사 기록 조회 (S-14 의 원천). 지금은 차단 목록 감사만 담는다
+CREATE OR REPLACE VIEW audit_log AS
+SELECT ts, eventid, username AS actor, host(src_ip) AS db_client, input AS detail
+  FROM events
+ WHERE sensor = 'audit' AND eventid LIKE 'console.block.%';
+
+-- 차단 목록 감사 행은 추가만 된다. 적재기 · 다리는 INSERT … DO NOTHING 만 하고,
+--   parse_decoy.py 의 출처 재분류는 decoy 행만 고치므로 걸리지 않는다
+CREATE OR REPLACE FUNCTION audit_append_only() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION '감사 이벤트는 고치거나 지울 수 없다 (%)', OLD.eventid;
+END;
+$$;
+CREATE OR REPLACE TRIGGER trg_audit_append_only
+    BEFORE UPDATE OR DELETE ON events
+    FOR EACH ROW WHEN (OLD.sensor = 'audit' AND OLD.eventid LIKE 'console.block.%')
+    EXECUTE FUNCTION audit_append_only();
