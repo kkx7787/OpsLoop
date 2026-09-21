@@ -120,13 +120,16 @@ def put_once(s3, bucket, key, body, metadata):
 
 
 def upload_file(s3, bucket, host, sensor, path, state, dry_run):
-    """한 파일의 새 부분을 올린다. (올린 바이트 수, 실제로 연 파일의 inode, 연 시점 크기) 를 돌려준다."""
+    """한 파일의 새 부분을 올린다.
+
+    (올린 바이트 수, 실제로 연 파일의 inode, 연 시점 크기, 회차 상한에 걸려 덜 올렸는지) 를 돌려준다.
+    """
     fh, st = open_regular(path)
     ino = str(st.st_ino)
     total = 0
     with fh:
         if st.st_size == 0:
-            return 0, ino, 0
+            return 0, ino, 0, False
         prev = state.get(ino)
         ent = prev
         if prev is not None:
@@ -190,11 +193,12 @@ def upload_file(s3, bucket, host, sensor, path, state, dry_run):
             ent["offset"] = offset
             if not dry_run:
                 state[ino] = ent
-        if budget <= 0 and offset < st.st_size:
+        capped = budget <= 0 and offset < st.st_size
+        if capped:
             log(f"경고: {path} 이번 회차 상한 {RUN_CAP:,} B 도달. 나머지는 다음 회차로")
     if not dry_run:
         state[ino] = ent
-    return total, ino, st.st_size
+    return total, ino, st.st_size, capped
 
 
 def main():
@@ -232,7 +236,7 @@ def main():
     incomplete = []      # 이번 회차가 "끝난 회차"가 아닌 이유
     for sensor, path in sources(spec):
         try:
-            n, ino, size = upload_file(s3, bucket, host, sensor, path, state, args.dry_run)
+            n, ino, size, capped = upload_file(s3, bucket, host, sensor, path, state, args.dry_run)
         except Exception as e:           # 한 파일 실패가 나머지를 막지 않게 한다
             log(f"실패 {path}: {e}")
             incomplete.append(f"실패 {os.path.basename(path)}")
@@ -242,6 +246,9 @@ def main():
                 save_state(state_path, state)   # 성공한 만큼은 바로 남긴다
         grand += n
         done[os.path.basename(path)] = ino
+        if capped:
+            # 덜 올린 파일이 있으면 이번 회차는 한 시점의 모습이 아니다 (회전 파일 꼬리가 밀린 채 새 파일만 올라갈 수 있다)
+            incomplete.append(f"상한 {os.path.basename(path)}")
         ent = state.get(ino, {})
         files[os.path.basename(path)] = {"sensor": sensor, "ino": ino,
                                          "gen": ent.get("gen", 0), "size": size,

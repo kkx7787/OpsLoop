@@ -94,6 +94,19 @@ class DecoyTest(unittest.TestCase):
         self.assertEqual((len(rows), bad), (1, 4))
 
 
+    def test_남은_독_줄_세_가지와_긴_줄(self):
+        rows, bad = parse(parse_decoy, [
+            decoy_line(src_ip="fe80::1%eth0"),
+            '{"ts":"2026-09-21T05:00:00+00:00","eventid":"decoy.request","src_port":' + "9" * 5000 + '}',
+            '{"ts":"2026-09-21T05:00:00+00:00","eventid":"decoy.request","url":"/\\ud800x"}',
+            decoy_line(url="/" + "a" * (parse_decoy.MAX_LINE + 10)),
+        ])
+        self.assertEqual((len(rows), bad), (2, 2))
+        self.assertIsNone(rows[0][4])
+        rows[1][11].encode("utf-8")                       # 서로게이트가 남지 않아 UTF-8 로 바뀐다
+        self.assertEqual(rows[1][11], "/?x")
+
+
 class CowrieTest(unittest.TestCase):
     def test_정상_줄은_그대로(self):
         ev = cowrie_line()
@@ -109,6 +122,12 @@ class CowrieTest(unittest.TestCase):
     def test_긴_비밀번호는_자르지_않음(self):
         [row], _ = parse(parse_cowrie, [cowrie_line(password="p" * 10000)])
         self.assertEqual(len(row[9]), 10000)             # 색인이 없는 열은 원문 길이 그대로 (AWS 경로와 같은 값)
+
+    def test_서로게이트_비밀번호와_영역_ID(self):
+        [row], _ = parse(parse_cowrie, ['{"timestamp":"2026-09-21T05:00:00Z","eventid":"cowrie.login.failed",'
+                                        '"password":"\\udc80pw","src_ip":"fe80::1%eth0"}'])
+        row[9].encode("utf-8")
+        self.assertIsNone(row[4])
 
     def test_cowrie_가_아닌_이벤트는_받지_않음(self):
         rows, bad = parse(parse_cowrie, [cowrie_line(eventid="console.login.success")])
