@@ -1,0 +1,12 @@
+# console-a · 고정 주소. 기본 경로는 내부 방화벽으로 향한다.
+network:
+  version: 2
+  ethernets:
+    primary:
+      match: {name: "e*"}
+      dhcp4: false
+      addresses: [192.168.50.11/24]
+      routes:
+        - {to: default, via: 192.168.50.1}
+      nameservers:
+        addresses: [1.1.1.1, 8.8.8.8]

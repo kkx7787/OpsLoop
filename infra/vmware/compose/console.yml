@@ -1,0 +1,19 @@
+# 관제 콘솔 (opsloop-console-a · b · 서비스망)
+#   상태를 갖지 않는다. 공유 상태는 데이터 노드의 PostgreSQL 에 둔다 (기획안 5.3).
+#   두 대가 같은 SESSION_SECRET 을 가져야 한 쪽으로 넘어가도 로그인이 풀리지 않는다.
+services:
+  api:
+    build: ./app
+    container_name: opsloop-api
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://opsloop:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 필요}@192.168.60.11:5432/opsloop
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET 필요}
+      TZ: UTC
+    ports:
+      # HAProxy(방화벽 VM)가 이 포트로 헬스체크하고 트래픽을 보낸다.
+      - "8000:8000"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
