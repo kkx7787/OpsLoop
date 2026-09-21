@@ -1,0 +1,25 @@
+#!/usr/sbin/nft -f
+# 콘솔 A·B 호스트 가드 (설계 6장 · Ansible 이 /etc/opsloop/console-guard.nft 로 둔다)
+#
+# web-01 과 콘솔은 같은 서비스망(L2)에 있어 둘 사이 통신은 내부 방화벽을 지나지 않는다.
+# 콘솔은 8000 을 모든 주소에 게시하고, docker 가 게시한 포트는 DNAT(-100)를 거쳐 FORWARD 로 흐르므로
+# INPUT 체인으로는 막을 수 없다. 그래서 DNAT 보다 앞(-150)에서 HAProxy(방화벽 192.168.50.1)가 아닌
+# 서비스망 출발 패킷을 버린다.
+#
+# flush ruleset 을 쓰지 않는다 (docker 규칙까지 지운다). 이 표만 지우고 다시 만든다.
+# 첫 줄은 표가 없을 때 delete 가 실패하지 않게 빈 표를 먼저 만든다. 셋이 한 트랜잭션으로 들어간다.
+# ARP 위장은 막지 못한다 (설계 11장).
+table inet console_guard
+delete table inet console_guard
+table inet console_guard {
+  chain pre {
+    type filter hook prerouting priority -150; policy accept;
+    iifname "lo" accept
+    ip saddr 192.168.50.1 accept
+    ip saddr 192.168.50.0/24 drop
+    # 서비스망은 IPv4 만 쓴다. IPv6 는 이웃 탐색까지 모두 버린다.
+    # 링크 로컬 출발만 막으면 web-01 이 라우터 광고(ICMPv6)로 콘솔에 전역 주소와 경로를 심은 뒤
+    # 그 주소에서 docker 가 [::] 에 게시한 8000 으로 들어올 수 있다.
+    meta nfproto ipv6 drop
+  }
+}

@@ -1,0 +1,25 @@
+[Unit]
+Description=OpsLoop 노드 지표 한 줄 (CPU · 메모리 · 디스크 · 서비스 상태)
+
+[Service]
+Type=oneshot
+User=opsloop-metrics
+Group=opsloop-metrics
+ExecStart=/usr/bin/python3 /usr/local/lib/opsloop/metrics.py
+# 지표 파일은 0640, 그룹은 폴더(setgid adm)를 따른다. Alloy 는 adm 그룹으로 읽는다
+UMask=0027
+# /proc 을 읽고 systemctl 로 두 서비스 상태만 묻는다. 쓰는 곳은 지표 파일과 번호 폴더 둘뿐이다
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/log/opsloop /var/lib/opsloop
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=
+SystemCallFilter=@system-service
+MemoryMax=64M
+TimeoutStartSec=30

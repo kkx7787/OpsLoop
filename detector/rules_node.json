@@ -1,0 +1,27 @@
+{
+  "rule_version": "n1",
+  "note": "관제 대상 노드(web-01 등)의 로그에 적용하는 규칙. 1분 다리(opsloop-agents)가 적재 직후 돌린다. 허니팟 규칙(v1 · v2)과 버전을 나눈 것은 정상 사용자가 있는 환경의 임계치를 정상이 없는 환경의 관측에서 빌려 올 수 없기 때문이다. R101 은 최소판이고 R102(404)는 3.5.1 에서 더한다. 변경 시 rule_version 을 올린다.",
+  "aggregation": {
+    "window_gap_seconds": 900,
+    "comment": "관제 대상의 연속 활동 분포가 아직 없어 허니팟 규칙과 같은 15분에서 시작한다."
+  },
+  "rules": [
+    {
+      "id": "R101",
+      "name": "SSH 반복 실패 (관제 대상)",
+      "severity": "medium",
+      "type": "actor_rate",
+      "enabled": true,
+      "params": {
+        "eventids": [
+          "sshd.login.failed",
+          "sshd.login.invalid_user"
+        ],
+        "window_seconds": 600,
+        "threshold": 5
+      },
+      "rationale": "허니팟은 대부분의 비밀번호를 통과시키지만 실제 서버에서는 실패만 반복하는 쪽이 다수다(v2 R001 참조). 없는 사용자 시도도 같은 행위라 함께 센다. 파서가 두 이벤트의 이름을 나눠 한 줄이 두 번 세이지 않는다. eventid 가 sshd.* 라 cowrie 이벤트는 걸리지 않으므로 발생원을 정하지 않는다. 노드를 더해도 규칙 파일을 고칠 필요가 없다. 관제 대상의 실패 분포가 아직 없어 10분 5회는 관측에서 도출한 값이 아니라 출발점이며, 판정이 쌓이면 다음 버전에서 다시 정한다. 신호가 10분 고정창으로 만들어지므로, 통합 창은 슬롯 경계에 걸리지 않도록 창의 두 배인 20분으로 둔다(R001 과 같은 이유).",
+      "aggregation_gap_seconds": 1200
+    }
+  ]
+}

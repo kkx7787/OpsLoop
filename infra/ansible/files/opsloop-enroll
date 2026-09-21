@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+"""web-01 자기 등록 (WBS 3.4.3 · 설계 4장).
+
+1회용 등록 토큰으로 이 노드의 에이전트 키 해시를 수집 관문에 등록한다. 키 원문은 이 노드 밖으로 나가지 않는다.
+
+  1. 키 파일(/etc/alloy/opsloop.token)을 읽어 sha256 을 구한다.
+  2. 등록 표식(/etc/alloy/opsloop.enrolled)이 이 값과 같으면 이미 등록된 것이므로 아무것도 하지 않는다.
+  3. POST {관문}/opsloop/v1/enroll   Authorization: Bearer <등록 토큰>   {"node_id": ..., "agent_sha256": ...}
+  4. 200 {"result":"ok"} 이면 표식에 sha256 을 쓴다. 관문은 캐시를 다시 읽은 뒤에 200 을 주므로 곧바로 Alloy 를 켜도 된다.
+     응답이 중간에 사라져 다시 보내도, 같은 키 · 같은 출발지면 관문이 ok 를 준다.
+
+등록 토큰은 환경변수 OPSLOOP_ENROLL_TOKEN 이나 표준 입력(--token-stdin)으로 받는다. Ansible 은 표준 입력으로 넘긴다.
+환경변수로 넘기면 sudo 가 명령줄째 auth.log 에 남기고, 그 줄이 Alloy 를 거쳐 원장(Loki)에 영구히 들어간다.
+토큰은 어디에도 쓰지 않고 출력하지 않는다. 관문 주소 밖으로 보내지 않도록 프록시와 재지정(3xx)을 따르지 않는다.
+
+종료 코드
+  0  등록했거나 이미 등록돼 있다 (표준 출력 첫 줄: "등록했다 ..." 또는 "이미 등록돼 있다 ...")
+  1  관문이 거부했다. 사유를 출력한다 (enroll_used · enroll_expired · enroll_unknown · addr_mismatch · bad_key ...)
+  2  준비가 안 됐다 (키 파일 · 등록 토큰 없음, 형식이 틀림)
+  3  관문에 닿지 않는다 (몇 번 다시 해 본 뒤)
+
+사용
+  opsloop-enroll --node web-01 [--gate http://192.168.60.11:3101] [--token-stdin]
+
+환경변수
+  OPSLOOP_TOKEN_FILE     키 파일 (기본 /etc/alloy/opsloop.token)
+  OPSLOOP_ENROLL_MARKER  등록 표식 (기본 /etc/alloy/opsloop.enrolled)
+  OPSLOOP_ENROLL_TRIES   관문에 닿지 않을 때 시도 횟수 (기본 5, 간격 2 · 4 · 8 · 16초)
+"""
+import argparse
+import hashlib
+import http.client
+import json
+import os
+import re
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+
+TOKEN_FILE = os.environ.get("OPSLOOP_TOKEN_FILE", "/etc/alloy/opsloop.token")
+MARKER = os.environ.get("OPSLOOP_ENROLL_MARKER", "/etc/alloy/opsloop.enrolled")
+TRIES = max(1, int(os.environ.get("OPSLOOP_ENROLL_TRIES", "5")))
+ENROLL_PATH = "/opsloop/v1/enroll"
+KEY_RE = re.compile(r"olA_[A-Za-z0-9_-]{43}")
+TOKEN_RE = re.compile(r"olE_[A-Za-z0-9_-]{20,128}")
+NODE_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,62}")
+REASON_RE = re.compile(r"[a-z_]{1,40}")
+MAX = 4096
+
+EXIT_OK, EXIT_REJECTED, EXIT_NOT_READY, EXIT_UNREACHABLE = 0, 1, 2, 3
+
+
+def log(msg):
+    print(msg, file=sys.stderr, flush=True)
+
+
+def sha256_hex(s):
+    return hashlib.sha256(s.encode("utf-8")).hexdigest()
+
+
+def read_small(path):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        raw = os.read(fd, MAX + 1)
+    finally:
+        os.close(fd)
+    if len(raw) > MAX:
+        raise ValueError("파일이 너무 크다")
+    return raw.decode("ascii", "replace").strip()
+
+
+def agent_sha256(path):
+    key = read_small(path)
+    if not KEY_RE.fullmatch(key):
+        raise ValueError("olA_ 키 형식이 아니다")
+    return sha256_hex(key)
+
+
+def enrolled_hash(path):
+    try:
+        return read_small(path)
+    except (OSError, ValueError):
+        return ""
+
+
+def write_marker(path, h):
+    d = os.path.dirname(path) or "."
+    fd, tmp = tempfile.mkstemp(dir=d, prefix=f".{os.path.basename(path)}.")
+    try:
+        with os.fdopen(fd, "w", encoding="ascii") as f:
+            f.write(h + "\n")
+            f.flush()
+            os.fchmod(f.fileno(), 0o644)
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    """재지정을 따르면 Authorization 이 다른 곳으로 갈 수 있다. 관문은 재지정하지 않는다."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect)
+
+
+def reason_of(body, code):
+    """응답 본문의 result. 형식이 틀리면 http_<코드>. 로그에 쓰므로 영문 소문자만 받는다."""
+    try:
+        r = json.loads(body.decode("utf-8")).get("result")
+    except (ValueError, AttributeError, UnicodeError):
+        r = None
+    return r if isinstance(r, str) and REASON_RE.fullmatch(r) else f"http_{code}"
+
+
+def post(gate, token, node, h):
+    """→ (HTTP 코드, 사유). 관문에 닿지 않으면 (None, 오류 종류)."""
+    body = json.dumps({"node_id": node, "agent_sha256": h}, separators=(",", ":")).encode()
+    req = urllib.request.Request(gate.rstrip("/") + ENROLL_PATH, data=body, method="POST", headers={
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "User-Agent": "opsloop-enroll/1",
+    })
+    try:
+        with OPENER.open(req, timeout=10) as resp:
+            return resp.status, reason_of(resp.read(MAX), resp.status)
+    except urllib.error.HTTPError as e:
+        try:
+            data = e.read(MAX)
+        except OSError:
+            data = b""
+        return e.code, reason_of(data, e.code)
+    except (urllib.error.URLError, http.client.HTTPException, OSError) as e:
+        return None, type(getattr(e, "reason", e)).__name__
+
+
+def enroll(gate, token, node, h, tries=TRIES):
+    for i in range(tries):
+        code, reason = post(gate, token, node, h)
+        if code is not None and code != 503:
+            return code, reason
+        if i + 1 < tries:
+            wait = 2 ** (i + 1)
+            log(f"관문 응답 없음 ({code or reason}). {wait}초 뒤 다시 한다")
+            time.sleep(wait)
+    return None, reason
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description="등록 토큰으로 이 노드의 에이전트 키 해시를 수집 관문에 등록한다")
+    ap.add_argument("--node", required=True, help="노드 ID (예: web-01)")
+    ap.add_argument("--gate", default="http://192.168.60.11:3101", help="수집 관문 주소")
+    ap.add_argument("--token-stdin", action="store_true", help="등록 토큰을 표준 입력에서 읽는다")
+    args = ap.parse_args(argv)
+
+    if not NODE_RE.fullmatch(args.node):
+        log("노드 ID 형식이 틀렸다")
+        return EXIT_NOT_READY
+    if not re.fullmatch(r"https?://[A-Za-z0-9.\-]+(:[0-9]{1,5})?/?", args.gate):
+        log("관문 주소 형식이 틀렸다 (http://주소:포트)")
+        return EXIT_NOT_READY
+    try:
+        h = agent_sha256(TOKEN_FILE)
+    except (OSError, ValueError) as e:
+        log(f"에이전트 키를 읽지 못했다 ({e}). opsloop-agent-key 를 먼저 돌린다")
+        return EXIT_NOT_READY
+    fp = h[:8]
+    if enrolled_hash(MARKER) == h:
+        print(f"이미 등록돼 있다 (지문 {fp})", flush=True)
+        return EXIT_OK
+
+    token = sys.stdin.read(MAX).strip() if args.token_stdin else os.environ.get("OPSLOOP_ENROLL_TOKEN", "").strip()
+    if not token:
+        log("등록 토큰이 없다. 데이터 노드에서 nodes.py issue 로 받아 OPSLOOP_ENROLL_TOKEN 에 넣는다")
+        return EXIT_NOT_READY
+    if token.startswith("olA_"):
+        log("에이전트 키가 아니라 등록 토큰(olE_)을 넣는다")
+        return EXIT_NOT_READY
+    if not TOKEN_RE.fullmatch(token):
+        log("등록 토큰 형식이 틀렸다 (olE_ 로 시작해야 한다)")
+        return EXIT_NOT_READY
+
+    code, reason = enroll(args.gate, token, args.node, h)
+    del token
+    if code is None:
+        log(f"관문 {args.gate} 에 닿지 않는다 ({reason}). 관문 기동 · 방화벽 3101 을 본다")
+        return EXIT_UNREACHABLE
+    if code == 200 and reason == "ok":
+        write_marker(MARKER, h)
+        print(f"등록했다 (노드 {args.node} · 지문 {fp})", flush=True)
+        return EXIT_OK
+    print(f"관문이 거부했다: {reason} (HTTP {code} · 지문 {fp})", flush=True)
+    return EXIT_REJECTED
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,15 @@
+# OpsLoop web-01 nginx 접근 기록 (Ansible 이 /etc/logrotate.d/nginx-opsloop 로 둔다)
+# 패키지 기본 회전(/etc/logrotate.d/nginx)은 *.log 만 돌리므로 opsloop.json 을 따로 적는다. 보존 14일은 같다.
+/var/log/nginx/opsloop.json {
+    daily
+    missingok
+    rotate 14
+    compress
+    delaycompress
+    notifempty
+    create 0640 www-data adm
+    sharedscripts
+    postrotate
+        invoke-rc.d nginx rotate >/dev/null 2>&1
+    endscript
+}

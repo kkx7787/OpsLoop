@@ -1,0 +1,11 @@
+[Unit]
+Description=OpsLoop 관제 대상 로그 다리 주기 실행 (1분)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=1min
+# 기본 정확도(1분)면 실제 주기가 1~2분으로 벌어진다. 거부에서 인시던트까지 약 80초를 지키려고 좁힌다
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

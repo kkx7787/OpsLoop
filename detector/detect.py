@@ -13,12 +13,15 @@ OpsLoop - 탐지 엔진 (WBS 2.3 / PostgreSQL)
   3. 멱등하다. 같은 (규칙, 버전, 대상, 시작시각)이면 다시 만들지 않는다.
   4. 규칙 정의를 rule_versions 에 남긴다. 임계치를 왜 바꿨는지가 남아야
      "조치가 탐지를 개선했다"를 나중에 증명할 수 있다.
+  5. 규칙은 params.sensors 로 발생원을 한정한다. 실행마다 detector_runs 에 한 행을
+     남겨 "적재 뒤에 탐지가 돌았는가"를 DB 가 답한다.
 
 사용
   export DATABASE_URL='postgresql://opsloop:PASSWORD@호스트:5432/opsloop'
   python3 detect.py --run
   python3 detect.py --run --since 2026-09-05 --until 2026-09-06
   python3 detect.py --run --rules rules_v2.json
+  python3 detect.py --run --rules rules_self.json --quiet     요약 표 없이
   python3 detect.py --list
   python3 detect.py --compare v1 v2
   python3 detect.py --quality
@@ -45,6 +48,10 @@ ALLOWED_SESSION_FIELDS = {
 }
 ALLOWED_OPS = {">=", ">", "=", "<=", "<"}
 
+# 발생원을 정하지 않은 기준선 이탈이 보는 범위. 관제 대상(web-01 등)과 수집 관문의
+# 이벤트가 섞이면 v1 · v2 기준선의 평균과 편차가 허니팟 트래픽이 아닌 것으로 흔들린다.
+BASELINE_SENSORS = ["cowrie", "decoy", "console"]
+
 
 def db_url(arg):
     url = arg or os.environ.get("DATABASE_URL")
@@ -53,18 +60,29 @@ def db_url(arg):
     return url
 
 
-def range_clause(since, until, col):
+def range_clause(since, until, col, sensors=None):
     c, p = ["provenance = 'real'"], []
     if since:
         c.append(f"{col} >= %s"); p.append(since)
     if until:
         c.append(f"{col} < %s"); p.append(until)
+    if sensors:
+        c.append("sensor = ANY(%s)"); p.append(sensors)
     return " AND ".join(c), p
+
+
+def rule_sensors(rule, default=None):
+    """params.sensors 를 돌려준다. 없으면 default. 비었거나 문자열 목록이 아니면 규칙 오류다."""
+    s = rule["params"].get("sensors", default)
+    if s is not None and not (isinstance(s, list) and s and all(isinstance(x, str) and x for x in s)):
+        raise ValueError(f"{rule['id']}: sensors 는 비어 있지 않은 문자열 목록이어야 합니다")
+    return s
 
 
 # ----------------------------------------------------------------------
 #  규칙별 신호 수집
 #  각 함수는 (ts, actor_ip, session, detail) 튜플 목록을 돌려준다
+#  params.sensors 가 있으면 그 발생원(events · sessions 의 sensor)만 본다
 # ----------------------------------------------------------------------
 
 def signals_session_threshold(cur, rule, since, until):
@@ -73,7 +91,7 @@ def signals_session_threshold(cur, rule, since, until):
         raise ValueError(f"{rule['id']}: 허용되지 않은 필드 {p['field']}")
     if p["op"] not in ALLOWED_OPS:
         raise ValueError(f"{rule['id']}: 허용되지 않은 연산자 {p['op']}")
-    w, prm = range_clause(since, until, "first_ts")
+    w, prm = range_clause(since, until, "first_ts", rule_sensors(rule))
     cur.execute(
         f"SELECT first_ts, src_ip, session, {p['field']} "
         f"FROM sessions WHERE {w} AND {p['field']} {p['op']} %s",
@@ -90,7 +108,7 @@ def signals_session_compound(cur, rule, since, until):
     noop_command_patterns 에 걸리지 않는 명령이 하나라도 있어야 신호가 된다.
     """
     p = rule["params"]
-    w, prm = range_clause(since, until, "first_ts")
+    w, prm = range_clause(since, until, "first_ts", rule_sensors(rule))
     cond, extra = f"({p['expr']})", []
     noop = p.get("noop_command_patterns")
     if noop:
@@ -113,7 +131,7 @@ def signals_event_match(cur, rule, since, until):
     이것을 critical 로 올리는 것은 규칙이 겨냥한 현상이 아니다.
     """
     p = rule["params"]
-    w, prm = range_clause(since, until, "ts")
+    w, prm = range_clause(since, until, "ts", rule_sensors(rule))
     if "eventid" in p:
         cond, extra = "eventid = %s", [p["eventid"]]
     else:
@@ -132,9 +150,10 @@ def signals_baseline_deviation(cur, rule, since, until):
 
     학습 모델이 아니라 기술 통계다. 관측 구간의 평균과 표준편차로 임계선을
     정한다. 규칙에 없는 새 패턴을 잡기 위한 보완 장치.
+    sensors 가 없으면 허니팟 · 콘솔(BASELINE_SENSORS)만 센다.
     """
     p = rule["params"]
-    w, prm = range_clause(since, until, "ts")
+    w, prm = range_clause(since, until, "ts", rule_sensors(rule, BASELINE_SENSORS))
 
     # v2: 이미 다른 규칙이 잡은 행위자를 기준선에서 뺀다.
     #
@@ -185,7 +204,7 @@ def signals_actor_rate(cur, rule, since, until):
     """
     p = rule["params"]
     window = p["window_seconds"]
-    w, prm = range_clause(since, until, "ts")
+    w, prm = range_clause(since, until, "ts", rule_sensors(rule))
     cur.execute(
         f"SELECT ts, src_ip, session FROM events "
         f"WHERE {w} AND eventid = ANY(%s) AND src_ip IS NOT NULL ORDER BY src_ip, ts",
@@ -373,6 +392,17 @@ def run(conn, rules_doc, since, until, verbose=True):
         created += n_now
         summary.append((rule["id"], rule["name"], n_signals, len(rows), n_now, rule_gap, n_sup))
 
+    # 실행 기록. 첫 수신 확인(node_first_receipt 4단계)이 "적재 뒤에 탐지가 돌았는가"를 여기서 본다.
+    # 구 스키마에는 표가 없으므로 건너뛴다. incidents.created_at 의 기본값 now() 는 트랜잭션
+    # 시작 시각이므로, 그 값을 가진 행이 이번 실행에서 새로 생기고 억제 뒤에도 남은 인시던트다.
+    cur.execute("SELECT to_regclass('detector_runs') IS NOT NULL")
+    if cur.fetchone()[0]:
+        cur.execute(
+            """INSERT INTO detector_runs (rule_version, since, until, started_at, finished_at, incidents)
+               SELECT %s, %s::timestamptz, %s::timestamptz, now(), clock_timestamp(), count(*)
+               FROM incidents WHERE rule_version = %s AND created_at = now()""",
+            (version, since, until, version))
+
     conn.commit()
     cur.close()
 
@@ -471,13 +501,14 @@ def main():
     ap.add_argument("--severity"); ap.add_argument("--status")
     ap.add_argument("--compare", nargs=2, metavar=("V1", "V2"))
     ap.add_argument("--quality", action="store_true", help="오탐률·비조치율 집계")
+    ap.add_argument("--quiet", action="store_true", help="--run 의 요약 표를 찍지 않는다")
     args = ap.parse_args()
 
     conn = psycopg2.connect(db_url(args.url))
 
     if args.run:
         with open(args.rules, encoding="utf-8") as f:
-            run(conn, json.load(f), args.since, args.until)
+            run(conn, json.load(f), args.since, args.until, verbose=not args.quiet)
     if args.list:
         list_incidents(conn, args.limit, args.severity, args.status)
     if args.compare:

@@ -28,6 +28,13 @@ echo "== 코드 $VERSION (root 소유. 파이프라인이 자기 코드를 바�
 rm -rf /opt/opsloop/app.new
 install -d -m 755 /opt/opsloop /opt/opsloop/app.new
 cp -r "$SRC/parser" "$SRC/detector" "$SRC/puller" /opt/opsloop/app.new/
+# 관제 대상 수집(collector/)도 같은 앱 폴더에 있다. 받은 묶음에 있으면 함께 바꾸고, 없으면 지금 것을 옮겨 둔다
+# (앱 폴더를 통째로 바꾸므로 그냥 두면 사라져 수집 관문이 뜨지 않는다)
+if [ -d "$SRC/collector" ]; then
+  cp -r "$SRC/collector" /opt/opsloop/app.new/
+elif [ -d /opt/opsloop/app/collector ]; then
+  cp -r /opt/opsloop/app/collector /opt/opsloop/app.new/
+fi
 find /opt/opsloop/app.new -name '__pycache__' -prune -exec rm -rf {} +
 echo "$VERSION" > /opt/opsloop/app.new/VERSION
 chown -R root:root /opt/opsloop/app.new

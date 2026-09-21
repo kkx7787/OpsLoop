@@ -1,0 +1,12 @@
+# OpsLoop 지표 줄 (Ansible 이 /etc/logrotate.d/opsloop-metrics 로 둔다)
+# metrics.py 는 실행마다 파일을 새로 열어 붙이므로 이름만 바꾸면 된다 (copytruncate 불필요).
+# 새 파일은 다음 실행(1분 안)이 0640 opsloop-metrics:adm 으로 만든다.
+/var/log/opsloop/metrics.jsonl {
+    daily
+    rotate 14
+    missingok
+    notifempty
+    compress
+    delaycompress
+    nocreate
+}

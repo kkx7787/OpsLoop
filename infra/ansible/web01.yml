@@ -1,0 +1,477 @@
+# web-01 관제 대상 수집 구성 (이슈 #11 · WBS 3.4.2~3.4.4 · docs/2026-09-21-web01-수집-설계.md)
+#
+# Mac 의 infra/ansible 폴더에서 돌린다. 처음에는 데이터 노드에서 등록 토큰을 받아 환경변수에만 둔다
+# (화면과 셸 이력에 남지 않는다. 1시간 · 1회용):
+#   export OPSLOOP_ENROLL_TOKEN="$(ssh -F ~/.ssh/config.opsloop data01 sudo /opt/opsloop/app/collector/nodes.py \
+#       issue web-01 --host opsloop-web-01 --addr 192.168.50.21 --logs nginx,auth,metrics)"
+#   ansible-playbook web01.yml
+#
+# 순서
+#   1. 방화벽에 구성 창을 연다 (web-01 → 인터넷 443 · 53. 30분 뒤 저절로 닫힌다)
+#   2. 불필요 서비스를 끈다 (snapd · multipathd · unattended-upgrades · apt 자동 갱신)
+#   3. nginx: JSON 접근 기록 opsloop.json, 첫 수신 탐침 경로 204
+#   4. rsyslog: 반복 축약을 끈다
+#   5. 지표: metrics.py + 1분 타이머 + 회전
+#   6. Alloy: apt.grafana.com 1.19.2 (arm64 있음 확인) 고정 · hold, config.alloy, 메모리 256M, 사용 통계 끔
+#      → 인터넷이 더 필요 없으므로 구성 창을 여기서 닫는다
+#   7. 에이전트 키 (없을 때만 만든다. Mac 은 sha256 만 본다)
+#   8. 자기 등록 (등록 토큰은 표준 입력으로만 넘기고 no_log)
+#   9. Alloy 기동. 등록이 끝난 뒤에만 켠다 (먼저 켜면 관문이 401 을 주고 R202 가 스스로 울린다)
+#  10. 탐침 (nginx 204 · 새 SSH 로그인 · 없는 사용자) → 데이터 노드에서 첫 수신 4단계 확인 (최대 10분)
+#  항상  구성 창을 닫는다
+#
+# 두 번째 실행은 changed=0 이다. 구성 창 · 탐침 · 확인은 남기는 상태가 없어 바뀜으로 세지 않는다.
+# 탐침과 확인을 빼려면 --skip-tags receipt.
+
+- name: web-01 수집 구성
+  hosts: web01
+  become: true
+  gather_facts: false
+
+  vars:
+    fw_host: fw
+    data_host: data01
+    gate_url: "http://192.168.60.11:3101"
+    alloy_version: "1.19.2-1"
+    # https://apt.grafana.com/gpg.key (지문 B53A E77B ADB6 30A6 8304 6005 963F A277 1045 8545, 2027-08-22 만료)
+    grafana_key_sha256: "3d4029689bc7e4444ec00abafa07f21e9c812b41f1123ab5bbe6f8c3e3f7ff8c"
+    token_file: /etc/alloy/opsloop.token
+    enroll_marker: /etc/alloy/opsloop.enrolled
+    nodes_cli: /opt/opsloop/app/collector/nodes.py
+    # 켜져(enabled) 있을 때만 끈다. static 단위를 건드리면 매번 바뀜으로 잡힌다
+    unused_units:
+      - snapd.socket
+      - snapd.service
+      - snapd.seeded.service
+      - multipathd.socket
+      - multipathd.service
+      - unattended-upgrades.service
+      - apt-daily.timer
+      - apt-daily-upgrade.timer
+    receipt_hints:
+      "1": "1단계 등록: status · 키 해시 · 등록 토큰 사용 기록을 본다. 만료 · 재사용이면 nodes.py issue 로 다시 받는다"
+      "2": "2단계 첫 로그: journalctl -u alloy, 관문 원장(/var/lib/opsloop/gate/collector-*.jsonl)의 401 사유, 방화벽 3101 을 본다"
+      "3": "3단계 형식 변환: nginx log_format, rsyslog 반복 축약(repeated), 호스트명(foreign_host), 지표 줄(malformed)을 본다"
+      "4": "4단계 규칙 적용: detector/rules_node.json(n1) 적재와 detector_runs, 이 노드 eventid 를 보는 규칙이 있는지 본다"
+      "5": "확인 도구가 DB 에 접속하지 못했다 (/etc/opsloop/collector.env · PostgreSQL)"
+
+  handlers:
+    - name: nginx 설정 검사
+      ansible.builtin.command: /usr/sbin/nginx -t
+      changed_when: false
+      listen: nginx 다시 읽기
+
+    - name: nginx 설정 적용
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: reloaded
+      listen: nginx 다시 읽기
+
+    - name: rsyslog 설정 검사
+      ansible.builtin.command: /usr/sbin/rsyslogd -N1
+      changed_when: false
+      listen: rsyslog 다시 시작
+
+    - name: rsyslog 재시작
+      ansible.builtin.systemd_service:
+        name: rsyslog
+        state: restarted
+      listen: rsyslog 다시 시작
+
+    - name: 지표 타이머 재시작
+      ansible.builtin.systemd_service:
+        name: opsloop-metrics.timer
+        state: restarted
+        daemon_reload: true
+      listen: 지표 타이머 다시 시작
+
+  tasks:
+    - name: 등록 표식 확인
+      ansible.builtin.stat:
+        path: "{{ enroll_marker }}"
+      register: marker
+
+    - name: 처음 등록이면 등록 토큰이 있어야 한다
+      ansible.builtin.fail:
+        msg: >-
+          OPSLOOP_ENROLL_TOKEN 이 비어 있다. 데이터 노드에서 nodes.py issue 로 받아 환경변수에 넣고 다시 돌린다
+          (이 파일 머리말 참고).
+      when:
+        - not marker.stat.exists
+        - lookup('ansible.builtin.env', 'OPSLOOP_ENROLL_TOKEN') | length == 0
+
+    - name: 구성 · 첫 수신 확인
+      block:
+        # --- 1. 구성 창 ---
+        - name: 구성 창 열기 (방화벽 · 30분 뒤 저절로 닫힘)
+          ansible.builtin.shell: |
+            set -e
+            if ! nft list set inet filter provision >/dev/null 2>&1; then
+              echo "방화벽에 provision 집합이 없다. infra/vmware/fw/nftables.conf 새 판을 먼저 적용한다" >&2
+              exit 1
+            fi
+            nft delete element inet filter provision '{ {{ node_addr }} }' 2>/dev/null || true
+            nft add element inet filter provision '{ {{ node_addr }} timeout 30m }'
+          delegate_to: "{{ fw_host }}"
+          changed_when: false
+
+        # --- 2. 불필요 서비스 ---
+        - name: 패키지 저장소 HTTPS (방화벽은 인터넷 80 을 열지 않는다)
+          ansible.builtin.replace:
+            path: /etc/apt/sources.list.d/ubuntu.sources
+            regexp: 'http://ports\.ubuntu\.com'
+            replace: 'https://ports.ubuntu.com'
+
+        - name: 켜져 있는 단위 목록
+          ansible.builtin.command:
+            argv: [systemctl, list-unit-files, --no-legend, --plain, --state=enabled]
+          register: enabled_units
+          changed_when: false
+
+        - name: 불필요 서비스 끄기
+          ansible.builtin.systemd_service:
+            name: "{{ item }}"
+            state: stopped
+            enabled: false
+          loop: "{{ unused_units }}"
+          when: item in (enabled_units.stdout_lines | map('split') | map('first') | list)
+
+        # --- 3. nginx ---
+        - name: nginx 설치
+          ansible.builtin.apt:
+            name: nginx
+            state: present
+            update_cache: true
+            cache_valid_time: 86400
+
+        - name: nginx 기본 사이트 끄기 (opsloop.conf 가 default_server 를 맡는다)
+          ansible.builtin.file:
+            path: /etc/nginx/sites-enabled/default
+            state: absent
+          notify: nginx 다시 읽기
+
+        - name: nginx JSON 접근 기록 · 탐침 경로
+          ansible.builtin.copy:
+            src: nginx-opsloop.conf
+            dest: /etc/nginx/conf.d/opsloop.conf
+            owner: root
+            group: root
+            mode: "0644"
+          notify: nginx 다시 읽기
+
+        - name: nginx 접근 기록 회전 (14일)
+          ansible.builtin.copy:
+            src: nginx-opsloop.logrotate
+            dest: /etc/logrotate.d/nginx-opsloop
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: nginx 켜기
+          ansible.builtin.systemd_service:
+            name: nginx
+            enabled: true
+            state: started
+
+        # --- 4. rsyslog ---
+        - name: rsyslog 반복 축약 끄기
+          ansible.builtin.copy:
+            src: rsyslog-opsloop.conf
+            dest: /etc/rsyslog.d/00-opsloop.conf
+            owner: root
+            group: root
+            mode: "0644"
+          notify: rsyslog 다시 시작
+
+        # --- 5. 지표 ---
+        - name: 지표 사용자
+          ansible.builtin.user:
+            name: opsloop-metrics
+            system: true
+            shell: /usr/sbin/nologin
+            home: /nonexistent
+            create_home: false
+
+        - name: 지표 폴더
+          ansible.builtin.file:
+            path: "{{ item.path }}"
+            state: directory
+            owner: "{{ item.owner }}"
+            group: "{{ item.group }}"
+            mode: "{{ item.mode }}"
+          loop:
+            - {path: /usr/local/lib/opsloop, owner: root, group: root, mode: "0755"}
+            - {path: /var/lib/opsloop, owner: opsloop-metrics, group: opsloop-metrics, mode: "0750"}
+            # setgid: 새 지표 파일의 그룹이 adm 이 되어 Alloy(adm)가 읽는다
+            - {path: /var/log/opsloop, owner: opsloop-metrics, group: adm, mode: "02750"}
+
+        - name: 지표 스크립트
+          ansible.builtin.copy:
+            src: metrics.py
+            dest: /usr/local/lib/opsloop/metrics.py
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: 지표 단위
+          ansible.builtin.copy:
+            src: "{{ item }}"
+            dest: "/etc/systemd/system/{{ item }}"
+            owner: root
+            group: root
+            mode: "0644"
+          loop: [opsloop-metrics.service, opsloop-metrics.timer]
+          notify: 지표 타이머 다시 시작
+
+        - name: 지표 회전 (14일)
+          ansible.builtin.copy:
+            src: metrics.logrotate
+            dest: /etc/logrotate.d/opsloop-metrics
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: 지표 타이머 켜기
+          ansible.builtin.systemd_service:
+            name: opsloop-metrics.timer
+            enabled: true
+            state: started
+            daemon_reload: true
+
+        # --- 6. Alloy ---
+        - name: 저장소 키 폴더
+          ansible.builtin.file:
+            path: /etc/apt/keyrings
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Grafana 저장소 키 (파일 sha256 고정)
+          ansible.builtin.get_url:
+            url: https://apt.grafana.com/gpg.key
+            dest: /etc/apt/keyrings/grafana.asc
+            checksum: "sha256:{{ grafana_key_sha256 }}"
+            owner: root
+            group: root
+            mode: "0644"
+
+        - name: Grafana 저장소
+          ansible.builtin.copy:
+            dest: /etc/apt/sources.list.d/grafana.sources
+            owner: root
+            group: root
+            mode: "0644"
+            content: |
+              # Grafana Alloy 만 받는다 (web01.yml). 판은 고정하고 hold 한다
+              Types: deb
+              URIs: https://apt.grafana.com
+              Suites: stable
+              Components: main
+              Signed-By: /etc/apt/keyrings/grafana.asc
+
+        - name: 설치된 Alloy 판
+          ansible.builtin.command:
+            argv: [dpkg-query, -W, "-f=${db:Status-Status} ${Version}", alloy]
+          register: alloy_have
+          changed_when: false
+          failed_when: false
+
+        - name: Alloy 설치 (판 고정)
+          ansible.builtin.apt:
+            name: "alloy={{ alloy_version }}"
+            state: present
+            # 원하는 판이 아직 없을 때만 목록을 새로 받는다 (Grafana 저장소를 방금 더했을 수 있다)
+            update_cache: "{{ alloy_have.stdout != ('installed ' ~ alloy_version) }}"
+            allow_change_held_packages: true
+          register: alloy_pkg
+
+        - name: Alloy 판 묶기 (apt upgrade 로 바뀌지 않게)
+          ansible.builtin.dpkg_selections:
+            name: alloy
+            selection: hold
+
+        - name: 구성 창 닫기 (패키지 설치 끝)
+          ansible.builtin.command:
+            argv: [nft, delete, element, inet, filter, provision, "{ {{ node_addr }} }"]
+          delegate_to: "{{ fw_host }}"
+          changed_when: false
+          failed_when: false
+
+        - name: Alloy 설정 폴더 (alloy 는 읽기만. 패키지 기본값 770 을 좁힌다)
+          ansible.builtin.file:
+            path: /etc/alloy
+            state: directory
+            owner: root
+            group: alloy
+            mode: "0750"
+
+        - name: Alloy 설정
+          ansible.builtin.template:
+            src: config.alloy.j2
+            dest: /etc/alloy/config.alloy
+            owner: root
+            group: alloy
+            mode: "0640"
+            validate: /usr/bin/alloy validate %s
+          register: alloy_conf
+
+        - name: Alloy 실행 인자 (사용 통계 끔 · 화면은 루프백만)
+          ansible.builtin.lineinfile:
+            path: /etc/default/alloy
+            regexp: '^CUSTOM_ARGS='
+            line: 'CUSTOM_ARGS="--disable-reporting --server.http.listen-addr=127.0.0.1:12345"'
+          register: alloy_env
+
+        - name: Alloy 드롭인 폴더
+          ansible.builtin.file:
+            path: /etc/systemd/system/alloy.service.d
+            state: directory
+            owner: root
+            group: root
+            mode: "0755"
+
+        - name: Alloy 드롭인 (메모리 256M · 읽기 전용)
+          ansible.builtin.copy:
+            src: alloy-dropin.conf
+            dest: /etc/systemd/system/alloy.service.d/opsloop.conf
+            owner: root
+            group: root
+            mode: "0644"
+          register: alloy_dropin
+
+        # nginx · rsyslog 를 새 설정으로 돌린 뒤에 Alloy 가 읽기 시작하게 한다
+        - name: 바뀐 설정 적용
+          ansible.builtin.meta: flush_handlers
+
+        # --- 7. 에이전트 키 ---
+        - name: 키 · 등록 도구
+          ansible.builtin.copy:
+            src: "{{ item }}"
+            dest: "/usr/local/sbin/{{ item }}"
+            owner: root
+            group: root
+            mode: "0755"
+          loop: [opsloop-agent-key, opsloop-enroll]
+
+        - name: 에이전트 키 (없을 때만 만든다 · sha256 만 나온다)
+          ansible.builtin.command: /usr/local/sbin/opsloop-agent-key
+          environment:
+            OPSLOOP_TOKEN_FILE: "{{ token_file }}"
+          register: agent_key
+          changed_when: "'새 에이전트 키' in agent_key.stderr"
+
+        - name: 에이전트 키 권한 (root:alloy 0640)
+          ansible.builtin.file:
+            path: "{{ token_file }}"
+            state: file
+            owner: root
+            group: alloy
+            mode: "0640"
+
+        # --- 8. 자기 등록 ---
+        # 등록 토큰은 표준 입력으로만 넘긴다. environment 로 넘기면 sudo 가 명령줄째 auth.log 에 남기고
+        # 그 줄이 Alloy 를 거쳐 원장에 들어간다. 결과(stdout · stderr)에는 토큰이 없으므로 아래에서 보인다.
+        - name: 자기 등록
+          ansible.builtin.command:
+            argv: [/usr/local/sbin/opsloop-enroll, --gate, "{{ gate_url }}", --node, "{{ node_id }}", --token-stdin]
+            stdin: "{{ lookup('ansible.builtin.env', 'OPSLOOP_ENROLL_TOKEN') }}"
+          environment:
+            OPSLOOP_TOKEN_FILE: "{{ token_file }}"
+            OPSLOOP_ENROLL_MARKER: "{{ enroll_marker }}"
+          no_log: true
+          register: enroll
+          changed_when: enroll.rc == 0 and '등록했다' in (enroll.stdout | default(''))
+          failed_when: false
+
+        - name: 자기 등록 결과
+          ansible.builtin.debug:
+            msg: "{{ ((enroll.stdout_lines | default([])) + (enroll.stderr_lines | default([])) + [enroll.msg | default('')]) | select | list }}"
+
+        - name: 자기 등록 실패
+          ansible.builtin.fail:
+            msg: >-
+              자기 등록 실패 (종료 코드 {{ enroll.rc }}). enroll_used · enroll_expired · enroll_canceled 면
+              nodes.py issue 로 새 등록 토큰을 받아 다시 돌린다. addr_mismatch 면 issue 의 --addr 를 본다.
+          when: enroll.rc != 0
+
+        # --- 9. Alloy 기동 ---
+        - name: Alloy 켜기 (등록이 끝난 뒤에만)
+          ansible.builtin.systemd_service:
+            name: alloy
+            enabled: true
+            state: started
+            daemon_reload: true
+          register: alloy_started
+
+        - name: Alloy 다시 시작 (설정 · 키가 바뀜)
+          ansible.builtin.systemd_service:
+            name: alloy
+            state: restarted
+            daemon_reload: true
+          when:
+            - alloy_started is not changed
+            - alloy_pkg is changed or alloy_conf is changed or alloy_env is changed or alloy_dropin is changed or agent_key is changed
+
+        # --- 10. 첫 수신 확인 ---
+        - name: 탐침 번호
+          ansible.builtin.set_fact:
+            receipt_nonce: "{{ lookup('ansible.builtin.password', '/dev/null', length=20, chars=['ascii_lowercase', 'digits']) }}"
+          tags: [receipt]
+
+        - name: 탐침 nginx (204 한 줄 · 127.0.0.1 은 fixture)
+          ansible.builtin.uri:
+            url: "http://127.0.0.1/opsloop-first-receipt/{{ receipt_nonce }}"
+            status_code: 204
+          become: false
+          tags: [receipt]
+
+        - name: SSH 연결 끊기 (다음 작업이 새 로그인 줄을 남긴다)
+          ansible.builtin.meta: reset_connection
+          tags: [receipt]
+
+        - name: 탐침 SSH 로그인 (Accepted publickey 한 줄)
+          ansible.builtin.command: /bin/true
+          become: false
+          changed_when: false
+          tags: [receipt]
+
+        # 4단계는 이 노드의 eventid 를 보는 규칙이 있어야 통과한다. R101(n1)은 로그인 실패 · 없는 사용자만 보므로
+        # 없는 사용자 한 줄을 남긴다. 127.0.0.1 출발이라 fixture 로 분류되고, 한 줄로는 R101 문턱(5회)에 닿지 않는다
+        - name: 탐침 없는 사용자 (Invalid user 한 줄)
+          ansible.builtin.command:
+            argv: [ssh, -o, BatchMode=yes, -o, StrictHostKeyChecking=no, -o, UserKnownHostsFile=/dev/null,
+                   -o, ConnectTimeout=5, -o, LogLevel=ERROR, opsloop-probe@127.0.0.1, "true"]
+          become: false
+          changed_when: false
+          failed_when: false
+          tags: [receipt]
+
+        - name: 첫 수신 확인 (데이터 노드 · 최대 10분)
+          ansible.builtin.command:
+            argv: [/usr/bin/python3, "{{ nodes_cli }}", check, "{{ node_id }}", --nonce, "{{ receipt_nonce }}",
+                   --wait, "600", --kick]
+          delegate_to: "{{ data_host }}"
+          register: receipt
+          changed_when: false
+          failed_when: false
+          tags: [receipt]
+
+        - name: 첫 수신 확인 결과
+          ansible.builtin.debug:
+            msg: "{{ (receipt.stdout_lines | default([])) + (receipt.stderr_lines | default([])) }}"
+          tags: [receipt]
+
+        - name: 첫 수신 확인 실패
+          ansible.builtin.fail:
+            msg: "{{ receipt_hints[receipt.rc | string] | default('확인 도구 오류 (종료 코드 ' ~ receipt.rc ~ ')') }}"
+          when: receipt.rc != 0
+          tags: [receipt]
+
+      always:
+        - name: 구성 창 닫기
+          ansible.builtin.command:
+            argv: [nft, delete, element, inet, filter, provision, "{ {{ node_addr }} }"]
+          delegate_to: "{{ fw_host }}"
+          changed_when: false
+          failed_when: false
