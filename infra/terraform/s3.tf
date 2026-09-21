@@ -112,6 +112,68 @@ data "aws_iam_policy_document" "archive_bucket" {
     }
   }
 
+  # 원장 · 생존 신호는 기본 저장 등급으로만 쓴다. 센서가 GLACIER 같은 등급으로 올리면
+  # 안쪽에서 바로 읽을 수 없어 가져오기가 막힌다. 헤더가 없으면(기본값 STANDARD) 허용한다.
+  statement {
+    sid       = "LedgerStandardStorageOnly"
+    effect    = "Deny"
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.archive.arn}/raw/*", "${aws_s3_bucket.archive.arn}/hb/*"]
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    condition {
+      test     = "Null"
+      variable = "s3:x-amz-storage-class"
+      values   = ["false"]
+    }
+    condition {
+      test     = "StringNotEquals"
+      variable = "s3:x-amz-storage-class"
+      values   = ["STANDARD"]
+    }
+  }
+
+  # 버킷 기본 암호화(SSE-S3)만 쓴다. 센서가 다른 계정의 KMS 키나 자기 키(SSE-C)로
+  # 암호화해 올리면 안쪽에서 읽을 수 없어 가져오기가 막힌다. 헤더가 없으면 기본 암호화가 적용된다.
+  statement {
+    sid       = "LedgerDefaultEncryptionOnly"
+    effect    = "Deny"
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.archive.arn}/raw/*", "${aws_s3_bucket.archive.arn}/hb/*"]
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    condition {
+      test     = "Null"
+      variable = "s3:x-amz-server-side-encryption"
+      values   = ["false"]
+    }
+    condition {
+      test     = "StringNotEquals"
+      variable = "s3:x-amz-server-side-encryption"
+      values   = ["AES256"]
+    }
+  }
+
+  statement {
+    sid       = "LedgerNoCustomerKey"
+    effect    = "Deny"
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.archive.arn}/raw/*", "${aws_s3_bucket.archive.arn}/hb/*"]
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    condition {
+      test     = "Null"
+      variable = "s3:x-amz-server-side-encryption-customer-algorithm"
+      values   = ["false"]
+    }
+  }
+
   # 원장은 지우지 않는다
   statement {
     sid       = "DenyLedgerDelete"

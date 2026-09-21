@@ -38,13 +38,23 @@ mv /opt/opsloop/app.new /opt/opsloop/app
 install -m 755 "$SRC/puller/opsloop-ingest" /usr/local/bin/opsloop-ingest
 install -m 644 "$SRC/puller/opsloop-ingest.service" /etc/systemd/system/opsloop-ingest.service
 install -m 644 "$SRC/puller/opsloop-ingest.timer" /etc/systemd/system/opsloop-ingest.timer
-cat > /etc/default/opsloop-ingest <<EOT
+# 설정은 처음 설치할 때만 만든다. 이미 있으면 손으로 바꾼 값(센서 호스트 추가 등)을 지키려고 덮어쓰지 않는다
+if [ ! -s /etc/default/opsloop-ingest ]; then
+  cat > /etc/default/opsloop-ingest <<EOT
 OPSLOOP_BUCKET=$BUCKET
 OPSLOOP_HOSTS=$HOSTS
 OPSLOOP_HOME=/var/lib/opsloop
 AWS_DEFAULT_REGION=ap-northeast-2
 EOT
-chmod 644 /etc/default/opsloop-ingest
+  chmod 644 /etc/default/opsloop-ingest
+fi
+echo "  설정 (/etc/default/opsloop-ingest):"; sed 's/^/    /' /etc/default/opsloop-ingest
+# 운영자가 확인한 원장 구멍 목록. root 만 고칠 수 있고 풀러는 읽기만 한다
+if [ ! -e /etc/opsloop/gap-ack.json ]; then
+  echo '[]' > /etc/opsloop/gap-ack.json
+  chgrp opsloop-pull /etc/opsloop/gap-ack.json
+  chmod 640 /etc/opsloop/gap-ack.json
+fi
 systemctl daemon-reload
 
 echo "== DB 접속 정보"

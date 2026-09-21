@@ -60,7 +60,73 @@ class UploaderTest(unittest.TestCase):
         upload.CHUNK, upload.RUN_CAP = self._chunk, self._cap
 
     def run_once(self, path, sensor="cowrie"):
-        return upload.upload_file(self.s3, "b", "i-test", sensor, path, self.state, dry_run=False)
+        return upload.upload_file(self.s3, "b", "i-test", sensor, path, self.state, dry_run=False)[0]
+
+    def run_main(self, s3):
+        """main() 을 가짜 boto3 로 한 회차 돌린다."""
+        import types
+        s3.meta = types.SimpleNamespace(events=types.SimpleNamespace(register=lambda *a, **k: None))
+        fake = types.ModuleType("boto3")
+        fake.client = lambda name: s3
+        env = {"OPSLOOP_BUCKET": "b", "OPSLOOP_HOST": "i-test",
+               "OPSLOOP_STATE": os.path.join(self.dir, "state.json"),
+               "SOURCES": f"cowrie:{self.dir}/cowrie.json*,decoy:{self.dir}/decoy.json.*"}
+        old_env = {k: os.environ.get(k) for k in env}
+        old_argv, old_mod = sys.argv, sys.modules.get("boto3")
+        os.environ.update(env)
+        sys.argv, sys.modules["boto3"] = ["upload.py"], fake
+        try:
+            upload.main()
+        finally:
+            sys.argv = old_argv
+            if old_mod is None:
+                sys.modules.pop("boto3", None)
+            else:
+                sys.modules["boto3"] = old_mod
+            for k, v in old_env.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+
+    HB = "hb/v1/host=i-test/latest.json"
+
+    def test_끝난_회차에만_생존_신호를_쓴다(self):
+        self.write("cowrie.json", b'{"a":1}\n')
+        self.write("decoy.json.2026-09-21", b'{"b":1}\n')
+        self.run_main(self.s3)
+        self.assertIn(self.HB, self.s3.objects)
+
+    def test_한_파일이라도_실패하면_생존_신호를_쓰지_않는다(self):
+        self.write("cowrie.json", b'{"a":1}\n')
+        self.write("decoy.json.2026-09-21", b'{"b":1}\n')
+        put = self.s3.put_object
+
+        def flaky(Bucket, Key, Body, **kw):
+            if "sensor=decoy" in Key:
+                raise OSError("일시 오류")
+            return put(Bucket=Bucket, Key=Key, Body=Body, **kw)
+        self.s3.put_object = flaky
+        self.run_main(self.s3)
+        self.assertNotIn(self.HB, self.s3.objects)
+        self.assertTrue(any("sensor=cowrie" in k for k in self.s3.objects))   # 된 만큼은 올린다
+
+    def test_도는_사이_회전이_끼면_생존_신호를_쓰지_않는다(self):
+        self.write("cowrie.json", b'{"a":1}\n')
+        real = upload.upload_file
+
+        def rotate_after(s3, bucket, host, sensor, path, state, dry_run):
+            r = real(s3, bucket, host, sensor, path, state, dry_run)
+            if path.endswith("cowrie.json"):
+                os.rename(path, path + ".2026-09-21")
+                self.write("cowrie.json", b'{"c":1}\n')
+            return r
+        upload.upload_file = rotate_after
+        try:
+            self.run_main(self.s3)
+        finally:
+            upload.upload_file = real
+        self.assertNotIn(self.HB, self.s3.objects)
 
     def write(self, name, data, mode="ab"):
         p = os.path.join(self.dir, name)
