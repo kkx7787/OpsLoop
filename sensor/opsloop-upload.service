@@ -1,0 +1,25 @@
+[Unit]
+Description=OpsLoop 센서 로그 업로더 (S3 로 올리기만 한다)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=opsloop-up
+EnvironmentFile=/etc/default/opsloop-upload
+ExecStart=/usr/bin/python3 /usr/local/lib/opsloop/upload.py
+# 업로더가 망가져도 센서의 다른 부분을 건드리지 못하게 좁힌다
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/opsloop-upload
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+SystemCallFilter=@system-service
+MemoryMax=128M
+TimeoutStartSec=300

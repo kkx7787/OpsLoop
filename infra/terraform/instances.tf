@@ -12,8 +12,9 @@ resource "aws_instance" "honeypot" {
   instance_type          = "t3.micro"
   subnet_id              = var.subnet_id
   vpc_security_group_ids = [aws_security_group.honeypot.id]
-  iam_instance_profile   = aws_iam_instance_profile.ssm.name
-  key_name               = var.key_name
+  # 센서 전용 역할. 원문을 S3 에 올리기만 한다 (iam.tf)
+  iam_instance_profile = aws_iam_instance_profile.sensor.name
+  key_name             = var.key_name
 
   associate_public_ip_address = true
 
@@ -29,6 +30,8 @@ resource "aws_instance" "honeypot" {
   metadata_options {
     http_endpoint = "enabled"
     http_tokens   = "required"
+    # 홉 제한 1: 컨테이너(인터넷에 노출된 디코이 포함)는 인스턴스 자격증명을 받지 못한다
+    http_put_response_hop_limit = 1
   }
 
   tags = { Name = "opsloop-honeypot" }
@@ -58,6 +61,8 @@ resource "aws_instance" "app" {
   metadata_options {
     http_endpoint = "enabled"
     http_tokens   = "required"
+    # 홉 제한 1: 컨테이너(인터넷에 노출된 디코이 포함)는 인스턴스 자격증명을 받지 못한다
+    http_put_response_hop_limit = 1
   }
 
   tags = { Name = "opsloop-app" }

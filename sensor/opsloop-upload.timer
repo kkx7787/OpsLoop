@@ -1,0 +1,11 @@
+[Unit]
+Description=OpsLoop 센서 로그 업로더 5분 주기
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+RandomizedDelaySec=30
+Persistent=true
+
+[Install]
+WantedBy=timers.target
