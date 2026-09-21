@@ -53,6 +53,21 @@ Fusion 에서 한 번만 만든다. 설치는 seed 이미지 덕분에 자동으
 5. 시작하면 설치가 자동으로 끝나고 재부팅된다 (약 10분)
 6. 설치가 끝나면 **VM 을 끄고** 4번 단계로 간다
 
+## 시간 동기화
+
+내부 노드는 인터넷 시간 서버에 닿지 않는다(데이터망 · 서비스망 → 인터넷 udp 123 불허).
+방화벽이 인터넷에서 받은 시각을 안쪽에 나눠 준다.
+
+| 노드 | 설정 | 파일 |
+|---|---|---|
+| 방화벽 | 서비스망 · 데이터망에 시간 제공, udp 123 허용 | `fw/chrony-server.conf` → `/etc/chrony/conf.d/opsloop-server.conf` |
+| 내부 노드 | 방화벽만 시간원으로, `makestep 1 -1` | `netplan/chrony-client.conf.template` → `/etc/chrony/conf.d/opsloop-fw.conf` (`__FW__` 를 각 세그먼트의 방화벽 주소로) |
+
+`makestep 1 -1` 은 Mac 이 잠들었다 깨어나 시계가 크게 어긋나도 즉시 한 번에 맞추게 한다.
+빠뜨리면 VM 시계가 몇 시간씩 앞서 S3 요청이 거부되고 미판정 경과 시간이 틀어진다 (2026-09-21 실제로 겪음).
+
+확인: `chronyc tracking` 의 Reference 가 방화벽이고, `docker exec opsloop-db psql ... -c "select now()"` 가 Mac 의 `date -u` 와 같아야 한다.
+
 ## 접근 경로
 
 ```
