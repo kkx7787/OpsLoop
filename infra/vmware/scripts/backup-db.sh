@@ -11,6 +11,7 @@
 #       VERIFY=restore infra/vmware/scripts/backup-db.sh   받은 덤프를 임시 DB 에 실제로 복원해
 #                                                          운영 DB 와 건수를 대조한다
 # 복원 시험이 실패하면 덤프를 .unverified 로 남기고 실패로 끝난다 (보관 개수 정리도 하지 않는다).
+# 자동 실행: install-backup-agent.sh 가 launchd 에 올려 매일 04:30 · 16:30 에 복원 시험까지 돌린다.
 set -euo pipefail
 DEST=${1:-$HOME/opsloop-backup}
 KEEP=${KEEP:-14}
