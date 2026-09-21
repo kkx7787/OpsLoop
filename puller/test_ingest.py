@@ -110,8 +110,42 @@ class IngestTest(unittest.TestCase):
         # 다음 회차: 격리 파일이 고쳐졌으면 돌아온다
         with open(os.path.join(self.home, "inbox", "decoy", "quarantine", "b.jsonl"), "wb") as f:
             f.write(b'{"ok":1}\n')
+        self.assertEqual(self.run_main(), 12)                 # 아직 다시 시도할 시각이 아니다
+        import types, time as _t
+        self.m.time = types.SimpleNamespace(time=lambda: _t.time() + 400)
+        self.m._just_quarantined.clear()
         self.assertEqual(self.run_main(), 0)
         self.assertEqual(self.inbox("decoy", "quarantine"), [])
+
+    def test_격리_재시도는_예산_안에서_탐지_뒤에(self):
+        import types, time as _t
+        q = os.path.join(self.home, "inbox", "cowrie", "quarantine")
+        os.makedirs(q)
+        for i in range(30):
+            with open(os.path.join(q, f"{i:03d}.jsonl"), "wb") as f:
+                f.write(b"POISON\n")
+        self.put("cowrie", "new.jsonl")
+        calls = []
+        real = self.m.parse
+        self.m.parse = lambda sensor, files, env: calls.append(len(files)) or real(sensor, files, env)
+        self.assertEqual(self.run_main(), 12)
+        self.assertEqual(self.loaded(), ["new.jsonl"])        # 새 파일 적재와 탐지가 먼저다
+        self.assertEqual(self.detected(), 1)
+        self.assertEqual(len(calls), 1 + self.m.RETRY_PER_RUN)
+        calls.clear()
+        self.run_main()
+        self.assertEqual(len(calls), 10)                      # 실패한 20개는 간격이 남아 나머지 10개만
+        calls.clear()
+        self.m.time = types.SimpleNamespace(time=lambda: _t.time() + 100000)
+        self.run_main()
+        self.assertEqual(len(calls), self.m.RETRY_PER_RUN)
+
+    def test_디스크_부족이면_탐지_보류(self):
+        self.set_pull(13)
+        self.put("cowrie", "a.jsonl")
+        self.assertEqual(self.run_main(), 13)
+        self.assertEqual(self.loaded(), ["a.jsonl"])
+        self.assertEqual(self.detected(), 0)
 
     def test_구멍이면_적재는_하고_탐지는_보류(self):
         self.set_pull(10)
@@ -127,10 +161,14 @@ class IngestTest(unittest.TestCase):
         self.assertEqual(self.detected(), 1)
 
     def test_가져오기_실패면_받아둔_것만_적재하고_탐지_보류(self):
-        self.set_pull(1)
+        self.set_pull(2)
         self.put("cowrie", "a.jsonl")
         self.assertEqual(self.run_main(), 1)
         self.assertEqual(self.loaded(), ["a.jsonl"])
+        self.assertEqual(self.detected(), 0)
+        self.set_pull(1)                                          # 일시 오류도 같다
+        self.put("cowrie", "b.jsonl")
+        self.assertEqual(self.run_main(), 1)
         self.assertEqual(self.detected(), 0)
 
     def test_DB_가_없으면_편지함을_건드리지_않음(self):

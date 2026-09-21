@@ -7,14 +7,17 @@ opsloop-ingest.service 가 opsloop-pull 사용자로 5분마다 돌린다.
   2. 적재       받은 편지함의 조각을 묶음(200개 · 32MiB)씩 파서에 넘기고, 성공한 묶음만 편지함에서 뺀다.
                 묶음이 실패하면 한 파일씩 다시 넣어 보고, 그래도 실패하는 파일만 격리함(quarantine)으로 옮긴다.
                 한 파일 때문에 나머지 적재와 탐지가 멈추지 않게 하기 위해서다.
-                격리함은 매 회차 한 번씩 다시 시도한다 (DB 가 잠깐 끊겨 격리된 파일은 저절로 돌아온다).
-  3. 탐지       원장에 구멍(10)이 있거나 가져오기가 실패했으면 보류한다.
+                파서에는 메모리 상한을 걸어, 큰 줄 하나가 서비스 전체를 강제 종료시키지 않고 그 파일만 격리되게 한다.
+  3. 탐지       가져오기가 정상(0)이거나 생존 신호 이상(11)일 때만 한다. 구멍 · 일시 오류 · 디스크 부족이면
+                데이터가 덜 들어온 상태이므로 보류한다 (중간이 빈 채로 탐지하면 쪼개진 인시던트가 남는다).
+  4. 격리 재시도 적재 · 탐지가 끝난 뒤 회차당 20개까지, 실패할수록 간격을 늘려(5분 → 최대 1시간) 다시 넣어 본다.
+                DB 가 잠깐 끊겨 격리된 파일은 저절로 돌아온다.
 
 종료 코드 (여러 개면 앞의 것)
-   1  가져오기 · DB 접속 · 탐지 실패
+   1  가져오기 일시 오류 · DB 접속 · 탐지 실패
+  13  디스크 여유 부족으로 받기를 멈췄다 (탐지 보류)
   10  원장 구멍. 적재는 했고 탐지는 보류했다
   12  격리된 파일이 있다. 적재 · 탐지는 했다
-  13  디스크 여유 부족으로 받기를 멈췄다
   11  생존 신호가 없거나 오래됐다 (센서 업로더가 멈췄을 수 있다)
    0  정상
 
@@ -24,9 +27,12 @@ opsloop-ingest.service 가 opsloop-pull 사용자로 5분마다 돌린다.
                             (line_hash 로 중복 없이 빠진 부분만 들어간다)
 """
 import argparse
+import json
 import os
+import resource
 import subprocess
 import sys
+import time
 
 APP = os.environ.get("OPSLOOP_APP", "/opt/opsloop/app")
 HOME = os.environ.get("OPSLOOP_HOME", "/var/lib/opsloop")
@@ -34,7 +40,11 @@ S3_ENV = os.environ.get("OPSLOOP_S3_ENV", "/etc/opsloop/s3-pull.env")
 DB_ENV = os.environ.get("OPSLOOP_DB_ENV", "/etc/opsloop/collector.env")
 SENSORS = ("cowrie", "decoy")
 BATCH_FILES, BATCH_BYTES = 200, 32 * 1024 * 1024
-PULL_OK = (0, 10, 11, 13)
+PARSER_MEM = 384 * 1024 * 1024       # 파서 한 개의 주소 공간 상한. 넘으면 MemoryError 로 실패하고 그 파일만 격리된다
+RETRY_PER_RUN, RETRY_BASE, RETRY_MAX = 20, 300, 3600
+PULL_KNOWN = (0, 1, 10, 11, 13)      # 풀러가 판단을 끝낸 코드 (1 은 일시 오류)
+DETECT_OK = (0, 11)                  # 데이터가 다 들어온 상태
+_just_quarantined = set()            # 이번 회차에 격리한 파일. 같은 회차에 다시 시도하지 않는다
 
 _JOURNAL = bool(os.environ.get("JOURNAL_STREAM"))
 
@@ -102,10 +112,18 @@ def db_ok(env):
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
 
 
+def _limit_memory():
+    try:
+        resource.setrlimit(resource.RLIMIT_AS, (PARSER_MEM, PARSER_MEM))
+    except (ValueError, OSError):
+        pass                         # 지원하지 않는 곳(macOS 시험 등)에서는 상한 없이 돈다
+
+
 def parse(sensor, files, env):
     r = subprocess.run([sys.executable, os.path.join(APP, "parser", f"parse_{sensor}.py"),
                         "--load", "--files-from", "-"],
-                       input="".join(p + "\n" for p in files), text=True, env=env, cwd=APP)
+                       input="".join(p + "\n" for p in files), text=True, env=env, cwd=APP,
+                       preexec_fn=_limit_memory)
     return r.returncode == 0
 
 
@@ -139,16 +157,9 @@ def unlink_all(files):
 
 
 def load_sensor(sensor, env):
-    """한 센서의 편지함을 적재한다. 격리함에 남은 파일 수를 돌려준다."""
+    """한 센서의 편지함을 적재한다. 실패한 파일은 격리함으로 옮긴다."""
     box = os.path.join(HOME, "inbox", sensor)
     qdir = os.path.join(box, "quarantine")
-
-    # 격리함부터 한 파일씩 다시 시도한다
-    for p in listing(qdir):
-        if parse(sensor, [p], env):
-            os.unlink(p)
-            log(f"{sensor} 격리 해제 {os.path.basename(p)}")
-
     for group in batches(listing(box)):
         if parse(sensor, group, env):
             unlink_all(group)
@@ -160,8 +171,49 @@ def load_sensor(sensor, env):
             else:
                 os.makedirs(qdir, exist_ok=True)
                 os.replace(p, os.path.join(qdir, os.path.basename(p)))
+                _just_quarantined.add(os.path.join(qdir, os.path.basename(p)))
                 log(f"{sensor} 적재 실패 파일을 격리했다: {os.path.basename(p)}", 3)
-    return len(listing(qdir))
+
+
+def retry_quarantine(env, budget=RETRY_PER_RUN, now=None):
+    """격리 파일을 오래된 것부터, 시각이 된 것만 다시 넣어 본다. 남은 격리 파일 수를 돌려준다."""
+    now = now or time.time()
+    left = 0
+    for sensor in SENSORS:
+        qdir = os.path.join(HOME, "inbox", sensor, "quarantine")
+        files = listing(qdir)
+        if not files:
+            continue
+        meta_path = os.path.join(qdir, ".retry.json")
+        try:
+            with open(meta_path, encoding="utf-8") as f:
+                meta = json.load(f)
+        except (FileNotFoundError, ValueError):
+            meta = {}
+        names = {os.path.basename(p) for p in files}
+        meta = {k: v for k, v in meta.items() if k in names}
+        for p in sorted(files, key=lambda p: meta.get(os.path.basename(p), {}).get("next", 0)):
+            name = os.path.basename(p)
+            m = meta.setdefault(name, {"n": 0, "next": 0})
+            if p in _just_quarantined:
+                m.update(n=1, next=now + RETRY_BASE)
+                continue
+            if budget <= 0 or m["next"] > now:
+                continue
+            budget -= 1
+            if parse(sensor, [p], env):
+                os.unlink(p)
+                meta.pop(name, None)
+                log(f"{sensor} 격리 해제 {name}")
+            else:
+                m["n"] += 1
+                m["next"] = now + min(RETRY_MAX, RETRY_BASE * 2 ** (m["n"] - 1))
+        tmp = meta_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(meta, f)
+        os.replace(tmp, meta_path)
+        left += len(listing(qdir))
+    return left
 
 
 def main():
@@ -170,7 +222,7 @@ def main():
     args = ap.parse_args()
 
     rc_pull = pull()
-    if rc_pull not in PULL_OK:
+    if rc_pull not in PULL_KNOWN:
         log(f"가져오기 실패 (종료 코드 {rc_pull}). 받아 둔 조각만 적재하고 탐지는 보류한다", 3)
     if args.full:
         relink_all()
@@ -181,22 +233,25 @@ def main():
         log("DB 에 접속하지 못했다. 편지함은 그대로 두고 다음 회차에 다시 한다", 3)
         return 1
 
-    quarantined = sum(load_sensor(s, env) for s in SENSORS)
-    if quarantined:
-        log(f"격리된 파일 {quarantined}개. inbox/<센서>/quarantine 을 확인한다", 3)
+    for sensor in SENSORS:
+        load_sensor(sensor, env)
 
     detect_failed = False
-    if rc_pull == 10:
-        log("원장 구멍: 탐지 보류", 3)
-    elif rc_pull in PULL_OK:
+    if rc_pull in DETECT_OK:
         r = subprocess.run([sys.executable, os.path.join(APP, "detector", "detect.py"), "--run"], env=env, cwd=APP)
         detect_failed = r.returncode != 0
         if detect_failed:
             log(f"탐지 실패 (종료 코드 {r.returncode})", 3)
+    else:
+        log(f"데이터가 덜 들어와 탐지를 보류한다 (가져오기 {rc_pull})", 3 if rc_pull == 10 else 4)
 
-    if rc_pull not in PULL_OK or detect_failed:
+    quarantined = retry_quarantine(env)
+    if quarantined:
+        log(f"격리된 파일 {quarantined}개. inbox/<센서>/quarantine 을 확인한다", 3)
+
+    if rc_pull == 1 or rc_pull not in PULL_KNOWN or detect_failed:
         return 1
-    for code, bad in ((10, rc_pull == 10), (12, quarantined > 0), (13, rc_pull == 13), (11, rc_pull == 11)):
+    for code, bad in ((13, rc_pull == 13), (10, rc_pull == 10), (12, quarantined > 0), (11, rc_pull == 11)):
         if bad:
             return code
     return 0

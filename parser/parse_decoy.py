@@ -108,6 +108,7 @@ def norm_ts(raw):
 
 
 INT4 = (-2**31, 2**31 - 1)
+MAX_LINE = 4 * 1024 * 1024     # 이보다 긴 줄은 파싱하지 않는다 (메모리 보호. 정상 로그 한 줄은 수 KB 다)
 BATCH = 5000   # 이만큼 모이면 DB 로 흘려보낸다. 큰 조각이 와도 메모리가 한없이 늘지 않는다
 
 
@@ -132,13 +133,16 @@ def clip(v, n=None):
         return None
     if not isinstance(v, str):
         v = json.dumps(v, ensure_ascii=False)
-    v = v.replace("\x00", "")
+    # 짝 없는 서로게이트("\\ud800")는 UTF-8 로 바꿀 수 없어 적재가 실패한다. 대체 문자로 바꾼다
+    v = v.replace("\x00", "").encode("utf-8", "replace").decode("utf-8")
     return v if n is None or len(v) <= n else v[:n]
 
 
 def ip_or_none(v):
     """inet 열에 들어갈 값. 주소가 아니면 비운다 (그대로 넘기면 적재 전체가 실패한다)."""
     if not isinstance(v, str):
+        return None
+    if "%" in v:                     # IPv6 영역 ID(fe80::1%eth0)는 inet 열이 받지 않는다
         return None
     try:
         ipaddress.ip_address(v)
@@ -165,9 +169,12 @@ def parse_lines(files, exclusions, stats=None):
                 line = line.strip()
                 if not line:
                     continue
+                if len(line) > MAX_LINE:
+                    stats["malformed"] += 1
+                    continue
                 try:
                     ev = json.loads(line)
-                except (json.JSONDecodeError, RecursionError):
+                except (ValueError, RecursionError):     # JSONDecodeError 와 4300자리 넘는 정수 포함
                     stats["malformed"] += 1
                     continue
                 if not isinstance(ev, dict):

@@ -19,14 +19,19 @@ chmod 700 "$DEST"
 ts=$(date -u +%Y%m%d-%H%M)
 part="$DEST/.opsloop-$ts.dump.part"
 out="$DEST/opsloop-$ts.dump"
+drop_testdb() {
+  "${SSH[@]}" "sudo -n docker exec opsloop-db dropdb -U opsloop --if-exists $TESTDB" >/dev/null 2>&1
+}
 cleanup() {
   rm -f "$part"
   # 복원 시험 DB 에는 판정 · 계정까지 들어 있다. 실패해도 운영 컨테이너에 남기지 않는다
-  if [ "${VERIFY:-}" = restore ]; then
-    "${SSH[@]}" "sudo -n docker exec opsloop-db dropdb -U opsloop --if-exists $TESTDB" >/dev/null 2>&1 || true
+  if [ "${VERIFY:-}" = restore ] && ! drop_testdb; then
+    echo "경고: 시험 DB $TESTDB 가 운영 컨테이너에 남았을 수 있다. 다음 실행 때 다시 지운다" >&2
   fi
 }
 trap cleanup EXIT
+# 지난 실행이 중간에 끊겨 남긴 시험 DB 가 있으면 먼저 치운다
+drop_testdb || true
 
 "${SSH[@]}" 'sudo -n docker exec opsloop-db pg_dump -U opsloop -Fc opsloop' > "$part"
 

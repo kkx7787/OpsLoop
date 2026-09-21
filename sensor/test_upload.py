@@ -111,11 +111,21 @@ class UploaderTest(unittest.TestCase):
         self.assertNotIn(self.HB, self.s3.objects)
         self.assertTrue(any("sensor=cowrie" in k for k in self.s3.objects))   # 된 만큼은 올린다
 
+    def test_회차_상한에_걸리면_생존_신호를_쓰지_않는다(self):
+        upload.RUN_CAP = 8
+        upload.CHUNK = 8
+        self.write("cowrie.json", b'{"a":1}\n' * 3)
+        self.run_main(self.s3)
+        self.assertNotIn(self.HB, self.s3.objects)
+        upload.RUN_CAP = 1 << 20
+        self.run_main(self.s3)
+        self.assertIn(self.HB, self.s3.objects)                 # 다 올리면 다시 쓴다
+
     def test_도는_사이_회전이_끼면_생존_신호를_쓰지_않는다(self):
         self.write("cowrie.json", b'{"a":1}\n')
         real = upload.upload_file
 
-        def rotate_after(s3, bucket, host, sensor, path, state, dry_run):
+        def rotate_after(s3, bucket, host, sensor, path, state, dry_run):  # noqa: E306
             r = real(s3, bucket, host, sensor, path, state, dry_run)
             if path.endswith("cowrie.json"):
                 os.rename(path, path + ".2026-09-21")

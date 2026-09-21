@@ -23,4 +23,6 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
 CapabilityBoundingSet=
 SystemCallFilter=@system-service
 MemoryMax=512M
+# 파서 하나가 메모리 상한에 걸려 죽어도 적재 실행기는 살아서 그 파일만 격리한다
+OOMPolicy=continue
 TimeoutStartSec=900

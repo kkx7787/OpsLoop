@@ -28,6 +28,7 @@ class FakeS3:
         self.objs = {}      # key → dict(body, lm, etag, sha, sc)
         self.gets = []
         self.fail = {}      # key → 받을 때 낼 오류 코드
+        self.read_fail = {}  # key → 본문을 읽다가 한 번 낼 예외
         self.prefixes = []
 
     def put(self, key, body, lm, sha=None, etag=None, sc="STANDARD"):
@@ -54,7 +55,15 @@ class FakeS3:
         self.gets.append(Key)
         if Key in self.fail:
             raise Err(self.fail[Key])
-        r = {"Body": io.BytesIO(o["body"]), "LastModified": o["lm"], "ETag": o["etag"]}
+        body = io.BytesIO(o["body"])
+        if Key in self.read_fail:
+            exc = self.read_fail.pop(Key)
+
+            class Broken:
+                def read(self, n=-1):
+                    raise exc
+            body = Broken()
+        r = {"Body": body, "LastModified": o["lm"], "ETag": o["etag"]}
         if o["sha"]:
             r["ChecksumSHA256"] = o["sha"]
         return r
@@ -322,7 +331,8 @@ class PullTest(unittest.TestCase):
             self.s3.hb({"cowrie.json": hbfile("cowrie", 11, 0, len(L1 + L2))}, T0)
             rc, out = self.quiet(self.run_pull)
             self.assertEqual(rc, pull.EXIT_GAP)               # 아직 hb 위치까지 못 받았다
-            self.assertIn("한도로 미룸 1개", out)
+            self.assertIn("한도로 미룸 있음", out)
+            self.assertIn("구멍(일시)", out)
             rc, _ = self.quiet(self.run_pull)
             self.assertEqual(rc, 0)
             self.assertEqual(len(self.inbox()), 2)
@@ -380,9 +390,93 @@ class PullTest(unittest.TestCase):
             rc, out = self.quiet(self.run_pull)
         finally:
             pull.disk_ok = old
-        self.assertIn(rc, (pull.EXIT_DISK, pull.EXIT_GAP))
+        self.assertEqual(rc, pull.EXIT_DISK)
         self.assertEqual(self.inbox(), [])
         self.assertIn("디스크 여유", out)
+        self.assertNotIn("인정 목록", out)                  # 멀쩡한 세대를 인정하라고 안내하지 않는다
+
+
+    def test_일시_오류는_다음_회차에_다시_받는다(self):
+        class ReadTimeoutError(Exception):
+            pass
+        k1 = self.s3.chunk("cowrie", 11, 0, 0, L1, T0)
+        k2 = self.s3.chunk("cowrie", 11, 0, len(L1), L2, T0)
+        k3 = self.s3.chunk("cowrie", 11, 0, len(L1 + L2), L3, T0)
+        self.s3.hb({"cowrie.json": hbfile("cowrie", 11, 0, len(L1 + L2 + L3))}, T0)
+        for fail in ("get", "read"):
+            with self.subTest(fail=fail):
+                self.setUp()
+                self.s3.chunk("cowrie", 11, 0, 0, L1, T0)
+                self.s3.chunk("cowrie", 11, 0, len(L1), L2, T0)
+                self.s3.chunk("cowrie", 11, 0, len(L1 + L2), L3, T0)
+                self.s3.hb({"cowrie.json": hbfile("cowrie", 11, 0, len(L1 + L2 + L3))}, T0)
+                if fail == "get":
+                    self.s3.fail[k2] = "SlowDown"
+                else:
+                    self.s3.read_fail[k2] = ReadTimeoutError("끊김")
+                rc, out = self.quiet(self.run_pull)
+                self.assertEqual(rc, 1)                       # 일시 오류: 실패로 드러내고 탐지는 보류
+                self.assertNotIn("인정 목록", out)
+                self.s3.fail.pop(k2, None)
+                rc, _ = self.quiet(self.run_pull)
+                self.assertEqual(rc, 0)                       # 다음 회차에 받아 회복
+                self.assertEqual(len(self.inbox()), 3)
+
+    def test_무한대_생존신호로_죽지_않음(self):
+        self.s3.chunk("cowrie", 11, 0, 0, L1, T0)
+        for bad in ('"ino": Infinity', '"offset": 1e999', '"gen": -Infinity', '"offset": 1.5', '"ino": true'):
+            body = ('{"files": {"a": {"sensor": "cowrie", "ino": 11, "gen": 0, "offset": 72, ' + bad + '}}}').encode()
+            self.s3.put(f"hb/v1/host={HOST}/latest.json", body, T0)
+            rc, _ = self.quiet(self.run_pull)
+            self.assertEqual(rc, pull.EXIT_STALE, bad)
+
+    def test_유니코드_숫자_키로_바꿔치기_못함(self):
+        k = self.s3.chunk("cowrie", 11, 0, 0, L1, T0)
+        fake = k.replace("/000000000000-", "/" + "\u0660" * 12 + "-")
+        self.s3.put(fake, L2[: len(L1)], T0)
+        self.s3.hb({"cowrie.json": hbfile("cowrie", 11, 0, len(L1))}, T0)
+        rc, out = self.quiet(self.run_pull)
+        self.assertEqual(rc, 0)
+        [name] = self.inbox()
+        with open(os.path.join(self.dir, "inbox", "cowrie", name), "rb") as f:
+            self.assertEqual(f.read(), L1)
+        self.assertIn("키 규칙 위반", out)
+        self.assertNotIn(fake, self.s3.gets)
+
+    def test_거부가_넘치면_세대를_멈추고_다시_받지_않는다(self):
+        old = pull.CAP
+        pull.CAP = 2
+        try:
+            keys = []
+            for i in range(6):
+                body = b"x" * 9 + b"y"                        # 줄바꿈으로 끝나지 않는 10 B
+                keys.append(self.s3.chunk("cowrie", 5, 0, i * 10, body, T0))
+            self.s3.hb({}, T0)
+            rc, out = self.quiet(self.run_pull)
+            self.assertEqual(rc, pull.EXIT_GAP)
+            self.assertIn("세대 전체를 멈춘다", out)
+            n = len(self.s3.gets)
+            rc, _ = self.quiet(self.run_pull)
+            self.assertEqual(rc, pull.EXIT_GAP)
+            self.assertEqual(len(self.s3.gets) - n, 1)       # hb 만 다시 읽는다
+            rc, _ = self.quiet(lambda: pull.run(self.s3, "b", {HOST}, self.dir, now=T0 + timedelta(minutes=1),
+                                                ack={f"cowrie/{HOST}/ino=5.g0"}))
+            self.assertEqual(rc, 0)
+        finally:
+            pull.CAP = old
+
+    def test_실패한_받기도_회차_한도에_든다(self):
+        old = pull.RUN_BYTES
+        pull.RUN_BYTES = 15
+        try:
+            for i in range(4):
+                self.s3.chunk("cowrie", 5, 0, i * 10, b"x" * 9 + b"y", T0)
+            self.s3.hb({}, T0)
+            n = len(self.s3.gets)
+            self.quiet(self.run_pull)
+            self.assertEqual(len(self.s3.gets) - n, 1 + 1)   # hb + 조각 1개 뒤 한도
+        finally:
+            pull.RUN_BYTES = old
 
 
 if __name__ == "__main__":
