@@ -8,8 +8,12 @@
 
 ```
 scripts/   허니팟 기동·배포 스크립트, Cowrie 설정
+sensor/    허니팟 로그 업로더. S3 원장에 올리기만 한다 (WBS 3.4)
+puller/    데이터 노드 원장 풀러 · 적재 타이머. 안쪽에서 가져간다 (WBS 3.4)
 parser/    수집 로그 정규화 (WBS 2.2)
-infra/     Terraform / cloud-init (예정)
+detector/  탐지 규칙 · 엔진 (WBS 2.3)
+app/       관제 콘솔 API
+infra/     Terraform (AWS) · VMware 내부망
 docs/      운영 노트, 장애 기록, ADR
 ```
 

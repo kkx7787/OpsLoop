@@ -36,6 +36,10 @@ GUEST_PW='2번에서 정한 비밀번호' scripts/configure.sh
 
 # 6. 검증 (네트워크 설계 4장의 표)
 scripts/verify.sh
+
+# 7. 수집 파이프라인 (데이터 노드). 설치 방법은 puller/install-ingest.sh 머리말
+# 8. 내부 DB 를 Mac 으로 백업 (VERIFY=restore 면 임시 DB 복원 시험까지)
+scripts/backup-db.sh
 ```
 
 ## 기본 VM
@@ -87,6 +91,6 @@ Mac(관리망 192.168.70.1)
 | `netplan/*.yaml` | 노드별 고정 주소 |
 | `fw/nftables.conf` | 내부 방화벽 규칙 (설계 3.2 규칙표) |
 | `haproxy/haproxy.cfg` | 콘솔 분배 · 헬스체크 2초 × 3회 |
-| `scripts/*.sh` | 네트워크 생성 · seed · 복제 · 구성 · 검증 |
+| `scripts/*.sh` | 네트워크 생성 · seed · 복제 · 구성 · 검증 · DB 백업 |
 
 비밀번호와 개인 키는 저장소에 넣지 않는다. seed 이미지도 저장소 밖(`~/Virtual Machines.localized`)에 만든다.
