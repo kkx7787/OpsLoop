@@ -3,8 +3,8 @@
 #   opsloop-fw        1GB / 2core  NAT + 서비스망 + 데이터망 + 관리망
 #   opsloop-console-a 1GB / 1core  서비스망
 #   opsloop-console-b 1GB / 1core  서비스망 (평소에는 꺼 둔다)
-#   opsloop-data-01   3GB / 2core  데이터망
-# 연결 복제라 디스크는 바뀐 부분만 차지한다.
+#   opsloop-data-01   2GB / 2core  데이터망 (실사용 0.5GB 안팎. Mac 메모리가 빠듯해 3GB 에서 줄였다)
+# 연결 복제라 디스크는 바뀐 부분만 차지한다. 나중에 붙이는 노드(web-01 등)는 scripts/add-node.sh 로 만든다.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 VMDIR="${VMDIR:-$HOME/Virtual Machines.localized}"
@@ -20,7 +20,7 @@ NODES=(
   "opsloop-fw:1024:2:vmnet8,00:50:56:20:01:00 vmnet2,00:50:56:20:01:01 vmnet3,00:50:56:20:01:02 vmnet4,00:50:56:20:01:03"
   "opsloop-console-a:1024:1:vmnet2,00:50:56:20:02:01"
   "opsloop-console-b:1024:1:vmnet2,00:50:56:20:02:02"
-  "opsloop-data-01:3072:2:vmnet3,00:50:56:20:03:01"
+  "opsloop-data-01:2048:2:vmnet3,00:50:56:20:03:01"
 )
 
 for node in "${NODES[@]}"; do

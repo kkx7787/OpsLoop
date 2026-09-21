@@ -1,7 +1,7 @@
 # 내부망 구축 (VMware Fusion · Mac)
 
 WBS 3.3 · 이슈 #8. 보호 자산을 인터넷에서 닿지 않는 내부망으로 내린다.
-관제 대상 서버 web-01 은 여기가 아니라 학교 AWS 계정에 둔다 (2026-09-21 결정).
+관제 대상 서버 web-01 은 서비스망에 VM 으로 둔다 (이슈 #11). 학교 AWS 계정의 web-02 는 VM 쪽이 끝난 뒤 추가 여부를 정한다.
 
 ## 구성
 
@@ -10,7 +10,8 @@ WBS 3.3 · 이슈 #8. 보호 자산을 인터넷에서 닿지 않는 내부망�
 | opsloop-fw | 1GB · 2 | NAT(uplink) · 서비스망 192.168.50.1 · 데이터망 192.168.60.1 · 관리망 192.168.70.254 | 내부 방화벽(nftables) 겸 부하분산(HAProxy) |
 | opsloop-console-a | 1GB · 1 | 서비스망 192.168.50.11 | 관제 콘솔 |
 | opsloop-console-b | 1GB · 1 | 서비스망 192.168.50.12 | 관제 콘솔 예비 (평소 꺼 둠) |
-| opsloop-data-01 | 3GB · 2 | 데이터망 192.168.60.11 | PostgreSQL · Loki · 수집 · 탐지 |
+| opsloop-data-01 | 2GB · 2 | 데이터망 192.168.60.11 | PostgreSQL · Loki · 수집 · 탐지 |
+| opsloop-web-01 | 768MB · 1 | 서비스망 192.168.50.21 | 관제 대상 서버 (nginx · sshd · 에이전트). DB 에는 닿지 않는다 |
 
 - 관리망 192.168.70.1 은 Mac(작업자 단말)이다.
 - 가상 네트워크는 DHCP 를 끄고 주소를 고정한다.
@@ -36,6 +37,9 @@ GUEST_PW='2번에서 정한 비밀번호' scripts/configure.sh
 
 # 6. 검증 (네트워크 설계 4장의 표)
 scripts/verify.sh
+
+# 노드 하나 추가 (관제 대상 등). 콘솔 비밀번호를 입력받는다
+scripts/add-node.sh opsloop-web-01 768 1 vmnet2 00:50:56:20:02:21 netplan/web-01.yaml 192.168.50.1 192.168.50.21
 
 # 7. 수집 파이프라인 (데이터 노드). 설치 방법은 puller/install-ingest.sh 머리말
 # 8. 내부 DB 를 Mac 으로 백업 (VERIFY=restore 면 임시 DB 복원 시험까지)
