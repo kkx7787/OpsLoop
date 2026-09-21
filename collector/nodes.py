@@ -22,7 +22,8 @@ DB 에는 등록 토큰과 에이전트 키의 sha256 만 들어간다. 원문�
       node_first_receipt(노드, N) 를 5초마다 보고, 네 단계가 모두 통과하거나 --wait 가 지나면 끝난다.
       --kick 은 3단계를 통과한 뒤 opsloop-agents 를 한 번 당겨 탐지 실행(4단계)을 앞당긴다.
 
-issue · cancel · revoke 는 관리 원장($GATE_DIR/admin-YYYY-MM-DD.jsonl, UTC 날짜)에 한 줄을 남긴다.
+issue · cancel · revoke 는 관리 원장($OPSLOOP_ADMIN_DIR/admin-YYYY-MM-DD.jsonl, UTC 날짜)에 한 줄을 남긴다.
+원장에 쓰지 못하면 DB 변경 · 토큰 출력은 그대로 하고 종료 코드 3 으로 알린다.
 누가 했는지는 명령마다 issued_by(SUDO_USER 또는 USER)에 둔다 (다리의 parse_collector 가 username 으로 읽는다).
 토큰과 해시는 쓰지 않는다. 원장에 쓰지 못해도 DB(node_enrollments)에 발급 기록이 있으므로 경고만 한다.
 issue · revoke 뒤에는 관문에 HUP 을 보내 캐시를 바로 다시 읽게 한다 (실패해도 계속한다).
@@ -37,7 +38,7 @@ DB 잠금 순서는 nodes → node_enrollments 다. enroll_node() 도 같은 순
 환경변수
   DATABASE_URL     없으면 OPSLOOP_DB_ENV 파일에서 읽는다 (sudo 는 환경을 지우므로 보통 파일에서 온다)
   OPSLOOP_DB_ENV   KEY=VALUE 파일 (기본 /etc/opsloop/collector.env). 셸로 읽지 않는다
-  GATE_DIR         관리 원장 폴더 (기본 /var/lib/opsloop/gate)
+  OPSLOOP_ADMIN_DIR 관리 원장 폴더 (기본 /var/lib/opsloop/admin. 관문은 이 폴더에 쓸 수 없다)
 """
 import argparse
 import grp
@@ -62,7 +63,9 @@ except ImportError:              # --help 와 시험은 psycopg2 없이도 돈�
     DB_ERRORS = ()
 
 DB_ENV = "/etc/opsloop/collector.env"
-GATE_DIR = "/var/lib/opsloop/gate"
+# 관리 원장은 관문 폴더가 아니라 root 만 쓰는 폴더에 둔다. 관문(네트워크에 노출된 프로세스)이 장악돼도
+# 발급 · 취소 · 폐기 기록을 지우거나 가로채지 못한다. 다리(opsloop-pull 그룹)는 읽기만 한다
+ADMIN_DIR = "/var/lib/opsloop/admin"
 LEDGER_GROUP = "opsloop-pull"    # 다리(pull_loki.py)가 관리 원장을 읽는다
 GATE_UNIT = "opsloop-gate"
 AGENTS_UNIT = "opsloop-agents.service"
@@ -78,7 +81,7 @@ TTL_MIN, TTL_MAX = 60, 86400
 WAIT_MAX = 3600
 POLL = 5
 
-EXIT_DB, EXIT_USAGE = 5, 64
+EXIT_LEDGER, EXIT_DB, EXIT_USAGE = 3, 5, 64
 
 _JOURNAL = bool(os.environ.get("JOURNAL_STREAM"))
 _CTRL = re.compile(r"[\x00-\x1f\x7f]")
@@ -166,16 +169,16 @@ def fmt_ts(dt):
 def ledger(event, fields, now=None):
     """관리 원장에 한 줄을 더한다. 쓰면 True.
 
-    원장 폴더는 관문 사용자(opsloop-gate)도 쓸 수 있다. root 가 그 사용자가 미리 만들어 둔
-    링크나 파일에 쓰지 않도록, 링크는 따라가지 않고 내가 만든 일반 파일에만 쓴다.
+    원장 폴더(root:opsloop-pull 2750)에는 root 만 쓴다. 그래도 링크는 따라가지 않고, FIFO 에 걸려 멈추지 않게
+    O_NONBLOCK 으로 열며, 내가 만든 일반 파일에만 쓴다.
     """
     now = now or datetime.now(timezone.utc)
     rec = {"ts": now.isoformat(timespec="microseconds"), "eventid": f"collector.admin.{event}"}
     rec.update(fields)
     data = (json.dumps(rec, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
-    path = os.path.join(os.environ.get("GATE_DIR", GATE_DIR), f"admin-{now:%Y-%m-%d}.jsonl")
+    path = os.path.join(os.environ.get("OPSLOOP_ADMIN_DIR", ADMIN_DIR), f"admin-{now:%Y-%m-%d}.jsonl")
     try:
-        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC, 0o640)
+        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, 0o640)
     except OSError as e:
         log(f"관리 원장에 쓰지 못했다: {safe(path)} ({safe(e.strerror)})", 4)
         return False
@@ -229,6 +232,11 @@ CANCEL_UNUSED = """UPDATE node_enrollments SET canceled_at = now()
 
 
 def cmd_issue(args):
+    if sys.stdout.isatty() and not args.allow_tty:
+        # 토큰이 화면 · 터미널 기록에 남는다. 변수로 받게 한다 (DB 도 바꾸지 않는다)
+        log('표준 출력이 터미널이다. 토큰을 화면에 찍지 않는다. '
+            'export OPSLOOP_ENROLL_TOKEN="$(ssh ... sudo nodes.py issue ...)" 처럼 받는다 (꼭 봐야 하면 --allow-tty)', 3)
+        return EXIT_USAGE
     token = new_token()
     by = operator()
     conn = connect()
@@ -269,14 +277,12 @@ def cmd_issue(args):
             log(f"{args.node}: 주소가 바뀌었다 {safe(old_addr)} → {args.addr}. 관문은 새 주소에서 온 것만 받는다", 4)
     if canceled:
         log(f"{args.node}: 쓰지 않은 이전 등록 토큰 {canceled}개를 취소했다")
-    ledger("issue", {"node_id": args.node, "issued_by": by, "expires_at": utc_iso(expires_at),
-                     "host": args.host, "addr": args.addr, "logs": args.logs})
-    if sys.stdout.isatty():
-        log("표준 출력이 터미널이다. 토큰이 화면에 남는다", 4)
+    wrote = ledger("issue", {"node_id": args.node, "issued_by": by, "expires_at": utc_iso(expires_at),
+                             "host": args.host, "addr": args.addr, "logs": args.logs})
     sys.stdout.write(token + "\n")
     sys.stdout.flush()
     hup_gate()
-    return 0
+    return 0 if wrote else EXIT_LEDGER
 
 
 def cmd_cancel(args):
@@ -296,9 +302,9 @@ def cmd_cancel(args):
         raise
     finally:
         conn.close()
-    ledger("cancel", {"node_id": args.node, "issued_by": operator(), "canceled": n})
+    wrote = ledger("cancel", {"node_id": args.node, "issued_by": operator(), "canceled": n})
     log(f"{args.node}: 쓰지 않은 등록 토큰 {n}개를 취소했다")
-    return 0
+    return 0 if wrote else EXIT_LEDGER
 
 
 def cmd_revoke(args):
@@ -319,11 +325,11 @@ def cmd_revoke(args):
         raise
     finally:
         conn.close()
-    ledger("revoke", {"node_id": args.node, "issued_by": operator(), "status": "revoked",
-                      "agent_fp": row[0], "canceled": n})
+    wrote = ledger("revoke", {"node_id": args.node, "issued_by": operator(), "status": "revoked",
+                              "agent_fp": row[0], "canceled": n})
     log(f"{args.node}: 폐기했다 (키 {row[0] or '-'}). 쓰지 않은 등록 토큰 {n}개를 취소했다")
     hup_gate()
-    return 0
+    return 0 if wrote else EXIT_LEDGER
 
 
 def cmd_list(args):
@@ -492,6 +498,7 @@ def build_parser():
     p.add_argument("--addr", required=True, type=arg_addr, help="관문에 접속하는 출발지 주소")
     p.add_argument("--logs", required=True, type=arg_logs, help="보낼 로그 (쉼표). nginx,auth,metrics")
     p.add_argument("--ttl", type=arg_int(TTL_MIN, TTL_MAX), default=3600, help="토큰 수명 초 (기본 3600)")
+    p.add_argument("--allow-tty", action="store_true", help="표준 출력이 터미널이어도 토큰을 찍는다 (화면에 남는다)")
     p.set_defaults(func=cmd_issue)
 
     p = sub.add_parser("cancel", help="쓰지 않은 등록 토큰 취소")

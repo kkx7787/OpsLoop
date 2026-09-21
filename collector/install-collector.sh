@@ -23,6 +23,7 @@ DB_HOST=192.168.60.11          # DB 는 이 주소에만 묶여 있다
 APP=/opt/opsloop/app
 STATE=/var/lib/opsloop
 GATE_DIR=$STATE/gate
+ADMIN_DIR=$STATE/admin
 GATE_ENV=/etc/opsloop/gate.env
 PSQL=(docker exec -i -e "PGOPTIONS=-c client_min_messages=warning" "$DB" psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -qAt)
 
@@ -60,6 +61,16 @@ install -d -o opsloop-gate -g opsloop-pull -m 2750 "$GATE_DIR"
 after=$(stat -c '%U:%G %a' "$GATE_DIR")
 [ "$before" = "$after" ] && echo "  $GATE_DIR 그대로 ($after)" || echo "  $GATE_DIR $before → $after"
 install -d -o root -g opsloop-pull -m 750 /etc/opsloop
+# 관리 원장(nodes.py 의 발급 · 취소 · 폐기)은 관문이 쓸 수 없는 폴더에 둔다. 관문이 장악돼도 지우거나 가로채지 못한다
+install -d -o root -g opsloop-pull -m 2750 "$ADMIN_DIR"
+for f in "$GATE_DIR"/admin-*.jsonl; do
+  [ -f "$f" ] || continue
+  if [ "$(stat -c %u "$f")" = 0 ] && [ ! -L "$f" ]; then
+    mv -n "$f" "$ADMIN_DIR/" && echo "  관리 원장을 옮겼다: $(basename "$f") → $ADMIN_DIR"
+  else
+    echo "  경고: $f 는 root 가 쓴 파일이 아니다. 옮기지 않는다 (위조 의심)" >&2
+  fi
+done
 
 echo "== 코드 $VERSION → $APP/collector (root 소유. 파이프라인이 자기 코드를 바꿀 수 없다)"
 rm -rf "$APP/.collector.new"

@@ -205,23 +205,17 @@ def signals_actor_rate(cur, rule, since, until):
     p = rule["params"]
     window = p["window_seconds"]
     w, prm = range_clause(since, until, "ts", rule_sensors(rule))
+    # 행을 모두 올리지 않고 DB 에서 (출발지, 시간창) 별로 센다. 매분 도는 규칙(n1)이 전체 기간을 다시 봐도
+    # 메모리는 신호 수만큼만 쓴다. 창 번호는 예전 계산(초 단위 시각 ÷ 창, 내림)과 같고, 신호의 시각 · 세션은
+    # 그 창에서 가장 이른 행의 것이다
     cur.execute(
-        f"SELECT ts, src_ip, session FROM events "
-        f"WHERE {w} AND eventid = ANY(%s) AND src_ip IS NOT NULL ORDER BY src_ip, ts",
-        prm + [p["eventids"]])
-
-    buckets = {}
-    for ts, ip, sess in cur.fetchall():
-        buckets.setdefault((ip, int(ts.timestamp()) // window), []).append((ts, sess))
-
-    out = []
-    for (ip, _slot), items in buckets.items():
-        if len(items) >= p["threshold"]:
-            items.sort(key=lambda x: x[0])
-            out.append((items[0][0], ip, items[0][1],
-                        {"count": len(items), "window_seconds": window,
-                         "threshold": p["threshold"]}))
-    return out
+        f"SELECT min(ts), src_ip, (array_agg(session ORDER BY ts))[1], count(*) FROM events "
+        f"WHERE {w} AND eventid = ANY(%s) AND src_ip IS NOT NULL "
+        f"GROUP BY src_ip, floor(extract(epoch FROM ts) / %s) "
+        f"HAVING count(*) >= %s ORDER BY src_ip, min(ts)",
+        prm + [p["eventids"], window, p["threshold"]])
+    return [(ts, ip, sess, {"count": n, "window_seconds": window, "threshold": p["threshold"]})
+            for ts, ip, sess, n in cur.fetchall()]
 
 
 COLLECTORS = {

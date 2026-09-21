@@ -8,6 +8,9 @@ server:
   http_listen_port: 3100
   grpc_listen_port: 9095
   log_level: warn
+  # 한 프로세스 안에서도 조회는 내부 gRPC 를 거친다. 기본 4MiB 면 큰 줄이 모인 쪽이 5xx 로 실패한다
+  grpc_server_max_recv_msg_size: 67108864
+  grpc_server_max_send_msg_size: 67108864
 
 common:
   path_prefix: /loki

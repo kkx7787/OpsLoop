@@ -54,6 +54,7 @@ SKIP_REASONS = ("malformed", "foreign_host", "unmatched", "repeated", "undeclare
 DEFAULT_EXCLUSIONS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "exclusions.txt")
 INT4 = (-2**31, 2**31 - 1)
 INT8_MAX = 2**63 - 1
+SEQ_MAX = 2**53 - 1             # 지표 일련번호 상한. 1분마다 하나씩이면 수십억 년이다. 극단값으로 공백 계산이 넘치지 않게 한다
 MAX_LINE = 4 * 1024 * 1024     # 이보다 긴 줄은 파싱하지 않는다 (메모리 보호. 정상 로그 한 줄은 수 KB 다)
 EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
@@ -282,7 +283,7 @@ def parse_metrics(node_id, hostname, line, exclusions):
         return skip("foreign_host")
     ts = utc_ts(ev.get("ts"))
     try:
-        seq = whole(ev.get("seq"), 0, INT8_MAX)
+        seq = whole(ev.get("seq"), 0, SEQ_MAX)
         # real 열(float4)은 3.4e38 을 넘으면 적재 전체가 실패한다. 범위를 뜻이 있는 값으로 좁힌다
         row = {
             "line_hash": line_hash(line), "node_id": node_id, "ts": ts, "seq": seq,

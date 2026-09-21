@@ -257,10 +257,23 @@ class BeforeAfterTest(unittest.TestCase):
         self.assertEqual({k for k, _ in self.each()}, set(BEFORE))
 
     def test_R001_R004_는_한_글자도_같다(self):
+        # R001(actor_rate)은 2026-09-21 검토에서 집계를 DB 로 옮겼다 (전체 행을 메모리에 올리지 않게).
+        # 문장은 달라졌고, 결과가 같은지는 운영 DB 사본의 v1 · v2 인시던트 키 지문으로 확인했다
         for key, got in self.each():
-            if key[1] != "R005":
+            if key[1] not in ("R005", "R001"):
                 with self.subTest(key=key):
                     self.assertEqual(got, BEFORE[key])
+
+    def test_R001_은_DB_에서_창별로_센다(self):
+        for key, got in self.each():
+            if key[1] == "R001":
+                with self.subTest(key=key):
+                    [(sql, prm)] = got
+                    [(old_sql, old_prm)] = BEFORE[key]
+                    self.assertIn("GROUP BY src_ip, floor(extract(epoch FROM ts) / %s)", sql)
+                    self.assertIn("HAVING count(*) >= %s", sql)
+                    self.assertEqual(prm[:len(old_prm)], old_prm)          # 기간 · eventid 인자는 그대로
+                    self.assertEqual(prm[len(old_prm):], [900, 5])
 
     def test_R005_는_발생원_한정만_붙는다(self):
         for key, got in self.each():
@@ -283,7 +296,10 @@ class BeforeAfterTest(unittest.TestCase):
             want = []
             for rule in doc["rules"]:
                 key = (doc["rule_version"], rule["id"], True)
-                want += BASELINE_AFTER.get(key, BEFORE[key])
+                if rule["type"] == "actor_rate":
+                    want += collect(doc, rule, SINCE, UNTIL)             # 위 시험에서 따로 본다
+                else:
+                    want += BASELINE_AFTER.get(key, BEFORE[key])
             with self.subTest(rules=name):
                 self.assertEqual(got, want)
                 self.assertEqual(conn.commits, 1)
@@ -386,7 +402,7 @@ class RuleFileTest(unittest.TestCase):
                                           "window_seconds": 600, "threshold": 5})
         [(sql, prm)] = collect(doc, rule, SINCE, UNTIL)
         self.assertNotIn(SENSOR, sql)
-        self.assertEqual(prm, [SINCE, UNTIL, ["sshd.login.failed", "sshd.login.invalid_user"]])
+        self.assertEqual(prm, [SINCE, UNTIL, ["sshd.login.failed", "sshd.login.invalid_user"], 600, 5])
 
     def test_rule_versions_에_파일_그대로_등록(self):
         for name in ("rules_self.json", "rules_node.json", "rules.json", "rules_v2.json"):

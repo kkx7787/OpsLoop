@@ -485,11 +485,55 @@ class EnrollTest(GateCase):
         self.assertEqual(status(data), 411)
         self.assertEqual(self.store.calls, [])
 
-    def test_DB_오류는_503_거부로_세지_않는다(self):
+    def test_DB_오류는_503_거부가_아니라_제한으로_남긴다(self):
         self.store.fail_enroll = True
         self.assertEqual(self.enroll({"node_id": "web-02", "agent_sha256": h(self.AGENT2)}),
                          (503, {"result": "unavailable"}))
-        self.assertEqual(self.ledger(), [])
+        [row] = self.ledger()
+        self.assertEqual((row["eventid"], row["reason"]), ("collector.agent.throttled", "unavailable"))
+
+    def test_인증_전_길이_문제는_거부로_남긴다(self):
+        body = json.dumps({"node_id": "web-02", "agent_sha256": h(self.AGENT2)}).encode()
+        head = req_head(gate.ENROLL, token="olE_guess", length=None, extra="Transfer-Encoding: chunked\r\n")
+        self.assertEqual(status(raw(self.port, head)), 411)
+        self.assertEqual(status(raw(self.port, req_head(gate.ENROLL, token="olE_guess", length=5000))), 413)
+        rows = self.ledger()
+        self.assertEqual({(r["eventid"], r["reason"]) for r in rows},
+                         {("collector.agent.rejected", "length_required"), ("collector.agent.rejected", "too_large")})
+        self.assertEqual(self.store.calls, [])
+
+    def test_발급_형식이_아닌_토큰은_DB_에_묻지_않는다(self):
+        code, _ = self.enroll({"node_id": "web-02", "agent_sha256": h(self.AGENT2)}, token="olE_short")
+        self.assertEqual(code, 401)
+        self.assertEqual(self.store.calls, [])
+        self.assertEqual(self.ledger()[0]["reason"], "enroll_unknown")
+
+    def test_출발지별_분당_등록_횟수(self):
+        body = {"node_id": "web-02", "agent_sha256": h(self.AGENT2)}
+        self.store.result = "enroll_unknown"
+        for _ in range(gate.ENROLL_RATE):
+            self.assertEqual(self.enroll(body)[0], 401)
+        self.assertEqual(self.enroll(body), (429, {"result": "enroll_rate"}))
+        self.clock.advance(61)
+        self.assertEqual(self.enroll(body)[0], 401)
+
+    def test_동시_등록이_넘치면_DB_에_가지_않는다(self):
+        for _ in range(gate.ENROLL_DB):
+            self.assertTrue(self.gate.enroll_slots.acquire(blocking=False))
+        try:
+            self.assertEqual(self.enroll({"node_id": "web-02", "agent_sha256": h(self.AGENT2)}),
+                             (429, {"result": "enroll_busy"}))
+            self.assertEqual(self.store.calls, [])
+        finally:
+            for _ in range(gate.ENROLL_DB):
+                self.gate.enroll_slots.release()
+
+    def test_등록_재시도는_원장에_다시_쓰지_않는다(self):
+        body = {"node_id": "web-02", "agent_sha256": h(self.AGENT2)}
+        self.assertEqual(self.enroll(body)[0], 200)
+        for _ in range(3):
+            self.assertEqual(self.enroll(body)[0], 200)
+        self.assertEqual([r["eventid"] for r in self.ledger()], ["collector.agent.enrolled"])
 
     def test_등록은_됐는데_캐시를_못_읽으면_503(self):
         self.store.fail_load = True
@@ -503,6 +547,84 @@ class EnrollTest(GateCase):
     def test_DB_가_모르는_값을_주면_503(self):
         self.store.result = "weird"
         self.assertEqual(self.enroll({"node_id": "web-02", "agent_sha256": h(self.AGENT2)})[0], 503)
+
+
+class HardeningTest(GateCase):
+    def test_큰_헤더는_431_거부(self):
+        head = req_head(token=AGENT, length=4, extra="".join(f"X-Pad-{i}: {'a' * 100}\r\n" for i in range(80)))
+        self.assertEqual(status(raw(self.port, head, b"abcd")), 431)
+        self.assertEqual(self.ledger()[0]["reason"], "header_too_large")
+        self.assertEqual(self.loki.got, [])
+
+    def test_헤더를_흘려_보내면_기한에_끊는다(self):
+        old = gate.HEADER_DEADLINE
+        gate.HEADER_DEADLINE = 1
+        try:
+            s = socket.create_connection(("127.0.0.1", self.port), timeout=5)
+            s.sendall(b"POST /loki/api/v1/push HTTP/1.1\r\nX-A: 1\r\n")
+            t0 = time.monotonic()
+            closed = False
+            while time.monotonic() - t0 < 4:
+                try:
+                    s.sendall(b"X")
+                    if s.recv(1, socket.MSG_DONTWAIT) == b"":
+                        closed = True
+                        break
+                except BlockingIOError:
+                    pass
+                except OSError:
+                    closed = True
+                    break
+                time.sleep(0.2)
+            s.close()
+            self.assertTrue(closed)
+            deadline = time.monotonic() + 2
+            while not self.ledger() and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertEqual(self.ledger()[0]["reason"], "header_timeout")
+        finally:
+            gate.HEADER_DEADLINE = old
+
+    def test_쉬는_재사용_연결은_거부로_남기지_않는다(self):
+        old = gate.HEADER_DEADLINE
+        gate.HEADER_DEADLINE = 0.5
+        try:
+            c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+            self.assertEqual(self.push(conn=c)[0], 204)
+            time.sleep(1.2)                                  # 다음 요청 줄 없이 쉰다
+            c.close()
+            self.assertEqual(self.ledger(), [])
+        finally:
+            gate.HEADER_DEADLINE = old
+
+    def test_출발지별_동시_연결_한도(self):
+        old = gate.PER_SRC_CONN
+        gate.PER_SRC_CONN = 2
+        try:
+            held = [socket.create_connection(("127.0.0.1", self.port), timeout=5) for _ in range(2)]
+            time.sleep(0.2)
+            s = socket.create_connection(("127.0.0.1", self.port), timeout=5)
+            try:
+                s.sendall(req_head(token=AGENT, length=0).encode())
+                got = s.recv(100)
+            except (ConnectionResetError, BrokenPipeError):
+                got = b""
+            self.assertEqual(got, b"")                     # 바로 끊긴다 (FIN 또는 RST)
+            s.close()
+            for h_ in held:
+                h_.close()
+            time.sleep(0.2)
+            self.assertIn("conn_limit", [r["reason"] for r in self.ledger()])
+            self.assertEqual(self.push()[0], 204)          # 연결을 놓으면 다시 받는다
+        finally:
+            gate.PER_SRC_CONN = old
+
+    def test_하루_용량은_재시작해도_이어진다(self):
+        self.gate.charge("web-01", 1234)
+        self.gate.save_usage(force=True)
+        g2 = gate.Gate(self.store, "http://127.0.0.1:9", self.gate.ledger, self.clock,
+                       usage_path=os.path.join(self.dir, gate.USAGE_FILE))
+        self.assertEqual(g2.usage["web-01"][1], 1234)
 
 
 class CacheTest(GateCase):

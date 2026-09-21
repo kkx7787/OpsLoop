@@ -36,8 +36,12 @@ enroll  POST /opsloop/v1/enroll  (Bearer 등록 토큰, {"node_id", "agent_sha25
   다리(pull_loki.py)가 이 줄을 events 에 넣고, R202 가 인시던트로 올린다.
 
 느린 · 악의적 클라이언트 (MemoryMax 64M 안에서 버티기 위해서)
-  소켓 시간 초과 30초, 본문은 120초 안에 다 와야 한다. 동시 연결 64개(넘으면 바로 끊는다),
+  헤더 한 줄 8KiB · 64줄 (넘으면 431), 요청 줄과 헤더는 10초 안에 다 와야 한다(연결을 끊는다).
+  소켓 시간 초과 30초, 본문은 120초 안에 다 와야 한다. 동시 연결 64개 · 출발지별 8개(넘으면 끊고 거부로 남긴다),
   동시에 받는 본문 합계 16MiB(넘으면 429 busy. Alloy 는 429 를 다시 보낸다).
+  등록은 인증 전에 DB 로 가므로 더 좁힌다: 토큰 형식을 먼저 보고, 출발지별 분당 10회, 동시에 DB 로 가는 요청 2개.
+  인증 전 단계의 거부(헤더 초과 · 기한 초과 · 연결 한도 · 등록의 길이 문제 · 등록 속도)는 모두 거부(R202)로 남긴다.
+  하루 용량은 $GATE_DIR/usage.json 에 남겨 재시작해도 이어진다.
 
 신호
   SIGHUP   노드 캐시를 곧바로 다시 읽는다
@@ -59,7 +63,9 @@ import os
 import re
 import secrets
 import signal
+import socket
 import socketserver
+import tempfile
 import sys
 import threading
 import time
@@ -88,6 +94,16 @@ SOCK_TIMEOUT = 30
 BODY_DEADLINE = 120
 LOKI_TIMEOUT = 30
 MAX_CONN = 64
+PER_SRC_CONN = 8                  # 출발지별 동시 연결
+HEADER_DEADLINE = 10              # 요청 줄 + 헤더를 다 받는 기한 (초). 요청마다 다시 잰다
+ENROLL_DB = 2                     # 동시에 DB 로 가는 등록 요청. 역할 접속 한도(10) 안에서 캐시 갱신 몫을 남긴다
+ENROLL_RATE = 10                  # 출발지별 분당 등록 요청
+USAGE_FILE = "usage.json"
+USAGE_SAVE_EVERY = 10
+# 표준 라이브러리 기본값은 헤더 한 줄 64KiB × 100줄이다. 연결 하나가 인증 전에 6MB 넘게 쌓을 수 있다
+http.client._MAXLINE = 8192
+http.client._MAXHEADERS = 64
+PRE_AUTH_ERRORS = {400: "bad_request", 414: "uri_too_long", 431: "header_too_large", 505: "bad_version"}
 MAX_GROUPS = 256                  # 동시에 묶는 (출발지, 사유) 수. 넘으면 묶지 않고 바로 쓴다
 MAX_FPS = 1024                    # 한 묶음에서 서로 다른 지문을 세는 상한 (distinct_fp 는 이 값에서 멈춘다)
 MAX_REPLY = 64 * 1024
@@ -100,6 +116,7 @@ ENROLL_SQL = "SELECT enroll_node(%s, %s, %s, %s::inet)"
 # fullmatch 로만 쓴다. 숫자는 [0-9] 로 쓴다 (\d · isdigit 은 다른 문자 체계의 숫자도 받는다)
 HEX64 = re.compile(r"[0-9a-f]{64}")
 NODE_ID = re.compile(r"[\x21-\x7e]{1,128}")
+ENROLL_TOKEN = re.compile(r"olE_[A-Za-z0-9_-]{43}")   # nodes.py issue 가 만드는 형식 (olE_ + token_urlsafe(32))
 LENGTH = re.compile(r"[0-9]{1,15}")
 HVAL = re.compile(r"[\x21-\x7e][\x20-\x7e]{0,255}")
 
@@ -304,8 +321,9 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 class Gate:
     """노드 캐시 · 하루 용량 · Loki 전달. 요청 처리기와 관리 스레드가 함께 쓴다."""
 
-    def __init__(self, store, loki_url, ledger, clock=time.monotonic):
+    def __init__(self, store, loki_url, ledger, clock=time.monotonic, usage_path=None):
         self.store, self.ledger, self.clock = store, ledger, clock
+        self.usage_path = usage_path
         self.loki = loki_url.rstrip("/") + PUSH
         # 환경의 http_proxy 를 타지 않는다
         self.opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
@@ -319,9 +337,13 @@ class Gate:
         self._summary = None
         self._fresh = True
         self._stats_at = clock()
-        self.usage = {}              # node_id → (UTC 날짜, 넘긴 바이트)
+        self.usage = self._load_usage()   # node_id → (UTC 날짜, 넘긴 바이트)
+        self._usage_dirty = False
+        self._usage_saved = clock()
         self.inflight = 0
         self.stats = collections.Counter()
+        self.enroll_slots = threading.BoundedSemaphore(ENROLL_DB)
+        self._enroll_hits = {}           # 출발지 → 최근 60초 등록 요청 시각
 
     # --- 노드 캐시 ---
     def reload(self, why=""):
@@ -363,6 +385,57 @@ class Gate:
         with self._lock:
             d, used = self.usage.get(node_id, (day, 0))
             self.usage[node_id] = (day, (used if d == day else 0) + n)
+            self._usage_dirty = True
+
+    def _load_usage(self):
+        """재시작해도 하루 용량이 이어지게 파일에서 읽는다. 오늘 것만 쓴다."""
+        if not self.usage_path:
+            return {}
+        try:
+            with open(self.usage_path, encoding="utf-8") as f:
+                raw = json.load(f)
+            today = utc_now().date()
+            return {str(k): (today, int(v[1])) for k, v in raw.items()
+                    if isinstance(v, list) and len(v) == 2 and v[0] == today.isoformat() and int(v[1]) >= 0}
+        except FileNotFoundError:
+            return {}
+        except (OSError, ValueError, TypeError, AttributeError) as e:
+            log(f"하루 용량 파일을 읽지 못했다. 0 부터 센다: {safe(e)}", 4)
+            return {}
+
+    def save_usage(self, force=False):
+        if not self.usage_path:
+            return
+        now = self.clock()
+        with self._lock:
+            if not self._usage_dirty or (not force and now - self._usage_saved < USAGE_SAVE_EVERY):
+                return
+            data = {k: [d.isoformat(), used] for k, (d, used) in self.usage.items()}
+            self._usage_dirty = False
+            self._usage_saved = now
+        d = os.path.dirname(self.usage_path) or "."
+        try:
+            fd, tmp = tempfile.mkstemp(dir=d, prefix=".usage.")
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(data, f)
+            os.replace(tmp, self.usage_path)
+        except OSError as e:
+            log(f"하루 용량 파일을 쓰지 못했다: {safe(e)}", 4)
+
+    def enroll_rate_ok(self, src):
+        """출발지별 분당 등록 요청 수. 인증 전에 DB 로 가는 길이라 좁힌다."""
+        now = self.clock()
+        with self._lock:
+            q = self._enroll_hits.setdefault(src, collections.deque())
+            while q and now - q[0] > 60:
+                q.popleft()
+            if len(q) >= ENROLL_RATE:
+                return False
+            q.append(now)
+            if len(self._enroll_hits) > 1024:
+                for k in [k for k, v in self._enroll_hits.items() if not v or now - v[-1] > 60]:
+                    del self._enroll_hits[k]
+            return True
 
     def reserve(self, n):
         with self._lock:
@@ -422,6 +495,7 @@ class Gate:
                 log(f"노드 캐시가 {CACHE_STALE}초 넘게 오래됐다. push 에 503 을 준다 (DB 접속 확인)", 3)
             self._fresh = fresh
         self.ledger.flush()
+        self.save_usage()
         if now - self._stats_at >= STATS_EVERY:
             self._stats_at = now
             with self._lock:
@@ -452,6 +526,46 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         log(f"HTTP {self.client_address[0]}: {safe(fmt % args)}", 7)
+
+    def handle_one_request(self):
+        # 요청 줄과 헤더를 HEADER_DEADLINE 안에 다 받지 못하면 연결을 끊는다.
+        # 한 바이트씩 흘려 소켓 시간 초과(30초)를 피하며 슬롯 · 메모리를 붙잡는 것을 막는다
+        self.raw_requestline = b""
+        self._headers_done = False
+        self._hdr_timer = threading.Timer(HEADER_DEADLINE, self._header_timeout)
+        self._hdr_timer.daemon = True
+        self._hdr_timer.start()
+        try:
+            super().handle_one_request()
+        finally:
+            self._hdr_timer.cancel()
+
+    def parse_request(self):
+        ok = super().parse_request()
+        self._headers_done = True
+        self._hdr_timer.cancel()
+        return ok
+
+    def _header_timeout(self):
+        if self._headers_done:
+            return
+        if self.raw_requestline:
+            # 요청 줄은 왔는데 헤더가 끝나지 않는다 (쉬고 있는 재사용 연결이 아니다)
+            self.server.gate.count("rejected")
+            self.server.gate.ledger.record(REJECTED, self._src(), "-", "header_timeout")
+        try:
+            self.connection.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+
+    def send_error(self, code, message=None, explain=None):
+        # 표준 라이브러리가 요청 줄 · 헤더를 해석하다 내는 오류(인증 전)도 거부로 남긴다
+        reason = PRE_AUTH_ERRORS.get(code)
+        if reason:
+            self.server.gate.count("rejected")
+            self.server.gate.ledger.record(REJECTED, self._src(), getattr(self, "path", None) or "-", reason)
+        self.close_connection = True
+        super().send_error(code, message, explain)
 
     def handle_expect_100(self):
         self._expect = True           # 100 Continue 는 본문을 받기로 정한 뒤에만 보낸다
@@ -499,12 +613,13 @@ class Handler(BaseHTTPRequestHandler):
         if data and self.command != "HEAD":
             self.wfile.write(data)
 
-    def _reject(self, reason, fp=None, node_id=None):
+    def _reject(self, reason, fp=None, node_id=None, code=None):
         """거부. 본문을 읽지 않았으면 읽지 않은 채 연결을 닫는다."""
         gate = self.server.gate
         gate.count("rejected")
         gate.ledger.record(REJECTED, self._src(), self.path, reason, fp, self.headers.get("User-Agent"), node_id)
-        code = 404 if reason == "path" else 400 if reason in BAD_REQUEST else 401
+        if code is None:
+            code = 404 if reason == "path" else 400 if reason in BAD_REQUEST else 401
         self._send(code, {"result": reason}, close=True)
 
     def _throttle(self, code, reason, fp, node_id=None):
@@ -598,22 +713,36 @@ class Handler(BaseHTTPRequestHandler):
             return self._reject("missing")
         token_hash = sha256hex(token)
         fp = token_hash[:8]
+        src = self._src()
+        # 여기까지는 누가 보냈는지 모른다. 길이 문제도 등록 노드의 문제가 아니라 거부(R202)로 남긴다
+        if not gate.enroll_rate_ok(src):
+            return self._reject("enroll_rate", fp, code=429)
         n = content_length(self.headers)
         if n is None:
-            return self._throttle(411, "length_required", fp)
+            return self._reject("length_required", fp, code=411)
         if n > MAX_ENROLL:
-            return self._throttle(413, "too_large", fp)
+            return self._reject("too_large", fp, code=413)
+        if not ENROLL_TOKEN.fullmatch(token):
+            return self._reject("enroll_unknown", fp)   # 발급 형식이 아니면 DB 에 묻지 않는다
         req = parse_enroll(self._read_body(n))
         if isinstance(req, str):
             return self._reject(req, fp)
         node_id, agent = req
-        src = self._src()
+        if not gate.enroll_slots.acquire(blocking=False):
+            return self._reject("enroll_busy", fp, code=429)
         try:
             result = gate.store.enroll(token_hash, node_id, agent, src)
         except Exception as e:
             log(f"등록 DB 오류 {src} {node_id}: {type(e).__name__}: {safe(e)}", 3)
+            gate.ledger.record(THROTTLED, src, self.path, "unavailable", fp, self.headers.get("User-Agent"), node_id)
             return self._send(503, {"result": "unavailable"}, close=True)
+        finally:
+            gate.enroll_slots.release()
         if result == "ok":
+            known = gate.nodes.get(agent)
+            if known and known.node_id == node_id and known.status == "active" and known.addr == norm_ip(src):
+                # 이미 등록된 그대로다 (응답 유실 재시도). 원장에 다시 쓰지도 캐시를 다시 읽지도 않는다
+                return self._send(200, {"result": "ok"})
             gate.count("enrolled")
             gate.ledger.record(ENROLLED, src, self.path, "ok", agent[:8], self.headers.get("User-Agent"),
                                node_id, group=False)
@@ -637,6 +766,8 @@ class GateServer(ThreadingHTTPServer):
         self.gate = None
         self.stopping = False         # SIGTERM 처리기는 표시만 한다
         self.slots = threading.BoundedSemaphore(max_conn)
+        self.per_src = collections.Counter()
+        self._src_lock = threading.Lock()
         super().__init__(addr, Handler)
 
     def server_bind(self):
@@ -645,7 +776,20 @@ class GateServer(ThreadingHTTPServer):
         self.server_name, self.server_port = self.server_address[:2]
 
     def process_request(self, request, client_address):
+        ip = client_address[0]
+        with self._src_lock:
+            over = self.per_src[ip] >= PER_SRC_CONN
+            if not over:
+                self.per_src[ip] += 1
+        if over:
+            # 한 출발지가 연결을 쌓아 다른 노드의 슬롯을 빼앗지 못하게 한다. 정상 에이전트는 몇 개만 쓴다
+            if self.gate:
+                self.gate.count("refused")
+                self.gate.ledger.record(REJECTED, ip, "-", "conn_limit")
+            self.shutdown_request(request)
+            return
         if not self.slots.acquire(blocking=False):
+            self._src_done(ip)
             if self.gate:
                 self.gate.count("refused")
             self.shutdown_request(request)
@@ -654,13 +798,21 @@ class GateServer(ThreadingHTTPServer):
             super().process_request(request, client_address)
         except BaseException:
             self.slots.release()
+            self._src_done(ip)
             raise
+
+    def _src_done(self, ip):
+        with self._src_lock:
+            self.per_src[ip] -= 1
+            if self.per_src[ip] <= 0:
+                del self.per_src[ip]
 
     def process_request_thread(self, request, client_address):
         try:
             super().process_request_thread(request, client_address)
         finally:
             self.slots.release()
+            self._src_done(client_address[0])
 
     def service_actions(self):
         if self.stopping:
@@ -676,7 +828,7 @@ class GateServer(ThreadingHTTPServer):
 def make_server(host, port, store, loki_url, gate_dir, clock=time.monotonic, max_conn=MAX_CONN):
     server = GateServer((host, port), max_conn)
     ledger = Ledger(gate_dir, server.server_address[1], clock)
-    server.gate = Gate(store, loki_url, ledger, clock)
+    server.gate = Gate(store, loki_url, ledger, clock, usage_path=os.path.join(gate_dir, USAGE_FILE))
     return server, server.gate
 
 
@@ -720,6 +872,7 @@ def main():
         gate.stop.set()
         worker.join(timeout=15)
         gate.ledger.flush(force=True)
+        gate.save_usage(force=True)
         server.server_close()
         log("수집 관문을 멈췄다. 묶어 둔 원장 줄을 모두 썼다", 5)
 
