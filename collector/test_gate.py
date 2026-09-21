@@ -395,7 +395,7 @@ class LimitTest(GateCase):
     def test_413_은_본문을_읽지_않는다(self):
         data = raw(self.port, req_head(token=AGENT, length=gate.MAX_PUSH + 1))
         self.assertEqual(status(data), 413)
-        self.assertEqual(self.ledger()[0]["reason"], "too_large")
+        self.assertEqual({(r["eventid"], r["reason"]) for r in self.ledger()}, {("collector.agent.throttled", "too_large")})
         self.assertEqual(self.loki.got, [])
 
     def test_429_하루_용량(self):
@@ -432,6 +432,9 @@ class LimitTest(GateCase):
             self.loki.reply = (500, b"boom")
             for _ in range(3):
                 self.assertEqual(self.push(body=b"a" * 100)[0], 500)
+            self.loki.reply = (429, b"rate limited")              # Alloy 는 429 도 다시 보낸다
+            for _ in range(3):
+                self.assertEqual(self.push(body=b"a" * 100)[0], 429)
             real = self.gate.loki
             self.gate.loki = f"http://127.0.0.1:{free_port()}{gate.PUSH}"
             for _ in range(3):
@@ -445,13 +448,26 @@ class LimitTest(GateCase):
         finally:
             gate.DAILY_QUOTA = old
 
-    def test_인코딩이_없으면_2MiB_가_본문_상한(self):
-        data = raw(self.port, req_head(token=AGENT, length=gate.MAX_DECODED + 1))
-        self.assertEqual((status(data), body_json(data)), (413, {"result": "too_large"}))
+    def test_JSON_은_2MiB_protobuf_는_4MiB_가_본문_상한(self):
         data = raw(self.port, req_head(token=AGENT, length=gate.MAX_DECODED + 1,
                                        extra="Content-Type: application/json\r\n"))
-        self.assertEqual(status(data), 413)
+        self.assertEqual((status(data), body_json(data)), (413, {"result": "too_large"}))
+        for enc in ("", "Content-Encoding: snappy\r\n"):
+            data = raw(self.port, req_head(token=AGENT, length=gate.MAX_PUSH + 1, extra=enc))
+            self.assertEqual((status(data), body_json(data)), (413, {"result": "too_large"}))
         self.assertEqual(self.loki.got, [])
+        self.assertEqual({(r["eventid"], r["reason"]) for r in self.ledger()},
+                         {("collector.agent.throttled", "too_large")})
+        # 경계: 2MiB 를 넘는 protobuf 도 4MiB 안이면 받는다 (인코딩 헤더와 상관없이). JSON 은 딱 2MiB 까지
+        pb = b"\x80\x80\x80\x01" + b"x" * (gate.MAX_DECODED + 1 - 4)     # 앞머리 = 2MiB
+        for enc in ("", "Content-Encoding: snappy\r\n"):
+            data = raw(self.port, req_head(token=AGENT, length=len(pb), extra=enc + "Connection: close\r\n"), pb)
+            self.assertEqual(status(data), 204, enc)
+        js = b"x" * gate.MAX_DECODED
+        data = raw(self.port, req_head(token=AGENT, length=len(js),
+                                       extra="Content-Type: application/json\r\nConnection: close\r\n"), js)
+        self.assertEqual(status(data), 204)
+        self.assertEqual([len(b) for _, _, b in self.loki.got], [len(pb), len(pb), len(js)])
 
     def test_snappy_앞머리의_풀린_크기가_2MiB_를_넘으면_413(self):
         two = b"\x80\x80\x80\x01"                  # varint 2MiB
@@ -462,10 +478,15 @@ class LimitTest(GateCase):
         for bad in (b"", b"\xff\xff\xff\xff\xff\x01", b"\xff\xff\xff\xff\x1f"):   # 비었음 · 5바이트 초과 · 32비트 초과
             code, body, _ = self.push(body=bad, headers={"Content-Encoding": "snappy"})
             self.assertEqual((code, json.loads(body)["result"]), (400, "bad_snappy"), bad)
+        # Loki 는 protobuf 를 인코딩 헤더와 상관없이 snappy 로 푼다. 헤더가 없거나 identity 여도 앞머리를 본다
+        for hd in ({}, {"Content-Encoding": "identity"}):
+            code, body, _ = self.push(body=over + b"x" * 10, headers=hd)
+            self.assertEqual((code, json.loads(body)["result"]), (413, "decoded_too_large"), hd)
         self.assertEqual(len(self.loki.got), 1)
         self.assertEqual({(r["eventid"], r["reason"]) for r in self.ledger()},
                          {("collector.agent.throttled", "decoded_too_large"), ("collector.agent.throttled", "bad_snappy")})
         self.assertEqual(self.gate.usage["web-01"][1], 14)          # 넘긴 한 건만 센다
+        self.assertTrue(self.wait(lambda: self.gate.inflight == 0))
 
     def test_snappy_len(self):
         for buf, n in ((b"\x00", 0), (b"\x7f", 127), (b"\x80\x01", 128), (b"\x80\x80\x80\x01rest", 2 * 1024 * 1024),
@@ -486,18 +507,76 @@ class LimitTest(GateCase):
         self.assertEqual(self.loki.peak, 1)
 
     def test_차례가_오지_않으면_429_busy(self):
-        old = gate.LOKI_TIMEOUT
-        gate.LOKI_TIMEOUT = 0.3
+        old = gate.FORWARD_WAIT
+        gate.FORWARD_WAIT = 0.3
         self.gate.forward_slots.acquire()
         try:
             code, body, _ = self.push()
         finally:
             self.gate.forward_slots.release()
-            gate.LOKI_TIMEOUT = old
+            gate.FORWARD_WAIT = old
         self.assertEqual((code, json.loads(body)["result"]), (429, "busy"))
         self.assertEqual(self.loki.got, [])
         self.assertEqual(self.gate.usage, {})
+        self.assertTrue(self.wait(lambda: self.gate.inflight == 0))
+        self.assertEqual({(r["eventid"], r["reason"]) for r in self.ledger()}, {("collector.agent.throttled", "busy")})
         self.assertEqual(self.push()[0], 204)
+
+    def test_대기_시간은_Alloy_remote_timeout_안(self):
+        self.assertLess(gate.FORWARD_WAIT + gate.LOKI_TIMEOUT, 10)
+
+    def test_Loki_가_늦으면_LOKI_TIMEOUT_에_503_차례는_돌려준다(self):
+        old = gate.LOKI_TIMEOUT
+        gate.LOKI_TIMEOUT = 0.3
+        self.loki.delay = 1
+        try:
+            t0 = time.monotonic()
+            code, _, _ = self.push()
+            took = time.monotonic() - t0
+        finally:
+            gate.LOKI_TIMEOUT = old
+        self.assertEqual(code, 503)
+        self.assertLess(took, 0.9)
+        self.assertEqual(self.gate.usage, {})
+        self.loki.delay = 0
+        time.sleep(1)                                  # 늦은 가짜 Loki 스레드가 끝나기를 기다린다
+        self.assertEqual(self.push()[0], 204)          # 차례(세마포어)가 돌아왔다
+
+    def test_차례를_기다리는_동안_끊긴_요청은_넘기지_않는다(self):
+        self.gate.forward_slots.acquire()
+        try:
+            body = b"\x00gone"
+            s = socket.create_connection(("127.0.0.1", self.port), timeout=5)
+            s.sendall(req_head(token=AGENT, length=len(body)).encode() + body)
+            time.sleep(0.3)                          # 관문이 본문을 받고 차례를 기다리는 중
+            s.close()                                # 에이전트가 기다리다 끊었다
+            time.sleep(0.1)
+        finally:
+            self.gate.forward_slots.release()
+        self.assertTrue(self.wait(lambda: self.gate.stats["client_gone"] == 1))
+        self.assertEqual(self.loki.got, [])
+        self.assertTrue(self.wait(lambda: [(r["eventid"], r["reason"]) for r in self.ledger()]
+                                  == [("collector.agent.throttled", "client_gone")]))
+        self.assertEqual(self.gate.usage, {})
+        self.assertTrue(self.wait(lambda: self.gate.inflight == 0))
+
+    def test_본문을_덜_보낸_노드가_차례를_막지_않는다(self):
+        # 차례는 본문을 다 받은 뒤에 잡는다. 먼저 잡으면 느린 노드 하나가 모든 전달을 막는다
+        s = socket.create_connection(("127.0.0.1", self.port), timeout=5)
+        try:
+            s.sendall(req_head(token=AGENT, length=1000).encode() + b"x" * 10)
+            time.sleep(0.2)
+            self.assertEqual(self.push()[0], 204)
+        finally:
+            s.close()
+
+    def test_loki_yaml_상한은_관문과_같다(self):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "infra", "vmware", "compose", "loki.yaml")
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        self.assertEqual(int(re.search(r"^\s*max_recv_msg_size:\s*([0-9]+)", text, re.M).group(1)), gate.MAX_PUSH)
+        self.assertEqual(int(re.search(r"^\s*max_decompressed_size:\s*([0-9]+)", text, re.M).group(1)), gate.MAX_DECODED)
+        self.assertEqual((gate.MAX_PUSH, gate.MAX_DECODED), (4 * 1024 * 1024, 2 * 1024 * 1024))
 
     def test_429_동시_본문_한도(self):
         old = gate.INFLIGHT_MAX
@@ -506,7 +585,7 @@ class LimitTest(GateCase):
             self.assertEqual(self.push(body=b"a" * 100)[0], 429)
         finally:
             gate.INFLIGHT_MAX = old
-        self.assertEqual(self.ledger()[0]["reason"], "busy")
+        self.assertEqual({(r["eventid"], r["reason"]) for r in self.ledger()}, {("collector.agent.throttled", "busy")})
 
     def test_캐시가_오래되면_503_거부로_세지_않는다(self):
         self.clock.advance(gate.CACHE_STALE + 1)

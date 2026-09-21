@@ -2,7 +2,7 @@
 """수집 관문 opsloop-gate (WBS 3.4.2 ~ 3.4.4, 이슈 #11).
 
 Loki 에는 인증 계층이 없다. 그래서 Loki 는 127.0.0.1:3100 에만 붙이고, 관제 대상 에이전트(Alloy)는
-이 관문(192.168.60.11:3101)으로만 보낸다. 관문은 본문을 읽기 전에 헤더만 보고 판정하고(snappy 는 받은 뒤 앞머리의 풀린 크기만 본다),
+이 관문(192.168.60.11:3101)으로만 보낸다. 관문은 본문을 읽기 전에 헤더만 보고 판정하고(protobuf 는 받은 뒤 앞머리의 풀린 크기만 본다),
 통과한 본문은 바이트 그대로 Loki 에 넘긴다.
 
 push  POST /loki/api/v1/push  (Bearer 에이전트 키)
@@ -12,22 +12,26 @@ push  POST /loki/api/v1/push  (Bearer 에이전트 키)
   4. 키 해시가 캐시에 없으면 401 unknown (등록 토큰을 push 에 쓴 경우 포함), 폐기면 revoked, active 가 아니면 inactive
   5. 출발지가 nodes.addr 와 다르면 401 addr_mismatch
   6. 여기부터는 인증을 통과한 등록 노드 자신의 문제라 R202 가 아니라 제한(throttled)으로 남긴다.
-     형식은 protobuf + snappy(Alloy 가 보내는 것), 인코딩 없는 protobuf · JSON 만 받는다. 그 밖(gzip · deflate 등)은 415.
-     길이 없음 411 · 본문 상한 초과 413 · 노드별 하루(UTC) 200MiB 초과 429.
-     본문 상한은 snappy 면 4MiB(압축된 크기), 인코딩이 없으면 2MiB(곧 풀린 크기)다
-  7. snappy 본문은 받은 뒤 앞머리(varint)에 적힌 풀린 크기를 본다. 2MiB 를 넘으면 413, 앞머리가 틀리면 400 (제한).
-     압축 폭탄 대비다. Loki 3.7 의 max_recv_msg_size 는 압축된 크기만 보고 풀린 크기는 max_decompressed_size 가 따로 본다.
+     형식은 protobuf(snappy 또는 인코딩 없음 · Alloy 는 snappy 를 붙인다), 인코딩 없는 JSON 만 받는다.
+     그 밖(gzip · deflate 등)은 415. 길이 없음 411 · 본문 상한 초과 413 · 노드별 하루(UTC) 200MiB 초과 429.
+     본문 상한은 protobuf 4MiB(압축된 크기), JSON 2MiB(곧 풀린 크기)다
+  7. protobuf 본문은 받은 뒤 snappy 앞머리(varint)에 적힌 풀린 크기를 본다. 2MiB 를 넘으면 413, 앞머리가 틀리면 400 (제한).
+     Loki 3.7 은 protobuf 를 Content-Encoding 과 상관없이 snappy 로 푼다. 그래서 인코딩 헤더가 없어도 같이 본다.
+     압축 폭탄 대비다. Loki 의 max_recv_msg_size 는 압축된 크기만 보고 풀린 크기는 max_decompressed_size 가 따로 본다.
      snappy 는 최대 약 21배로 풀리므로 관문의 4MiB 상한만으로는 85MiB 까지 풀린다.
      그래서 관문(2MiB)과 Loki(max_decompressed_size 2MiB) 두 곳에서 막는다.
      Alloy 묶음은 줄 바이트 1MiB 로 못 박았으므로(config.alloy.j2) 정상 전송은 여기 걸리지 않는다
-  8. Loki 로 넘기는 요청은 한 번에 하나다. 30초 안에 차례가 오지 않으면 429 busy(제한, Alloy 가 다시 보낸다).
+  8. Loki 로 넘기는 요청은 한 번에 하나다. 본문을 다 받은 뒤에 차례를 기다리므로 느린 노드가 줄을 막지 않는다.
+     3초 안에 차례가 오지 않으면 429 busy(제한, Alloy 가 다시 보낸다). 차례가 왔을 때 에이전트가 이미 끊었으면 넘기지 않고
+     제한(client_gone)으로 남긴다. 쓰기 쪽만 닫은(half-close) 연결도 끊긴 것으로 본다. Alloy 는 그렇게 닫지 않는다.
+     Alloy 의 remote_timeout 은 10초다. 차례 대기(3초)와 Loki 응답 대기(6초)를 그 안에 둔다.
      Loki 는 속도 제한보다 먼저 본문을 풀고 펼치는데, 빈 줄이 많은 본문은 펼치면 수십 배로 불어난다.
      동시에 여러 개를 넘기면 풀린 크기 상한만으로는 384M 컨테이너를 지키지 못한다.
      X-Scope-OrgID 를 토큰이 증명한 node_id 로 덮어써(에이전트가 보낸 값은 버린다) 넘기고,
      Loki 의 응답 코드를 그대로 돌려준다. Loki 에 닿지 않으면 503
-  9. 하루 용량에는 Loki 가 5xx 가 아닌 코드로 답한 요청의 바이트를 센다.
-     4xx 를 세는 것은 Alloy 가 다시 보내지 않는 거절 본문을 끝없이 보내지 못하게 하려는 것이다.
-     5xx · 관문의 503 을 빼는 것은 Alloy 가 다시 보낼 묶음이 Loki 장애 동안 용량을 깎지 않게 하려는 것이다
+  9. 하루 용량에는 Loki 가 답한 요청 중 Alloy 가 다시 보내지 않는 것(2xx · 429 밖의 4xx)의 바이트를 센다.
+     4xx 를 세는 것은 거절될 본문을 끝없이 보내지 못하게 하려는 것이다.
+     429 · 5xx · 관문의 503 을 빼는 것은 Alloy 가 다시 보낼 묶음이 재시도마다 용량을 깎지 않게 하려는 것이다
   1 ~ 6 에서 답할 때는 본문을 읽지 않고 연결을 닫는다. 표식 문자열이 든 본문도 Loki 에 닿지 않는다.
   Expect: 100-continue 는 본문을 받기로 정한 뒤에만 답한다.
 
@@ -76,6 +80,7 @@ import json
 import os
 import re
 import secrets
+import select
 import signal
 import socket
 import socketserver
@@ -99,16 +104,17 @@ ENROLL_REJECT = {"enroll_unknown", "enroll_canceled", "enroll_node", "enroll_exp
 BAD_REQUEST = {"bad_key", "enroll_body"}      # 400 으로 답하는 사유
 
 MAX_PUSH = 4 * 1024 * 1024        # snappy 본문(압축된 크기) 상한
-MAX_DECODED = 2 * 1024 * 1024     # 풀린 크기 상한. 인코딩이 없는 본문은 이것이 본문 상한이다. Loki max_decompressed_size 와 같다
+MAX_DECODED = 2 * 1024 * 1024     # 풀린 크기 상한. JSON 은 이것이 본문 상한이다. Loki max_decompressed_size 와 같다
 FORWARD_MAX = 1                   # 동시에 Loki 로 넘기는 요청
 MAX_ENROLL = 4 * 1024
-DAILY_QUOTA = 200 * 1024 * 1024   # 노드별 하루(UTC). Loki 가 5xx 가 아닌 코드로 답한 바이트를 센다. usage.json 으로 이어진다
+DAILY_QUOTA = 200 * 1024 * 1024   # 노드별 하루(UTC). Alloy 가 다시 보내지 않는 응답(2xx · 429 밖의 4xx)의 바이트를 센다
 INFLIGHT_MAX = 16 * 1024 * 1024   # 동시에 메모리에 올리는 본문 합계
 CACHE_EVERY, CACHE_STALE = 15, 60
 WINDOW = 60
 SOCK_TIMEOUT = 30
 BODY_DEADLINE = 120
-LOKI_TIMEOUT = 30
+LOKI_TIMEOUT = 6                  # Loki 응답 대기. 차례 대기와 합쳐 Alloy remote_timeout(10초) 안에 둔다
+FORWARD_WAIT = 3                  # Loki 로 넘길 차례 대기
 MAX_CONN = 64
 PER_SRC_CONN = 8                  # 출발지별 동시 연결
 HEADER_DEADLINE = 10              # 요청 줄 + 헤더를 다 받는 기한 (초). 요청마다 다시 잰다
@@ -534,7 +540,7 @@ class Gate:
             if s:
                 log(f"지난 {STATS_EVERY // 60}분: 넘김 {s['pass']}건 {s['pass_bytes']:,} B · 거부 {s['rejected']} · "
                     f"제한 {s['throttled']} · 등록 {s['enrolled']} · Loki 오류 {s['loki_error']} · "
-                    f"연결 한도로 끊음 {s['refused']}")
+                    f"연결 한도로 끊음 {s['refused']} · 끊겨 넘기지 않음 {s['client_gone']}")
 
     def housekeeping(self):
         while not self.stop.wait(0.5):
@@ -682,6 +688,14 @@ class Handler(BaseHTTPRequestHandler):
             view.release()
         return buf
 
+    def _client_gone(self):
+        """에이전트가 연결을 끊었는가. 읽을 것이 있는데 엿본 결과가 비었으면 끊긴 것이다."""
+        try:
+            ready, _, _ = select.select([self.connection], [], [], 0)
+            return bool(ready) and self.connection.recv(1, socket.MSG_PEEK) == b""
+        except (OSError, ValueError):
+            return True
+
     # --- push ---
     def _authorize(self):
         """push 의 헤더 검사 3 ~ 5. 통과하면 (노드, 지문), 거부했으면 (None, None)."""
@@ -723,7 +737,7 @@ class Handler(BaseHTTPRequestHandler):
         n = content_length(self.headers)
         if n is None:
             return self._throttle(411, "length_required", fp, node.node_id)
-        if n > (MAX_PUSH if enc else MAX_DECODED):
+        if n > (MAX_DECODED if ctype == "application/json" else MAX_PUSH):
             return self._throttle(413, "too_large", fp, node.node_id)
         if not gate.quota_ok(node.node_id, n):
             return self._throttle(429, "daily_quota", fp, node.node_id)
@@ -731,20 +745,27 @@ class Handler(BaseHTTPRequestHandler):
             return self._throttle(429, "busy", fp, node.node_id)
         try:
             body = self._read_body(n)
-            if enc == "snappy":
+            if ctype == "application/x-protobuf":
                 size = snappy_len(body)
                 if size is None:
                     return self._throttle(400, "bad_snappy", fp, node.node_id)
                 if size > MAX_DECODED:
                     return self._throttle(413, "decoded_too_large", fp, node.node_id)
-            if not gate.forward_slots.acquire(timeout=LOKI_TIMEOUT):
+            if not gate.forward_slots.acquire(timeout=FORWARD_WAIT):
                 return self._throttle(429, "busy", fp, node.node_id)
             try:
+                if self._client_gone():
+                    # 에이전트가 기다리다 끊고 같은 묶음을 다시 보냈다. 넘기면 사본만 쌓인다
+                    gate.count("client_gone")
+                    gate.ledger.record(THROTTLED, self._src(), self.path, "client_gone", fp,
+                                       self.headers.get("User-Agent"), node.node_id)
+                    self.close_connection = True
+                    return
                 code, data, rtype = gate.forward(node.node_id, body, self.headers.get("Content-Type"), enc or None)
             finally:
                 gate.forward_slots.release()
             del body
-            if code < 500:
+            if code < 500 and code != 429:
                 gate.charge(node.node_id, n)
         finally:
             gate.release(n)
