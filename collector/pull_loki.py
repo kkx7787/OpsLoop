@@ -2,7 +2,7 @@
 """관제 대상 로그 다리 (WBS 3.4.2 · 3.4.4 / 이슈 #11).
 
 opsloop-agents.service 가 opsloop-pull 사용자로 1분마다 돌린다. 등록 노드(web-01 등)의 Loki 테넌트와
-수집 관문 원장을 events · node_metrics 로 옮기고, 자기 탐지(R202)와 관제 대상 규칙(R101 최소판)을 돌린다.
+수집 관문 원장을 events · node_metrics 로 옮기고, 자기 탐지(R202)와 관제 대상 규칙(w1 · a1 · i1)을 돌린다.
 5분 적재기(opsloop-ingest)와 허니팟 경로는 건드리지 않는다. S3 가 막혀도 이 경로의 탐지는 계속된다.
 
 한 회차
@@ -19,7 +19,9 @@ opsloop-agents.service 가 opsloop-pull 사용자로 1분마다 돌린다. 등�
   4. 관문 원장($GATE_DIR/collector-*.jsonl)과 관리 원장($OPSLOOP_ADMIN_DIR/admin-*.jsonl)을 파일마다
      (inode, 오프셋) 으로 이어 읽어 events 에 넣는다. 관리 원장은 관문이 쓸 수 없는 root 전용 폴더에서만 읽는다.
      쓰는 중인 마지막 줄(줄바꿈 없음)은 다음 회차에 읽는다.
-  5. detect.py 를 rules_self.json(s1) · rules_node.json(n1) 으로 차례로 돈다.
+  5. detect.py 를 rules_self.json(s1) · rules_w1.json(w1) · rules_audit.json(a1) · rules_infra.json(i1) 으로
+     차례로 돈다. 규칙 파일마다 따로 돌리므로 하나가 실패해도 나머지는 돈다. rules_node.json(n1)은 w1 R101 이
+     흡수해 돌리지 않는다 (파일과 rule_versions 이력은 남긴다).
   Loki 가 응답하지 않아도 4 · 5 는 한다.
 
 관제 대상이 장악된 경우를 가정한다. 관문은 본문을 그대로 넘기므로 web-01 은 라벨 · 줄 내용을 마음대로 정한다.
@@ -72,7 +74,8 @@ LOKI_URL = os.environ.get("LOKI_URL", "http://127.0.0.1:3100").rstrip("/")
 GATE_DIR = os.environ.get("GATE_DIR", "/var/lib/opsloop/gate")
 ADMIN_DIR = os.environ.get("OPSLOOP_ADMIN_DIR", "/var/lib/opsloop/admin")
 DB_ENV = os.environ.get("OPSLOOP_DB_ENV", "/etc/opsloop/collector.env")
-RULESETS = ("rules_self.json", "rules_node.json")     # s1 (R202 미등록 에이전트) · n1 (R101 최소판)
+# s1 (R202 미등록 에이전트) · w1 (R101~R104 웹 · 인증) · a1 (R201 차단 대량 해제) · i1 (R301 노드 수신 끊김)
+RULESETS = ("rules_self.json", "rules_w1.json", "rules_audit.json", "rules_infra.json")
 
 NS = 10 ** 9
 LAG = 10 * NS                  # 지금-10초까지만 본다 (Loki 가 막 받은 묶음이 조회에 덜 잡힐 수 있다)

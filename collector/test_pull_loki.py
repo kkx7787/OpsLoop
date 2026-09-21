@@ -10,7 +10,8 @@
   - 선언하지 않은 job 은 적재하지 않고 undeclared 로만 센다
   - 수신 기록(receipt): 사유별 수 · seq 공백 · first_loaded_at 은 한 번만
   - 원장 (inode, 오프셋) 이어 읽기: 쓰는 중인 줄 · 파일 교체 · 위조 줄 · 관리 원장 주인 · 너무 긴 줄
-  - Loki 가 죽어도 원장 적재와 탐지(s1 · n1)는 한다
+  - Loki 가 죽어도 원장 적재와 탐지(s1 · w1 · a1 · i1)는 한다
+  - 탐지 순서는 s1 · w1 · a1 · i1 이고 n1 은 돌리지 않는다. 저장소 규칙 파일의 rule_version 과 맞는다
   - --node --since 재생성: 두 번째 실행 신규 0, DB 를 비운 뒤에는 빠진 만큼만 다시 들어간다
 """
 import copy
@@ -45,6 +46,7 @@ MIN = 60 * NS
 T0_DT = datetime(2026, 9, 21, 7, 0, 0, tzinfo=timezone.utc)
 T0 = int(T0_DT.timestamp()) * NS
 HOST = "opsloop-web-01"
+RULESETS = ("rules_self.json", "rules_w1.json", "rules_audit.json", "rules_infra.json")   # s1 · w1 · a1 · i1
 
 STUB_AGENT = r'''
 """시험용 parse_agent. 계약 7장의 모양만 따른다."""
@@ -334,7 +336,7 @@ class BridgeTest(unittest.TestCase):
             f.write("127.0.0.1   # 첫 수신 탐침\n")
         with open(os.path.join(self.app, "detector", "detect.py"), "w") as f:
             f.write(FAKE_DETECT)
-        for name in ("rules_self.json", "rules_node.json"):
+        for name in RULESETS:
             with open(os.path.join(self.app, "detector", name), "w") as f:
                 f.write("{}\n")
         self.home = os.path.join(self.t, "home")
@@ -433,7 +435,7 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(int(self.loki.of("web-01")[-1]["start"]), end - self.m.DEEP)
         self.assertEqual(self.state()["runs"], 15)
         self.assertEqual(self.state()["nodes"]["web-01"]["watermark"], self.clock - 10 * NS)
-        self.assertEqual(len(self.detects()), 30)
+        self.assertEqual(len(self.detects()), 15 * len(RULESETS))
 
     def test_5000건씩_이어_읽고_겹친_구간은_두번_세지_않음(self):
         self.add_node()
@@ -610,7 +612,9 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(self.run_bridge(), 1)
         self.assertEqual(len(self.events("collector")), 1)
         self.assertEqual(self.detects(), ["--rules rules_self.json --run --quiet db",
-                                          "--rules rules_node.json --run --quiet db"])
+                                          "--rules rules_w1.json --run --quiet db",
+                                          "--rules rules_audit.json --run --quiet db",
+                                          "--rules rules_infra.json --run --quiet db"])
         self.assertNotIn("watermark", self.state()["nodes"].get("web-01", {}))
         self.assertTrue(any("Loki 조회 실패" in msg for _lv, msg in self.logs))
 
@@ -618,8 +622,16 @@ class BridgeTest(unittest.TestCase):
         self.add_node()
         os.unlink(os.path.join(self.app, "parser", "parse_agent.py"))
         self.assertEqual(self.run_bridge(), 1)
-        self.assertEqual(len(self.detects()), 2)
+        self.assertEqual(len(self.detects()), len(RULESETS))
         self.assertEqual(self.loki.requests, [])
+
+    def test_탐지_하나가_실패해도_나머지는_돈다(self):
+        self.add_node()
+        with open(os.path.join(self.app, "detector", "detect.py"), "a") as f:
+            f.write("sys.exit(3 if sys.argv[2].endswith('rules_w1.json') else 0)\n")
+        self.assertEqual(self.run_bridge(), 1)
+        self.assertEqual([d.split()[1] for d in self.detects()], list(RULESETS))
+        self.assertTrue(any(lv == 3 and "탐지 실패 rules_w1.json (3)" in msg for lv, msg in self.logs))
 
     def test_재생성_두번째_신규_0(self):
         self.add_node()
@@ -698,6 +710,24 @@ class RealAgentTest(BridgeTest):
         if not os.path.exists(REAL_AGENT):
             self.skipTest("parser/parse_agent.py 가 아직 없다")
         super().setUp()
+
+
+class RulesetTest(unittest.TestCase):
+    """다리가 돌리는 규칙 파일. 시험 안의 가짜 파일이 아니라 저장소의 진짜 파일을 본다."""
+
+    def test_탐지_순서는_s1_w1_a1_i1(self):
+        m = load_bridge()
+        self.assertEqual(m.RULESETS, RULESETS)
+        versions = []
+        for name in m.RULESETS:
+            with open(os.path.join(REPO, "detector", name), encoding="utf-8") as f:
+                versions.append(json.load(f)["rule_version"])
+        self.assertEqual(versions, ["s1", "w1", "a1", "i1"])
+
+    def test_n1_은_돌리지_않는다(self):
+        # 파일은 남긴다 (기존 시험 · rule_versions 이력). w1 R101 이 흡수했다
+        self.assertNotIn("rules_node.json", load_bridge().RULESETS)
+        self.assertTrue(os.path.exists(os.path.join(REPO, "detector", "rules_node.json")))
 
 
 class ReceiptMergeTest(unittest.TestCase):

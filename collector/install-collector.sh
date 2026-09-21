@@ -88,10 +88,14 @@ mv "$APP/.collector.new" "$APP/collector"
 ls "$APP/collector" | sed 's/^/    /'
 app_ver=$(cat "$APP/VERSION" 2>/dev/null || echo 없음)
 [ "$app_ver" = "$VERSION" ] || echo "  경고: parser · detector 는 커밋 $app_ver 이다. 같은 커밋으로 install-ingest.sh 를 돌리고 이 스크립트를 다시 돌린다"
-for f in parser/parse_agent.py parser/exclusions.txt detector/detect.py detector/rules_self.json detector/rules_node.json; do
+# 다리가 돌리는 규칙 파일은 pull_loki.py RULESETS 와 같다 (s1 · w1 · a1 · i1)
+for f in parser/parse_agent.py parser/exclusions.txt detector/detect.py detector/rules_self.json \
+         detector/rules_w1.json detector/rules_audit.json detector/rules_infra.json; do
   [ -e "$APP/$f" ] || echo "  경고: $APP/$f 가 없다. 다리가 적재 · 탐지를 하지 못한다"
 done
 grep -q -- '--quiet' "$APP/detector/detect.py" 2>/dev/null || echo "  경고: detect.py 가 --quiet 를 모른다 (구판). 다리의 탐지가 실패한다"
+{ grep -q '"operator_rate"' "$APP/detector/detect.py" && grep -q '"node_silence"' "$APP/detector/detect.py"; } 2>/dev/null \
+  || echo "  경고: detect.py 가 operator_rate · node_silence 를 모른다 (구판). 다리의 a1 · i1 탐지가 실패한다"
 
 echo "== 관문 DB 접속 정보 ($GATE_ENV)"
 rm -f "$GATE_ENV.tmp"
