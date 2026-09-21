@@ -252,6 +252,7 @@ async def list_incidents(
     rule_id: Optional[str] = None,
     rule_version: Optional[str] = None,
     actor_ip: Optional[str] = None,
+    target: Optional[str] = None,
     since: Optional[datetime] = None,
     until: Optional[datetime] = None,
     judged: Optional[bool] = None,
@@ -275,6 +276,7 @@ async def list_incidents(
     if rule_id:      add("i.rule_id = ${n}", rule_id)
     if rule_version: add("i.rule_version = ${n}", rule_version)
     if actor_ip:     add("i.actor_ip = ${n}::inet", actor_ip)
+    if target:       add("i.target = ${n}", target)
     if since:        add("i.first_ts >= ${n}", since)
     if until:        add("i.first_ts < ${n}", until)
     if judged is True:  where.append("v.verdict IS NOT NULL")
@@ -299,7 +301,7 @@ async def list_incidents(
         total = await c.fetchval(f"SELECT count(*) {base}", *params[:-2])
         rows = await c.fetch(f"""
             SELECT i.incident_key, i.rule_id, i.rule_version, i.rule_name, i.severity,
-                   host(i.actor_ip) AS actor_ip, i.first_ts, i.last_ts,
+                   host(i.actor_ip) AS actor_ip, i.target, i.first_ts, i.last_ts,
                    i.signal_count, i.session_count, i.status, i.created_at,
                    v.verdict,
                    extract(epoch FROM (now() - i.first_ts))::bigint AS pending_seconds
@@ -316,7 +318,7 @@ async def get_incident(incident_key: str):
     async with app.state.pool.acquire() as c:
         inc = await c.fetchrow("""
             SELECT incident_key, rule_id, rule_version, rule_name, severity,
-                   host(actor_ip) AS actor_ip, first_ts, last_ts,
+                   host(actor_ip) AS actor_ip, target, first_ts, last_ts,
                    signal_count, session_count, evidence, status, created_at
             FROM incidents WHERE incident_key = $1""", incident_key)
         if inc is None:
@@ -470,6 +472,9 @@ async def add_action(incident_key: str, body: ActionIn, request: Request):
         require_role(request, "admin")
     async with app.state.pool.acquire() as c:
         async with c.transaction():
+            # 차단 목록 감사 트리거(sensor=audit)가 행위자를 여기서 읽는다. 트랜잭션이 끝나면 풀린다.
+            # 넘기지 않으면 감사 행의 행위자가 'db:<DB 역할>' 로 남아 R201 이 사람별로 세지 못한다.
+            await c.execute("SELECT set_config('opsloop.actor', $1, true)", user["u"])
             inc = await c.fetchrow(
                 "SELECT host(actor_ip) actor_ip FROM incidents WHERE incident_key = $1",
                 incident_key)
@@ -488,21 +493,29 @@ async def add_action(incident_key: str, body: ActionIn, request: Request):
                                 new_status, incident_key)
 
             # 차단은 목록에 실제 상태로 남는다. 조치가 기록으로만 끝나지 않게.
+            # 살아 있는 차단에 다시 차단을 걸 때 만료를 앞당기지 않는다. 앞당기면 차단 조치로 차단을 줄이는 셈이고
+            # (감사에는 shortened 로 남아 R201 이 센다), 만료 없는 차단(triage)도 24시간 뒤에 풀린다. 풀린 차단은 새로 건다.
             if body.action == "block_ip" and inc["actor_ip"]:
                 await c.execute("""
                     INSERT INTO blocklist (actor_ip, reason, incident_key, requested_by, expires_at)
                     VALUES ($1::inet, $2, $3, $4, now() + make_interval(hours => $5))
                     ON CONFLICT (actor_ip) DO UPDATE
                     SET reason = EXCLUDED.reason, incident_key = EXCLUDED.incident_key,
-                        requested_by = EXCLUDED.requested_by, expires_at = EXCLUDED.expires_at,
+                        requested_by = EXCLUDED.requested_by,
+                        expires_at = CASE WHEN blocklist.released_at IS NULL
+                                           AND (blocklist.expires_at IS NULL
+                                                OR blocklist.expires_at > EXCLUDED.expires_at)
+                                          THEN blocklist.expires_at ELSE EXCLUDED.expires_at END,
                         method = NULL, enforced_at = NULL, enforce_note = NULL,
-                        released_at = NULL, created_at = now()""",
+                        released_at = NULL, released_by = NULL, created_at = now()""",
                     inc["actor_ip"], body.note or "console", incident_key, user["u"],
                     body.expires_hours)
             elif body.action == "unblock_ip" and inc["actor_ip"]:
+                # 살아 있는 차단만 푼다. 이미 풀린 차단을 다시 풀면 처음 해제한 시각과 사람이 덮인다
                 await c.execute(
-                    "UPDATE blocklist SET released_at = now() WHERE actor_ip = $1::inet",
-                    inc["actor_ip"])
+                    "UPDATE blocklist SET released_at = now(), released_by = $2 "
+                    "WHERE actor_ip = $1::inet AND released_at IS NULL",
+                    inc["actor_ip"], user["u"])
 
     payload = row_to_dict(rec) | {"incident_key": incident_key}
     await hub.broadcast({"type": "action.created", "data": payload})
