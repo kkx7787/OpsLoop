@@ -2,7 +2,7 @@
 """수집 관문 opsloop-gate (WBS 3.4.2 ~ 3.4.4, 이슈 #11).
 
 Loki 에는 인증 계층이 없다. 그래서 Loki 는 127.0.0.1:3100 에만 붙이고, 관제 대상 에이전트(Alloy)는
-이 관문(192.168.60.11:3101)으로만 보낸다. 관문은 본문을 읽기 전에 헤더만 보고 판정하고,
+이 관문(192.168.60.11:3101)으로만 보낸다. 관문은 본문을 읽기 전에 헤더만 보고 판정하고(snappy 는 받은 뒤 앞머리의 풀린 크기만 본다),
 통과한 본문은 바이트 그대로 Loki 에 넘긴다.
 
 push  POST /loki/api/v1/push  (Bearer 에이전트 키)
@@ -11,13 +11,23 @@ push  POST /loki/api/v1/push  (Bearer 에이전트 키)
   3. Authorization 이 없으면 401 missing
   4. 키 해시가 캐시에 없으면 401 unknown (등록 토큰을 push 에 쓴 경우 포함), 폐기면 revoked, active 가 아니면 inactive
   5. 출발지가 nodes.addr 와 다르면 401 addr_mismatch
-  6. 길이 없음 411 · 4MiB 초과 413 · 노드별 하루(UTC) 200MiB 초과 429. 등록 노드 자신의 문제라 R202 가 아니다
-  6'. 형식은 Loki push 규격 두 가지만 받는다: protobuf + snappy(Alloy 가 보내는 것), 인코딩 없는 JSON.
-     gzip · deflate 등은 415 로 거부한다. 그대로 넘기면 4MiB 가 수 GB 로 풀려 Loki 가 메모리 초과로 죽는다 (압축 폭탄).
-     snappy 는 압축률이 낮고(최대 약 21배) Loki 의 max_recv_msg_size(8MiB)가 풀린 크기에도 걸린다.
-     넘긴 바이트는 Loki 응답과 상관없이 하루 용량에 센다
-  7. X-Scope-OrgID 를 토큰이 증명한 node_id 로 덮어써(에이전트가 보낸 값은 버린다) Loki 에 넘기고,
+  6. 여기부터는 인증을 통과한 등록 노드 자신의 문제라 R202 가 아니라 제한(throttled)으로 남긴다.
+     형식은 protobuf + snappy(Alloy 가 보내는 것), 인코딩 없는 protobuf · JSON 만 받는다. 그 밖(gzip · deflate 등)은 415.
+     길이 없음 411 · 본문 상한 초과 413 · 노드별 하루(UTC) 200MiB 초과 429.
+     본문 상한은 snappy 면 4MiB(압축된 크기), 인코딩이 없으면 2MiB(곧 풀린 크기)다
+  7. snappy 본문은 받은 뒤 앞머리(varint)에 적힌 풀린 크기를 본다. 2MiB 를 넘으면 413, 앞머리가 틀리면 400 (제한).
+     압축 폭탄 대비다. Loki 3.7 의 max_recv_msg_size 는 압축된 크기만 보고 풀린 크기는 max_decompressed_size 가 따로 본다.
+     snappy 는 최대 약 21배로 풀리므로 관문의 4MiB 상한만으로는 85MiB 까지 풀린다.
+     그래서 관문(2MiB)과 Loki(max_decompressed_size 2MiB) 두 곳에서 막는다.
+     Alloy 묶음은 줄 바이트 1MiB 로 못 박았으므로(config.alloy.j2) 정상 전송은 여기 걸리지 않는다
+  8. Loki 로 넘기는 요청은 한 번에 하나다. 30초 안에 차례가 오지 않으면 429 busy(제한, Alloy 가 다시 보낸다).
+     Loki 는 속도 제한보다 먼저 본문을 풀고 펼치는데, 빈 줄이 많은 본문은 펼치면 수십 배로 불어난다.
+     동시에 여러 개를 넘기면 풀린 크기 상한만으로는 384M 컨테이너를 지키지 못한다.
+     X-Scope-OrgID 를 토큰이 증명한 node_id 로 덮어써(에이전트가 보낸 값은 버린다) 넘기고,
      Loki 의 응답 코드를 그대로 돌려준다. Loki 에 닿지 않으면 503
+  9. 하루 용량에는 Loki 가 5xx 가 아닌 코드로 답한 요청의 바이트를 센다.
+     4xx 를 세는 것은 Alloy 가 다시 보내지 않는 거절 본문을 끝없이 보내지 못하게 하려는 것이다.
+     5xx · 관문의 503 을 빼는 것은 Alloy 가 다시 보낼 묶음이 Loki 장애 동안 용량을 깎지 않게 하려는 것이다
   1 ~ 6 에서 답할 때는 본문을 읽지 않고 연결을 닫는다. 표식 문자열이 든 본문도 Loki 에 닿지 않는다.
   Expect: 100-continue 는 본문을 받기로 정한 뒤에만 답한다.
 
@@ -88,9 +98,11 @@ ENROLL_REJECT = {"enroll_unknown", "enroll_canceled", "enroll_node", "enroll_exp
                  "addr_mismatch", "enroll_used", "bad_key"}
 BAD_REQUEST = {"bad_key", "enroll_body"}      # 400 으로 답하는 사유
 
-MAX_PUSH = 4 * 1024 * 1024
+MAX_PUSH = 4 * 1024 * 1024        # snappy 본문(압축된 크기) 상한
+MAX_DECODED = 2 * 1024 * 1024     # 풀린 크기 상한. 인코딩이 없는 본문은 이것이 본문 상한이다. Loki max_decompressed_size 와 같다
+FORWARD_MAX = 1                   # 동시에 Loki 로 넘기는 요청
 MAX_ENROLL = 4 * 1024
-DAILY_QUOTA = 200 * 1024 * 1024   # 노드별 하루(UTC). Loki 에 들어간(2xx) 바이트만 센다. 재시작하면 0 부터 다시 센다
+DAILY_QUOTA = 200 * 1024 * 1024   # 노드별 하루(UTC). Loki 가 5xx 가 아닌 코드로 답한 바이트를 센다. usage.json 으로 이어진다
 INFLIGHT_MAX = 16 * 1024 * 1024   # 동시에 메모리에 올리는 본문 합계
 CACHE_EVERY, CACHE_STALE = 15, 60
 WINDOW = 60
@@ -162,6 +174,18 @@ def bearer(value):
     if parts[0].lower() == "bearer":
         return parts[1].strip() if len(parts) == 2 and parts[1].strip() else None
     return value.strip()
+
+
+def snappy_len(buf):
+    """snappy 블록 앞머리(varint)에 적힌 풀린 크기. 앞머리가 틀리면 None. 본문은 풀지 않는다.
+    golang/snappy 와 같이 32비트를 넘는 값 · 5바이트 안에 끝나지 않는 앞머리는 틀린 것으로 본다."""
+    n = 0
+    for i in range(min(len(buf), 5)):
+        b = buf[i]
+        n |= (b & 0x7F) << (7 * i)
+        if b < 0x80:
+            return n if n <= 0xFFFFFFFF else None
+    return None
 
 
 def content_length(headers):
@@ -347,6 +371,7 @@ class Gate:
         self._usage_dirty = False
         self._usage_saved = clock()
         self.inflight = 0
+        self.forward_slots = threading.BoundedSemaphore(FORWARD_MAX)
         self.stats = collections.Counter()
         self.enroll_slots = threading.BoundedSemaphore(ENROLL_DB)
         self._enroll_hits = {}           # 출발지 → 최근 60초 등록 요청 시각
@@ -694,11 +719,11 @@ class Handler(BaseHTTPRequestHandler):
         ctype = (self.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
         if (ctype, enc) not in PUSH_FORMATS:
             reason = "content_encoding" if enc and ctype in ("application/x-protobuf", "application/json") else "content_type"
-            return self._reject(reason, fp, node.node_id, code=415)
+            return self._throttle(415, reason, fp, node.node_id)
         n = content_length(self.headers)
         if n is None:
             return self._throttle(411, "length_required", fp, node.node_id)
-        if n > MAX_PUSH:
+        if n > (MAX_PUSH if enc else MAX_DECODED):
             return self._throttle(413, "too_large", fp, node.node_id)
         if not gate.quota_ok(node.node_id, n):
             return self._throttle(429, "daily_quota", fp, node.node_id)
@@ -706,10 +731,21 @@ class Handler(BaseHTTPRequestHandler):
             return self._throttle(429, "busy", fp, node.node_id)
         try:
             body = self._read_body(n)
-            # Loki 가 받든 거절하든 넘긴 만큼 센다. 실패한 전달을 빼면 거절될 본문을 끝없이 보낼 수 있다
-            gate.charge(node.node_id, n)
-            code, data, rtype = gate.forward(node.node_id, body, self.headers.get("Content-Type"), enc or None)
+            if enc == "snappy":
+                size = snappy_len(body)
+                if size is None:
+                    return self._throttle(400, "bad_snappy", fp, node.node_id)
+                if size > MAX_DECODED:
+                    return self._throttle(413, "decoded_too_large", fp, node.node_id)
+            if not gate.forward_slots.acquire(timeout=LOKI_TIMEOUT):
+                return self._throttle(429, "busy", fp, node.node_id)
+            try:
+                code, data, rtype = gate.forward(node.node_id, body, self.headers.get("Content-Type"), enc or None)
+            finally:
+                gate.forward_slots.release()
             del body
+            if code < 500:
+                gate.charge(node.node_id, n)
         finally:
             gate.release(n)
         if 200 <= code < 300:

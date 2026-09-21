@@ -40,11 +40,12 @@ limits_config:
   reject_old_samples: true
   reject_old_samples_max_age: 168h
 
-# 받는 본문 · 풀린 본문 상한. 관문이 4MiB 로 자르고 압축 인코딩을 거부하지만, 한 겹 더 둔다
+# 받는 본문(압축된 크기) · 풀린 본문 상한. 관문과 같은 값(4MiB · 2MiB)으로 한 겹 더 둔다.
+# max_recv_msg_size 는 압축된 크기만 본다. snappy 로 풀린 크기는 max_decompressed_size 만 막는다.
 # (기본값 100MB · 5GB 는 384M 한도의 컨테이너를 압축 폭탄 하나로 죽일 수 있다)
 distributor:
-  max_recv_msg_size: 8388608
-  max_decompressed_size: 33554432
+  max_recv_msg_size: 4194304
+  max_decompressed_size: 2097152
 
 query_range:
   cache_results: false
