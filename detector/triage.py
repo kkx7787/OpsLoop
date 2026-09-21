@@ -281,13 +281,17 @@ def propose(rule_id, ev):
 # ────────────────────────────────────────────────────────────────
 
 def show(row, idx, total, ev, suggestion, basis, observed, unit):
-    (key, rid, ver, rname, sev, ip, first_ts, last_ts, n_sig, n_sess, _, _) = row
+    (key, rid, ver, rname, sev, ip, first_ts, last_ts, n_sig, n_sess, _, _, target) = row
 
     print("\n" + BAR)
     print(f" [{idx}/{total}]  {sev.upper():<9} {rid} {rname}   (규칙 {ver})")
     print(BAR)
-    print(f"  출발지   {ip or '-'}"
-          + ("   [이미 차단됨]" if ev["blocked"] else ""))
+    if ip or not target:
+        print(f"  출발지   {ip or '-'}"
+              + ("   [이미 차단됨]" if ev["blocked"] else ""))
+    else:
+        # IP 가 아닌 대상(user:<이름> · node:<id>)이다. 차단 목록에 올릴 출발지가 없다
+        print(f"  대상     {target}")
     print(f"  기간     {local(first_ts)} ~ {local(last_ts)}"
           f"   ({int((last_ts - first_ts).total_seconds())}초)")
     print(f"  규모     신호 {n_sig}건 · 세션 {n_sess}개")
@@ -335,6 +339,8 @@ def show(row, idx, total, ev, suggestion, basis, observed, unit):
 def record(conn, key, ip, verdict, reason, observed, operator, proposed, block,
            seconds=None):
     cur = conn.cursor()
+    # 차단 목록 감사 트리거(schema.sql #14)가 판정자를 행위자로 남기게 한다. 트랜잭션이 끝나면 풀린다
+    cur.execute("SELECT set_config('opsloop.actor', %s, true)", (operator,))
     cur.execute("""
         INSERT INTO verdicts (incident_key, verdict, reason, observed_value, operator,
                               proposed, decision_seconds)
@@ -347,7 +353,7 @@ def record(conn, key, ip, verdict, reason, observed, operator, proposed, block,
         cur.execute("""
             INSERT INTO blocklist (actor_ip, reason, incident_key) VALUES (%s,%s,%s)
             ON CONFLICT (actor_ip) DO UPDATE
-              SET released_at = NULL, reason = EXCLUDED.reason,
+              SET released_at = NULL, released_by = NULL, expires_at = NULL, reason = EXCLUDED.reason,
                   incident_key = EXCLUDED.incident_key""", (ip, reason, key))
         cur.execute("UPDATE incidents SET status='resolved' WHERE incident_key=%s", (key,))
     else:
@@ -367,7 +373,7 @@ def triage(conn, rule_id, limit, operator):
     cur.execute(f"""
         SELECT i.incident_key, i.rule_id, i.rule_version, i.rule_name, i.severity,
                host(i.actor_ip), i.first_ts, i.last_ts, i.signal_count,
-               i.session_count, i.evidence, i.status
+               i.session_count, i.evidence, i.status, i.target
         FROM incidents i LEFT JOIN verdicts v ON v.incident_key = i.incident_key
         WHERE {' AND '.join(c)}
         ORDER BY CASE i.severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1
