@@ -86,9 +86,18 @@ class FakeLoki(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
     def do_POST(self):
-        body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
-        self.server.got.append((self.path, self.headers, body))
-        code, data = self.server.reply
+        srv = self.server
+        with srv.lock:
+            srv.active += 1
+            srv.peak = max(srv.peak, srv.active)
+        try:
+            time.sleep(srv.delay)
+            body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            srv.got.append((self.path, self.headers, body))
+        finally:
+            with srv.lock:          # 답하기 전에 뺀다. 관문이 답을 받고 다음 요청을 넘기기 전에 줄어 있어야 한다
+                srv.active -= 1
+        code, data = srv.reply
         self.send_response(code)
         if code == 204:
             self.end_headers()
@@ -155,6 +164,7 @@ class GateCase(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.dir, True)
         self.loki = ThreadingHTTPServer(("127.0.0.1", 0), FakeLoki)
         self.loki.got, self.loki.reply = [], (204, b"")
+        self.loki.lock, self.loki.active, self.loki.peak, self.loki.delay = threading.Lock(), 0, 0, 0
         threading.Thread(target=self.loki.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True).start()
         self.store = FakeStore()
         self.clock = Clock()
@@ -300,16 +310,43 @@ class ForwardTest(GateCase):
             self.assertEqual((code, json.loads(body)["result"]), (415, "content_encoding"))
         self.assertEqual(self.loki.got, [])
         self.assertEqual({r["reason"] for r in self.ledger()}, {"content_encoding"})
-        self.assertEqual(self.ledger()[0]["eventid"], "collector.agent.rejected")
+        # 인증을 통과한 등록 노드 자신의 문제다. R202(rejected)가 아니라 제한으로 남는다
+        self.assertEqual({(r["eventid"], r["node_id"]) for r in self.ledger()}, {("collector.agent.throttled", "web-01")})
+        self.assertEqual(self.gate.usage, {})
 
     def test_예상_밖의_형식은_415(self):
-        for ctype in ("text/plain", "application/octet-stream", ""):
-            code, _, _ = self.push(headers={"Content-Type": ctype})
-            self.assertEqual(code, 415, ctype)
+        for ctype, enc in (("text/plain", ""), ("application/octet-stream", ""), ("", ""), ("text/plain", "gzip")):
+            code, body, _ = self.push(headers={"Content-Type": ctype, "Content-Encoding": enc})
+            self.assertEqual((code, json.loads(body)["result"]), (415, "content_type"), ctype)
         self.assertEqual(self.loki.got, [])
+        self.assertEqual({(r["eventid"], r["reason"]) for r in self.ledger()},
+                         {("collector.agent.throttled", "content_type")})
         self.assertEqual(self.push(headers={"Content-Type": "application/json; charset=utf-8"})[0], 204)
         # snappy 는 protobuf 에만. JSON 에 붙이면 거부
         self.assertEqual(self.push(headers={"Content-Type": "application/json", "Content-Encoding": "snappy"})[0], 415)
+
+    def test_identity_와_대소문자는_정규화해_넘긴다(self):
+        # Loki 3.7 은 "" 와 "snappy" 만 받는다. 받은 값을 그대로 넘기면 Loki 가 400 을 주고 Alloy 는 묶음을 버린다
+        self.assertEqual(self.push(headers={"Content-Encoding": "identity"})[0], 204)
+        self.assertEqual(self.push(headers={"Content-Encoding": " Snappy "})[0], 204)
+        self.assertEqual(self.push(headers={"Content-Type": "application/json", "Content-Encoding": "IDENTITY"})[0], 204)
+        encs = [hd.get("Content-Encoding") for _, hd, _ in self.loki.got]
+        self.assertEqual(encs, [None, "snappy", None])
+        self.assertEqual(self.ledger(), [])
+
+    def test_형식_검사는_인증_뒤_본문_읽기_전(self):
+        # 본문을 예고만 하고 보내지 않는다. 관문이 본문을 기다리면 raw 가 5초 뒤 실패한다
+        data = raw(self.port, req_head(token=AGENT, length=100000, extra="Content-Type: text/plain\r\n"))
+        self.assertEqual((status(data), body_json(data)), (415, {"result": "content_type"}))
+        data = raw(self.port, req_head(token=AGENT, length=100000, extra="Content-Encoding: gzip\r\n"))
+        self.assertEqual((status(data), body_json(data)), (415, {"result": "content_encoding"}))
+        self.assertEqual(self.gate.usage, {})
+        # 인증 전이면 형식보다 인증 결과가 먼저다 (지문과 함께 거부로 남는다)
+        data = raw(self.port, req_head(token=None, length=10, extra="Content-Type: text/plain\r\n"))
+        self.assertEqual(body_json(data), {"result": "missing"})
+        data = raw(self.port, req_head(token="olA_" + "q" * 43, length=10, extra="Content-Encoding: gzip\r\n"))
+        self.assertEqual(body_json(data), {"result": "unknown"})
+        self.assertEqual(self.loki.got, [])
 
     def test_연결을_다시_쓴다(self):
         c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
@@ -375,17 +412,92 @@ class LimitTest(GateCase):
         self.assertEqual(len(self.loki.got), 2)
 
     def test_Loki_가_거절한_바이트도_용량에_넣는다(self):
-        # 거절될 본문을 끝없이 보내 Loki 를 괴롭히는 것을 막는다
+        # Alloy 가 다시 보내지 않는 4xx 본문을 끝없이 보내 Loki 를 괴롭히는 것을 막는다
         old = gate.DAILY_QUOTA
         gate.DAILY_QUOTA = 250
         try:
-            self.loki.reply = (500, b"boom")
+            self.loki.reply = (400, b"entry too far behind")
             for _ in range(2):
-                self.assertEqual(self.push(body=b"a" * 100)[0], 500)
+                self.assertEqual(self.push(body=b"a" * 100)[0], 400)
             self.loki.reply = (204, b"")
             self.assertEqual(self.push(body=b"a" * 100)[0], 429)
         finally:
             gate.DAILY_QUOTA = old
+
+    def test_Loki_장애는_용량에_넣지_않는다(self):
+        # Alloy 가 5xx · 연결 실패를 다시 보낸다. 장애 동안 같은 묶음이 시도마다 용량을 깎으면 복구 뒤 로그를 버린다
+        old = gate.DAILY_QUOTA
+        gate.DAILY_QUOTA = 250
+        try:
+            self.loki.reply = (500, b"boom")
+            for _ in range(3):
+                self.assertEqual(self.push(body=b"a" * 100)[0], 500)
+            real = self.gate.loki
+            self.gate.loki = f"http://127.0.0.1:{free_port()}{gate.PUSH}"
+            for _ in range(3):
+                self.assertEqual(self.push(body=b"a" * 100)[0], 503)
+            self.gate.loki = real
+            self.assertEqual(self.gate.usage, {})
+            self.loki.reply = (204, b"")
+            self.assertEqual(self.push(body=b"a" * 100)[0], 204)
+            self.assertEqual(self.push(body=b"a" * 100)[0], 204)
+            self.assertEqual(self.push(body=b"a" * 100)[0], 429)
+        finally:
+            gate.DAILY_QUOTA = old
+
+    def test_인코딩이_없으면_2MiB_가_본문_상한(self):
+        data = raw(self.port, req_head(token=AGENT, length=gate.MAX_DECODED + 1))
+        self.assertEqual((status(data), body_json(data)), (413, {"result": "too_large"}))
+        data = raw(self.port, req_head(token=AGENT, length=gate.MAX_DECODED + 1,
+                                       extra="Content-Type: application/json\r\n"))
+        self.assertEqual(status(data), 413)
+        self.assertEqual(self.loki.got, [])
+
+    def test_snappy_앞머리의_풀린_크기가_2MiB_를_넘으면_413(self):
+        two = b"\x80\x80\x80\x01"                  # varint 2MiB
+        over = b"\x81\x80\x80\x01"                 # 2MiB + 1
+        self.assertEqual(self.push(body=two + b"x" * 10, headers={"Content-Encoding": "snappy"})[0], 204)
+        code, body, _ = self.push(body=over + b"x" * 10, headers={"Content-Encoding": "snappy"})
+        self.assertEqual((code, json.loads(body)["result"]), (413, "decoded_too_large"))
+        for bad in (b"", b"\xff\xff\xff\xff\xff\x01", b"\xff\xff\xff\xff\x1f"):   # 비었음 · 5바이트 초과 · 32비트 초과
+            code, body, _ = self.push(body=bad, headers={"Content-Encoding": "snappy"})
+            self.assertEqual((code, json.loads(body)["result"]), (400, "bad_snappy"), bad)
+        self.assertEqual(len(self.loki.got), 1)
+        self.assertEqual({(r["eventid"], r["reason"]) for r in self.ledger()},
+                         {("collector.agent.throttled", "decoded_too_large"), ("collector.agent.throttled", "bad_snappy")})
+        self.assertEqual(self.gate.usage["web-01"][1], 14)          # 넘긴 한 건만 센다
+
+    def test_snappy_len(self):
+        for buf, n in ((b"\x00", 0), (b"\x7f", 127), (b"\x80\x01", 128), (b"\x80\x80\x80\x01rest", 2 * 1024 * 1024),
+                       (b"\xff\xff\xff\xff\x0f", 0xFFFFFFFF)):
+            self.assertEqual(gate.snappy_len(buf), n, buf)
+        for buf in (b"", b"\x80", b"\x80\x80\x80\x80\x80", b"\xff\xff\xff\xff\x10"):
+            self.assertIsNone(gate.snappy_len(buf), buf)
+
+    def test_Loki_로는_한_번에_하나만_넘긴다(self):
+        self.loki.delay = 0.2
+        codes = []
+        ts = [threading.Thread(target=lambda: codes.append(self.push()[0])) for _ in range(4)]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join(10)
+        self.assertEqual(codes, [204] * 4)
+        self.assertEqual(self.loki.peak, 1)
+
+    def test_차례가_오지_않으면_429_busy(self):
+        old = gate.LOKI_TIMEOUT
+        gate.LOKI_TIMEOUT = 0.3
+        self.gate.forward_slots.acquire()
+        try:
+            code, body, _ = self.push()
+        finally:
+            self.gate.forward_slots.release()
+            gate.LOKI_TIMEOUT = old
+        self.assertEqual((code, json.loads(body)["result"]), (429, "busy"))
+        self.assertEqual(self.loki.got, [])
+        self.assertEqual(self.gate.usage, {})
+        self.assertEqual(self.push()[0], 204)
 
     def test_429_동시_본문_한도(self):
         old = gate.INFLIGHT_MAX
