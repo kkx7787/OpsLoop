@@ -69,16 +69,6 @@ resource "aws_vpc_security_group_egress_rule" "honeypot_dns" {
   ip_protocol       = "udp"
 }
 
-# 수집 노드가 앱 노드 데이터베이스에 적재한다.
-resource "aws_vpc_security_group_egress_rule" "honeypot_to_db" {
-  security_group_id            = aws_security_group.honeypot.id
-  description                  = "app node database"
-  referenced_security_group_id = aws_security_group.app.id
-  from_port                    = 5432
-  to_port                      = 5432
-  ip_protocol                  = "tcp"
-}
-
 # ──────────────────────────────────────────────────────────────
 
 resource "aws_security_group" "app" {
@@ -104,16 +94,6 @@ resource "aws_vpc_security_group_ingress_rule" "app_api" {
   from_port         = 8000
   to_port           = 8000
   ip_protocol       = "tcp"
-}
-
-# 데이터베이스는 수집 노드에게만 연다. 인터넷에서는 도달 불가.
-resource "aws_vpc_security_group_ingress_rule" "app_db_from_collector" {
-  security_group_id            = aws_security_group.app.id
-  description                  = "collector node"
-  referenced_security_group_id = aws_security_group.honeypot.id
-  from_port                    = 5432
-  to_port                      = 5432
-  ip_protocol                  = "tcp"
 }
 
 resource "aws_vpc_security_group_egress_rule" "app_https" {

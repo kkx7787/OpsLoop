@@ -2,6 +2,7 @@
 # 병행 대조 (WBS 3.4 · 전환 조건): 허니팟 옛 경로(AWS DB)와 새 경로(내부 DB)의 결과를 같은 기준 시각으로 비교한다.
 # events · sessions 는 건수와 지문(md5)이 정확히 같아야 한다 (다르면 종료 1).
 # 인시던트는 탐지 주기가 달라(내부 5분 · AWS 10분) 갈릴 수 있으므로 참고로만 보인다 (결과 문서 7장의 리플레이 비교 참고).
+# 판정은 전환 뒤 내부에만 쌓이므로(9/21 R202 3건부터) 역시 참고다.
 # 콘솔 이벤트는 원문 로그가 없으므로 빼고 cowrie · decoy 만 본다.
 #
 # 사용 (Mac): puller/compare-paths.sh [기준 시각]      기본 = 지금 - 40분 (두 경로 지연을 넘도록)
@@ -44,7 +45,7 @@ while IFS='|' read -r kind key n md5; do
   other=$(printf '%s\n' "$outer" | awk -F'|' -v k="$kind" -v s="$key" '$1==k && $2==s {print $3 "|" $4}')
   mine="$n|$md5"
   if [ "$mine" = "$other" ]; then verdict=같음
-  elif [ "$kind" = incidents ]; then verdict="다름(참고)"
+  elif [ "$kind" = incidents ] || [ "$kind" = verdicts ]; then verdict="다름(참고)"
   else verdict=다름; bad=1; fi
   printf '%-10s %-8s %22s %22s  %s\n' "$kind" "$key" "$n · ${md5:0:8}" "${other%%|*} · $(printf '%s' "${other#*|}" | cut -c1-8)" "$verdict"
 done <<< "$inner"
