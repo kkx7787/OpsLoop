@@ -1,0 +1,150 @@
+@import "tailwindcss";
+
+/*
+ * 디자인 토큰 — 와이어프레임(Main · States · Error.dc.html)의 값을 옮긴 것이다.
+ * 색은 역할 이름으로 쓴다(text-ink, bg-danger-soft …). 상태 색(위험 · 주의 · 정상)은 뜻이 있으므로
+ * 주 색상과 섞지 않는다(화면 설계 1장).
+ *
+ * 글자 크기는 Tailwind 의 xs · sm … 이름을 그대로 쓰되 값을 와이어프레임 눈금으로 바꾼다.
+ * 새 이름(text-caption 등)을 만들면 tailwind-merge 가 글자 색으로 오인해 크기를 지운다.
+ * 모서리 · 그림자 · 자간은 새 이름을 쓰고 src/lib/cn.ts 에 등록한다.
+ */
+@theme {
+  /* 글꼴: 시스템 글꼴만 쓴다(외부 글꼴 금지 · CSP font-src 'self' · 인터넷 없는 내부망) */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic",
+    system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  /* 주 색상 */
+  --color-primary: #0164b2;
+  --color-primary-strong: #01518f;
+  --color-primary-soft: #e6eff7;
+
+  /* 글자 · 바탕 · 선 */
+  --color-ink: #1d1d1f;
+  --color-ink-muted: #6e6e73; /* 보조 글자. 흰 바탕 5.1:1 · #f5f5f7 바탕 4.7:1 */
+  --color-canvas: #f5f5f7;
+  --color-surface: #ffffff;
+  --color-sidebar: #fbfbfd;
+  --color-line: #e8e8ed;
+  --color-skeleton: #e9e9eb;
+
+  /* 회색 배지. 와이어프레임의 #6e6e73 은 #f0f0f3 바탕에서 4.46:1 이라 조금 진하게(5.3:1) 둔다 */
+  --color-muted: #636366;
+  --color-muted-soft: #f0f0f3;
+
+  /* 상태 색 — 글자 · 바탕 쌍. 모두 제 바탕에서 4.5:1 이상 */
+  --color-danger: #d70015;
+  --color-danger-strong: #b30012;
+  --color-danger-soft: #fff1f0;
+  --color-orange: #c93400;
+  --color-orange-soft: #fff4ec;
+  --color-warning: #9a5b00;
+  --color-warning-soft: #fff8e6;
+  --color-success: #1b7f3a;
+  --color-success-soft: #eaf7ee;
+  --color-violet: #6e3fc4; /* 자기 탐지 · 양성 정탐 */
+  --color-violet-soft: #f3effd;
+
+  /* 신호 점(수신 · 연결 상태). 점 옆에 항상 글자를 둔다 */
+  --color-signal-ok: #34c759;
+  --color-signal-bad: #ff3b30;
+  --color-signal-warn: #ff9f0a;
+  --color-signal-idle: #c7c7cc;
+
+  /* 심각도 색 규칙: critical 빨강 · high 주황 · medium 노랑 · low 회색 */
+  --color-severity-critical: var(--color-danger);
+  --color-severity-critical-soft: var(--color-danger-soft);
+  --color-severity-high: var(--color-orange);
+  --color-severity-high-soft: var(--color-orange-soft);
+  --color-severity-medium: var(--color-warning);
+  --color-severity-medium-soft: var(--color-warning-soft);
+  --color-severity-low: var(--color-muted);
+  --color-severity-low-soft: var(--color-muted-soft);
+
+  /* 판정값 색 규칙(Main · Detail.dc.html): 실제 위협 빨강 · 무시 가능 회색 · 오탐 노랑 · 양성 정탐 보라 · 미결 회색 */
+  --color-verdict-threat: var(--color-danger);
+  --color-verdict-threat-soft: var(--color-danger-soft);
+  --color-verdict-non-actionable: var(--color-muted);
+  --color-verdict-non-actionable-soft: var(--color-muted-soft);
+  --color-verdict-false-positive: var(--color-warning);
+  --color-verdict-false-positive-soft: var(--color-warning-soft);
+  --color-verdict-benign-positive: var(--color-violet);
+  --color-verdict-benign-positive-soft: var(--color-violet-soft);
+  --color-verdict-undetermined: var(--color-muted);
+  --color-verdict-undetermined-soft: var(--color-muted-soft);
+
+  /* 글자 크기(px 는 와이어프레임 값) */
+  --text-2xs: 11px;
+  --text-2xs--line-height: 16px;
+  --text-xs: 12px;
+  --text-xs--line-height: 18px;
+  --text-sm: 13px;
+  --text-sm--line-height: 20px;
+  --text-base: 14px;
+  --text-base--line-height: 22px;
+  --text-md: 15px;
+  --text-md--line-height: 22px;
+  --text-lg: 17px;
+  --text-lg--line-height: 24px;
+  --text-xl: 20px;
+  --text-xl--line-height: 28px;
+  --text-2xl: 28px;
+  --text-2xl--line-height: 34px;
+  --text-3xl: 30px;
+  --text-3xl--line-height: 36px;
+  --text-4xl: 34px;
+  --text-4xl--line-height: 40px;
+
+  /* 자간 */
+  --tracking-heading: -0.01em; /* 카드 제목 · 상태 제목 */
+  --tracking-display: -0.02em; /* 큰 수치 · 상태 화면 제목 */
+  --tracking-tight: -0.025em; /* 페이지 제목 */
+
+  /* 모서리 */
+  --radius-control: 10px; /* 버튼 · 입력 */
+  --radius-panel: 12px; /* 띠 · 안쪽 타일 · 큰 버튼 */
+  --radius-tile: 16px; /* 수치 타일 · 아이콘 칸 */
+  --radius-card: 18px; /* 카드 */
+
+  /* 그림자(0.5px 테두리를 그림자로 그린다) */
+  --shadow-card: 0 0 0 0.5px rgb(0 0 0 / 0.06), 0 2px 8px rgb(0 0 0 / 0.04);
+  --shadow-control: 0 0 0 0.5px rgb(0 0 0 / 0.14);
+  --shadow-field: 0 0 0 0.5px rgb(0 0 0 / 0.16);
+  --shadow-raised: 0 1px 3px rgb(0 0 0 / 0.12);
+  --shadow-hairline: 0 0.5px 0 rgb(0 0 0 / 0.08);
+  --shadow-hairline-up: 0 -0.5px 0 rgb(0 0 0 / 0.08); /* 사이드바 아래 칸의 윗선 */
+  --shadow-sidebar: 0.5px 0 0 rgb(0 0 0 / 0.1); /* 사이드바 오른쪽 선 */
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  a {
+    color: var(--color-primary);
+    text-decoration: none;
+  }
+
+  a:hover {
+    color: var(--color-primary-strong);
+  }
+
+  /* 키보드 초점은 어디서나 보이게 한다. 컴포넌트가 따로 정하지 않으면 이 윤곽선을 쓴다 */
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+}
