@@ -1,0 +1,20 @@
+# 관문 방화벽 거부 기록 회전 (이슈 #15). /etc/logrotate.d/opsloop-gateway 로 둔다.
+# 매일 gateway.log.YYYY-MM-DD 로 돌리고 30일 보관한다. 업로더(sensor/upload.py)의 이름 규칙
+# ^gateway\.log(\.\d{4}-\d{2}-\d{2})?$ 에 맞춘 것이다. 업로더는 inode 로 위치를 기억하므로 이름이 바뀌어도 이어 올린다.
+# 압축은 하루 미룬다(delaycompress). 압축본(.gz)은 업로더가 보지 않으므로, 남은 부분을 올릴 시간을 준다.
+/var/log/opsloop/gateway.log {
+    daily
+    rotate 30
+    missingok
+    notifempty
+    dateext
+    dateformat .%Y-%m-%d
+    # 자정 직후 돌리므로 담긴 내용은 전날 것이다. 이름을 내용 날짜에 맞춘다
+    dateyesterday
+    compress
+    delaycompress
+    create 0644 syslog adm
+    postrotate
+        /usr/lib/rsyslog/rsyslog-rotate
+    endscript
+}

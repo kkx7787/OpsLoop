@@ -1,0 +1,60 @@
+#cloud-config
+# 관문 방화벽 첫 부팅 (이슈 #15). gateway.tf 가 templatefile 로 채워 user_data 로 넘긴다.
+# 방화벽 · 기록 · 회전 파일을 놓고 전달을 켜는 것까지만 한다. 업로더는 이후 SSM 으로
+# 설치한다 (infra/terraform/README.md "DMZ 재구성"). 첫 부팅에만 돈다. 규칙을 고칠 때는
+# SSM 으로 파일을 바꾸고 nft -f 를 다시 돌린다. 전체가 16KB 안이어야 한다 (user_data 상한).
+
+# 보안그룹이 443 만 내보내므로 기본 미러(http)에 닿지 않는다. https 미러를 쓴다
+apt:
+  primary:
+    - arches: [default]
+      uri: https://archive.ubuntu.com/ubuntu/
+  security:
+    - arches: [default]
+      uri: https://security.ubuntu.com/ubuntu/
+# 보안그룹 유입을 전부 열었으므로(gateway.tf) 방화벽 자신은 아무 포트도 듣지 않아야 한다.
+# 우분투 24.04 는 sshd 를 ssh.socket 으로 띄운다. runcmd(마지막 단계)까지 기다리면 그 사이
+# 인터넷의 22 가 방화벽 자신의 sshd 에 닿는다. 그래서 init 단계에서 막는다: ssh.socket · ssh.service 는
+# 둘 다 ConditionPathExists=!/etc/ssh/sshd_not_to_be_run 을 본다
+bootcmd:
+  - [touch, /etc/ssh/sshd_not_to_be_run]
+
+package_update: true
+packages:
+  - nftables
+  - rsyslog
+  - python3-boto3
+
+write_files:
+  - path: /etc/nftables.conf
+    permissions: "0644"
+    content: |
+      ${indent(6, nftables_conf)}
+  - path: /etc/rsyslog.d/10-opsloop-gateway.conf
+    permissions: "0644"
+    content: |
+      ${indent(6, rsyslog_conf)}
+  - path: /etc/logrotate.d/opsloop-gateway
+    permissions: "0644"
+    content: |
+      ${indent(6, logrotate_conf)}
+  - path: /etc/sysctl.d/99-opsloop-gateway.conf
+    permissions: "0644"
+    content: |
+      # 전달(DNAT · masquerade)에 필요하다
+      net.ipv4.ip_forward = 1
+      # 인터페이스가 한 장이라 들어온 곳으로 다시 나간다. 경로 재안내(redirect)를 보내지 않는다
+      net.ipv4.conf.all.send_redirects = 0
+      net.ipv4.conf.default.send_redirects = 0
+
+runcmd:
+  - sysctl --system
+  # bootcmd 에 더해 소켓과 서비스를 가린다. 관리는 SSM 뿐이다
+  - systemctl disable --now ssh.socket ssh.service
+  - systemctl mask ssh.socket ssh.service
+  # rsyslog 는 권한을 syslog 로 낮춘 뒤 쓰므로 디렉터리 주인을 맞춰 둔다
+  - install -d -m 0755 -o syslog -g adm /var/log/opsloop
+  # 문법이 틀리면 서비스를 켜지 않는다. 규칙 없이 떠도 듣는 포트가 없고 NAT 도 없어 DMZ 는 나가지 못한다
+  - nft -c -f /etc/nftables.conf && systemctl enable --now nftables && systemctl restart nftables || echo "nftables 규칙 검사 실패. 서비스를 켜지 않았다" >&2
+  - systemctl restart rsyslog
+  - logrotate -d /etc/logrotate.d/opsloop-gateway
