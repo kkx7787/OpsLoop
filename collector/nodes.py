@@ -74,7 +74,7 @@ LOGS = ("nginx", "auth", "metrics")
 # node_id 는 Loki 테넌트이자 events.sensor 값이다. 기존 발생원 이름을 쓰면
 # 허니팟 집계 · 기준선 · 자기 탐지(R202)에 관제 대상 이벤트가 섞인다
 NODE_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,62}")
-RESERVED = {"cowrie", "decoy", "console", "collector", "puller"}
+RESERVED = {"cowrie", "decoy", "gateway", "console", "collector", "puller"}   # gateway 는 관문 방화벽 거부 기록(#15)
 HOST_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?")
 NONCE_RE = re.compile(r"[A-Za-z0-9._-]{1,128}")
 TTL_MIN, TTL_MAX = 60, 86400

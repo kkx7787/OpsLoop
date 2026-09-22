@@ -42,11 +42,12 @@ class IngestTest(unittest.TestCase):
         self.app = os.path.join(self.t, "app")
         self.home = os.path.join(self.t, "home")
         for d, name, body in (("puller", "pull.py", FAKE_PULL), ("parser", "parse_cowrie.py", FAKE_PARSER),
-                              ("parser", "parse_decoy.py", FAKE_PARSER), ("detector", "detect.py", FAKE_DETECT)):
+                              ("parser", "parse_decoy.py", FAKE_PARSER), ("parser", "parse_gateway.py", FAKE_PARSER),
+                              ("detector", "detect.py", FAKE_DETECT)):
             os.makedirs(os.path.join(self.app, d), exist_ok=True)
             with open(os.path.join(self.app, d, name), "w") as f:
                 f.write(body)
-        for sensor in ("cowrie", "decoy"):
+        for sensor in ("cowrie", "decoy", "gateway"):
             os.makedirs(os.path.join(self.home, "inbox", sensor))
         self.rc_file = os.path.join(self.t, "rc")
         self.set_pull(0)
@@ -97,6 +98,25 @@ class IngestTest(unittest.TestCase):
         self.assertEqual(sorted(self.loaded()), ["a.jsonl", "b.jsonl"])
         self.assertEqual((self.inbox("cowrie"), self.inbox("decoy")), ([], []))
         self.assertEqual(self.detected(), 1)
+
+    def test_관문_기록은_gateway_파서로(self):
+        self.put("gateway", "g.jsonl", b"2026-09-22T01:02:03+00:00 gw kernel: gw-forward-drop SRC=203.0.113.7\n")
+        self.put("cowrie", "a.jsonl")
+        calls = []
+        real = self.m.parse
+        self.m.parse = lambda sensor, files, env: calls.append((sensor, [os.path.basename(p) for p in files])) or real(sensor, files, env)
+        self.assertEqual(self.run_main(), 0)
+        self.assertEqual(sorted(calls), [("cowrie", ["a.jsonl"]), ("gateway", ["g.jsonl"])])   # 발생원별 파서(parse_gateway.py)
+        self.assertEqual(sorted(self.loaded()), ["a.jsonl", "g.jsonl"])
+        self.assertEqual(self.inbox("gateway"), [])
+        self.assertEqual(self.m.SENSORS, ("cowrie", "decoy", "gateway"))
+        # gateway 파서가 없으면 그 조각만 격리되고 나머지는 간다
+        os.unlink(os.path.join(self.app, "parser", "parse_gateway.py"))
+        self.put("gateway", "h.jsonl")
+        self.put("decoy", "b.jsonl")
+        self.assertEqual(self.run_main(), 12)
+        self.assertEqual(self.inbox("gateway", "quarantine"), ["h.jsonl"])
+        self.assertIn("b.jsonl", self.loaded())
 
     def test_독_파일만_격리하고_나머지는_적재_탐지(self):
         self.put("decoy", "a.jsonl")
