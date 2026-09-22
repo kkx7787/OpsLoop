@@ -14,14 +14,17 @@
   - PUT 이 성공했을 때만 위치를 옮긴다. 같은 조각이 두 번 올라가도 내부 적재는 한 번만 된다.
 
 키 구조
-  raw/v1/sensor=<cowrie|decoy>/host=<instance-id>/ino=<inode>/<시작 12자리>-<끝 12자리>.jsonl
+  raw/v1/sensor=<cowrie|decoy|gateway>/host=<instance-id>/ino=<inode>/<시작 12자리>-<끝 12자리>.jsonl
   hb/v1/host=<instance-id>/latest.json      매 회차 덮어쓰는 생존 신호
+  발생원(sensor)은 풀러의 허용 목록과 같아야 한다. gateway 는 관문 방화벽의 거부 기록(이슈 #15)이다.
+  줄이 JSON 이 아니어도 확장자는 .jsonl 로 둔다 (풀러의 키 규칙이 하나다).
 
 환경변수
   OPSLOOP_BUCKET   S3 버킷
   OPSLOOP_HOST     키에 쓸 호스트 이름 (인스턴스 ID)
   OPSLOOP_STATE    상태 파일 (기본 /var/lib/opsloop-upload/state.json)
-  SOURCES          "센서:글롭" 을 쉼표로 (기본 cowrie · decoy)
+  SOURCES          "센서:글롭" 을 쉼표로 (기본 cowrie · decoy).
+                   관문 방화벽은 gateway:/var/log/opsloop/gateway.log*
 """
 import argparse
 import glob
@@ -44,6 +47,8 @@ RUN_CAP = int(os.environ.get("OPSLOOP_RUN_CAP", 64 * 1024 * 1024))  # 파일당 
 NAME_RULE = {
     "cowrie": re.compile(r"^cowrie\.json(\.\d{4}-\d{2}-\d{2})?$"),
     "decoy": re.compile(r"^decoy\.json\.\d{4}-\d{2}-\d{2}$"),
+    # 관문 방화벽 rsyslog 기록. logrotate 가 매일 dateext(.YYYY-MM-DD)로 돌린다. 압축본(.gz)은 올리지 않는다
+    "gateway": re.compile(r"^gateway\.log(\.\d{4}-\d{2}-\d{2})?$"),
 }
 
 

@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pull  # noqa: E402
 
 HOST = "i-058726c1a0671fe1d"
+GW = "i-0a1b2c3d4e5f60718"          # 관문 방화벽 (OPSLOOP_GATEWAY_HOSTS)
 T0 = datetime(2026, 9, 21, 6, 0, tzinfo=timezone.utc)
 
 
@@ -38,8 +39,8 @@ class FakeS3:
             "sha": base64.b64encode(hashlib.sha256(body).digest()).decode() if sha is None else sha,
         }
 
-    def chunk(self, sensor, ino, gen, start, body, lm):
-        key = (f"raw/v1/sensor={sensor}/host={HOST}/ino={ino}.g{gen}/"
+    def chunk(self, sensor, ino, gen, start, body, lm, host=HOST):
+        key = (f"raw/v1/sensor={sensor}/host={host}/ino={ino}.g{gen}/"
                f"{start:012d}-{start + len(body):012d}.jsonl")
         self.put(key, body, lm)
         return key
@@ -89,6 +90,7 @@ def hbfile(sensor, ino, gen, offset):
 L1 = b'{"eventid":"cowrie.session.connect","timestamp":"2026-09-21T05:00:00Z"}\n'
 L2 = b'{"eventid":"cowrie.login.failed","timestamp":"2026-09-21T05:00:01Z"}\n'
 L3 = b'{"eventid":"cowrie.session.closed","timestamp":"2026-09-21T05:00:02Z"}\n'
+G1 = b'2026-09-22T01:02:03.123456+00:00 ip-10-0-1-10 kernel: gw-forward-drop IN=ens5 SRC=203.0.113.7 DPT=445\n'
 
 
 class PullTest(unittest.TestCase):
@@ -246,6 +248,68 @@ class PullTest(unittest.TestCase):
         with open(os.path.join(self.dir, k), "rb") as f:
             self.assertEqual(f.read(), L1)
 
+    def run_gw(self):
+        return pull.run(self.s3, "b", {HOST, GW}, self.dir, now=T0 + timedelta(minutes=1), gateway_hosts={GW})
+
+    def test_관문_기록_조각은_gateway_편지함으로(self):
+        k = self.s3.chunk("gateway", 31, 0, 0, G1, T0, host=GW)
+        self.s3.hb({"gateway.log": hbfile("gateway", 31, 0, len(G1))}, T0, host=GW)   # hb 의 sensor 도 gateway 를 받는다
+        self.s3.hb({}, T0)
+        self.assertEqual(self.run_gw(), 0)
+        [name] = self.inbox("gateway")
+        with open(os.path.join(self.dir, "inbox", "gateway", name), "rb") as f:
+            self.assertEqual(f.read(), G1)                                    # JSON 이 아니어도 줄 그대로
+        self.assertTrue(os.path.exists(os.path.join(self.dir, k)))
+        self.assertEqual((self.inbox("cowrie"), self.inbox("decoy")), ([], []))
+        self.assertIn(f"raw/v1/sensor=gateway/host={GW}/", self.s3.prefixes)
+
+    def test_허니팟이_올린_관문_기록은_받지_않고_구멍도_아니다(self):
+        # 허니팟과 관문이 같은 센서 역할을 쓴다. 장악된 허니팟이 gateway 조각과 hb 항목을 흉내 낸다
+        self.s3.chunk("gateway", 41, 0, 0, G1, T0)
+        self.s3.chunk("cowrie", 11, 0, 0, L1, T0)
+        self.s3.hb({"cowrie.json": hbfile("cowrie", 11, 0, len(L1)),
+                    "gateway.log": hbfile("gateway", 41, 0, len(G1) + 100)}, T0)   # 받지 않을 항목. 두면 구멍이 된다
+        self.s3.hb({}, T0, host=GW)
+        rc, out = self.quiet(self.run_gw)
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.inbox("gateway"), [])
+        self.assertEqual(len(self.inbox("cowrie")), 1)
+        self.assertIn("발생원 · 호스트 불일치", json.dumps(self.state()["ignored"], ensure_ascii=False))
+        self.assertIn("올릴 수 없는 발생원 항목 1개", out)
+
+    def test_관문이_올린_허니팟_기록도_받지_않는다(self):
+        self.s3.chunk("cowrie", 51, 0, 0, L1, T0, host=GW)
+        self.s3.hb({"cowrie.json": hbfile("cowrie", 51, 0, len(L1))}, T0, host=GW)
+        self.s3.hb({}, T0)
+        rc, _ = self.quiet(self.run_gw)
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.inbox("cowrie"), [])
+
+    def test_관문_목록이_없으면_gateway_조각을_받지_않는다(self):
+        # 설정을 빠뜨리면 조용히 섞이는 대신 받지 않는다 (README 2단계)
+        self.s3.chunk("gateway", 61, 0, 0, G1, T0)
+        self.s3.hb({}, T0)
+        rc, _ = self.quiet(self.run_pull)
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.inbox("gateway"), [])
+
+    def test_다른_발생원_이름은_받지_않는다(self):
+        ok = f"raw/v1/sensor=gateway/host={HOST}/ino=1.g0/000000000000-000000000010.jsonl"
+        self.assertIsNotNone(pull.KEY_RE.fullmatch(ok))
+        for s in ("fw", "gate", "gateway2", "gateways", "Gateway", "gateway/x", "nginx"):
+            self.assertIsNone(pull.KEY_RE.fullmatch(ok.replace("sensor=gateway", f"sensor={s}")), s)
+            self.assertIsNone(pull.valid_hb({"files": {"a": {"sensor": s, "ino": 1, "gen": 0, "offset": 1}}}), s)
+        self.assertEqual(pull.SENSORS, ("cowrie", "decoy", "gateway"))
+        # 목록 조회도 허용 발생원의 접두사만 본다
+        self.s3.put(f"raw/v1/sensor=fw/host={HOST}/ino=1.g0/000000000000-{len(G1):012d}.jsonl", G1, T0)
+        self.s3.hb({}, T0)
+        self.assertEqual(self.run_pull(), 0)
+        self.assertEqual(self.inbox("fw"), [])
+        self.assertFalse(any("sensor=fw" in p for p in self.s3.prefixes))
+        # 거부가 넘친 세대 목록(bad_groups)도 gateway 세대를 알아본다
+        gaps = pull.coverage({}, {}, bad_groups=[f"gateway/{HOST}/ino=5.g0", f"fw/{HOST}/ino=5.g0"])
+        self.assertEqual(gaps, [(("gateway", HOST, "5", 0), -1, -1)])
+
     def test_편지함은_미러와_같은_파일(self):
         k = self.s3.chunk("decoy", 21, 0, 0, L1, T0)
         self.s3.hb({"decoy.json.2026-09-21": hbfile("decoy", 21, 0, len(L1))}, T0)
@@ -255,6 +319,10 @@ class PullTest(unittest.TestCase):
         b = os.stat(os.path.join(self.dir, "inbox", "decoy", name))
         self.assertEqual((a.st_ino, a.st_dev), (b.st_ino, b.st_dev))
 
+
+    def state(self):
+        with open(os.path.join(self.dir, "pull-state.json"), encoding="utf-8") as f:
+            return json.load(f)
 
     def quiet(self, fn):
         out = io.StringIO()

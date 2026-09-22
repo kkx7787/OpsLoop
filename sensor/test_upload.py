@@ -62,15 +62,15 @@ class UploaderTest(unittest.TestCase):
     def run_once(self, path, sensor="cowrie"):
         return upload.upload_file(self.s3, "b", "i-test", sensor, path, self.state, dry_run=False)[0]
 
-    def run_main(self, s3):
-        """main() 을 가짜 boto3 로 한 회차 돌린다."""
+    def run_main(self, s3, sources=None):
+        """main() 을 가짜 boto3 로 한 회차 돌린다. sources 는 SOURCES 환경변수 (기본은 허니팟 두 파일)."""
         import types
         s3.meta = types.SimpleNamespace(events=types.SimpleNamespace(register=lambda *a, **k: None))
         fake = types.ModuleType("boto3")
         fake.client = lambda name: s3
         env = {"OPSLOOP_BUCKET": "b", "OPSLOOP_HOST": "i-test",
                "OPSLOOP_STATE": os.path.join(self.dir, "state.json"),
-               "SOURCES": f"cowrie:{self.dir}/cowrie.json*,decoy:{self.dir}/decoy.json.*"}
+               "SOURCES": sources or f"cowrie:{self.dir}/cowrie.json*,decoy:{self.dir}/decoy.json.*"}
         old_env = {k: os.environ.get(k) for k in env}
         old_argv, old_mod = sys.argv, sys.modules.get("boto3")
         os.environ.update(env)
@@ -242,6 +242,30 @@ class UploaderTest(unittest.TestCase):
         got = sorted(os.path.basename(p) for _, p in
                      upload.sources(f"cowrie:{self.dir}/cowrie.json*,decoy:{self.dir}/decoy.json.*"))
         self.assertEqual(got, ["cowrie.json", "cowrie.json.2026-09-21", "decoy.json.2026-09-21"])
+
+    def test_관문_기록_이름_규칙(self):
+        # 현재 파일과 logrotate dateext 회전본만. 압축본 · 번호 회전본 · 다른 이름은 올리지 않는다
+        for n in ["gateway.log", "gateway.log.2026-09-22", "gateway.log.2026-09-22.gz", "gateway.log.1",
+                  "gateway.log-20260922", "gateway.txt", "gateway.log.x"]:
+            self.write(n, b'x\n', "wb")
+        got = sorted(os.path.basename(p) for _, p in upload.sources(f"gateway:{self.dir}/gateway.log*"))
+        self.assertEqual(got, ["gateway.log", "gateway.log.2026-09-22"])
+        self.assertEqual(sorted(upload.NAME_RULE), ["cowrie", "decoy", "gateway"])   # 기존 규칙은 그대로
+
+    def test_SOURCES_로_관문_기록만_올린다(self):
+        # 설치 스크립트 세 번째 인자가 /etc/default/opsloop-upload 의 SOURCES 가 된다. 기본값(허니팟)은 건드리지 않는다
+        line = b'2026-09-22T01:02:03.123456+00:00 ip-10-0-1-10 kernel: gw-forward-drop IN=ens5 SRC=203.0.113.7 DPT=445\n'
+        self.write("gateway.log", line)
+        self.write("cowrie.json", b'{"a":1}\n')                    # 같은 폴더에 있어도 SOURCES 밖이면 올리지 않는다
+        self.run_main(self.s3, sources=f"gateway:{self.dir}/gateway.log*")
+        raw = [k for k in self.s3.objects if k.startswith("raw/")]
+        self.assertEqual(len(raw), 1)
+        self.assertTrue(raw[0].startswith("raw/v1/sensor=gateway/host=i-test/ino="))
+        self.assertEqual(list(rebuilt(self.s3, "gateway").values()), [line])   # 줄은 JSON 이 아니어도 그대로
+        import json
+        hb = json.loads(self.s3.objects[self.HB])
+        self.assertEqual(hb["files"]["gateway.log"]["sensor"], "gateway")
+        self.assertEqual(upload.DEFAULT_SOURCES, "cowrie:/opt/cowrie/log/cowrie.json*,decoy:/opt/decoy/log/decoy.json.*")
 
 
 if __name__ == "__main__":

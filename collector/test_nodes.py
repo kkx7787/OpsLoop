@@ -305,7 +305,7 @@ class ArgsTest(Base):
 
     def test_노드_이름(self):
         for bad in ("Web-01", "web_01", "-web", "", "a" * 64, "web 01", "web-01\n",
-                    "cowrie", "decoy", "console", "collector", "puller"):
+                    "cowrie", "decoy", "gateway", "console", "collector", "puller"):
             self.assertUsage(*self.issue(node=bad))
         self.assertUsage("revoke", "cowrie")
         self.assertUsage("check", "collector", "--nonce", "x")

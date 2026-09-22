@@ -8,7 +8,8 @@
   1. 호스트마다 생존 신호(hb)를 먼저 읽는다. 업로더는 한 회차의 조각을 다 올린 뒤 hb 를 쓰므로,
      hb 보다 먼저 만들어진 조각까지가 "끝난 회차"다. 그 뒤 조각은 올라가는 중일 수 있어 다음으로 미룬다.
      (목록을 먼저 보고 hb 를 나중에 읽으면, 회전 직전 파일의 꼬리는 없고 새 파일만 있는 틈이 생긴다)
-  2. 허용 호스트의 접두사(raw/v1/sensor=<s>/host=<h>/)만 목록 조회한다. 커서를 쓰지 않으므로
+  2. 허용 호스트의 접두사(raw/v1/sensor=<s>/host=<h>/)만 목록 조회한다 (<s> 는 cowrie · decoy · gateway.
+     gateway 는 관문 방화벽의 거부 기록이다). 커서를 쓰지 않으므로
      늦게 도착한 조각도 놓치지 않고, 다른 곳에 만든 키는 아예 보지 않는다.
   3. 키 규칙 · 크기(끝-시작) · 저장 등급을 검사한다. 맞지 않으면 받지 않는다.
   4. 새 조각은 받아서 SHA256 을 업로드 때 기록된 값과 대조하고, 줄바꿈으로 끝나는지 본 뒤 미러에 둔다.
@@ -37,6 +38,9 @@
 환경변수
   OPSLOOP_BUCKET     S3 버킷
   OPSLOOP_HOSTS      받을 센서 호스트 (쉼표). 목록 밖 호스트의 조각은 보지도 않는다
+  OPSLOOP_GATEWAY_HOSTS  관문 방화벽 호스트 (쉼표, OPSLOOP_HOSTS 에도 있어야 한다). gateway 조각은 이 호스트만,
+                     cowrie · decoy 조각은 이 밖의 호스트만 올릴 수 있다. 허니팟과 관문이 같은 센서 역할을 쓰므로
+                     장악된 허니팟이 관문 기록을 흉내 내거나, 생존 신호에 가짜 gateway 항목을 넣어 구멍을 만들지 못하게 한다
   OPSLOOP_HOME       작업 폴더 (기본 /var/lib/opsloop)
   OPSLOOP_GAP_ACK    운영자가 확인한 구멍 목록 (기본 /etc/opsloop/gap-ack.json).
                      ["cowrie/i-.../ino=123.g0", ...] 형식. 여기 있는 세대는 구멍 판정에서 뺀다
@@ -54,10 +58,10 @@ import tempfile
 import time
 from datetime import datetime, timedelta, timezone
 
-SENSORS = ("cowrie", "decoy")
+SENSORS = ("cowrie", "decoy", "gateway")   # 바꾸면 KEY_RE · coverage 의 세대 규칙도 같이 바꾼다
 # fullmatch 로만 쓴다 ($ 는 끝 줄바꿈을 허용한다). 숫자는 [0-9] 로 쓴다 (\d 는 아랍-인도 숫자 등도 받는다)
 KEY_RE = re.compile(
-    r"raw/v1/sensor=(cowrie|decoy)/host=(i-[0-9a-f]{8,17})/"
+    r"raw/v1/sensor=(cowrie|decoy|gateway)/host=(i-[0-9a-f]{8,17})/"
     r"ino=([0-9]{1,20})\.g([0-9]{1,6})/([0-9]{12})-([0-9]{12})\.jsonl")
 MAX_OBJ = 64 * 1024 * 1024        # 업로더는 8MiB 씩 자르고 긴 한 줄만 이를 넘는다. 64MiB 넘는 조각은 받지 않는다
 HB_MAX = 1024 * 1024
@@ -368,13 +372,18 @@ def coverage(objects, hbs, ack=frozenset(), rejected=(), bad_groups=()):
     seen = {group_id(*g) for g, _a, _b in gaps}
     for gid in bad_groups:
         if gid not in ack and gid not in seen:
-            m = re.fullmatch(r"(cowrie|decoy)/(i-[0-9a-f]{8,17})/ino=([0-9]{1,20})\.g([0-9]{1,6})", gid)
+            m = re.fullmatch(r"(cowrie|decoy|gateway)/(i-[0-9a-f]{8,17})/ino=([0-9]{1,20})\.g([0-9]{1,6})", gid)
             if m:
                 gaps.append(((m[1], m[2], m[3], int(m[4])), -1, -1))   # 세대 통째로 격리
     return gaps
 
 
-def run(s3, bucket, hosts, home, now=None, ack=frozenset()):
+def role_ok(sensor, host, gateway_hosts):
+    """발생원과 호스트의 짝이 맞는가. gateway 는 관문 호스트만, 나머지는 관문이 아닌 호스트만 올린다."""
+    return (sensor == "gateway") == (host in gateway_hosts)
+
+
+def run(s3, bucket, hosts, home, now=None, ack=frozenset(), gateway_hosts=frozenset()):
     now = now or datetime.now(timezone.utc)
     state_path = os.path.join(home, "pull-state.json")
     cleanup_temp(home)
@@ -405,6 +414,13 @@ def run(s3, bucket, hosts, home, now=None, ack=frozenset()):
             transient += 1
         except Exception as e:                     # 한 호스트의 이상한 값이 다른 호스트를 막지 않게 한다
             files, when, problem = None, None, f"형식이 틀림 ({safe(type(e).__name__)})"
+        if files:
+            wrong = sorted(n for n, f in files.items() if not role_ok(f["sensor"], host, gateway_hosts))
+            if wrong:
+                # 이 호스트가 올릴 수 없는 발생원 항목은 빼고 본다. 두면 받지 않을 조각을 기다려 구멍이 된다
+                remember(alerts, f"hb/{host}/role", ",".join(wrong)[:512],
+                         f"경고: {host} 생존 신호에 이 호스트가 올릴 수 없는 발생원 항목 {len(wrong)}개. 빼고 본다", 3)
+                files = {n: f for n, f in files.items() if n not in wrong}
         hbs[host], cutoff[host] = files, when
         if problem:
             log(f"경고: {host} 생존 신호 {problem}. 이 호스트 조각은 받지 않는다", 3 if "틀림" in problem or "초과" in problem else 4)
@@ -446,6 +462,10 @@ def run(s3, bucket, hosts, home, now=None, ack=frozenset()):
             start, end = int(start_s), int(end_s)
             gid = group_id(sensor, host, ino_s, int(gen_s))
             if host not in hosts:
+                continue
+            if not role_ok(sensor, host, gateway_hosts):
+                remember(ignored, key, "발생원 · 호스트 불일치",
+                         f"받지 않음 {safe(key)}: {sensor} 조각을 {host} 가 올렸다 (OPSLOOP_GATEWAY_HOSTS)", 3)
                 continue
             if cutoff.get(host) is None or obj["LastModified"] > cutoff[host]:
                 waiting += 1                    # 업로더 회차가 아직 끝나지 않았다
@@ -545,8 +565,9 @@ def main():
     if not bucket or not hosts:
         sys.exit("OPSLOOP_BUCKET 과 OPSLOOP_HOSTS 가 필요합니다")
     ack = load_ack(os.environ.get("OPSLOOP_GAP_ACK", "/etc/opsloop/gap-ack.json"))
+    gateway_hosts = frozenset(h.strip() for h in os.environ.get("OPSLOOP_GATEWAY_HOSTS", "").split(",") if h.strip())
     import boto3
-    sys.exit(run(boto3.client("s3"), bucket, hosts, home, ack=ack))
+    sys.exit(run(boto3.client("s3"), bucket, hosts, home, ack=ack, gateway_hosts=gateway_hosts))
 
 
 if __name__ == "__main__":
