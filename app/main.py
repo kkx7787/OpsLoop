@@ -23,11 +23,11 @@ from typing import Literal, Optional
 
 import asyncpg
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 import auth
+import web
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 NOTIFY_CHANNEL = "opsloop_incident"
@@ -105,14 +105,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="OpsLoop API", version="0.1.0", lifespan=lifespan)
 
-# 콘솔은 개발 중 다른 포트에서 돈다. 운영에서는 실제 오리진으로 좁힌다.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=os.environ.get("CORS_ORIGINS", "http://localhost:5173").split(","),
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# 화면 번들 · /api/me (web.py). 미들웨어는 나중에 붙인 것이 바깥이므로 세션 검사보다 먼저 붙여
+# 세션 검사 안쪽에 둔다. 화면 번들도 로그인 뒤에만 나간다.
+web.serve(app)
 
 
 OPEN_PATHS = ("/health", "/login", "/logout", "/docs", "/openapi.json")
@@ -138,24 +133,6 @@ WINDOW_AFTER = "30 minutes"
 BEHAVIOR_LIKE = ["%.login.success", "%.command.input", "%.session.file_%",
                  "%direct-tcpip%", "%.action.%"]
 
-LOGIN_PAGE = """<!doctype html><html lang="ko"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>OpsLoop</title>
-<style>
- body{font-family:system-ui,sans-serif;background:#f4f5f7;color:#232f3e;margin:0}
- .box{max-width:360px;margin:96px auto;background:#fff;border:1px solid #dfe3e8;padding:32px}
- h1{font-size:18px;margin:0 0 4px} p.s{color:#6e7681;font-size:13px;margin:0 0 24px}
- label{display:block;font-size:13px;margin:12px 0 4px}
- input{width:100%;padding:8px;border:1px solid #c9ced6;box-sizing:border-box}
- button{margin-top:16px;padding:8px 20px;background:#232f3e;color:#fff;border:0;width:100%}
- .e{color:#dd3522;font-size:13px;margin-top:12px}
-</style></head><body><div class="box">
-<h1>OpsLoop 관제 콘솔</h1><p class="s">판정과 조치는 계정에 기록됩니다.</p>
-<form method="post" action="/login">
- <label>아이디</label><input name="username" autocomplete="username">
- <label>비밀번호</label><input name="password" type="password" autocomplete="current-password">
- <button type="submit">로그인</button>
-</form><!--ERROR--></div></body></html>"""
-
 
 @app.middleware("http")
 async def require_session(request: Request, call_next):
@@ -173,10 +150,14 @@ async def require_session(request: Request, call_next):
     if session is None:
         if path.startswith("/api"):
             return JSONResponse({"detail": "인증이 필요합니다"}, status_code=401)
-        return RedirectResponse("/login", status_code=302)
+        return web.to_login(request)
 
     request.state.user = session
     return await call_next(request)
+
+
+# 보안 헤더 · CORS · 출처 확인 (web.py). 세션 검사보다 나중에 붙여 그 바깥에 둔다.
+web.guard(app)
 
 
 def require_role(request: Request, *roles: str) -> dict:
@@ -190,8 +171,8 @@ def require_role(request: Request, *roles: str) -> dict:
 
 
 @app.get("/login", response_class=HTMLResponse)
-async def login_form():
-    return LOGIN_PAGE.replace("<!--ERROR-->", "")
+async def login_form(request: Request):
+    return web.login_page(next_path=request.query_params.get("next"))
 
 
 @app.post("/login")
@@ -199,20 +180,20 @@ async def login(request: Request):
     form = await auth.form_fields(request)
     username = str(form.get("username", ""))[:128]
     password = str(form.get("password", ""))[:256]
+    # 로그인 뒤 돌아갈 곳. 같은 출처의 상대 경로만 받는다(열린 리디렉션 금지).
+    next_path = web.safe_next(form.get("next"))
 
     user = await auth.authenticate(app.state.pool, username, password)
     if user is None:
         await auth.log_event(app.state.pool, request, "console.login.failed",
                              username=username, status=401)
-        return HTMLResponse(
-            LOGIN_PAGE.replace("<!--ERROR-->",
-                               '<p class="e">아이디 또는 비밀번호가 올바르지 않습니다.</p>'),
-            status_code=401)
+        return web.login_page(error=True, next_path=next_path, username=username,
+                              status_code=401)
 
     token = auth.issue(user["username"], user["role"])
     await auth.log_event(app.state.pool, request, "console.login.success",
                          username=user["username"], status=302, session=token[:17])
-    response = RedirectResponse("/", status_code=302)
+    response = RedirectResponse(next_path, status_code=302)
     response.set_cookie(auth.COOKIE, token, httponly=True, samesite="lax",
                         max_age=auth.SESSION_HOURS * 3600)
     return response
