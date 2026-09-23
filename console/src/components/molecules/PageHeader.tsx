@@ -13,7 +13,7 @@ export interface PageHeaderProps extends Omit<ComponentProps<'header'>, 'title'>
   aside?: ReactNode
 }
 
-/** 페이지 머리: 경로 · 제목(30px) · 표지 · 한 줄 설명 · 오른쪽 부가 정보 */
+/** 페이지 머리: 경로 · 제목(24px) · 표지 · 한 줄 설명 · 오른쪽 부가 정보 */
 export function PageHeader({ breadcrumbs, title, badges, description, aside, className, ...rest }: PageHeaderProps) {
   return (
     <header className={cn('flex flex-col gap-2', className)} {...rest}>
@@ -41,7 +41,7 @@ export function PageHeader({ breadcrumbs, title, badges, description, aside, cla
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div className="flex min-w-0 flex-col gap-1.5">
           <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="m-0 text-2xl font-bold tracking-tight md:text-3xl">{title}</h1>
+            <h1 className="m-0 text-xl font-semibold tracking-tight md:text-[24px] md:leading-8">{title}</h1>
             {badges}
           </div>
           {description && <p className="m-0 text-sm text-ink-muted">{description}</p>}

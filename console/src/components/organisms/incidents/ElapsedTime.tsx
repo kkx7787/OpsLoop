@@ -17,11 +17,11 @@ export interface ElapsedTimeProps extends Omit<ComponentProps<'span'>, 'children
   format?: 'compact' | 'long'
 }
 
-/** ok → warn(목표의 2/3 경과, 주황) → over(목표 초과, 빨강). 화면 설계 3장 · 4장 */
+/** 시간 목표의 임박·초과는 황갈색으로 표시해 사건 심각도의 빨강과 구분한다. */
 const TONE_CLASS: Record<ElapsedTone, string> = {
   ok: 'text-ink',
-  warn: 'text-orange font-semibold',
-  over: 'text-danger font-semibold',
+  warn: 'text-warning font-medium',
+  over: 'text-warning font-semibold',
 }
 
 /** 색만으로 뜻을 전하지 않도록 화면 낭독기에는 글로 알린다 */

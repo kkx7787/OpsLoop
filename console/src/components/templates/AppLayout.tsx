@@ -112,7 +112,7 @@ export function AppLayout({ groups, children, sensor }: AppLayoutProps) {
           sensor={<SensorSummary {...sensor} compact />}
           live={<LiveIndicator live={live} />}
         />
-        <main id="main" className="flex flex-1 flex-col gap-3 p-4 md:gap-[18px] md:px-10 md:py-8">
+        <main id="main" className="flex flex-1 flex-col gap-3 p-4 md:px-6 md:py-4">
           {body}
         </main>
       </div>

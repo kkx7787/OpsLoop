@@ -88,7 +88,7 @@ export function VerdictPanel({ detail, openedAt, className }: VerdictPanelProps)
           )}
         </div>
 
-        <div className="rounded-panel bg-canvas p-3 text-sm" aria-label="도구 제안">
+        <div className="border-l-2 border-primary/40 bg-canvas px-3 py-2 text-sm" aria-label="도구 제안">
           <p className="m-0 font-medium">
             도구 제안 · {proposal?.verdict ? <VerdictBadge verdict={proposal.verdict} /> : '제안 없음'}
           </p>
@@ -110,8 +110,8 @@ export function VerdictPanel({ detail, openedAt, className }: VerdictPanelProps)
               <label
                 key={value}
                 className={cn(
-                  'grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] gap-x-2.5 gap-y-0.5 rounded-panel px-3 py-2 transition-colors',
-                  selected ? 'bg-primary-soft shadow-[inset_0_0_0_1px_var(--color-primary)]' : 'hover:bg-canvas',
+                  'grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] gap-x-2.5 gap-y-0.5 rounded-control border border-line px-3 py-2 transition-colors',
+                  selected ? 'border-primary bg-primary-soft' : 'hover:bg-canvas',
                 )}
               >
                 <input
@@ -125,7 +125,7 @@ export function VerdictPanel({ detail, openedAt, className }: VerdictPanelProps)
                   }}
                   className="mt-1 size-3.5 accent-primary"
                 />
-                <span className={cn('text-sm font-semibold', VERDICT_TEXT[value])}>{VERDICT_LABEL[value]}</span>
+                <span className={cn('text-sm font-medium', selected && VERDICT_TEXT[value])}>{VERDICT_LABEL[value]}</span>
                 <span className="col-start-2 text-xs text-ink-muted">{VERDICT_DESCRIPTION[value]}</span>
               </label>
             )
@@ -169,7 +169,7 @@ export function VerdictPanel({ detail, openedAt, className }: VerdictPanelProps)
         </dl>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button type="submit" variant="primary" size="lg" loading={mutation.isPending}>
+          <Button type="submit" variant="primary" size="lg" className="w-full" loading={mutation.isPending}>
             {judged ? '재판정 기록' : '판정 기록'}
           </Button>
           <span className="text-xs text-ink-muted">기록하면 사건은 종결됩니다.</span>

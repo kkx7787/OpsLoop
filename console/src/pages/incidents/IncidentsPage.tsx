@@ -1,5 +1,6 @@
 import { useEffect, useMemo, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
+import { cn } from '@/lib/cn'
 import { useIncidentsPage } from '@/api/incidents'
 import { Button } from '@/components/atoms/Button'
 import { buttonClasses } from '@/components/atoms/button-styles'
@@ -91,23 +92,22 @@ export function IncidentsPage() {
   const end = Math.min((page - 1) * pageSize + (list?.items.length ?? 0), list?.total ?? 0)
 
   return (
-    <div className="flex flex-col gap-[18px] md:h-[calc(100dvh-116px)] md:min-h-[500px]">
-      <PageHeader title="인시던트" description="미판정 사건부터 확인하고 증거를 검토하세요." className="shrink-0" />
-      <section aria-label="사건 탐색" className="flex shrink-0 flex-col gap-4 rounded-card bg-surface p-4 shadow-card">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div role="group" aria-label="빠른 보기" className="flex flex-wrap gap-2">
-            {quickViews.map((view) => <Button key={view.label} size="sm" variant={view.selected ? 'primary' : 'secondary'} aria-pressed={view.selected} onClick={() => setFilters(view.filters)}>{view.label}</Button>)}
+    <div className="flex flex-col gap-3 md:h-[calc(100dvh-80px)] md:min-h-[480px]">
+      <PageHeader title="인시던트" className="shrink-0" />
+      <section aria-label="사건 탐색" className="flex shrink-0 flex-col rounded-card bg-surface shadow-card">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-3">
+          <div role="group" aria-label="빠른 보기" className="flex flex-wrap gap-4">
+            {quickViews.map((view) => <button key={view.label} type="button" aria-pressed={view.selected} onClick={() => setFilters(view.filters)} className={cn('min-h-10 cursor-pointer border-b-2 px-0.5 text-sm transition-colors', view.selected ? 'border-primary font-semibold text-primary' : 'border-transparent text-ink-muted hover:text-ink')}>{view.label}</button>)}
           </div>
-          <IncidentSortControl value={filters} onChange={setFilters} />
         </div>
-        <IncidentFilterBar value={filters} onChange={setFilters} rules={rules} />
+        <IncidentFilterBar value={filters} onChange={setFilters} rules={rules} className="px-3 py-2" />
       </section>
       <section aria-label="조회 결과" className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-card bg-surface shadow-card md:flex-1">
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-black/8 px-4 py-3 text-sm">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-line px-3 py-2 text-xs">
           <span aria-live="polite">
             {list && !changing ? <>총 <strong className="tabular-nums">{list.total.toLocaleString('ko-KR')}</strong>건 · <span className="tabular-nums">{start.toLocaleString('ko-KR')}–{end.toLocaleString('ko-KR')}건 표시</span></> : '목록 조회 중'}
           </span>
-          <span className="text-xs text-ink-muted">{incidents.isFetching ? '갱신 중…' : filters.sort === 'severity' ? '심각도 높은 순' : filters.sort === 'recent' ? '최근 발생 순' : '미판정 우선 · 오래된 순'}</span>
+          <div className="flex flex-wrap items-center gap-2"><span className="text-xs text-ink-muted">{incidents.isFetching ? '갱신 중…' : ''}</span><IncidentSortControl value={filters} onChange={setFilters} /></div>
         </div>
         {incidents.isError && list && <Banner tone="danger" title="목록을 갱신하지 못했습니다">{describeError(incidents.error)} <Button size="sm" onClick={() => void incidents.refetch()}>다시 시도</Button></Banner>}
         <div className="min-h-0 overflow-auto md:flex-1">{body}</div>

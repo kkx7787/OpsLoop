@@ -15,8 +15,8 @@ export interface ElapsedClockProps {
 
 const TONE_CLASS: Record<ElapsedTone, string> = {
   ok: 'text-ink',
-  warn: 'text-orange',
-  over: 'text-danger',
+  warn: 'text-warning',
+  over: 'text-warning',
 }
 
 const TONE_LABEL: Record<ElapsedTone, string> = {
@@ -26,7 +26,7 @@ const TONE_LABEL: Record<ElapsedTone, string> = {
 }
 
 /**
- * 경과 시간과 판정 목표(화면 설계 3장 표). 목표의 2/3 가 지나면 주황, 넘기면 빨강.
+ * 경과 시간과 판정 목표(화면 설계 3장 표). 목표 임박과 초과는 시간 경고색으로 표시한다.
  * 콘솔 발생 건은 심각도와 관계없이 critical 목표를 따른다(verdictTargetSeconds).
  */
 export function ElapsedClock({ severity, ruleId, firstTs, judgedAt, className }: ElapsedClockProps) {
@@ -37,7 +37,7 @@ export function ElapsedClock({ severity, ruleId, firstTs, judgedAt, className }:
   const tone = elapsedTone(severity, seconds, ruleId)
   return (
     <div className={cn('flex flex-col items-start gap-0.5 md:items-end', className)} data-elapsed-tone={tone}>
-      <span className={cn('text-lg font-semibold tracking-heading tabular-nums', TONE_CLASS[tone])}>
+      <span className={cn('text-base font-medium tracking-heading tabular-nums', TONE_CLASS[tone])}>
         {judged ? '판정까지 ' : '경과 '}
         {formatDuration(seconds * 1000)}
       </span>

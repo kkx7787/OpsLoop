@@ -69,11 +69,11 @@ describe('경로표', () => {
     expect(fetch.mock.calls.some(([input]) => String(input).startsWith('/api/incidents?'))).toBe(true)
   })
 
-  it('인시던트 상세는 키를 상단바 경로 표시에 보이고, 없는 사건이면 목록으로 돌아가는 길을 둔다', async () => {
+  it('인시던트 상세는 화면 이름을 상단바 경로 표시에 보이고, 없는 사건이면 목록으로 돌아가는 길을 둔다', async () => {
     stubMe({ username: 'han', role: 'operator' })
     renderRoutes(routes, '/incidents/R003%7Cv2%7C1.2.3.4')
     expect(await screen.findByRole('heading', { level: 1, name: '인시던트를 찾을 수 없습니다' })).toBeInTheDocument()
-    expect(screen.getByRole('navigation', { name: '현재 위치' })).toHaveTextContent('관제›인시던트›R003|v2|1.2.3.4')
+    expect(screen.getByRole('navigation', { name: '현재 위치' })).toHaveTextContent('관제›인시던트›사건 상세')
     expect(screen.getByRole('link', { name: '인시던트' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('link', { name: '인시던트 목록으로' })).toHaveAttribute('href', '/incidents')
   })

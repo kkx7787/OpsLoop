@@ -16,10 +16,10 @@ export function IncidentPagination({ page, pageSize, total, busy, onPage, onPage
   const id = useId()
   const count = Math.max(1, Math.ceil(total / pageSize))
   return (
-    <nav aria-label="인시던트 페이지" className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-black/8 px-4 py-3">
+    <nav aria-label="인시던트 페이지" className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-line px-3 py-2">
       <div className="flex items-center gap-2 text-xs text-ink-muted">
         <label htmlFor={id}>페이지당</label>
-        <Select id={id} fieldSize="sm" className="w-auto" value={pageSize} onChange={(e) => onPageSize(Number(e.target.value))}>
+        <Select id={id} fieldSize="sm" className="h-7 w-auto" value={pageSize} onChange={(e) => onPageSize(Number(e.target.value))}>
           {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}건</option>)}
         </Select>
         <span aria-live="polite">{page} / {count}페이지</span>

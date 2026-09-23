@@ -25,9 +25,9 @@ export function hoursLabel(hours: number): string {
 /** 상세 경로. 목록 조각(organisms/incidents)의 것과 같은 함수다 */
 export { incidentHref } from '../incidents/model'
 
-/** 상태 배지 색. 신규는 눈에 띄어야 하고 종결 · 억제는 조용해야 한다 */
+/** 상태 배지 색. 신규는 중립색으로 심각도와 구별한다 */
 export const STATUS_TONE: Record<IncidentStatus, Tone> = {
-  open: 'warning',
+  open: 'neutral',
   acknowledged: 'info',
   in_progress: 'orange',
   resolved: 'success',

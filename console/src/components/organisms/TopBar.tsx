@@ -26,7 +26,7 @@ export interface TopBarProps extends ComponentProps<'header'> {
 }
 
 /**
- * 상단바 52px. 데스크톱(Main.dc.html)은 경로 표시 · 실시간 연결 표시 · KST 시계 · 갱신 안내 · 새로고침,
+ * 상단바 48px. 데스크톱(Main.dc.html)은 경로 표시 · 실시간 연결 표시 · KST 시계 · 갱신 안내 · 새로고침,
  * 모바일(Mobile.dc.html)은 메뉴 단추 · 제품명 · 연결 점 · 센서 요약. 사용자 · 로그아웃은 메뉴 아래(SideNav · MobileNav)에 있다.
  */
 export function TopBar({
@@ -48,13 +48,13 @@ export function TopBar({
   return (
     <header
       className={cn(
-        'sticky top-0 z-20 flex h-[52px] shrink-0 items-center justify-between gap-3 bg-surface px-4 shadow-hairline',
-        'md:bg-canvas/85 md:px-10 md:backdrop-blur',
+        'sticky top-0 z-20 flex h-12 shrink-0 items-center justify-between gap-3 bg-surface px-4 shadow-hairline',
+        'md:px-6',
         className,
       )}
       {...rest}
     >
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex min-w-0 flex-1 items-center gap-2">
         {onOpenMenu && (
           <Button
             ref={menuButtonRef}
@@ -71,12 +71,12 @@ export function TopBar({
         <span className="text-[16px] font-semibold md:hidden">OpsLoop</span>
         {breadcrumbs.length > 0 ? (
           <nav aria-label="현재 위치" className="hidden min-w-0 md:block">
-            <ol className="m-0 flex list-none flex-wrap items-center gap-1.5 p-0 text-sm text-ink-muted">
+            <ol className="m-0 flex min-w-0 list-none items-center gap-1.5 p-0 text-sm text-ink-muted">
               {breadcrumbs.map((crumb, i) => {
                 const last = i === breadcrumbs.length - 1
                 return (
                   <Fragment key={i}>
-                    <li aria-current={last ? 'page' : undefined} className="truncate">
+                    <li aria-current={last ? 'page' : undefined} className="min-w-0 truncate">
                       {crumb}
                     </li>
                     {!last && <li aria-hidden="true">›</li>}

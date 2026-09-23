@@ -16,17 +16,17 @@ export interface SideNavProps extends ComponentProps<'aside'> {
   sensor?: ReactNode
 }
 
-/** 데스크톱 사이드바 232px(Main.dc.html): 제품 표지 · 메뉴 묶음 · 아래에 센서 요약과 사용자 · 로그아웃 */
+/** 데스크톱 사이드바 208px(Main.dc.html): 제품 표지 · 메뉴 묶음 · 아래에 센서 요약과 사용자 · 로그아웃 */
 export function SideNav({ groups, userRole, user, sensor, className, ...rest }: SideNavProps) {
   return (
     <aside
       aria-label="사이드바"
-      className={cn('flex w-[232px] shrink-0 flex-col bg-sidebar px-3 shadow-sidebar', className)}
+      className={cn('flex w-[208px] shrink-0 flex-col bg-sidebar px-3 shadow-sidebar', className)}
       {...rest}
     >
       <Brand />
       <NavMenu groups={groups} userRole={userRole} />
-      <div className="mt-auto flex flex-col gap-3.5 px-1.5 pt-4 pb-5 shadow-hairline-up">
+      <div className="mt-auto flex flex-col gap-3 px-1.5 pt-3 pb-4 shadow-hairline-up">
         {sensor ?? <SensorSummary />}
         <UserPanel user={user} />
       </div>
