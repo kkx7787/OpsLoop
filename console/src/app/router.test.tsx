@@ -17,7 +17,8 @@ function stubIncidents(me: unknown) {
     if (url.pathname === '/api/blocklist') return json([], 200)
     if (url.pathname === '/api/me') return json(me, 200)
     if (url.pathname === '/api/incidents') return json({ total: 0, limit: 50, offset: 0, items: [] }, 200)
-    if (url.pathname === '/api/rules/quality') return json([], 200)
+    if (url.pathname === '/api/nodes') return json({ as_of: '', rows: [] }, 200)
+    if (url.pathname === '/api/rules/quality') return json(url.searchParams.has('details') ? { rows: [], versions: [], runs: [] } : [], 200)
     return json({ detail: '없는 경로' }, 404)
   })
   vi.stubGlobal('fetch', fetch)
@@ -39,7 +40,7 @@ describe('경로표', () => {
     expect(screen.getByRole('navigation', { name: '주 메뉴' })).toBeInTheDocument()
   })
 
-  it.each([['/', '미판정 현황'], ['/blocklist', '차단 목록']])('%s는 구현 화면이다', async (path, title) => {
+  it.each([['/', '미판정 현황'], ['/blocklist', '차단 목록'], ['/rules', '규칙 · 리플레이'], ['/nodes', '수집 노드']])('%s는 구현 화면이다', async (path, title) => {
     stubIncidents({ username: 'han', role: 'operator' })
     renderRoutes(routes, path)
     expect(await screen.findByRole('heading', { level: 1, name: title })).toBeInTheDocument()
@@ -47,10 +48,8 @@ describe('경로표', () => {
   })
 
   it.each([
-    ['/rules', '규칙과 리플레이', 'S-07'],
     ['/sources', '출발지 분석', 'S-09'],
     ['/reports', '보고서', 'S-11'],
-    ['/nodes', '수집 노드', 'S-08 · S-13'],
   ])('%s → %s (%s)', async (path, title, code) => {
     stubMe({ username: 'han', role: 'operator' })
     renderRoutes(routes, path)

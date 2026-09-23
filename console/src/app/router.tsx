@@ -1,6 +1,7 @@
 import { createBrowserRouter, type RouteObject } from 'react-router'
 import type { RouteHandle } from '@/components/templates/breadcrumbs'
 import { AppLayout } from '@/components/templates/AppLayout'
+import { LoadingState } from '@/components/organisms/states/LoadingState'
 import { IncidentDetailPage } from '@/pages/incident-detail'
 import { IncidentsPage } from '@/pages/incidents'
 import { DashboardPage } from '@/pages/dashboard/DashboardPage'
@@ -22,6 +23,7 @@ export const routes: RouteObject[] = [
   {
     path: '/',
     element: <AppLayout groups={NAV_GROUPS} />,
+    hydrateFallbackElement: <LoadingState />,
     errorElement: <RootError />,
     children: [
       {
@@ -31,12 +33,13 @@ export const routes: RouteObject[] = [
           { path: 'incidents', element: <IncidentsPage /> },
           { path: 'incidents/:key', element: <IncidentDetailPage />, handle: incidentHandle },
           { path: 'blocklist', element: <BlocklistPage /> },
-          { path: 'rules', element: <PlaceholderPage screen={SCREENS.rules} /> },
+          { path: 'rules', lazy: async () => ({ Component: (await import('@/pages/rules/RulesPage')).RulesPage }) },
           { path: 'sources', element: <PlaceholderPage screen={SCREENS.sources} /> },
           { path: 'reports', element: <PlaceholderPage screen={SCREENS.reports} /> },
-          { path: 'nodes', element: <PlaceholderPage screen={SCREENS.nodes} /> },
+          { path: 'nodes', lazy: async () => ({ Component: (await import('@/pages/nodes/NodesPage')).NodesPage }) },
+          { path: 'nodes/new', lazy: async () => ({ Component: (await import('@/pages/nodes/NodeEnrollmentPage')).NodeEnrollmentPage }), handle: { crumb: '노드 추가' } satisfies RouteHandle },
           { path: 'alerts', element: <PlaceholderPage screen={SCREENS.alerts} /> },
-          { path: 'audit', element: <PlaceholderPage screen={SCREENS.audit} /> },
+          { path: 'audit', lazy: async () => ({ Component: (await import('@/pages/audit/AuditPage')).AuditPage }) },
           { path: 'accounts', element: <PlaceholderPage screen={SCREENS.accounts} /> },
           ...(import.meta.env.DEV
             ? [
