@@ -37,7 +37,7 @@ trap cleanup EXIT
 # 지난 실행이 중간에 끊겨 남긴 시험 DB 가 있으면 먼저 치운다
 drop_testdb || true
 
-"${SSH[@]}" 'sudo -n docker exec opsloop-db pg_dump -U opsloop -Fc opsloop' > "$part"
+"${SSH[@]}" 'sudo -n docker exec opsloop-db pg_dump -U opsloop_backup -Fc opsloop' > "$part"
 
 # 받은 파일이 온전한 덤프인지 DB 컨테이너의 pg_restore 로 목차를 읽어 본다
 tables=$("${SSH[@]}" 'sudo -n docker exec -i opsloop-db pg_restore --list' < "$part" | grep -c 'TABLE DATA' || true)

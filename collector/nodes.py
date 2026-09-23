@@ -62,7 +62,8 @@ except ImportError:              # --help 와 시험은 psycopg2 없이도 돈�
     psycopg2 = None
     DB_ERRORS = ()
 
-DB_ENV = "/etc/opsloop/collector.env"
+# 소유자 역할의 접속 정보. root 만 읽는다. collector.env 는 이제 적재 역할(opsloop_ingest)이라 발급 · 폐기를 못 한다 (이슈 #31)
+DB_ENV = "/etc/opsloop/admin.env"
 # 관리 원장은 관문 폴더가 아니라 root 만 쓰는 폴더에 둔다. 관문(네트워크에 노출된 프로세스)이 장악돼도
 # 발급 · 취소 · 폐기 기록을 지우거나 가로채지 못한다. 다리(opsloop-pull 그룹)는 읽기만 한다
 ADMIN_DIR = "/var/lib/opsloop/admin"
