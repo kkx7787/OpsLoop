@@ -95,11 +95,12 @@ terraform plan     # 콘솔에서 누가 무엇을 바꿨는지 드러난다
 계획에 차이가 잡히면 둘 중 하나다. 콘솔에서 직접 손댔거나, 코드를 고치고
 아직 적용하지 않았거나. 어느 쪽이든 원인을 확인한 뒤 한쪽으로 맞춘다.
 
-## DMZ 재구성 (이슈 #15)
+## DMZ 재구성 (이슈 #15 · #19)
 
 허니팟을 관문 방화벽 뒤 DMZ 서브넷으로 내린다. 새 VPC(`dmz.tf`) · 방화벽(`gateway.tf`) ·
-DMZ 허니팟(`honeypot_dmz.tf`)이 더해지고, 기존 노드(`instances.tf`)는 이전이 끝날 때까지
-그대로다. 설계는 `docs/2026-09-18-네트워크-설계.md` 2.1 · 3.1 · 4장.
+SSM 엔드포인트(`ssm_endpoints.tf`) · DMZ 허니팟(`honeypot_dmz.tf`)이 더해지고, 기존
+노드(`instances.tf`)는 이전이 끝날 때까지 그대로다. 설계는 `docs/2026-09-18-네트워크-설계.md`
+2.1 · 3.1 · 4장.
 
 미리 알아둘 것 둘.
 
@@ -112,21 +113,51 @@ DMZ 허니팟(`honeypot_dmz.tf`)이 더해지고, 기존 노드(`instances.tf`)�
 ### 1. VPC · 방화벽 생성
 
 ```bash
-terraform plan      # 기존 자원에 변경(~) · 삭제(-)가 없어야 한다. 새 자원만 더해진다
+aws s3api get-bucket-policy --bucket opsloop-archive-739272173045 --query Policy --output text \
+  > bucket-policy.before.json   # 되돌릴 때 put-bucket-policy 로 다시 넣는다 (저장소에 넣지 않는다)
+terraform plan      # 새 자원 추가 · 제자리 변경 2(aws_iam_role_policy.sensor_put · aws_s3_bucket_policy.archive) · 삭제 0.
+                    # 그 밖의 변경(~) · 삭제(-)가 보이면 적용하지 않는다
 terraform apply
 terraform output gateway_public_ip
 ```
 
-`honeypot_dmz_ami` 가 비어 있으므로 DMZ 허니팟은 아직 생기지 않는다. 방화벽은 첫 부팅에
+`honeypot_dmz_ami` 가 비어 있으므로 DMZ 허니팟은 아직 생기지 않는다. 이 단계에서 생기는 것은
+VPC · 방화벽 · SSM 인터페이스 엔드포인트 3개(`ssm_endpoints.tf`: ssm · ssmmessages · ec2messages,
+DMZ 서브넷, 사설 DNS 켬) · 관문 역할(`iam.tf`, 허니팟의 센서 역할과 다르다)이고, 센서 역할 정책과
+버킷 정책은 제자리에서 바뀐다(계획의 change 2 · destroy 0). 방화벽은 첫 부팅에
 cloud-init(`../aws/gateway/cloud-init.yaml.tftpl`)으로 nftables · rsyslog · logrotate 파일을
-놓고 전달을 켠다. 규칙을 나중에 고칠 때는 `../aws/gateway/nftables.conf` 를 바꿔 SSM 으로
-`/etc/nftables.conf` 에 옮기고 `nft -c -f` 확인 뒤 `systemctl restart nftables` 한다.
-user_data 변경은 계획에 잡히지 않는다(첫 부팅에만 도는 것이라 무시한다).
+놓고 전달을 켠다. DMZ 에서 나가는 것은 방화벽이 전부 거부 · 기록한다(`gw-forward-drop`). 원장(S3)과
+SSM 은 VPC 엔드포인트로 가서 방화벽을 지나지 않는다. 규칙을 나중에 고칠 때는
+`../aws/gateway/nftables.conf` 를 바꿔 SSM 으로 `/etc/nftables.conf` 에 옮기고 `nft -c -f` 확인
+뒤 `systemctl restart nftables` 한다. user_data 변경은 계획에 잡히지 않는다(첫 부팅에만 도는
+것이라 무시한다).
 
-S3 엔드포인트 정책은 원장 버킷만 허용한다. 같은 리전 S3 에서는 DMZ 와 방화벽이 다른 버킷에 닿지
-않는다. 다른 리전 S3 · 가속 엔드포인트는 DMZ→인터넷 443 허용 경로로 나가며 `gw-egress` 기록으로만
-본다(잔여 위험). 원장 쓰기 권한은 허니팟과 방화벽이 같은 센서 역할을 쓰므로, 발생원과 호스트의 짝은
-풀러가 확인한다(`OPSLOOP_GATEWAY_HOSTS`, 아래 2단계).
+적용 직후 버킷 정책과 옛 허니팟의 업로드를 확인한다. 정책의 인스턴스 ARN 은 apply 때 정해지므로 계획에서는
+보이지 않는다. 버킷 정책에 host 경계가 생기므로, 업로드가 끊겼다면 `s3.tf` 의 `ledger_writers` 와 옛
+인스턴스의 짝이 어긋난 것이다(되돌리기: 위에서 보관한 정책을 `put-bucket-policy` 로 다시 넣는다).
+
+```bash
+aws s3api get-bucket-policy --bucket opsloop-archive-739272173045 --query Policy --output text \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin)["Statement"]; print(len(d)); [print(s["Sid"], s["Condition"]) for s in d if s["Sid"].startswith("OnlyOwnHost")]'
+                                          # 문 10개(DMZ 허니팟이 생기면 11개). OnlyOwnHost* 의 ARN 이 terraform state show 의 인스턴스 ARN 과 같다
+aws s3api head-object --bucket opsloop-archive-739272173045 \
+  --key hb/v1/host=i-058726c1a0671fe1d/latest.json --query LastModified   # 한 회차(6분) 뒤, 적용 완료보다 늦은 시각
+aws ssm send-command --instance-ids i-058726c1a0671fe1d --document-name AWS-RunShellScript \
+  --parameters 'commands=["journalctl -u opsloop-upload -n 20 --no-pager"]' --query Command.CommandId --output text
+                                          # get-command-invocation 으로 본다. AccessDenied 없이 올림 · 완료
+```
+
+쓰기 경계는 여러 겹이다. S3 엔드포인트 정책은 원장 버킷만 허용하고, SSM 엔드포인트 정책은 두 인스턴스
+역할만 통과시킨다. 허니팟 보안그룹은 유출을 전부 열어 두어(보안그룹이 먼저 버리면 방화벽에 기록이 남지
+않는다) 원장 · SSM 밖의 모든 시도가 방화벽까지 가서 `gw-forward-drop` 으로 남고, 방화벽 규칙이 잘못돼도
+관문 보안그룹(443 · 53 만 유출)과 인터넷 게이트웨이(공인 주소 짝이 없는 사설 출발지는 버린다)가 남는다.
+다른 리전 S3 · 가속 엔드포인트도 이래서 닿지 않는다. 역할은 허니팟(센서: cowrie · decoy · hb)과
+방화벽(관문: gateway · hb)이 다르고, 버킷 정책은 인스턴스마다 자기 host 경로
+(`raw/v1/sensor=<발생원>/host=<자기 ID>/*` · `hb/v1/host=<자기 ID>/latest.json`)에만 PutObject 를
+허용하며 그 밖의 경로는 누구도 쓰지 못한다(`ec2:SourceInstanceARN` 조건. `migration/` 같은 원장 밖
+접두사도 닫힌다 — 이 버킷은 원장만 담고, DB 를 다시 넘길 일이 있으면 다른 버킷을 쓴다). 새 노드는
+`s3.tf` 의 `ledger_writers` 에 더해야 원장에 쓴다. 풀러의 발생원 · 호스트 짝 확인(`OPSLOOP_GATEWAY_HOSTS`,
+아래 2단계)은 그 뒤의 둘째 벽이다. DNS(VPC 리졸버)는 남는 유출 통로다(DNS 방화벽은 범위 밖).
 
 ### 2. 방화벽 확인 · 업로더 설치
 
@@ -143,8 +174,12 @@ sudo nft list ruleset | grep -c dnat      # 2 (prerouting 의 dnat to 와 forwar
 sysctl net.ipv4.ip_forward                # 1
 systemctl is-enabled ssh.socket ssh.service   # masked · masked
 ss -ltnu                                  # 127.0.0.53/54 (resolved) · 68 (networkd) 뿐이어야 한다
+nslookup ssm.ap-northeast-2.amazonaws.com # 10.0.21.x (SSM 엔드포인트). 공인 주소면 사설 DNS 가 안 켜진 것
+                                          # 이 세션 자체가 ssmmessages 엔드포인트로 붙어 있다
 tail /var/log/opsloop/gateway.log         # 22 · 23 · 8080 밖의 포트를 두드리면 gw-input-drop 줄이 남는다
                                           # (세 포트는 DNAT 되어 forward 로 가고, 허니팟이 기록한다)
+sha256sum /etc/nftables.conf /etc/rsyslog.d/10-opsloop-gateway.conf /etc/logrotate.d/opsloop-gateway
+                                          # 저장소 infra/aws/gateway/ 의 세 파일과 같아야 한다. 규칙을 고친 뒤에도 같은 비교
 ```
 
 업로더는 기존 허니팟과 같은 `sensor/` 네 파일(`upload.py` · `install-uploader.sh` ·
@@ -155,19 +190,23 @@ tail /var/log/opsloop/gateway.log         # 22 · 23 · 8080 밖의 포트를 �
 sudo bash install-uploader.sh opsloop-archive-739272173045 "$GW" "gateway:/var/log/opsloop/gateway.log*"
 sudo -u opsloop-up bash -c 'set -a; . /etc/default/opsloop-upload; set +a; python3 /usr/local/lib/opsloop/upload.py --dry-run'
 sudo systemctl enable --now opsloop-upload.timer
+sudo systemctl start opsloop-upload.service && journalctl -u opsloop-upload -n 20 --no-pager
+                                          # dry-run 은 S3 를 건드리지 않는다. 첫 실제 올리기가 AccessDenied 없이 끝나야
+                                          # 관문 역할 · 버킷 정책 · 엔드포인트 경로가 확인된 것이다
 ```
 
 원장에 `raw/v1/sensor=gateway/host=<방화벽 ID>/` 가 생기면 데이터 노드의
 `/etc/default/opsloop-ingest` 의 `OPSLOOP_HOSTS` 에 방화벽 ID 를 쉼표로 덧붙인다(회차마다 읽으므로
 재시작은 필요 없다). 같은 파일의 `OPSLOOP_GATEWAY_HOSTS` 에도 방화벽 ID 를 넣는다. 풀러는 이 목록의
 호스트가 올린 gateway 조각만 받고, 목록 밖 호스트의 gateway 조각과 이 호스트의 다른 발생원 조각은
-거부한다(허니팟과 방화벽이 같은 센서 역할을 쓰므로, 장악된 허니팟이 방화벽 기록을 흉내 낼 수 있다).
+거부한다(역할과 버킷 정책의 host 경계가 먼저 막고, 풀러가 한 번 더 확인한다).
 풀러 · 적재 · 파서(`parser/parse_gateway.py`)는 이미 gateway 를 안다.
 
 ### 3. 허니팟 이미지 · DMZ 허니팟 생성
 
-이미지는 기존 허니팟에서 뜬다. `--no-reboot` 는 파일 시스템 일관성이 떨어지므로 재부팅을
-허용하고, 유지 보수 시간에 한다(재부팅 동안 유입이 몇 분 끊긴다).
+이미지는 기존 허니팟에서 뜬다. 뜨기 전에 `infra/aws/scripts/pre-image-scan.sh` 를 SSM 으로 옛
+허니팟에서 돌려 결과 0 을 확인한다(장악 흔적이 이미지에 실리지 않게). `--no-reboot` 는 파일 시스템
+일관성이 떨어지므로 재부팅을 허용하고, 유지 보수 시간에 한다(재부팅 동안 유입이 몇 분 끊긴다).
 
 ```bash
 aws ec2 create-image --instance-id i-058726c1a0671fe1d --reboot \
@@ -179,7 +218,7 @@ aws ec2 describe-images --owners self --query 'Images[].[ImageId,Name,State]' --
 `systemctl is-active opsloop-upload.timer`, 원장에 새 조각이 이어지는지).
 
 `terraform.tfvars` 에 `honeypot_dmz_ami = "ami-…"` 를 넣고 적용한다. 계획에는
-`aws_instance.honeypot_dmz[0]` 하나만 더해져야 한다.
+`aws_instance.honeypot_dmz[0]` 추가와 `aws_s3_bucket_policy.archive` 변경(새 host 경계)만 있어야 한다.
 
 ```bash
 terraform plan
@@ -199,7 +238,12 @@ ls /var/lib/opsloop-upload/state.json 2>/dev/null   # 없어야 한다
 systemctl is-enabled opsloop-upload.timer           # disabled
 sudo -u opsloop-up bash -c 'set -a; . /etc/default/opsloop-upload; set +a; python3 /usr/local/lib/opsloop/upload.py --dry-run'
 systemctl is-active cowrie                          # cowrie · 디코이도 기존과 같은 방법으로 확인
+chronyc sources                                     # 169.254.169.123 (링크로컬 시간원). 없으면 이미지 뜨기 전에 옛 허니팟의
+                                                    # /etc/chrony/conf.d 에 넣어 둔다. DMZ 는 인터넷 NTP 에 닿지 않는다
+curl -m 5 https://1.1.1.1 ; echo $?                 # 실패(28). 방화벽 gateway.log 에 gw-forward-drop 으로 남는다
 sudo systemctl enable --now opsloop-upload.timer
+sudo systemctl start opsloop-upload.service && journalctl -u opsloop-upload -n 20 --no-pager
+                                                    # 첫 실제 올리기가 AccessDenied 없이 끝나야 host 경계 · 엔드포인트 경로가 확인된 것
 ```
 
 데이터 노드의 `/etc/default/opsloop-ingest` 의 `OPSLOOP_HOSTS` 에 새 허니팟 ID 를 덧붙인다.
@@ -208,7 +252,8 @@ sudo systemctl enable --now opsloop-upload.timer
 
 방화벽 EIP 로 공격이 들어오기 시작하면(`gateway.log` 의 gw-input-drop, 원장의 새 host 로
 cowrie · decoy 조각) 48시간 두 인스턴스를 대조한다. 옛 인스턴스 종료는 #10 전환(옛 수집
-끄기) 뒤에 하고, 그때 `instances.tf` 의 정의와 `prevent_destroy` 를 함께 걷어낸다.
+끄기) 뒤에 하고, 그때 `instances.tf` 의 정의와 `prevent_destroy`, `s3.tf` 의 `ledger_writers`
+옛 허니팟 항목을 함께 걷어낸다.
 앱 노드 종료(3.1.5)도 그 뒤다.
 
 옛 인스턴스를 종료한 뒤에 할 일:

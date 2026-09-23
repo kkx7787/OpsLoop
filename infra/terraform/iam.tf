@@ -52,11 +52,16 @@ resource "aws_iam_role_policy_attachment" "sensor_ssm_core" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+# 허니팟 발생원(cowrie · decoy)만 쓴다. 관문 기록(sensor=gateway)은 아래 관문 역할의 몫이다 (이슈 #19)
 data "aws_iam_policy_document" "sensor_put" {
   statement {
-    sid       = "PutRawAndHeartbeatOnly"
-    actions   = ["s3:PutObject"]
-    resources = ["${aws_s3_bucket.archive.arn}/raw/*", "${aws_s3_bucket.archive.arn}/hb/*"]
+    sid     = "PutRawAndHeartbeatOnly"
+    actions = ["s3:PutObject"]
+    resources = [
+      "${aws_s3_bucket.archive.arn}/raw/v1/sensor=cowrie/*",
+      "${aws_s3_bucket.archive.arn}/raw/v1/sensor=decoy/*",
+      "${aws_s3_bucket.archive.arn}/hb/v1/host=*/latest.json",
+    ]
   }
 }
 
@@ -69,6 +74,47 @@ resource "aws_iam_role_policy" "sensor_put" {
 resource "aws_iam_instance_profile" "sensor" {
   name = "opsloop-sensor-role"
   role = aws_iam_role.sensor.name
+}
+
+# ══════════════════════════════════════════════════════════════
+#  관문 역할 (이슈 #19)
+#
+#  허니팟과 역할을 나눈다. 장악된 허니팟이 관문 기록(sensor=gateway)을 흉내 내지 못하고,
+#  관문이 허니팟 기록을 쓰지도 못한다. 어느 인스턴스가 어느 host 경로에 쓰는지는
+#  버킷 정책이 인스턴스 단위로 다시 좁힌다 (s3.tf).
+# ══════════════════════════════════════════════════════════════
+
+resource "aws_iam_role" "gateway" {
+  name               = "opsloop-gateway-role"
+  assume_role_policy = data.aws_iam_policy_document.ec2_assume.json
+  description        = "OpsLoop gateway firewall: SSM access and put-only for its own deny log"
+}
+
+resource "aws_iam_role_policy_attachment" "gateway_ssm_core" {
+  role       = aws_iam_role.gateway.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+data "aws_iam_policy_document" "gateway_put" {
+  statement {
+    sid     = "PutGatewayLogAndHeartbeatOnly"
+    actions = ["s3:PutObject"]
+    resources = [
+      "${aws_s3_bucket.archive.arn}/raw/v1/sensor=gateway/*",
+      "${aws_s3_bucket.archive.arn}/hb/v1/host=*/latest.json",
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "gateway_put" {
+  name   = "opsloop-gateway-put"
+  role   = aws_iam_role.gateway.id
+  policy = data.aws_iam_policy_document.gateway_put.json
+}
+
+resource "aws_iam_instance_profile" "gateway" {
+  name = "opsloop-gateway-role"
+  role = aws_iam_role.gateway.name
 }
 
 # ══════════════════════════════════════════════════════════════

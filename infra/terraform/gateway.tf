@@ -2,7 +2,8 @@
 #  관문 방화벽 (WBS 3.1 · 이슈 #15)
 #
 #  공개 서브넷에 하나 있는 노드다. 인터넷에서 오는 22 · 23 · 8080 을 DMZ 의
-#  허니팟으로 넘기고(DNAT), DMZ 에서 나가는 것은 443 만 허용하되 기록한다.
+#  허니팟으로 넘기고(DNAT), DMZ 에서 나가는 것은 전부 거부하고 기록한다. 원장(S3)과
+#  SSM 은 VPC 엔드포인트로 가서 방화벽을 지나지 않는다 (dmz.tf · ssm_endpoints.tf).
 #  규칙은 infra/aws/gateway/nftables.conf 에 있고 첫 부팅에 cloud-init 이 놓는다.
 #
 #  네트워크 인터페이스와 공인 주소(EIP)를 인스턴스와 따로 둔다. DMZ 라우트 표가
@@ -10,8 +11,8 @@
 #  경로와 공인 주소는 남는다. 첫 부팅 때 이미 공인 주소가 있어 cloud-init 의
 #  패키지 설치가 막히지 않는 것도 이 순서 덕분이다.
 #
-#  거부 기록을 원장(sensor=gateway)에 올려야 하므로 센서 프로파일을 쓴다.
-#  그 프로파일에 SSM 권한도 있어 관리 접근은 SSM 으로 한다 (iam.tf).
+#  거부 기록을 원장(sensor=gateway)에 올리는 관문 역할을 쓴다. 허니팟의 센서 역할과
+#  다르다. 그 역할에 SSM 권한도 있어 관리 접근은 SSM 으로 한다 (iam.tf).
 # ══════════════════════════════════════════════════════════════
 
 # Canonical 이 SSM 파라미터로 공개하는 최신 Ubuntu 24.04 AMI.
@@ -41,7 +42,7 @@ resource "aws_security_group" "gateway" {
 # 정했는데, 보안그룹이 먼저 버리면 nftables 가 볼 수 없어 기록이 남지 않는다. 그래서 기록은
 # nftables(input 정책 drop + gw-input-drop)가 맡고, 보안그룹은 유출 쪽만 좁힌다.
 # 방화벽 자신은 듣는 포트가 없다. sshd 는 첫 부팅에 끄고(cloud-init) 관리는 SSM(밖으로 여는 연결)뿐이다.
-# 22 · 23 · 8080 은 prerouting 에서 DNAT 되어 허니팟으로 가고, DMZ 가 나가는 443 도 이 규칙으로 들어온다.
+# 22 · 23 · 8080 은 prerouting 에서 DNAT 되어 허니팟으로 간다.
 resource "aws_vpc_security_group_ingress_rule" "gateway_all" {
   security_group_id = aws_security_group.gateway.id
   description       = "all inbound; nftables decides and logs"
@@ -49,10 +50,11 @@ resource "aws_vpc_security_group_ingress_rule" "gateway_all" {
   ip_protocol       = "-1"
 }
 
-# 유출. 방화벽 자신의 SSM · apt(https 미러)와 DMZ 가 나가는 443 이 함께 쓴다
+# 유출. 방화벽 자신의 apt(https 미러, 첫 부팅)와 SSM(사설 DNS 로 엔드포인트로 풀린다)이 쓴다.
+# DMZ 의 통신은 nftables 가 전부 거부하므로 여기로 오지 않는다
 resource "aws_vpc_security_group_egress_rule" "gateway_https" {
   security_group_id = aws_security_group.gateway.id
-  description       = "SSM, apt, forwarded DMZ egress"
+  description       = "apt mirror, SSM"
   cidr_ipv4         = "0.0.0.0/0"
   from_port         = 443
   to_port           = 443
@@ -123,10 +125,9 @@ resource "aws_eip" "gateway" {
 resource "aws_instance" "gateway" {
   ami           = data.aws_ssm_parameter.ubuntu_2404.insecure_value
   instance_type = var.gateway_instance_type
-  # 센서 프로파일. SSM 접근과 원장 쓰기(거부 기록)만 있다 (iam.tf)
-  iam_instance_profile = aws_iam_instance_profile.sensor.name
-  # 인터페이스 쪽 값과 같아야 계획에 차이가 나지 않는다
-  source_dest_check = false
+  # 관문 프로파일. SSM 접근과 자기 거부 기록 쓰기(sensor=gateway)만 있다 (iam.tf)
+  iam_instance_profile = aws_iam_instance_profile.gateway.name
+  # source_dest_check 는 인터페이스(aws_network_interface.gateway)에 둔다. network_interface 블록과는 같이 못 쓴다
 
   network_interface {
     network_interface_id = aws_network_interface.gateway.id
@@ -162,4 +163,7 @@ resource "aws_instance" "gateway" {
   lifecycle {
     ignore_changes = [ami, user_data]
   }
+
+  # 첫 부팅의 패키지 설치가 인터넷에 닿으려면 공인 주소와 기본 경로가 먼저 있어야 한다
+  depends_on = [aws_eip.gateway, aws_route.public_default, aws_route_table_association.public]
 }
