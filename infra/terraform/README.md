@@ -248,6 +248,22 @@ sudo systemctl start opsloop-upload.service && journalctl -u opsloop-upload -n 2
 
 데이터 노드의 `/etc/default/opsloop-ingest` 의 `OPSLOOP_HOSTS` 에 새 허니팟 ID 를 덧붙인다.
 
+이미지가 물려준 배경 통신(apt · snap 갱신, motd, 인터넷 NTP 풀)은 전부 방화벽에서 막히면서 `gw-forward-drop`
+기록을 채운다(첫 한 시간에 200줄). 공격자가 만든 유출 시도만 남게 끈다. 2026-09-23 DMZ 허니팟에 적용했고,
+다음 이미지를 뜰 때는 옛 허니팟에서 먼저 해 두면 된다.
+
+```bash
+sudo systemctl disable --now apt-daily.timer apt-daily-upgrade.timer motd-news.timer unattended-upgrades
+sudo snap refresh --hold                              # SSM 에이전트가 snap 이라 snapd 는 끄지 않는다
+sudo sed -i -E 's/^(pool |server ntp\.ubuntu)/#\1/' /etc/chrony/chrony.conf
+printf 'server 169.254.169.123 prefer iburst minpoll 4 maxpoll 4\n' | sudo tee /etc/chrony/conf.d/opsloop-aws.conf
+sudo systemctl restart chrony && chronyc sources     # 169.254.169.123 만
+```
+
+격리 시험(허니팟 안에서, 인스턴스 역할로): 인터넷 · 내부망 접속은 실패하고 `gateway.log` 에 남는다. 원장은
+목록 · 읽기 · 삭제 · 다른 host 경로 쓰기 · 관문 발생원 행세 · 모르는 host · 원장 밖 접두사 모두 AccessDenied,
+자기 조각 덮어쓰기는 PreconditionFailed(한 번 쓰기)여야 한다. 2026-09-23 1차 결과는 이슈 #19 PR 에 있다.
+
 ### 4. 전환 · 옛 인스턴스 종료
 
 방화벽 EIP 로 공격이 들어오기 시작하면(`gateway.log` 의 gw-input-drop, 원장의 새 host 로
