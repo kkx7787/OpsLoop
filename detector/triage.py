@@ -24,7 +24,7 @@ OpsLoop - 인시던트 검토 도구 (WBS 2.5 / 폐루프 입력부)
   높으면 기준 문서를 고쳐야 한다는 뜻이다. 이 비율 자체가 지표다.
 
 사용
-  set -a; . /etc/opsloop/collector.env; set +a
+  set -a; . /etc/opsloop/triage.env; set +a      # 콘솔 역할(opsloop_console). db-console-role.sh 가 만든다
   python3 detector/triage.py                 미판정 인시던트 순회
   python3 detector/triage.py --rule R001     특정 규칙만
   python3 detector/triage.py --summary       진척도·규칙 품질·제안 정확도
@@ -88,24 +88,6 @@ def db_url(arg):
     if not url:
         sys.exit("DATABASE_URL 이 없습니다. 환경변수나 --db-url 로 주세요.")
     return url
-
-
-def ensure_column(conn):
-    """제안 기록용 열. 없으면 만든다.
-
-    스키마 변경을 도구가 하는 것은 원칙적으로 피할 일이지만, 이 열 하나를
-    위해 별도 절차를 두는 비용이 더 크다. 멱등이라 반복 실행해도 안전하다.
-    """
-    cur = conn.cursor()
-    cur.execute("ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS proposed text")
-    cur.execute("ALTER TABLE verdicts ADD COLUMN IF NOT EXISTS decision_seconds integer")
-    # 판정값 확장. 제약을 그대로 두면 새 값이 거부된다.
-    cur.execute("ALTER TABLE verdicts DROP CONSTRAINT IF EXISTS verdicts_verdict_check")
-    cur.execute("""ALTER TABLE verdicts ADD CONSTRAINT verdicts_verdict_check
-                   CHECK (verdict IN ('threat', 'non_actionable', 'false_positive',
-                                      'benign_positive', 'undetermined'))""")
-    conn.commit()
-    cur.close()
 
 
 def observed_of(evidence, signal_count):
@@ -613,7 +595,6 @@ def main():
 
     conn = psycopg2.connect(db_url(a.url))
     try:
-        ensure_column(conn)
         if a.summary:
             summary(conn)
         elif a.thresholds:

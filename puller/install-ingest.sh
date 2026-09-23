@@ -64,27 +64,15 @@ if [ ! -e /etc/opsloop/gap-ack.json ]; then
 fi
 systemctl daemon-reload
 
-echo "== DB 접속 정보"
-if [ ! -s /etc/opsloop/collector.env ]; then
-  # 비밀번호를 화면 · 셸 이력 · 명령행 인자에 남기지 않는다. URL 특수문자는 인코딩한다
-  ( umask 027
-    python3 - "$ENV_SRC" "$DB_HOST" > /etc/opsloop/collector.env <<'PY'
-import sys, urllib.parse
-env = {}
-for line in open(sys.argv[1], encoding="utf-8"):
-    line = line.strip()
-    if line and not line.startswith("#") and "=" in line:
-        k, v = line.split("=", 1)
-        env[k.strip()] = v.strip().strip('"').strip("'")
-pw = urllib.parse.quote(env["POSTGRES_PASSWORD"], safe="")
-print(f"DATABASE_URL=postgresql://opsloop:{pw}@{sys.argv[2]}:5432/opsloop")
-PY
-  )
-  chgrp opsloop-pull /etc/opsloop/collector.env
-  chmod 640 /etc/opsloop/collector.env
-fi
-sudo -u opsloop-pull sh -c 'set -a; . /etc/opsloop/collector.env; python3 -c "import os,psycopg2; psycopg2.connect(os.environ[\"DATABASE_URL\"]).close()"' \
-  && echo "  DB 접속 성공" || echo "  DB 접속 실패"
+echo "== DB 접속 정보 (역할별 파일은 collector/install-collector.sh 가 만든다 · 이슈 #31)"
+for f in /etc/opsloop/collector.env /etc/opsloop/detector.env; do
+  if [ -s "$f" ]; then
+    sudo -u opsloop-pull sh -c "set -a; . $f; python3 -c 'import os,psycopg2; psycopg2.connect(os.environ[\"DATABASE_URL\"], connect_timeout=10).close()'" \
+      && echo "  $f 접속 성공" || echo "  $f 접속 실패" >&2
+  else
+    echo "  $f 없음. install-collector.sh 를 돌리면 생긴다 (그 전에는 적재 · 탐지가 돌지 않는다)"
+  fi
+done
 
 echo "== S3 읽기 키"
 if [ -s /etc/opsloop/s3-pull.env ]; then

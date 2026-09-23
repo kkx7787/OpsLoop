@@ -93,6 +93,38 @@ Mac(관리망 192.168.70.1)
 
 콘솔 화면은 `http://192.168.70.254:8443`, HAProxy 상태는 `:8404` 로 본다.
 
+## 데이터베이스 역할 (이슈 #31)
+
+구성요소마다 최소 권한 역할로 붙는다. 소유자 `opsloop` 는 스키마 적용 · `nodes.py` · `auth.py add` 에만 쓴다.
+권한은 `infra/schema.sql` 끝의 역할 블록이 주고(역할이 있을 때만, 여러 번 적용해도 같다), 역할과 비밀번호는 아래 스크립트가 만든다.
+
+| 역할 | 쓰는 곳 | 접속 파일 | 할 수 있는 것 |
+|---|---|---|---|
+| `opsloop_gate` | 수집 관문 | 데이터 노드 `/etc/opsloop/gate.env` | nodes 네 열 읽기 · `enroll_node` |
+| `opsloop_ingest` | 다리(pull_loki) · 파서 | `/etc/opsloop/collector.env` | events · sessions · node_metrics 적재, nodes 수신 기록 |
+| `opsloop_detector` | 탐지기(detect.py) | `/etc/opsloop/detector.env` | 규칙 입력 읽기, incidents 생성 · 억제, detector_runs |
+| `opsloop_console` | 콘솔 API · triage.py | 콘솔 `~/opsloop/.env` · 데이터 노드 `/etc/opsloop/triage.env` | 판정 · 조치 · 차단 · 등록 토큰 · 감사 · 로그인 기록. 토큰 해시 · 계정 역할은 못 본다/못 고친다 |
+| `opsloop_backup` | `backup-db.sh` 의 pg_dump | 없음 (컨테이너 안 로컬 접속) | 읽기 전부 |
+| `opsloop` (소유자) | 스키마 · `nodes.py` · `auth.py add` | `/etc/opsloop/admin.env` (root 만) · compose `.env` | 전부 |
+
+절차 (Mac, 저장소 루트):
+
+```bash
+# 1. 데이터 노드: 코드 · 역할 · 접속 파일 · 스키마. collector.env 가 소유자였으면 .prev 로 옮기고 적재 역할로 새로 만든다
+C=$(git rev-parse --short HEAD)
+git archive "$C" collector parser detector puller infra | ssh -F ~/.ssh/config.opsloop data01 \
+  "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo bash /tmp/ol/puller/install-ingest.sh $C && sudo bash /tmp/ol/collector/install-collector.sh $C"
+# 2. 콘솔 역할 비밀번호 → DB · 콘솔 .env · triage.env, API 컨테이너 재기동 (비밀번호는 화면에 안 나온다)
+infra/vmware/scripts/db-console-role.sh console-a
+# 3. 검증: 역할별 거부 · 허용, 실제 접속 역할, web-01 에서 5432 차단
+infra/vmware/scripts/verify-db-roles.sh
+```
+
+- 계정 추가 · 역할 변경은 콘솔 역할로는 안 된다. 콘솔 노드에서 소유자 접속으로 돌린다:
+  `docker exec -it -e DATABASE_URL="postgresql://opsloop:<compose .env 의 POSTGRES_PASSWORD>@192.168.60.11:5432/opsloop" opsloop-api python3 auth.py add <아이디> <역할>`
+- `detector/triage.py` 는 `set -a; . /etc/opsloop/triage.env; set +a` 뒤에 돌린다 (콘솔 역할).
+- 소유자로 붙는 서비스가 남아 있는지는 `verify-db-roles.sh` 의 pg_stat_activity 항목이 알려 준다.
+
 ## 파일
 
 | 경로 | 내용 |

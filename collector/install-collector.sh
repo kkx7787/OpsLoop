@@ -25,6 +25,7 @@ STATE=/var/lib/opsloop
 GATE_DIR=$STATE/gate
 ADMIN_DIR=$STATE/admin
 GATE_ENV=/etc/opsloop/gate.env
+ENV_SRC=/home/ops/opsloop/.env   # compose 의 소유자 비밀번호 (admin.env 를 만들 때만 읽는다)
 PSQL=(docker exec -i -e "PGOPTIONS=-c client_min_messages=warning" "$DB" psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -qAt)
 
 echo "== 사전 확인"
@@ -97,50 +98,64 @@ grep -q -- '--quiet' "$APP/detector/detect.py" 2>/dev/null || echo "  경고: de
 { grep -q '"operator_rate"' "$APP/detector/detect.py" && grep -q '"node_silence"' "$APP/detector/detect.py"; } 2>/dev/null \
   || echo "  경고: detect.py 가 operator_rate · node_silence 를 모른다 (구판). 다리의 a1 · i1 탐지가 실패한다"
 
-echo "== 관문 DB 접속 정보 ($GATE_ENV)"
-rm -f "$GATE_ENV.tmp"
-if [ -s "$GATE_ENV" ]; then
-  echo "  있음. 비밀번호는 그대로 둔다"
-else
+# ── DB 역할 · 접속 파일 (이슈 #31) ────────────────────────────────────────────
+# 역할마다 접속 파일 하나. 파일이 없으면 새 비밀번호로 만들고, 역할이 없거나 비밀번호가 파일과 다르면
+# SCRAM 검증값으로 맞춘다. 비밀번호는 파일에만 있고 화면 · 셸 이력 · 명령행 인자 · DB 로그에 남지 않는다.
+#   gate.env       opsloop_gate       root:opsloop-gate 0640   관문 (nodes 네 열 읽기 · enroll_node)
+#   collector.env  opsloop_ingest     root:opsloop-pull 0640   다리 · 파서 (원문 · 세션 · 지표 적재)
+#   detector.env   opsloop_detector   root:opsloop-pull 0640   탐지기 (규칙 실행 · 인시던트)
+#   admin.env      opsloop (소유자)    root:root 0600           nodes.py (compose .env 의 비밀번호를 옮긴다)
+#   콘솔 역할(opsloop_console)은 여기서 비밀번호 없이 만들고, infra/vmware/scripts/db-console-role.sh 가 넣는다.
+#   백업 역할(opsloop_backup)은 컨테이너 안 로컬 접속(pg_dump)만 쓰므로 비밀번호가 없다.
+ensure_env() { # $1 파일  $2 DB 역할  $3 소유 그룹
+  local f=$1 role=$2 grp=$3
+  rm -f "$f.tmp"
+  if [ -s "$f" ] && grep -q "^DATABASE_URL=postgresql://$role:" "$f"; then
+    echo "  $f 있음 ($role). 비밀번호는 그대로 둔다"; return
+  fi
+  if [ -s "$f" ]; then
+    mv "$f" "$f.prev" && chmod 600 "$f.prev" && chown root:root "$f.prev"
+    echo "  $f 의 역할이 $role 이 아니다. $f.prev 로 옮기고 새로 만든다 (확인 뒤 지운다)"
+  fi
   ( umask 077
-    python3 - "$DB_HOST" > "$GATE_ENV.tmp" <<'PY'
+    python3 - "$role" "$DB_HOST" > "$f.tmp" <<'PY'
 import secrets, sys
 # URL 안전 문자만 나오므로 인코딩이 필요 없다
-print(f"DATABASE_URL=postgresql://opsloop_gate:{secrets.token_urlsafe(32)}@{sys.argv[1]}:5432/opsloop")
+print(f"DATABASE_URL=postgresql://{sys.argv[1]}:{secrets.token_urlsafe(32)}@{sys.argv[2]}:5432/opsloop")
 PY
   )
-  chown root:opsloop-gate "$GATE_ENV.tmp"
-  chmod 640 "$GATE_ENV.tmp"
-  mv "$GATE_ENV.tmp" "$GATE_ENV"
-  echo "  새 비밀번호로 만들었다 (0640 root:opsloop-gate. 화면에는 찍지 않는다)"
-fi
+  chown "root:$grp" "$f.tmp"; chmod 640 "$f.tmp"; mv "$f.tmp" "$f"
+  echo "  $f 새 비밀번호로 만들었다 (0640 root:$grp. 화면에는 찍지 않는다)"
+}
 
-# gate.env 로 실제 로그인이 되는지. 비밀번호는 파일에서만 읽는다
-gate_login() {
-  python3 - "$GATE_ENV" <<'PY' >/dev/null 2>&1
+# 접속 파일로 실제 로그인이 되는지. 비밀번호는 파일에서만 읽는다
+env_login() { # $1 파일
+  python3 - "$1" <<'PY' >/dev/null 2>&1
 import sys, psycopg2
 env = dict(l.strip().split("=", 1) for l in open(sys.argv[1], encoding="utf-8") if "=" in l and not l.startswith("#"))
 psycopg2.connect(env["DATABASE_URL"].strip(), connect_timeout=10).close()
 PY
 }
 
-echo "== DB 역할 opsloop_gate"
-role=$("${PSQL[@]}" -c "SELECT 1 FROM pg_roles WHERE rolname = 'opsloop_gate'")
-if [ "$role" = 1 ] && gate_login; then
-  echo "  있음. gate.env 로 로그인된다. 그대로 둔다"
-else
-  # 역할이 없거나 비밀번호가 gate.env 와 다르다. gate.env 의 비밀번호로 SCRAM 검증값을 만들어 표준 입력으로만 넘긴다
-  python3 - "$GATE_ENV" <<'PY' | "${PSQL[@]}" >/dev/null 2>&1 || { echo "  역할을 만들거나 고치지 못했다 (오류 문장은 검증값을 담을 수 있어 찍지 않는다)" >&2; exit 1; }
+ensure_role() { # $1 DB 역할  $2 접속 파일  $3 접속 한도
+  local role=$1 f=$2 limit=$3 exists
+  exists=$("${PSQL[@]}" -c "SELECT 1 FROM pg_roles WHERE rolname = '$role'")
+  if [ "$exists" = 1 ] && env_login "$f"; then
+    echo "  $role 있음. $f 로 로그인된다. 그대로 둔다"; return
+  fi
+  # 역할이 없거나 비밀번호가 파일과 다르다. 파일의 비밀번호로 SCRAM 검증값을 만들어 표준 입력으로만 넘긴다
+  python3 - "$role" "$f" "$limit" <<'PY' | "${PSQL[@]}" >/dev/null 2>&1 || { echo "  $role 을 만들거나 고치지 못했다 (오류 문장은 검증값을 담을 수 있어 찍지 않는다)" >&2; exit 1; }
 import base64, hashlib, hmac, os, sys, urllib.parse
+role, path, limit = sys.argv[1:4]
 env = {}
-for line in open(sys.argv[1], encoding="utf-8"):
+for line in open(path, encoding="utf-8"):
     line = line.strip()
     if line and not line.startswith("#") and "=" in line:
         k, v = line.split("=", 1)
         env[k.strip()] = v.strip()
 u = urllib.parse.urlsplit(env.get("DATABASE_URL", ""))
 pw = urllib.parse.unquote(u.password or "")
-if u.username != "opsloop_gate" or not pw:
+if u.username != role or not pw:
     sys.exit(1)
 # PostgreSQL 이 저장하는 형식 그대로: SCRAM-SHA-256$반복:솔트$StoredKey:ServerKey (RFC 5802 · 7677)
 salt, it = os.urandom(16), 4096
@@ -149,30 +164,87 @@ client = hmac.new(salted, b"Client Key", "sha256").digest()
 server = hmac.new(salted, b"Server Key", "sha256").digest()
 b64 = lambda x: base64.b64encode(x).decode()
 verifier = f"SCRAM-SHA-256${it}:{b64(salt)}${b64(hashlib.sha256(client).digest())}:{b64(server)}"
-attrs = "LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT CONNECTION LIMIT 10"
+attrs = f"LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT CONNECTION LIMIT {int(limit)}"
 print(f"""DO $ol$ BEGIN
-  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'opsloop_gate') THEN
-    ALTER ROLE opsloop_gate WITH {attrs} PASSWORD '{verifier}';
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{role}') THEN
+    ALTER ROLE {role} WITH {attrs} PASSWORD '{verifier}';
   ELSE
-    CREATE ROLE opsloop_gate WITH {attrs} PASSWORD '{verifier}';
+    CREATE ROLE {role} WITH {attrs} PASSWORD '{verifier}';
   END IF;
 END $ol$;""")
 PY
-  if [ "$role" = 1 ]; then echo "  비밀번호를 gate.env 에 맞췄다"; else echo "  만들었다 (접속 10개 한도, 권한은 스키마가 준다)"; fi
+  if [ "$exists" = 1 ]; then echo "  $role 비밀번호를 $f 에 맞췄다"; else echo "  $role 만들었다 (접속 $limit 개 한도, 권한은 스키마가 준다)"; fi
+}
+
+echo "== DB 접속 파일"
+ensure_env "$GATE_ENV" opsloop_gate opsloop-gate
+ensure_env /etc/opsloop/collector.env opsloop_ingest opsloop-pull
+ensure_env /etc/opsloop/detector.env opsloop_detector opsloop-pull
+if [ -s /etc/opsloop/admin.env ]; then
+  echo "  /etc/opsloop/admin.env 있음 (소유자 · nodes.py)"
+else
+  ( umask 077
+    python3 - "$ENV_SRC" "$DB_HOST" > /etc/opsloop/admin.env <<'PY'
+import sys, urllib.parse
+env = {}
+for line in open(sys.argv[1], encoding="utf-8"):
+    line = line.strip()
+    if line and not line.startswith("#") and "=" in line:
+        k, v = line.split("=", 1)
+        env[k.strip()] = v.strip().strip('"').strip("'")
+pw = urllib.parse.quote(env["POSTGRES_PASSWORD"], safe="")
+print(f"DATABASE_URL=postgresql://opsloop:{pw}@{sys.argv[2]}:5432/opsloop")
+PY
+  )
+  chown root:root /etc/opsloop/admin.env; chmod 600 /etc/opsloop/admin.env
+  echo "  /etc/opsloop/admin.env 만들었다 (소유자 · root 만 · nodes.py 가 읽는다)"
 fi
+
+echo "== DB 역할"
+ensure_role opsloop_gate "$GATE_ENV" 10
+ensure_role opsloop_ingest /etc/opsloop/collector.env 5
+ensure_role opsloop_detector /etc/opsloop/detector.env 5
+# 비밀번호 없는 역할. 백업은 컨테이너 안 로컬 접속(trust)만, 콘솔은 db-console-role.sh 가 비밀번호를 넣는다
+"${PSQL[@]}" >/dev/null <<'SQL'
+DO $ol$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'opsloop_backup') THEN
+    CREATE ROLE opsloop_backup WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS INHERIT CONNECTION LIMIT 2;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'opsloop_console') THEN
+    CREATE ROLE opsloop_console WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT CONNECTION LIMIT 20;
+  END IF;
+END $ol$;
+SQL
+echo "  opsloop_backup · opsloop_console 있음 (콘솔 비밀번호는 db-console-role.sh)"
 
 echo "== 스키마 ($SRC/infra/schema.sql, 여러 번 돌려도 안전)"
 "${PSQL[@]}" < "$SRC/infra/schema.sql" >/dev/null
 echo "  적용했다"
-priv=$("${PSQL[@]}" -F ' ' -c "SELECT has_column_privilege('opsloop_gate','nodes','token_hash','SELECT'),
-  has_function_privilege('opsloop_gate','enroll_node(text,text,text,inet)','EXECUTE'),
-  has_table_privilege('opsloop_gate','events','SELECT'),
-  has_function_privilege('public','enroll_node(text,text,text,inet)','EXECUTE')")
-if [ "$priv" = "t t f f" ]; then
-  echo "  관문 권한: nodes 네 열 읽기 · enroll_node 실행만 (PUBLIC 실행 없음)"
-else
-  echo "  경고: 관문 권한이 예상과 다르다 (nodes 읽기 · enroll 실행 · events 읽기 · PUBLIC 실행 = $priv, 기대 t t f f)" >&2
-fi
+# 역할별 권한 표. 기대값과 다르면 경고만 하고 계속한다 (스키마를 고친 뒤 다시 돌린다)
+check_priv() { # $1 이름  $2 기대  $3 SQL(불리언 열들)
+  local got; got=$("${PSQL[@]}" -F ' ' -c "$3")
+  if [ "$got" = "$2" ]; then echo "  $1: 기대대로 ($2)"; else echo "  경고: $1 권한이 예상과 다르다 (얻음 $got, 기대 $2)" >&2; fi
+}
+check_priv "관문 nodes.token_hash 읽기 · enroll 실행 · events 읽기 · PUBLIC enroll" "t t f f" \
+  "SELECT has_column_privilege('opsloop_gate','nodes','token_hash','SELECT'),
+          has_function_privilege('opsloop_gate','enroll_node(text,text,text,inet)','EXECUTE'),
+          has_table_privilege('opsloop_gate','events','SELECT'),
+          has_function_privilege('public','enroll_node(text,text,text,inet)','EXECUTE')"
+check_priv "적재 events 삽입 · events 삭제 · incidents 삽입 · nodes.token_hash 읽기" "t f f f" \
+  "SELECT has_table_privilege('opsloop_ingest','events','INSERT'), has_table_privilege('opsloop_ingest','events','DELETE'),
+          has_table_privilege('opsloop_ingest','incidents','INSERT'), has_column_privilege('opsloop_ingest','nodes','token_hash','SELECT')"
+check_priv "탐지 incidents 삽입 · incidents 삭제 · verdicts 삽입 · events 삽입 · nodes.token_hash 읽기" "t t f f f" \
+  "SELECT has_table_privilege('opsloop_detector','incidents','INSERT'), has_table_privilege('opsloop_detector','incidents','DELETE'),
+          has_table_privilege('opsloop_detector','verdicts','INSERT'), has_table_privilege('opsloop_detector','events','INSERT'),
+          has_column_privilege('opsloop_detector','nodes','token_hash','SELECT')"
+check_priv "콘솔 verdicts 삽입 · events 삭제 · events 갱신 · incidents 삭제 · nodes.token_hash · enrollments.token_hash · console_users.role 갱신" "t f f f f f f" \
+  "SELECT has_table_privilege('opsloop_console','verdicts','INSERT'), has_table_privilege('opsloop_console','events','DELETE'),
+          has_table_privilege('opsloop_console','events','UPDATE'), has_table_privilege('opsloop_console','incidents','DELETE'),
+          has_column_privilege('opsloop_console','nodes','token_hash','SELECT'),
+          has_column_privilege('opsloop_console','node_enrollments','token_hash','SELECT'),
+          has_column_privilege('opsloop_console','console_users','role','UPDATE')"
+check_priv "백업 events 읽기 · events 삽입" "t f" \
+  "SELECT has_table_privilege('opsloop_backup','events','SELECT'), has_table_privilege('opsloop_backup','events','INSERT')"
 
 echo "== systemd 단위 (켜지 않는다)"
 for u in opsloop-gate.service opsloop-agents.service opsloop-agents.timer; do
@@ -186,8 +258,9 @@ for u in opsloop-gate.service opsloop-agents.timer; do
 done
 
 echo "== 접속 확인"
-gate_login && echo "  관문 역할(opsloop_gate) 로그인 성공" || echo "  관문 역할 로그인 실패 ($DB_HOST:5432)" >&2
-sudo -u opsloop-pull python3 - <<'PY' && echo "  다리(opsloop-pull) DB 접속 · 파서 읽기 성공" || echo "  다리 확인 실패" >&2
+env_login "$GATE_ENV" && echo "  관문 역할(opsloop_gate) 로그인 성공" || echo "  관문 역할 로그인 실패 ($DB_HOST:5432)" >&2
+env_login /etc/opsloop/detector.env && echo "  탐지 역할(opsloop_detector) 로그인 성공" || echo "  탐지 역할 로그인 실패" >&2
+sudo -u opsloop-pull python3 - <<'PY' && echo "  다리(opsloop-pull · opsloop_ingest) DB 접속 · 파서 읽기 성공" || echo "  다리 확인 실패" >&2
 import sys
 sys.path.insert(0, "/opt/opsloop/app/collector")
 import pull_loki, psycopg2

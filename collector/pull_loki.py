@@ -74,6 +74,8 @@ LOKI_URL = os.environ.get("LOKI_URL", "http://127.0.0.1:3100").rstrip("/")
 GATE_DIR = os.environ.get("GATE_DIR", "/var/lib/opsloop/gate")
 ADMIN_DIR = os.environ.get("OPSLOOP_ADMIN_DIR", "/var/lib/opsloop/admin")
 DB_ENV = os.environ.get("OPSLOOP_DB_ENV", "/etc/opsloop/collector.env")
+# 탐지기 하위 프로세스는 자기 역할(opsloop_detector)로 붙는다. 파일이 없으면 다리와 같은 접속 정보로 돈다 (이슈 #31)
+DETECT_ENV = os.environ.get("OPSLOOP_DETECTOR_ENV", "/etc/opsloop/detector.env")
 # s1 (R202 미등록 에이전트) · w1 (R101~R104 웹 · 인증) · a1 (R201 차단 대량 해제) · i1 (R301 노드 수신 끊김)
 RULESETS = ("rules_self.json", "rules_w1.json", "rules_audit.json", "rules_infra.json")
 
@@ -769,6 +771,18 @@ def read_ledgers(store, agent, state, save):
 #  탐지
 # ----------------------------------------------------------------------
 
+def detector_env(env):
+    """탐지기에 넘길 환경. detector.env 가 있으면 그 접속 정보로 바꾼다(다리 역할은 인시던트를 못 쓴다)."""
+    out = dict(env)
+    try:
+        url = read_env(DETECT_ENV).get("DATABASE_URL")
+    except OSError:
+        url = None
+    if url:
+        out["DATABASE_URL"] = url
+    return out
+
+
 def run_detect(env):
     ok = True
     for name in RULESETS:
@@ -895,7 +909,7 @@ def _run(node, since, ledgers_from_start=False):
     except Exception:
         pass
 
-    if not run_detect(env):
+    if not run_detect(detector_env(env)):
         failed = True
     return 1 if failed else 0
 

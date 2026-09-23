@@ -7,7 +7,8 @@ services:
     container_name: opsloop-api
     restart: always
     environment:
-      DATABASE_URL: postgresql://opsloop:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 필요}@192.168.60.11:5432/opsloop
+      # 콘솔 역할(판정 · 조치 · 차단 · 등록 토큰 · 감사만). 비밀번호는 infra/vmware/scripts/db-console-role.sh 가 .env 에 넣는다
+      DATABASE_URL: postgresql://opsloop_console:${OPSLOOP_CONSOLE_DB_PASSWORD:?OPSLOOP_CONSOLE_DB_PASSWORD 필요 (db-console-role.sh)}@192.168.60.11:5432/opsloop
       SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET 필요}
       TZ: UTC
     ports:
