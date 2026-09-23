@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 
 import auth
 import web
+from proposals import propose
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 NOTIFY_CHANNEL = "opsloop_incident"
@@ -288,17 +289,21 @@ async def list_incidents(
         "severity": "CASE i.severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 "
                     "WHEN 'medium' THEN 2 ELSE 3 END, i.first_ts DESC",
         "recent":   "i.first_ts DESC",
-    }[sort]
+    }[sort] + ", i.incident_key ASC"  # 같은 시각·등급도 페이지 사이 순서가 바뀌지 않게 한다.
     # 최근 판정 하나만 붙인다. 재판정이 생겨도 목록에는 마지막 판단이 보여야 한다.
     base = f"""FROM incidents i
         LEFT JOIN LATERAL (
             SELECT verdict FROM verdicts WHERE incident_key = i.incident_key
-            ORDER BY created_at DESC LIMIT 1) v ON true
+            ORDER BY created_at DESC, id DESC LIMIT 1) v ON true
         {w}"""
     params.extend([limit, offset])
 
     async with app.state.pool.acquire() as c:
         total = await c.fetchval(f"SELECT count(*) {base}", *params[:-2])
+        # 필터 선택지는 필터링된 첫 쪽에 없는 규칙도 포함한다. 별도 API를 요구하지 않는다.
+        rules = await c.fetch("""
+            SELECT DISTINCT ON (rule_id) rule_id, rule_name FROM incidents
+            ORDER BY rule_id, last_ts DESC, incident_key""")
         rows = await c.fetch(f"""
             SELECT i.incident_key, i.rule_id, i.rule_version, i.rule_name, i.severity,
                    host(i.actor_ip) AS actor_ip, i.target, i.first_ts, i.last_ts,
@@ -310,7 +315,8 @@ async def list_incidents(
             LIMIT ${len(params) - 1} OFFSET ${len(params)}""", *params)
 
     return {"total": total, "limit": limit, "offset": offset,
-            "items": [row_to_dict(r) for r in rows]}
+            "items": [row_to_dict(r) for r in rows],
+            "rules": [row_to_dict(r) for r in rules]}
 
 
 @app.get("/api/incidents/{incident_key:path}")
@@ -328,8 +334,8 @@ async def get_incident(incident_key: str):
             "SELECT id, action, operator, note, created_at FROM actions "
             "WHERE incident_key = $1 ORDER BY created_at", incident_key)
         verdicts = await c.fetch(
-            "SELECT id, verdict, reason, observed_value, operator, created_at FROM verdicts "
-            "WHERE incident_key = $1 ORDER BY created_at", incident_key)
+            "SELECT id, verdict, reason, observed_value, operator, proposed, decision_seconds, created_at FROM verdicts "
+            "WHERE incident_key = $1 ORDER BY created_at, id", incident_key)
         # 같은 출발지의 다른 인시던트. 관제자가 제일 먼저 궁금해하는 것.
         related = await c.fetch("""
             SELECT incident_key, rule_id, severity, first_ts, signal_count, status
@@ -339,6 +345,26 @@ async def get_incident(incident_key: str):
 
         actor = inc["actor_ip"]
         window = (inc["first_ts"], inc["last_ts"])
+
+        # 화면 표본의 200/300행 제한으로 '행위 없음'을 추론하지 않고 전체 구간을 센다.
+        # fixture는 실제 판정의 근거에 섞지 않는다. SSH 기준은 Cowrie에만 적용한다.
+        counts = await c.fetch(f"""
+            SELECT eventid, count(*) AS n FROM events
+            WHERE src_ip = $1::inet AND provenance = 'real'
+              AND ts BETWEEN $2::timestamptz - interval '{WINDOW_BEFORE}' AND $3::timestamptz + interval '{WINDOW_AFTER}'
+              AND eventid LIKE 'cowrie.%'
+            GROUP BY eventid""", actor, *window) if actor else []
+        covered = await c.fetchval("""
+            SELECT i.incident_key FROM incidents i
+            JOIN LATERAL (
+                SELECT verdict FROM verdicts WHERE incident_key = i.incident_key
+                ORDER BY created_at DESC, id DESC LIMIT 1
+            ) v ON v.verdict = 'threat'
+            WHERE i.actor_ip = $1::inet AND i.incident_key <> $2
+              AND i.rule_id IN ('R001', 'R002', 'R003', 'R004', 'R005')
+              AND i.first_ts <= $4::timestamptz + interval '15 minutes'
+              AND i.last_ts >= $3::timestamptz - interval '15 minutes'
+            ORDER BY i.first_ts, i.incident_key LIMIT 1""", actor, incident_key, *window) if actor else None
 
         # ② 규칙이 보지 않은 증거. 규칙이 본 것만으로 판정하면 규칙의 시야를
         #    그대로 물려받는다. 같은 구간에 같은 출발지가 실제로 한 일을 모은다.
@@ -390,6 +416,7 @@ async def get_incident(incident_key: str):
     # 비밀번호 원문은 화면에 내지 않는다. 타인의 실제 자격증명일 수 있다.
     d["raw"] = [row_to_dict(r) for r in raw]
     d["circular"] = CIRCULAR.get(inc["rule_id"])
+    d["proposal"] = propose(inc["rule_id"], {r["eventid"]: r["n"] for r in counts}, covered)
     return d
 
 

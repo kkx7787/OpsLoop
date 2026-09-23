@@ -2,7 +2,7 @@
  * 공통 컴포넌트(atomic).
  *  atoms      더 쪼갤 수 없는 조각(단추 · 배지 · 입력 · 시각 …)
  *  molecules  조각 몇 개를 묶은 것(양식 칸 · 페이지 머리 · 수치 타일 · 권한 흐림 …)
- *  organisms  화면 한 부분을 맡는 것(상태 화면 · 상단바 · 사이드바 · 모바일 서랍 · 메뉴 조각)
+ *  organisms  화면 한 부분을 맡는 것(상태 화면 · 상단바 · 사이드바 · 모바일 서랍 · 메뉴 조각 · 인시던트 목록 · 상세 조각)
  *  templates  화면 틀(AppLayout: 사이드바 + 상단바 + 본문, 모바일은 서랍)
  * 모든 컴포넌트는 className 을 받아 cn 으로 합친다. 뒤에 준 클래스가 이긴다.
  */
@@ -97,6 +97,12 @@ export { SideNav } from './organisms/SideNav'
 export type { SideNavProps } from './organisms/SideNav'
 export { TopBar } from './organisms/TopBar'
 export type { TopBarProps } from './organisms/TopBar'
+export { LiveIndicator } from './organisms/LiveIndicator'
+export type { LiveIndicatorProps } from './organisms/LiveIndicator'
+
+// organisms — 인시던트 목록(S-03) · 상세(S-04 · S-05). 조각의 목록은 각 폴더의 index.ts 가 맡는다
+export * from './organisms/incidents'
+export * from './organisms/incident-detail'
 
 // templates
 export { AppLayout } from './templates/AppLayout'

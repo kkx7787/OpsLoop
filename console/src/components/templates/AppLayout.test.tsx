@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import type { RouteObject } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { NAV_GROUPS } from '@/app/nav'
@@ -7,6 +7,18 @@ import { AppLayout } from './AppLayout'
 import { breadcrumbsFor, type RouteHandle } from './breadcrumbs'
 
 const detailHandle: RouteHandle = { crumb: (params) => params.key ?? '' }
+
+/** 서버 없이 여닫을 수 있는 가짜 WebSocket. 마지막으로 만든 것을 last 에 둔다 */
+class FakeSocket extends EventTarget {
+  static last: FakeSocket | undefined
+  readonly url: string
+  constructor(url: string) {
+    super()
+    this.url = url
+    FakeSocket.last = this
+  }
+  close() {}
+}
 
 function layoutRoutes(): RouteObject[] {
   return [
@@ -127,6 +139,23 @@ describe('AppLayout', () => {
     await router.navigate('/')
     await screen.findByText('대시보드 본문')
     expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('실시간 연결 상태를 상단바에 점과 글로 보인다: 이어지면 수신 중, 끊기면 다시 연결 중', async () => {
+    vi.stubGlobal('WebSocket', FakeSocket)
+    stubMe({ username: 'han', role: 'operator' })
+    renderRoutes(layoutRoutes(), '/')
+    await screen.findByText('대시보드 본문')
+
+    const banner = screen.getByRole('banner')
+    expect(FakeSocket.last?.url).toMatch(/^ws:\/\/.+\/ws$/)
+    expect(within(banner).getByText('실시간 연결 중')).toBeInTheDocument()
+
+    act(() => FakeSocket.last?.dispatchEvent(new Event('open')))
+    expect(within(banner).getByText('실시간 수신 중')).toBeInTheDocument()
+
+    act(() => FakeSocket.last?.dispatchEvent(Object.assign(new Event('close'), { code: 1006 })))
+    expect(within(banner).getByText('실시간 끊김 · 다시 연결 중')).toBeInTheDocument()
   })
 
   it('Escape 로 닫아도 초점이 메뉴 단추로 돌아온다', async () => {
