@@ -51,24 +51,15 @@ resource "aws_vpc_security_group_ingress_rule" "honeypot_dmz_decoy" {
   ip_protocol       = "tcp"
 }
 
-# 유출은 원장(S3 엔드포인트)과 SSM 의 443, 이름 풀이뿐이다. 나머지는 방화벽까지
-# 가지도 못한다. 허니팟과 디코이는 한 대라 보안그룹으로 가르지 않는다
-resource "aws_vpc_security_group_egress_rule" "honeypot_dmz_https" {
+# 유출은 전부 연다. 보안그룹이 먼저 버리면 시도가 방화벽에 닿지 않아 기록이 남지 않는다(관문 보안그룹의
+# 유입을 전부 연 것과 같은 이유). 원장(S3)과 SSM 은 VPC 엔드포인트 경로로 가고, 그 밖의 모든 시도는 방화벽
+# forward 체인이 거부 · 기록한다. 방화벽 규칙이 잘못돼도 관문 보안그룹(443 · 53 만 유출)과 인터넷 게이트웨이
+# (공인 주소 짝이 없는 사설 출발지는 버린다)가 남는다 (이슈 #19). 허니팟과 디코이는 한 대라 가르지 않는다
+resource "aws_vpc_security_group_egress_rule" "honeypot_dmz_all" {
   security_group_id = aws_security_group.honeypot_dmz.id
-  description       = "S3 endpoint, SSM"
+  description       = "all outbound; the gateway decides and logs"
   cidr_ipv4         = "0.0.0.0/0"
-  from_port         = 443
-  to_port           = 443
-  ip_protocol       = "tcp"
-}
-
-resource "aws_vpc_security_group_egress_rule" "honeypot_dmz_dns" {
-  security_group_id = aws_security_group.honeypot_dmz.id
-  description       = "name resolution"
-  cidr_ipv4         = "0.0.0.0/0"
-  from_port         = 53
-  to_port           = 53
-  ip_protocol       = "udp"
+  ip_protocol       = "-1"
 }
 
 # ──────────────────────────────────────────────────────────────

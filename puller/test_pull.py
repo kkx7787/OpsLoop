@@ -264,7 +264,7 @@ class PullTest(unittest.TestCase):
         self.assertIn(f"raw/v1/sensor=gateway/host={GW}/", self.s3.prefixes)
 
     def test_허니팟이_올린_관문_기록은_받지_않고_구멍도_아니다(self):
-        # 허니팟과 관문이 같은 센서 역할을 쓴다. 장악된 허니팟이 gateway 조각과 hb 항목을 흉내 낸다
+        # 역할 · 버킷 정책이 먼저 막지만 풀러도 확인한다. 장악된 허니팟이 gateway 조각과 hb 항목을 흉내 낸다
         self.s3.chunk("gateway", 41, 0, 0, G1, T0)
         self.s3.chunk("cowrie", 11, 0, 0, L1, T0)
         self.s3.hb({"cowrie.json": hbfile("cowrie", 11, 0, len(L1)),

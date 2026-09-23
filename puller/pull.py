@@ -39,7 +39,7 @@
   OPSLOOP_BUCKET     S3 버킷
   OPSLOOP_HOSTS      받을 센서 호스트 (쉼표). 목록 밖 호스트의 조각은 보지도 않는다
   OPSLOOP_GATEWAY_HOSTS  관문 방화벽 호스트 (쉼표, OPSLOOP_HOSTS 에도 있어야 한다). gateway 조각은 이 호스트만,
-                     cowrie · decoy 조각은 이 밖의 호스트만 올릴 수 있다. 허니팟과 관문이 같은 센서 역할을 쓰므로
+                     cowrie · decoy 조각은 이 밖의 호스트만 올릴 수 있다. 역할(센서 · 관문)과 버킷 정책의 host 경계가 먼저 막고, 풀러는 그 뒤의 둘째 확인으로,
                      장악된 허니팟이 관문 기록을 흉내 내거나, 생존 신호에 가짜 gateway 항목을 넣어 구멍을 만들지 못하게 한다
   OPSLOOP_HOME       작업 폴더 (기본 /var/lib/opsloop)
   OPSLOOP_GAP_ACK    운영자가 확인한 구멍 목록 (기본 /etc/opsloop/gap-ack.json).

@@ -13,7 +13,7 @@ gateway.log / gateway.log.YYYY-MM-DD 를 읽어 events 로 정규화한다. 구�
 접두 → eventid (방화벽 규칙 infra/aws/gateway/nftables.conf 의 log prefix 와 같이 바꾼다)
   gw-forward-drop  gateway.forward.drop   전달 거부 (인터넷 → DMZ 는 DNAT 된 22 · 23 · 8080 만 허용)
   gw-input-drop    gateway.input.drop     방화벽 자신으로의 유입 거부 (관리는 SSM 뿐이라 유입 포트가 없다)
-  gw-egress        gateway.egress         DMZ → 인터넷 443 허용 기록 (SSM 용 · 잔여 위험)
+  gw-egress        gateway.egress         DMZ → 인터넷 443 허용 기록 (이슈 #19 로 규칙이 없어져 새로 생기지 않는다. 옛 기록용)
 
 디코이 파서와 다른 점
   - 줄이 JSON 이 아니라 커널 로그다. 시각 · 접두가 설계와 다른 줄(연도 없는 옛 syslog 형식 · 모르는 접두 ·

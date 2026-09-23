@@ -41,7 +41,7 @@ write_files:
   - path: /etc/sysctl.d/99-opsloop-gateway.conf
     permissions: "0644"
     content: |
-      # 전달(DNAT · masquerade)에 필요하다
+      # 전달(DNAT)에 필요하다
       net.ipv4.ip_forward = 1
       # 인터페이스가 한 장이라 들어온 곳으로 다시 나간다. 경로 재안내(redirect)를 보내지 않는다
       net.ipv4.conf.all.send_redirects = 0

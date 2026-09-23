@@ -57,6 +57,21 @@ resource "aws_s3_bucket_versioning" "archive" {
   }
 }
 
+# 원장에 쓰는 인스턴스와 각자의 경로. 옛 허니팟(instances.tf)은 이전이 끝나 정의를 걷어내면 함께 빠진다
+locals {
+  ledger_writers = merge(
+    { honeypot = { sid = "OnlyOwnHostHoneypot", arn = aws_instance.honeypot.arn, id = aws_instance.honeypot.id, sensors = ["cowrie", "decoy"] } },
+    { gateway = { sid = "OnlyOwnHostGateway", arn = aws_instance.gateway.arn, id = aws_instance.gateway.id, sensors = ["gateway"] } },
+    { for idx, i in aws_instance.honeypot_dmz : "honeypot_dmz_${idx}" => { sid = "OnlyOwnHostHoneypotDmz${idx}", arn = i.arn, id = i.id, sensors = ["cowrie", "decoy"] } },
+  )
+  ledger_writer_paths = {
+    for k, w in local.ledger_writers : k => concat(
+      [for s in w.sensors : "${aws_s3_bucket.archive.arn}/raw/v1/sensor=${s}/host=${w.id}/*"],
+      ["${aws_s3_bucket.archive.arn}/hb/v1/host=${w.id}/latest.json"],
+    )
+  }
+}
+
 data "aws_iam_policy_document" "archive_bucket" {
   # 암호화되지 않은 연결은 거부한다
   statement {
@@ -75,7 +90,7 @@ data "aws_iam_policy_document" "archive_bucket" {
     }
   }
 
-  # 원장에는 센서 역할만 쓴다. 루트 계정을 포함한 다른 모든 주체의 쓰기를 거부한다.
+  # 원장에는 센서 · 관문 역할만 쓴다. 루트 계정을 포함한 다른 모든 주체의 쓰기를 거부한다.
   # IAM 권한이 실수로 넓어져도 이 규칙이 남는다.
   statement {
     sid       = "OnlySensorWritesLedger"
@@ -89,7 +104,45 @@ data "aws_iam_policy_document" "archive_bucket" {
     condition {
       test     = "ArnNotEquals"
       variable = "aws:PrincipalArn"
-      values   = [aws_iam_role.sensor.arn]
+      values   = [aws_iam_role.sensor.arn, aws_iam_role.gateway.arn]
+    }
+  }
+
+  # 인스턴스는 자기 host 경로에만 쓴다 (이슈 #19). host 는 인스턴스 ID 이고(sensor/upload.py 경로 규칙),
+  # 인스턴스 자격증명으로 온 요청에는 ec2:SourceInstanceARN 이 붙는다. 다른 인스턴스이거나 인스턴스가
+  # 아니면(키가 없으면 부정 조건은 참) 거부된다. 장악된 허니팟이 다른 노드 행세를 못 한다.
+  dynamic "statement" {
+    for_each = local.ledger_writer_paths
+    content {
+      sid       = local.ledger_writers[statement.key].sid
+      effect    = "Deny"
+      actions   = ["s3:PutObject"]
+      resources = statement.value
+      principals {
+        type        = "*"
+        identifiers = ["*"]
+      }
+      condition {
+        test     = "ArnNotEquals"
+        variable = "ec2:SourceInstanceARN"
+        values   = [local.ledger_writers[statement.key].arn]
+      }
+    }
+  }
+
+  # 알려진 인스턴스의 경로 밖에는 아무도 쓰지 못한다(원장 밖 접두사 포함. 이 버킷은 원장만 담는다).
+  # 새 노드는 여기(ledger_writers)에 더해야 원장에 쓴다. 쓰는 인스턴스가 하나도 없으면 문을 내지 않는다
+  dynamic "statement" {
+    for_each = length(local.ledger_writer_paths) > 0 ? [1] : []
+    content {
+      sid           = "LedgerKnownHostsOnly"
+      effect        = "Deny"
+      actions       = ["s3:PutObject"]
+      not_resources = flatten(values(local.ledger_writer_paths))
+      principals {
+        type        = "*"
+        identifiers = ["*"]
+      }
     }
   }
 
