@@ -3,6 +3,24 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderRoutes, stubMe } from '@/test/render'
 import { routes } from './router'
 
+function json(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
+}
+
+/** /api/me 에 더해 목록 화면이 부르는 /api/incidents(0건) · /api/rules/quality(빈 배열)에 답한다 */
+function stubIncidents(me: unknown) {
+  const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+    const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    const url = new URL(raw, 'http://localhost')
+    if (url.pathname === '/api/me') return json(me, 200)
+    if (url.pathname === '/api/incidents') return json({ total: 0, limit: 50, offset: 0, items: [] }, 200)
+    if (url.pathname === '/api/rules/quality') return json([], 200)
+    return json({ detail: '없는 경로' }, 404)
+  })
+  vi.stubGlobal('fetch', fetch)
+  return fetch
+}
+
 describe('경로표', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
@@ -28,7 +46,6 @@ describe('경로표', () => {
   })
 
   it.each([
-    ['/incidents', '인시던트', 'S-03'],
     ['/blocklist', '차단 목록', 'S-06'],
     ['/rules', '규칙과 리플레이', 'S-07'],
     ['/sources', '출발지 분석', 'S-09'],
@@ -42,12 +59,23 @@ describe('경로표', () => {
     expect(screen.getByText('구현 예정')).toBeInTheDocument()
   })
 
-  it('인시던트 상세는 키를 제목과 상단바 경로 표시에 보인다', async () => {
+  it('/incidents 는 목록 화면: 제목 · 조건 막대 · 0건 안내(자리 카드가 아니다)', async () => {
+    const fetch = stubIncidents({ username: 'han', role: 'operator' })
+    renderRoutes(routes, '/incidents')
+    expect(await screen.findByRole('heading', { level: 1, name: '인시던트' })).toBeInTheDocument()
+    expect(await screen.findByText('인시던트가 없습니다')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '인시던트' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.queryByText('구현 예정')).toBeNull()
+    expect(fetch.mock.calls.some(([input]) => String(input).startsWith('/api/incidents?'))).toBe(true)
+  })
+
+  it('인시던트 상세는 키를 상단바 경로 표시에 보이고, 없는 사건이면 목록으로 돌아가는 길을 둔다', async () => {
     stubMe({ username: 'han', role: 'operator' })
     renderRoutes(routes, '/incidents/R003%7Cv2%7C1.2.3.4')
-    expect(await screen.findByRole('heading', { level: 1, name: 'R003|v2|1.2.3.4' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { level: 1, name: '인시던트를 찾을 수 없습니다' })).toBeInTheDocument()
     expect(screen.getByRole('navigation', { name: '현재 위치' })).toHaveTextContent('관제›인시던트›R003|v2|1.2.3.4')
     expect(screen.getByRole('link', { name: '인시던트' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('link', { name: '인시던트 목록으로' })).toHaveAttribute('href', '/incidents')
   })
 
   it('관리 화면은 admin 이 아니면 403 안내(숨기지 않고 이유를 보인다)', async () => {

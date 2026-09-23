@@ -1,7 +1,8 @@
 import { createBrowserRouter, type RouteObject } from 'react-router'
 import type { RouteHandle } from '@/components/templates/breadcrumbs'
 import { AppLayout } from '@/components/templates/AppLayout'
-import { IncidentDetailPage } from '@/pages/IncidentDetailPage'
+import { IncidentDetailPage } from '@/pages/incident-detail'
+import { IncidentsPage } from '@/pages/incidents'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { PlaceholderPage } from '@/pages/PlaceholderPage'
 import { RootError, RouteError } from '@/pages/RouteError'
@@ -25,7 +26,7 @@ export const routes: RouteObject[] = [
         errorElement: <RouteError />,
         children: [
           { index: true, element: <PlaceholderPage screen={SCREENS.dashboard} /> },
-          { path: 'incidents', element: <PlaceholderPage screen={SCREENS.incidents} /> },
+          { path: 'incidents', element: <IncidentsPage /> },
           { path: 'incidents/:key', element: <IncidentDetailPage />, handle: incidentHandle },
           { path: 'blocklist', element: <PlaceholderPage screen={SCREENS.blocklist} /> },
           { path: 'rules', element: <PlaceholderPage screen={SCREENS.rules} /> },

@@ -21,11 +21,13 @@ export interface TopBarProps extends ComponentProps<'header'> {
   menuButtonRef?: Ref<HTMLButtonElement>
   /** 센서 수신 요약(모바일 상단바 오른쪽 · Mobile.dc.html) */
   sensor?: ReactNode
+  /** 실시간 통보 연결 표시(LiveIndicator). AppLayout 이 넣는다. */
+  live?: ReactNode
 }
 
 /**
- * 상단바 52px. 데스크톱(Main.dc.html)은 경로 표시 · KST 시계 · 갱신 안내 · 새로고침,
- * 모바일(Mobile.dc.html)은 메뉴 단추 · 제품명 · 센서 요약. 사용자 · 로그아웃은 메뉴 아래(SideNav · MobileNav)에 있다.
+ * 상단바 52px. 데스크톱(Main.dc.html)은 경로 표시 · 실시간 연결 표시 · KST 시계 · 갱신 안내 · 새로고침,
+ * 모바일(Mobile.dc.html)은 메뉴 단추 · 제품명 · 연결 점 · 센서 요약. 사용자 · 로그아웃은 메뉴 아래(SideNav · MobileNav)에 있다.
  */
 export function TopBar({
   breadcrumbs = [],
@@ -37,6 +39,7 @@ export function TopBar({
   menuOpen = false,
   menuButtonRef,
   sensor,
+  live,
   className,
   ...rest
 }: TopBarProps) {
@@ -87,6 +90,7 @@ export function TopBar({
         )}
       </div>
       <div className="flex shrink-0 items-center gap-3.5 text-xs text-ink-muted">
+        {live !== undefined && live}
         {sensor !== undefined && <span className="md:hidden">{sensor}</span>}
         <Time value={shown} zone className="hidden font-mono md:inline" />
         {status !== undefined && <span className="hidden md:inline">{status}</span>}

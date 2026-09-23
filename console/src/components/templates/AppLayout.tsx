@@ -3,9 +3,11 @@ import { useRef, useState, type ReactNode } from 'react'
 import { Outlet, useLocation, useMatches } from 'react-router'
 import { loginHref } from '@/api/client'
 import { isApiError } from '@/api/errors'
+import { useLiveUpdates } from '@/api/live'
 import { useMe, type Me } from '@/auth/useMe'
 import { Button } from '../atoms/Button'
 import { buttonClasses } from '../atoms/button-styles'
+import { LiveIndicator } from '../organisms/LiveIndicator'
 import { MobileNav } from '../organisms/MobileNav'
 import type { NavGroup } from '../organisms/nav/nav-items'
 import { SensorSummary, type SensorSummaryProps } from '../organisms/nav/SensorSummary'
@@ -35,9 +37,11 @@ function isMe(data: unknown): data is Me {
  * 화면 틀: 사이드바(데스크톱) + 상단바 + 본문, 모바일은 서랍(Main · Mobile.dc.html).
  * 처음에 GET /api/me 로 사용자와 역할을 받는다. 401 이면 API 클라이언트가 /login?next= 로 보내고,
  * 이동이 막힌 경우 본문에 세션 만료 화면이 남는다. 받는 동안 관리 묶음은 막아 둔다.
+ * 실시간 통보(WS /ws)는 여기서 한 번 잇고, 연결 상태는 상단바의 점(LiveIndicator)으로 보인다.
  */
 export function AppLayout({ groups, children, sensor }: AppLayoutProps) {
   const me = useMe()
+  const live = useLiveUpdates()
   const location = useLocation()
   const matches = useMatches()
   const queryClient = useQueryClient()
@@ -106,6 +110,7 @@ export function AppLayout({ groups, children, sensor }: AppLayoutProps) {
           menuOpen={menuOpen}
           menuButtonRef={menuButtonRef}
           sensor={<SensorSummary {...sensor} compact />}
+          live={<LiveIndicator live={live} />}
         />
         <main id="main" className="flex flex-1 flex-col gap-3 p-4 md:gap-[18px] md:px-10 md:py-8">
           {body}

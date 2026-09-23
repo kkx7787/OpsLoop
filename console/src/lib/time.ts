@@ -103,3 +103,10 @@ export function formatRelative(value: TimeInput | null | undefined, now: number 
   if (abs < 86_400_000) return `${Math.floor(abs / 3_600_000)}시간 ${suffix}`
   return `${Math.floor(abs / 86_400_000)}일 ${suffix}`
 }
+
+/** 어떤 시각부터 지금까지 지난 초. 해석할 수 없거나 미래면 0. 상세 응답에는 pending_seconds 가 없어 first_ts 로 센다. */
+export function secondsSince(value: TimeInput | null | undefined, now: number = Date.now()): number {
+  const date = toDate(value)
+  if (!date) return 0
+  return Math.max(0, Math.floor((now - date.getTime()) / 1000))
+}
