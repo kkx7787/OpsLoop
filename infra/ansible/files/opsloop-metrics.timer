@@ -2,9 +2,12 @@
 Description=OpsLoop 노드 지표 1분 주기
 
 [Timer]
-# 매분 0초. 기본 정확도(1분)로 두면 실행이 몰리거나 한 분을 건너뛰어 seq 공백처럼 보인다
-OnCalendar=*-*-* *:*:00
-AccuracySec=1s
+# 단조 시계(부팅 뒤 경과 시간) 기준. 달력(OnCalendar)으로 두면 부팅 직후 시계가 9시간 앞섰다가
+# chrony 가 되돌릴 때 다음 실행이 8시간 뒤로 밀려 지표가 끊긴다 (#22)
+OnBootSec=1min
+OnUnitActiveSec=1min
+# 다음 실행은 지난 활성화 시점 + 1분이라 정확도 창만큼 매분 뒤로 밀린다. 1s 면 한 시간에 최대 1분 밀린다
+AccuracySec=1ms
 
 [Install]
 WantedBy=timers.target

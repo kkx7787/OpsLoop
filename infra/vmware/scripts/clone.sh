@@ -34,7 +34,9 @@ for node in "${NODES[@]}"; do
   python3 - "$target" "$name" "$mem" "$cpu" "$nics" <<'PY'
 import sys,re
 vmx,name,mem,cpu,nics=sys.argv[1:6]
-lines=[l for l in open(vmx) if not re.match(r'^(ethernet\d+\.|memsize|numvcpus|displayName)',l)]
+lines=[l for l in open(vmx) if not re.match(r'^(ethernet\d+\.|memsize|numvcpus|displayName|rtc\.startInUTC)',l)]
+# 가상 RTC 를 UTC 로 받는다. 없으면 Mac 지역 시각을 줘서 게스트가 9시간 앞선 채 부팅한다 (infra/vmware/README.md 시간 동기화)
+lines.append('rtc.startInUTC = "TRUE"\n')
 lines.append(f'displayName = "{name}"\n')
 lines.append(f'memsize = "{mem}"\n')
 lines.append(f'numvcpus = "{cpu}"\n')
