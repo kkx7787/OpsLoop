@@ -4,6 +4,7 @@ import { Outlet, useLocation, useMatches } from 'react-router'
 import { loginHref } from '@/api/client'
 import { isApiError } from '@/api/errors'
 import { useLiveUpdates } from '@/api/live'
+import { LiveContext } from '@/api/live-context'
 import { useMe, type Me } from '@/auth/useMe'
 import { Button } from '../atoms/Button'
 import { buttonClasses } from '../atoms/button-styles'
@@ -113,7 +114,7 @@ export function AppLayout({ groups, children, sensor }: AppLayoutProps) {
           live={<LiveIndicator live={live} />}
         />
         <main id="main" className="flex flex-1 flex-col gap-3 p-4 md:px-6 md:py-4">
-          {body}
+          <LiveContext.Provider value={live}>{body}</LiveContext.Provider>
         </main>
       </div>
       <MobileNav

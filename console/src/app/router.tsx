@@ -3,6 +3,8 @@ import type { RouteHandle } from '@/components/templates/breadcrumbs'
 import { AppLayout } from '@/components/templates/AppLayout'
 import { IncidentDetailPage } from '@/pages/incident-detail'
 import { IncidentsPage } from '@/pages/incidents'
+import { DashboardPage } from '@/pages/dashboard/DashboardPage'
+import { BlocklistPage } from '@/pages/blocklist/BlocklistPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 import { PlaceholderPage } from '@/pages/PlaceholderPage'
 import { RootError, RouteError } from '@/pages/RouteError'
@@ -25,10 +27,10 @@ export const routes: RouteObject[] = [
       {
         errorElement: <RouteError />,
         children: [
-          { index: true, element: <PlaceholderPage screen={SCREENS.dashboard} /> },
+          { index: true, element: <DashboardPage /> },
           { path: 'incidents', element: <IncidentsPage /> },
           { path: 'incidents/:key', element: <IncidentDetailPage />, handle: incidentHandle },
-          { path: 'blocklist', element: <PlaceholderPage screen={SCREENS.blocklist} /> },
+          { path: 'blocklist', element: <BlocklistPage /> },
           { path: 'rules', element: <PlaceholderPage screen={SCREENS.rules} /> },
           { path: 'sources', element: <PlaceholderPage screen={SCREENS.sources} /> },
           { path: 'reports', element: <PlaceholderPage screen={SCREENS.reports} /> },

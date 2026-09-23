@@ -4,6 +4,7 @@ import { Select } from '../../atoms/Select'
 import { PAGE_SIZES, pageNumbers } from './pagination'
 
 interface Props {
+  label?: string
   page: number
   pageSize: number
   total: number
@@ -12,11 +13,11 @@ interface Props {
   onPageSize: (size: number) => void
 }
 
-export function IncidentPagination({ page, pageSize, total, busy, onPage, onPageSize }: Props) {
+export function IncidentPagination({ page, pageSize, total, busy, onPage, onPageSize, label = '인시던트 페이지' }: Props) {
   const id = useId()
   const count = Math.max(1, Math.ceil(total / pageSize))
   return (
-    <nav aria-label="인시던트 페이지" className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-line px-3 py-2">
+    <nav aria-label={label} className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-line px-3 py-2">
       <div className="flex items-center gap-2 text-xs text-ink-muted">
         <label htmlFor={id}>페이지당</label>
         <Select id={id} fieldSize="sm" className="h-7 w-auto" value={pageSize} onChange={(e) => onPageSize(Number(e.target.value))}>

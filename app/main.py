@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 import auth
 import web
 from proposals import propose
+from dashboard import dashboard_metrics
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 NOTIFY_CHANNEL = "opsloop_incident"
@@ -422,7 +423,9 @@ async def get_incident(incident_key: str):
 
 @app.get("/api/stats/summary")
 async def summary():
-    async with app.state.pool.acquire() as c:
+    async with app.state.pool.acquire() as c, c.transaction(isolation="repeatable_read", readonly=True):
+        as_of = await c.fetchval("SELECT now()")
+        metrics = await dashboard_metrics(c, as_of)
         by_sev = await c.fetch(
             "SELECT severity, count(*) FROM incidents WHERE status = 'open' GROUP BY 1")
         by_status = await c.fetch("SELECT status, count(*) FROM incidents GROUP BY 1")
@@ -437,9 +440,11 @@ async def summary():
             SELECT count(*) events, count(DISTINCT src_ip) actors, max(ts) latest
             FROM events WHERE provenance = 'real'""")
         blocked = await c.fetchval(
-            "SELECT count(*) FROM blocklist WHERE released_at IS NULL")
+            "SELECT count(*) FROM blocklist WHERE released_at IS NULL "
+            "AND (expires_at IS NULL OR expires_at > $1)", as_of)
 
     return {
+        **metrics,
         "open_by_severity": {r["severity"]: r["count"] for r in by_sev},
         "by_status": {r["status"]: r["count"] for r in by_status},
         "daily": [{"date": r["d"], "count": r["count"]} for r in daily],
@@ -508,6 +513,16 @@ async def add_action(incident_key: str, body: ActionIn, request: Request):
             if inc is None:
                 raise HTTPException(404, "인시던트를 찾을 수 없습니다")
 
+            if body.action == "unblock_ip":
+                # 확인 창을 연 뒤 만료·해제·재차단됐을 수 있다. 같은 행을 잠근 뒤 최신 상태를 검사한다.
+                blocked = await c.fetchrow("""
+                    SELECT incident_key, released_at, expires_at,
+                           expires_at IS NULL OR expires_at > clock_timestamp() AS unexpired
+                    FROM blocklist WHERE actor_ip = $1::inet FOR UPDATE""", inc["actor_ip"])
+                if (not blocked or blocked["released_at"] is not None or not blocked["unexpired"]
+                        or blocked["incident_key"] != incident_key):
+                    raise HTTPException(409, "차단이 만료·해제되었거나 근거 사건이 변경됐습니다. 목록을 새로 확인해 주세요")
+
             rec = await c.fetchrow("""
                 INSERT INTO actions (incident_key, action, operator, note)
                 VALUES ($1, $2, $3, $4)
@@ -539,10 +554,13 @@ async def add_action(incident_key: str, body: ActionIn, request: Request):
                     body.expires_hours)
             elif body.action == "unblock_ip" and inc["actor_ip"]:
                 # 살아 있는 차단만 푼다. 이미 풀린 차단을 다시 풀면 처음 해제한 시각과 사람이 덮인다
-                await c.execute(
+                changed = await c.execute(
                     "UPDATE blocklist SET released_at = now(), released_by = $2 "
-                    "WHERE actor_ip = $1::inet AND released_at IS NULL",
-                    inc["actor_ip"], user["u"])
+                    "WHERE actor_ip = $1::inet AND released_at IS NULL "
+                    "AND (expires_at IS NULL OR expires_at > clock_timestamp()) AND incident_key = $3",
+                    inc["actor_ip"], user["u"], incident_key)
+                if changed != "UPDATE 1":
+                    raise HTTPException(409, "차단 상태가 변경됐습니다. 목록을 새로 확인해 주세요")
 
     payload = row_to_dict(rec) | {"incident_key": incident_key}
     await hub.broadcast({"type": "action.created", "data": payload})
@@ -578,9 +596,10 @@ async def add_verdict(incident_key: str, body: VerdictIn, request: Request):
 @app.get("/api/blocklist")
 async def blocklist(active_only: bool = True):
     q = """SELECT host(actor_ip) actor_ip, reason, incident_key,
-                  created_at, expires_at, released_at
-           FROM blocklist {} ORDER BY created_at DESC"""
-    q = q.format("WHERE released_at IS NULL" if active_only else "")
+                  created_at, expires_at, released_at, method, requested_by,
+                  enforced_at, enforce_note, released_by, now() AS checked_at
+           FROM blocklist {} ORDER BY created_at DESC, actor_ip"""
+    q = q.format("WHERE released_at IS NULL AND (expires_at IS NULL OR expires_at > now())" if active_only else "")
     async with app.state.pool.acquire() as c:
         rows = await c.fetch(q)
     return [row_to_dict(r) for r in rows]
