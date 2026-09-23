@@ -16,9 +16,9 @@ export function isIncidentStatus(value: unknown): value is IncidentStatus {
   return typeof value === 'string' && (INCIDENT_STATUSES as readonly string[]).includes(value)
 }
 
-/** 상태 점 색. 신규는 아직 손대지 않은 건이라 빨강, 확인은 주황, 조치중은 파랑, 종결은 초록, 억제는 회색. */
+/** 상태 점 색. 신규는 중립색(심각도 색과 구분), 확인은 주황, 조치중은 파랑, 종결은 초록, 억제는 회색. */
 export const STATUS_SIGNAL: Record<IncidentStatus, Signal> = {
-  open: 'bad',
+  open: 'idle',
   acknowledged: 'warn',
   in_progress: 'info',
   resolved: 'ok',
@@ -62,4 +62,4 @@ export const COLUMNS: readonly Column[] = [
 /**
  * 머리 행과 본문 행이 같이 쓰는 그리드. 좁은 데스크톱에서는 목록 영역만 가로 스크롤된다.
  */
-export const ROW_GRID = 'grid items-center gap-3 grid-cols-[76px_76px_minmax(190px,1.5fr)_minmax(140px,1fr)_72px_88px]'
+export const ROW_GRID = 'grid items-center gap-3 grid-cols-[70px_70px_minmax(190px,1.5fr)_minmax(140px,1fr)_66px_80px]'

@@ -20,7 +20,7 @@ export function IncidentCard({ incident, elapsedSeconds, className, ...rest }: I
     <li data-incident-key={incident.incident_key} className={cn('list-none', className)} {...rest}>
       <Link
         to={incidentHref(incident.incident_key)}
-        className="flex flex-col gap-2 rounded-card bg-surface p-4 text-ink shadow-card hover:text-ink"
+        className="flex flex-col gap-1.5 bg-surface px-3 py-3 text-ink hover:bg-primary-soft/50 hover:text-ink"
       >
         <div className="flex items-center justify-between gap-3">
           <ElapsedTime
@@ -30,7 +30,7 @@ export function IncidentCard({ incident, elapsedSeconds, className, ...rest }: I
             since={incident.first_ts}
             pending={isPending(incident)}
             format="long"
-            className="text-lg font-semibold"
+            className="text-sm font-medium"
           />
           <SeverityBadge severity={incident.severity} />
         </div>
@@ -42,7 +42,7 @@ export function IncidentCard({ incident, elapsedSeconds, className, ...rest }: I
         {incident.actor_ip && incident.target && <div className="truncate text-xs text-ink-muted">대상 {incident.target}</div>}
         <div className="flex items-center justify-between gap-2 border-t border-black/5 pt-2 text-xs">
           <IncidentStatusLabel status={incident.status} />
-          {incident.verdict ? <VerdictBadge verdict={incident.verdict} /> : <span className="font-semibold text-primary">미판정</span>}
+          {incident.verdict ? <VerdictBadge verdict={incident.verdict} /> : <span className="font-medium text-primary">미판정</span>}
         </div>
       </Link>
     </li>

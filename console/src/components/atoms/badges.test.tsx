@@ -8,7 +8,7 @@ import { VerdictBadge } from './VerdictBadge'
 describe('Badge', () => {
   it('색조에 맞는 바탕 · 글자 색', () => {
     render(<Badge tone="info">규칙 v2 기준</Badge>)
-    expect(screen.getByText('규칙 v2 기준')).toHaveClass('bg-primary-soft', 'text-primary', 'rounded-full')
+    expect(screen.getByText('규칙 v2 기준')).toHaveClass('bg-primary-soft', 'text-primary', 'rounded-sm')
   })
 })
 

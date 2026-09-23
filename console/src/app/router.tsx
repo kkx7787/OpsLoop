@@ -9,8 +9,8 @@ import { RootError, RouteError } from '@/pages/RouteError'
 import { NAV_GROUPS } from './nav'
 import { SCREENS } from './screens'
 
-/** 인시던트 키를 상단바 경로 표시에 더한다(관제 › 인시던트 › R003|v2|…) */
-const incidentHandle: RouteHandle = { crumb: (params) => params.key ?? '' }
+/** 상세 경로는 짧게 표시한다. 전체 사건 키는 상세 머리글에서 펼쳐 본다. */
+const incidentHandle: RouteHandle = { crumb: () => '사건 상세' }
 
 /**
  * 경로표(화면 설계 1장). 틀(AppLayout) 아래에 화면들이 놓이고, 화면의 오류는 틀 안에서 보인다.

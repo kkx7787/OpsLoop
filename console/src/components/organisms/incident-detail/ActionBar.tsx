@@ -97,7 +97,8 @@ export function ActionBar({ detail, className }: ActionBarProps) {
           {ACTION_LABEL.acknowledge}
         </Button>}
         {block.allowed && <Button
-          variant="danger"
+          variant="secondary"
+          className="text-danger"
           disabled={!block.allowed || !detail.actor_ip}
           disabledReason={blockReason}
           aria-expanded={pending === 'block_ip'}
@@ -116,7 +117,8 @@ export function ActionBar({ detail, className }: ActionBarProps) {
           {ACTION_LABEL.unblock_ip}
         </Button>}
         {suppress.allowed && <Button
-          variant="danger"
+          variant="secondary"
+          className="text-danger"
           disabled={!suppress.allowed}
           disabledReason={suppress.reason}
           aria-expanded={pending === 'suppress_rule'}

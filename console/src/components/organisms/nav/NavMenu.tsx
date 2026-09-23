@@ -14,12 +14,12 @@ export interface NavMenuProps {
   className?: string
 }
 
-// 와이어프레임 .side a: 14px · 7px 10px · 모서리 8px · 아이콘은 주 색상
+// 기본 메뉴는 중립색, 현재 위치만 주 색상과 왼쪽 선으로 구별한다.
 const LINK =
-  'flex items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-base text-ink transition-colors ' +
-  'hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-primary'
-// .side a.on: 연한 파랑 바탕 · 주 색상 글자 · 600
-const LINK_ON = 'bg-primary-soft font-semibold text-primary hover:bg-primary-soft hover:text-primary'
+  'flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors ' +
+  'hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted'
+// 색과 형태를 함께 써 현재 위치를 알린다.
+const LINK_ON = 'border-l-primary bg-primary-soft font-semibold text-primary hover:bg-primary-soft hover:text-primary [&>svg]:text-primary'
 
 /**
  * 메뉴 묶음(와이어프레임 .side). 사이드바와 모바일 서랍이 같이 쓴다.
@@ -38,7 +38,7 @@ export function NavMenu({ groups, userRole, onNavigate, className }: NavMenuProp
           <div key={group.label} role="group" aria-labelledby={labelId} className="flex flex-col">
             <span
               id={labelId}
-              className={cn('px-2.5 pt-[18px] pb-1.5 text-2xs font-semibold text-ink-muted', dimmed && 'opacity-45')}
+              className={cn('px-2.5 pt-4 pb-1 text-2xs font-semibold text-ink-muted', dimmed && 'opacity-45')}
             >
               {group.label}
             </span>

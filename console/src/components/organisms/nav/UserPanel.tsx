@@ -1,6 +1,7 @@
 import { isRole, ROLE_LABEL } from '@/auth/roles'
 import type { Me } from '@/auth/useMe'
 import { cn } from '@/lib/cn'
+import { IconAccounts } from '../../atoms/icons'
 
 export interface LogoutFormProps {
   className?: string
@@ -29,17 +30,16 @@ export interface UserPanelProps {
   className?: string
 }
 
-/** 사이드바 · 서랍 아래의 사용자 칸: 머리글자 · 아이디 · 역할 · 로그아웃(와이어프레임 Main.dc.html) */
+/** 사이드바 · 서랍 아래의 사용자 칸: 계정 아이콘 · 아이디 · 역할 · 로그아웃(와이어프레임 Main.dc.html) */
 export function UserPanel({ user, className }: UserPanelProps) {
-  const initial = user ? user.username.trim().charAt(0).toUpperCase() || '?' : '·'
   const roleTitle = user && isRole(user.role) ? ROLE_LABEL[user.role] : undefined
   return (
     <div className={cn('flex items-center gap-2.5', className)}>
       <span
         aria-hidden="true"
-        className="flex size-[30px] shrink-0 items-center justify-center rounded-full bg-primary text-sm font-semibold text-white"
+        className="flex shrink-0 items-center justify-center text-ink-muted"
       >
-        {initial}
+        <IconAccounts size={18} />
       </span>
       <span className="flex min-w-0 flex-col text-sm">
         <span className="truncate font-medium">{user?.username ?? '확인 중'}</span>
@@ -47,7 +47,7 @@ export function UserPanel({ user, className }: UserPanelProps) {
           {user?.role ?? '—'}
         </span>
       </span>
-      <LogoutForm className="ml-auto" />
+      <LogoutForm className="ml-auto shrink-0 whitespace-nowrap" />
     </div>
   )
 }

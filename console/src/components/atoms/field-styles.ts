@@ -2,7 +2,7 @@ import { cn } from '@/lib/cn'
 
 export type FieldSize = 'sm' | 'md'
 
-/** 입력 · 선택 · 여러 줄 입력이 같이 쓰는 모양(와이어프레임: 10px 모서리 · 0.5px 테두리 그림자) */
+/** 입력 · 선택 · 여러 줄 입력이 같이 쓰는 모양(작은 모서리 · 명확한 입력 경계) */
 export function fieldClasses(size: FieldSize = 'md', className?: string): string {
   return cn(
     'w-full min-w-0 rounded-control border-0 bg-surface px-3 text-sm text-ink shadow-field outline-none',

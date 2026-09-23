@@ -70,10 +70,10 @@ function IncidentDetailView({ incidentKey }: IncidentDetailViewProps) {
 
   const detail = query.data
   return (
-    <div className="flex flex-col gap-[18px]">
+    <div className="flex flex-col gap-3">
       <IncidentHeader detail={detail} />
-      <div className="grid gap-[18px] lg:grid-cols-[minmax(0,1fr)_minmax(320px,420px)] lg:items-start">
-        <div className="flex min-w-0 flex-col gap-[18px]">
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
+        <div className="flex min-w-0 flex-col gap-3">
           <RuleEvidenceSection detail={detail} />
           <BehaviorSection rows={detail.behavior} actorIp={detail.actor_ip} />
           <ActorSection actor={detail.actor} related={detail.related} actorIp={detail.actor_ip} />

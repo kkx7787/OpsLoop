@@ -77,7 +77,7 @@ export function RuleEvidenceSection({ detail, className }: RuleEvidenceSectionPr
                   {objectSamples.map((sample, i) => (
                     <tr key={i}>
                       {columns.map((col) => (
-                        <td key={col} className={`${TABLE.td} font-mono break-all`}>
+                        <td key={col} className={`${TABLE.td} font-mono ${col === 'ts' || col === 'session' ? 'whitespace-nowrap' : 'min-w-[180px] break-all'}`}>
                           {formatValue(sample[col], col)}
                         </td>
                       ))}

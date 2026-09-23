@@ -13,7 +13,7 @@ const PADDING = {
   lg: 'p-5',
 } as const
 
-/** 흰 카드(와이어프레임 .card): 18px 모서리 · 0.5px 테두리 그림자 */
+/** 내용 구역: 작은 모서리와 얇은 경계선 */
 export function Card({ padding = 'md', className, ...rest }: CardProps) {
   return <div className={cn('rounded-card bg-surface shadow-card', PADDING[padding], className)} {...rest} />
 }
@@ -28,7 +28,7 @@ export interface CardHeaderProps extends Omit<ComponentProps<'div'>, 'title'> {
 /** 카드 머리: 제목 15px · 아래 0.5px 선 */
 export function CardHeader({ title, aside, titleAs: Heading = 'h2', className, ...rest }: CardHeaderProps) {
   return (
-    <div className={cn('flex items-center justify-between gap-3 px-4 py-3 shadow-hairline', className)} {...rest}>
+    <div className={cn('flex flex-wrap items-center justify-between gap-2 rounded-t-card border-b border-line bg-canvas/60 px-4 py-2.5', className)} {...rest}>
       <Heading className="m-0 text-md font-semibold tracking-heading">{title}</Heading>
       {aside !== undefined && <div className="flex items-center gap-3 text-xs text-ink-muted">{aside}</div>}
     </div>

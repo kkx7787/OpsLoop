@@ -43,7 +43,7 @@ export function IncidentRow({ incident, elapsedSeconds, rowIndex, className, onC
       aria-rowindex={rowIndex}
       data-incident-key={incident.incident_key}
       onClick={handleClick}
-      className={cn(ROW_GRID, 'min-h-[68px] cursor-pointer border-l-2 border-transparent px-4 py-3 text-sm shadow-hairline hover:bg-primary-soft', pending && 'border-l-primary/45', className)}
+      className={cn(ROW_GRID, 'min-h-[52px] cursor-pointer border-l-2 border-transparent px-3 py-1.5 text-sm shadow-hairline hover:bg-primary-soft/60', pending && 'border-l-primary/25', className)}
       {...rest}
     >
       <div role="cell">
@@ -58,16 +58,16 @@ export function IncidentRow({ incident, elapsedSeconds, rowIndex, className, onC
       <div role="cell">
         <SeverityBadge severity={incident.severity} />
       </div>
-      <div role="cell" className="flex min-w-0 flex-col gap-1">
+      <div role="cell" className="flex min-w-0 flex-col gap-0.5">
         <div className="flex min-w-0 items-baseline gap-2">
-          <Link to={href} className="shrink-0 font-mono font-semibold text-primary">
+          <Link to={href} className="shrink-0 font-mono text-xs font-medium text-primary">
             {incident.rule_id}
           </Link>
           <span className="truncate font-medium text-ink" title={incident.rule_name}>{incident.rule_name}</span>
         </div>
         <span className="text-xs text-ink-muted tabular-nums">{incident.signal_count} 신호 · {incident.session_count} 세션</span>
       </div>
-      <div role="cell" className="flex min-w-0 flex-col gap-1">
+      <div role="cell" className="flex min-w-0 flex-col gap-0.5">
         <span className="truncate font-mono" title={sourceOf(incident)}>{sourceOf(incident)}</span>
         {incident.actor_ip && incident.target && <span className="truncate text-xs text-ink-muted" title={incident.target}>대상 {incident.target}</span>}
         <span className="text-xs text-ink-muted">{sensorOf(incident.rule_id)}</span>
@@ -76,7 +76,7 @@ export function IncidentRow({ incident, elapsedSeconds, rowIndex, className, onC
         <IncidentStatusLabel status={incident.status} />
       </div>
       <div role="cell">
-        {incident.verdict ? <VerdictBadge verdict={incident.verdict} /> : <span className="rounded-control bg-primary-soft px-2 py-1 text-xs font-semibold text-primary">미판정</span>}
+        {incident.verdict ? <VerdictBadge verdict={incident.verdict} /> : <span className="text-xs font-medium text-primary">미판정</span>}
       </div>
     </div>
   )

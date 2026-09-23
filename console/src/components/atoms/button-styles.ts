@@ -1,7 +1,7 @@
 import { cn } from '@/lib/cn'
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger'
-/** sm 30px(상태 카드) · md 32px(필터 · 도구 막대) · lg 40px(상태 화면 · 판정 기록) · icon 28px 원형 */
+/** sm 30px(상태 카드) · md 32px(필터 · 도구 막대) · lg 40px(상태 화면 · 판정 기록) · icon 28px */
 export type ButtonSize = 'sm' | 'md' | 'lg' | 'icon'
 
 const BASE =
@@ -27,7 +27,7 @@ const SIZE: Record<ButtonSize, string> = {
   sm: 'h-[30px] rounded-control px-3 text-xs',
   md: 'h-8 rounded-control px-3 text-sm',
   lg: 'h-10 rounded-panel px-5 text-base font-medium',
-  icon: 'size-7 rounded-full p-0 text-sm',
+  icon: 'size-7 rounded-control p-0 text-sm',
 }
 
 export interface ButtonClassOptions {

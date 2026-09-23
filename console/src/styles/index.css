@@ -1,11 +1,11 @@
 @import "tailwindcss";
 
 /*
- * 디자인 토큰 — 와이어프레임(Main · States · Error.dc.html)의 값을 옮긴 것이다.
+ * 디자인 토큰 — 2026-09-23 채택한 콘솔 디자인 기준. 새 화면도 이 값을 사용한다.
  * 색은 역할 이름으로 쓴다(text-ink, bg-danger-soft …). 상태 색(위험 · 주의 · 정상)은 뜻이 있으므로
  * 주 색상과 섞지 않는다(화면 설계 1장).
  *
- * 글자 크기는 Tailwind 의 xs · sm … 이름을 그대로 쓰되 값을 와이어프레임 눈금으로 바꾼다.
+ * 글자 크기는 Tailwind 의 xs · sm … 이름을 그대로 쓰되 아래 눈금을 사용한다.
  * 새 이름(text-caption 등)을 만들면 tailwind-merge 가 글자 색으로 오인해 크기를 지운다.
  * 모서리 · 그림자 · 자간은 새 이름을 쓰고 src/lib/cn.ts 에 등록한다.
  */
@@ -21,12 +21,12 @@
   --color-primary-soft: #e6eff7;
 
   /* 글자 · 바탕 · 선 */
-  --color-ink: #1d1d1f;
-  --color-ink-muted: #6e6e73; /* 보조 글자. 흰 바탕 5.1:1 · #f5f5f7 바탕 4.7:1 */
-  --color-canvas: #f5f5f7;
+  --color-ink: #202b36;
+  --color-ink-muted: #5f6b78; /* 보조 정보도 밝은 바탕에서 읽히도록 대비를 유지한다. */
+  --color-canvas: #f5f7f9;
   --color-surface: #ffffff;
-  --color-sidebar: #fbfbfd;
-  --color-line: #e8e8ed;
+  --color-sidebar: #f0f3f6;
+  --color-line: #dce2e8;
   --color-skeleton: #e9e9eb;
 
   /* 회색 배지. 와이어프레임의 #6e6e73 은 #f0f0f3 바탕에서 4.46:1 이라 조금 진하게(5.3:1) 둔다 */
@@ -102,15 +102,15 @@
   --tracking-tight: -0.025em; /* 페이지 제목 */
 
   /* 모서리 */
-  --radius-control: 10px; /* 버튼 · 입력 */
-  --radius-panel: 12px; /* 띠 · 안쪽 타일 · 큰 버튼 */
-  --radius-tile: 16px; /* 수치 타일 · 아이콘 칸 */
-  --radius-card: 18px; /* 카드 */
+  --radius-control: 5px; /* 버튼 · 입력 */
+  --radius-panel: 6px; /* 띠 · 안쪽 타일 · 큰 버튼 */
+  --radius-tile: 8px; /* 수치 타일 · 아이콘 칸 */
+  --radius-card: 8px; /* 카드 */
 
-  /* 그림자(0.5px 테두리를 그림자로 그린다) */
-  --shadow-card: 0 0 0 0.5px rgb(0 0 0 / 0.06), 0 2px 8px rgb(0 0 0 / 0.04);
-  --shadow-control: 0 0 0 0.5px rgb(0 0 0 / 0.14);
-  --shadow-field: 0 0 0 0.5px rgb(0 0 0 / 0.16);
+  /* 큰 패널에는 부유 그림자 대신 경계선만 둔다. */
+  --shadow-card: 0 0 0 1px var(--color-line);
+  --shadow-control: inset 0 0 0 1px var(--color-line);
+  --shadow-field: inset 0 0 0 1px #cbd3dc;
   --shadow-raised: 0 1px 3px rgb(0 0 0 / 0.12);
   --shadow-hairline: 0 0.5px 0 rgb(0 0 0 / 0.08);
   --shadow-hairline-up: 0 -0.5px 0 rgb(0 0 0 / 0.08); /* 사이드바 아래 칸의 윗선 */
