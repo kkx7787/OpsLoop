@@ -30,6 +30,8 @@ import auth
 import web
 from proposals import propose
 from dashboard import dashboard_metrics
+from access import require_role
+from operations import router as operations_router
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 NOTIFY_CHANNEL = "opsloop_incident"
@@ -110,6 +112,7 @@ app = FastAPI(title="OpsLoop API", version="0.1.0", lifespan=lifespan)
 # 화면 번들 · /api/me (web.py). 미들웨어는 나중에 붙인 것이 바깥이므로 세션 검사보다 먼저 붙여
 # 세션 검사 안쪽에 둔다. 화면 번들도 로그인 뒤에만 나간다.
 web.serve(app)
+app.include_router(operations_router)
 
 
 OPEN_PATHS = ("/health", "/login", "/logout", "/docs", "/openapi.json")
@@ -160,16 +163,6 @@ async def require_session(request: Request, call_next):
 
 # 보안 헤더 · CORS · 출처 확인 (web.py). 세션 검사보다 나중에 붙여 그 바깥에 둔다.
 web.guard(app)
-
-
-def require_role(request: Request, *roles: str) -> dict:
-    """되돌리는 행위와 기준을 바꾸는 행위를 나눈다 (화면 설계 9장)."""
-    user = getattr(request.state, "user", None)
-    if user is None:
-        raise HTTPException(status_code=401, detail="인증이 필요합니다")
-    if user["r"] not in roles:
-        raise HTTPException(status_code=403, detail=f"권한이 없습니다 ({user['r']})")
-    return user
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -454,13 +447,6 @@ async def summary():
         "latest_event": ev["latest"].isoformat() if ev["latest"] else None,
         "blocked_ips": blocked,
     }
-
-
-@app.get("/api/rules/quality")
-async def rule_quality():
-    async with app.state.pool.acquire() as c:
-        rows = await c.fetch("SELECT * FROM rule_quality ORDER BY rule_id, rule_version")
-    return [dict(r) for r in rows]
 
 
 # ----------------------------------------------------------------------

@@ -238,7 +238,10 @@ SELECT
     count(*) FILTER (WHERE v.verdict = 'undetermined')              AS undetermined,
     count(v.id) FILTER (WHERE v.verdict <> 'undetermined')          AS judged_effective
 FROM incidents i
-LEFT JOIN verdicts v ON v.incident_key = i.incident_key
+LEFT JOIN LATERAL (
+    SELECT id, verdict FROM verdicts WHERE incident_key = i.incident_key
+    ORDER BY created_at DESC, id DESC LIMIT 1
+) v ON true
 GROUP BY i.rule_id, i.rule_version;
 
 -- 관제 대상 수집 (이슈 #11 · 2026-09-21)
@@ -707,13 +710,13 @@ CREATE OR REPLACE TRIGGER trg_audit_blocklist
     AFTER UPDATE OF released_at, expires_at, actor_ip OR DELETE ON blocklist
     FOR EACH ROW EXECUTE FUNCTION audit_blocklist();
 
--- 감사 기록 조회 (S-14 의 원천). 지금은 차단 목록 감사만 담는다
+-- 감사 기록 조회 (S-14). 차단 변경과 콘솔에서 발급·취소한 노드 토큰의 메타데이터만 담는다
 CREATE OR REPLACE VIEW audit_log AS
 SELECT ts, eventid, username AS actor, host(src_ip) AS db_client, input AS detail
   FROM events
- WHERE sensor = 'audit' AND eventid LIKE 'console.block.%';
+ WHERE sensor = 'audit' AND (eventid LIKE 'console.block.%' OR eventid LIKE 'console.node.token.%');
 
--- 차단 목록 감사 행은 추가만 된다. 적재기 · 다리는 INSERT … DO NOTHING 만 하고,
+-- 차단 변경·등록 토큰 감사 행은 추가만 된다. 적재기 · 다리는 INSERT … DO NOTHING 만 하고,
 --   parse_decoy.py 의 출처 재분류는 decoy 행만 고치므로 걸리지 않는다
 CREATE OR REPLACE FUNCTION audit_append_only() RETURNS trigger
 LANGUAGE plpgsql AS $$
@@ -723,5 +726,5 @@ END;
 $$;
 CREATE OR REPLACE TRIGGER trg_audit_append_only
     BEFORE UPDATE OR DELETE ON events
-    FOR EACH ROW WHEN (OLD.sensor = 'audit' AND OLD.eventid LIKE 'console.block.%')
+    FOR EACH ROW WHEN (OLD.sensor = 'audit' AND (OLD.eventid LIKE 'console.block.%' OR OLD.eventid LIKE 'console.node.token.%'))
     EXECUTE FUNCTION audit_append_only();

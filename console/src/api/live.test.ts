@@ -4,6 +4,7 @@ import { createElement, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { noRetryClient } from '@/test/render'
 import { incidentKeys, ruleKeys } from './incidents'
+import { nodeKey, auditKey } from './operations'
 import { monitoringKeys } from './monitoring-keys'
 import { applyLiveMessage, backoffMs, connectLive, parseLiveMessage, useLiveUpdates, wsUrl, type LiveSocket, type LiveState } from './live'
 
@@ -92,7 +93,7 @@ describe('applyLiveMessage', () => {
 
     invalidate.mockClear()
     applyLiveMessage(client, { type: 'action.created' })
-    expect(invalidate).toHaveBeenCalledTimes(3)
+    expect(invalidate).toHaveBeenCalledTimes(4)
     expect(invalidate).toHaveBeenCalledWith({ queryKey: incidentKeys.lists() })
   })
 
@@ -183,7 +184,7 @@ describe('connectLive', () => {
     FakeSocket.last().drop()
     vi.advanceTimersByTime(1_000)
     FakeSocket.last().open()
-    for (const queryKey of [incidentKeys.all, ruleKeys.all, monitoringKeys.summary, monitoringKeys.blocklist]) {
+    for (const queryKey of [incidentKeys.all, ruleKeys.all, monitoringKeys.summary, monitoringKeys.blocklist, nodeKey, auditKey]) {
       expect(invalidate).toHaveBeenCalledWith({ queryKey })
     }
     stop()

@@ -1,6 +1,7 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { incidentKeys, ruleKeys } from './incidents'
+import { nodeKey, auditKey } from './operations'
 import { monitoringKeys } from './monitoring-keys'
 
 /**
@@ -89,7 +90,10 @@ export function applyLiveMessage(queryClient: QueryClient, message: LiveMessage)
       void queryClient.invalidateQueries({ queryKey: incidentKeys.lists() })
       if (message.type === 'verdict.created') void queryClient.invalidateQueries({ queryKey: ruleKeys.quality() })
       void queryClient.invalidateQueries({ queryKey: monitoringKeys.summary })
-      if (message.type === 'action.created') void queryClient.invalidateQueries({ queryKey: monitoringKeys.blocklist })
+      if (message.type === 'action.created') {
+        void queryClient.invalidateQueries({ queryKey: monitoringKeys.blocklist })
+        void queryClient.invalidateQueries({ queryKey: auditKey })
+      }
       return
     default:
       return
@@ -132,7 +136,7 @@ export function connectLive(queryClient: QueryClient, options: LiveOptions = {})
       if (!mine()) return
       if (connectedBefore) {
         // 끊긴 동안의 통보는 다시 오지 않으므로 재접속 때 현재 상태를 재조회한다.
-        for (const queryKey of [incidentKeys.all, ruleKeys.all, monitoringKeys.summary, monitoringKeys.blocklist]) {
+        for (const queryKey of [incidentKeys.all, ruleKeys.all, monitoringKeys.summary, monitoringKeys.blocklist, nodeKey, auditKey]) {
           void queryClient.invalidateQueries({ queryKey })
         }
       }
