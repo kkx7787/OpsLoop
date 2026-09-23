@@ -554,6 +554,14 @@ class ConsistencyTest(unittest.TestCase):
         self.assertNotIn("ExecStop", unit.replace("# ExecStop", ""))
         self.assertIn("Before=network-pre.target docker.service", unit)
 
+    def test_지표_타이머는_단조_시계(self):
+        # 달력 타이머는 부팅 직후 시계 되돌림(RTC 를 UTC 로 읽어 +9h)에 다음 실행이 8시간 뒤로 밀린다
+        timer = read(os.path.join(FILES, "opsloop-metrics.timer"))
+        self.assertNotIn("OnCalendar=", timer)
+        self.assertIn("OnBootSec=1min", timer)
+        self.assertIn("OnUnitActiveSec=1min", timer)
+        self.assertIn("AccuracySec=1ms", timer)
+
     def test_인벤토리(self):
         inv = read(os.path.join(HERE, "inventory.ini"))
         for host, addr in (("fw", "192.168.70.254"), ("web01", "192.168.50.21"), ("data01", "192.168.60.11"),

@@ -36,7 +36,9 @@ echo "== 1. 복제 ($VNET · $MAC · ${MEM}MB · ${CPU}core)"
 python3 - "$TARGET" "$NAME" "$MEM" "$CPU" "$VNET" "$MAC" <<'PY'
 import sys, re
 vmx, name, mem, cpu, vnet, mac = sys.argv[1:7]
-lines = [l for l in open(vmx) if not re.match(r'^(ethernet\d+\.|memsize|numvcpus|displayName)', l)]
+lines = [l for l in open(vmx) if not re.match(r'^(ethernet\d+\.|memsize|numvcpus|displayName|rtc\.startInUTC)', l)]
+# 가상 RTC 를 UTC 로 받는다. 없으면 Mac 지역 시각을 줘서 게스트가 9시간 앞선 채 부팅한다 (infra/vmware/README.md 시간 동기화)
+lines.append('rtc.startInUTC = "TRUE"\n')
 lines += [f'displayName = "{name}"\n', f'memsize = "{mem}"\n', f'numvcpus = "{cpu}"\n',
           'ethernet0.present = "TRUE"\n', 'ethernet0.virtualDev = "vmxnet3"\n',
           'ethernet0.connectionType = "custom"\n', f'ethernet0.vnet = "{vnet}"\n',
