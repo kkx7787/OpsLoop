@@ -1,6 +1,7 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { incidentKeys, ruleKeys } from './incidents'
+import { monitoringKeys } from './monitoring-keys'
 
 /**
  * 실시간 통보(WS /ws). 서버는 접속하면 {type:'hello'} 를 보내고, 그 뒤로 사건 · 판정 · 조치가 생길 때마다 알린다.
@@ -80,12 +81,15 @@ export function applyLiveMessage(queryClient: QueryClient, message: LiveMessage)
   switch (message.type) {
     case 'incident.created':
       void queryClient.invalidateQueries({ queryKey: incidentKeys.lists() })
+      void queryClient.invalidateQueries({ queryKey: monitoringKeys.summary })
       return
     case 'verdict.created':
     case 'action.created':
       if (typeof key === 'string' && key) void queryClient.invalidateQueries({ queryKey: incidentKeys.detail(key) })
       void queryClient.invalidateQueries({ queryKey: incidentKeys.lists() })
       if (message.type === 'verdict.created') void queryClient.invalidateQueries({ queryKey: ruleKeys.quality() })
+      void queryClient.invalidateQueries({ queryKey: monitoringKeys.summary })
+      if (message.type === 'action.created') void queryClient.invalidateQueries({ queryKey: monitoringKeys.blocklist })
       return
     default:
       return
@@ -106,6 +110,7 @@ export function connectLive(queryClient: QueryClient, options: LiveOptions = {})
   let timer: ReturnType<typeof setTimeout> | undefined
   let retries = 0
   let stopped = false
+  let connectedBefore = false
 
   const emit = (status: LiveStatus) => options.onState?.({ status, retries })
 
@@ -125,6 +130,13 @@ export function connectLive(queryClient: QueryClient, options: LiveOptions = {})
 
     current.addEventListener('open', () => {
       if (!mine()) return
+      if (connectedBefore) {
+        // 끊긴 동안의 통보는 다시 오지 않으므로 재접속 때 현재 상태를 재조회한다.
+        for (const queryKey of [incidentKeys.all, ruleKeys.all, monitoringKeys.summary, monitoringKeys.blocklist]) {
+          void queryClient.invalidateQueries({ queryKey })
+        }
+      }
+      connectedBefore = true
       retries = 0
       emit('connected')
     })
@@ -139,6 +151,7 @@ export function connectLive(queryClient: QueryClient, options: LiveOptions = {})
       const code = typeof (ev as CloseEvent).code === 'number' ? (ev as CloseEvent).code : 0
       if (code === CLOSE_UNAUTHORIZED) {
         emit('closed')
+        void queryClient.invalidateQueries({ queryKey: ['me'] })
         return
       }
       schedule()

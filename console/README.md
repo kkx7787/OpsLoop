@@ -23,7 +23,9 @@ src/lib/time.ts        KST 표시 · 경과 시간(secondsSince)
 src/api/client.ts      fetch 공통 인스턴스(api). 시간 초과 15초 · 401 은 /login?next= 로 한 번만 이동 · 오류는 ApiError
 src/api/queryClient.ts 재시도 규칙: 5xx · 네트워크만 2회
 src/api/incidents.ts   인시던트 목록(useIncidentsPage · 페이지별 limit/offset) · 상세(useIncident) · 판정 · 조치(useVerdictMutation · useActionMutation) · 규칙 품질. 쿼리 키는 incidentKeys · ruleKeys
-src/api/live.ts        실시간 통보(WS /ws). useLiveUpdates 가 한 번 잇고 통보마다 해당 쿼리를 무효화한다. 끊기면 1초 → 30초 지수 백오프
+src/api/monitoring.ts  대시보드(useSummary) · 차단 목록(useBlocklist). 기존 API 조회 · 30초 재조회 · 서버 시각으로 만료 계산
+src/api/live-context.ts 공통 연결 상태. S-10에서 웹소켓 끊김과 REST 조회 실패를 구별
+src/api/live.ts        실시간 통보(WS /ws). useLiveUpdates 가 한 번 잇고 통보마다 해당 쿼리를 무효화한다. 끊기면 1초 → 30초 지수 백오프. 재접속하면 놓친 통보를 보완하도록 목록·상세·지표를 재조회
 src/auth/roles.ts      권한표(화면 설계 15장). can(role, action) · permission(role, action)
 src/auth/useMe.ts      GET /api/me · usePermission(action)
 src/lib/useNow.ts      상단바 시계용 지금 시각
@@ -38,7 +40,9 @@ src/app/router.tsx     경로표(react-router 7). / · /incidents · /incidents/
 src/app/nav.ts         메뉴 묶음(관제 · 대응 · 분석 · 수집 · 관리). 관리 묶음은 admin 이 아니면 흐리게
 src/app/screens.ts     화면 자리 정보(설계 번호 · 제목 · 한 줄 설명 · WBS)
 src/app/ComponentCatalog.tsx  공통 컴포넌트 모음. 개발 서버에서만 /dev/components
-src/pages/             화면 자리(PlaceholderPage · PendingCard · NotFoundPage · RouteError)
+src/pages/             구현 화면 및 나머지 화면 자리(PlaceholderPage · PendingCard · NotFoundPage · RouteError)
+  pages/dashboard/      미판정 현황(S-02): 경과 분포 · 목표 초과 · 우선 확인 8건 · 규칙별 비조치율
+  pages/blocklist/      차단 목록(S-06): 활성·만료·해제 · 검색·페이지 탐색 · 관리자 해제
   pages/incidents/       인시던트 목록 화면(IncidentsPage). 조건·page·page_size를 주소에 두어 새로고침·뒤로 가기·공유에도 남는다
   pages/incident-detail/ 인시던트 상세 · 판정 화면(IncidentDetailPage). 사건 키가 바뀌면 판정 소요 시계를 다시 시작한다
 src/test/              vitest setup(WebSocket 은 아무 일도 하지 않는 소켓) · render(메모리 라우터 · /api/me 스텁)
@@ -59,7 +63,7 @@ src/test/              vitest setup(WebSocket 은 아무 일도 하지 않는 �
 ## 채택한 디자인 기준 — 2026-09-23
 
 - 비교 브랜치 `codex/console-design-comparison`의 디자인(`ffa9966`)을 작업 브랜치에 채택했다.
-- 적용 범위: 공통 화면 틀·컴포넌트, 인시던트 목록(S-03), 상세·판정(S-04·S-05). 서버 로그인과 나머지 개별 화면·와이어프레임은 별도 작업이다.
+- 적용 범위: 공통 화면 틀·컴포넌트, 인시던트 목록(S-03), 상세·판정(S-04·S-05). 대시보드(S-02)·차단 목록(S-06)·연결 상태(S-10)도 같은 기준을 적용한다. 서버 로그인과 나머지 개별 화면·와이어프레임은 별도 작업이다.
 - 데스크톱: 상단바 48px, 본문 위아래 16px. 목록은 나머지 화면 높이를 사용한다.
 - 카드 8px·입력 5px 모서리, 패널에는 얇은 선을 사용한다.
 - 심각도는 기존 등급 색, 신규 상태는 중립색, 판정 시간 목표는 황갈색으로 구별한다.
@@ -68,4 +72,16 @@ src/test/              vitest setup(WebSocket 은 아무 일도 하지 않는 �
 - 새 화면은 `AppLayout`, `PageHeader`, `Card`, `Button`, 공통 입력·상태 컴포넌트를 재사용한다. 색·간격·모서리를 화면마다 따로 정하지 않는다.
 - 목록은 필터 → 결과 → 페이지 탐색 순서로 배치한다. 표가 길면 표 안에서 스크롤하고, 작은 화면에서는 내용에 따른 자연스러운 스크롤을 허용한다.
 - 원래 와이어프레임의 기능은 구현 여부를 확인해 반영한다. 디자인 변경만으로 기능을 삭제하거나 예시 수치를 실제 운영 상태로 표시하지 않는다.
-- 기존안과 개선안의 비교 도구·화면 검증 기록은 비교 브랜치에 보존한다. 이 작업 브랜치에는 제품 디자인과 개발 기준을 반영한다.
+- 비교 브랜치는 채택 후 정리했으며 이력은 로컬 `output/git-archive/console-design-comparison-8107502.bundle`에 보관했다. 현재 코드에는 채택한 제품 디자인을 유지한다.
+
+
+## 대시보드 · 차단 목록 (#26)
+
+- 새 API 경로 없이 `/api/stats/summary`와 `/api/blocklist` 응답에 필요한 집계·집행 필드를 추가했다. API와 화면 빌드를 함께 배포해야 한다.
+- 미판정은 상태값이 아니라 판정 이력이 없는 사건이다. 목표 임박은 목표의 2/3 이상, 초과는 목표 이상이다. 경과 시간은 서버 조회 시각 기준이다.
+- 비조치율은 사건별 마지막 판정만 센다. `(무시 가능 + 오탐 + 양성 정탐) / (마지막 판정 중 미결 제외)`이며 유효 판정이 없으면 `판정 없음`이다. 여러 규칙 버전은 따로 표시한다.
+- 차단은 활성(만료·해제 전)·만료·해제로 구분하고, 집행 확인은 `enforced_at`으로 별도 표시한다. 화면의 활성 요청 수는 실제 트래픽 차단을 보장하지 않는다.
+- 차단 해제는 admin만 할 수 있다. 서버가 행을 잠그고 만료·선행 해제·근거 사건 변경을 검사해 409로 거부하며, 처음 해제한 사람과 시각을 보존한다.
+- 웹소켓 단절 시 재연결 안내와 30초 조회를 유지한다. REST 조회도 실패하면 마지막 결과·시각을 남기고 해제 버튼을 비활성화한다. DB·센서 장애 원인을 추정해 표시하지 않는다.
+- 차단 목록은 받은 배열에서 검색·페이지 탐색한다. 서버 페이지 API는 이번 범위에 추가하지 않았다.
+- DB 회귀 시험: `OPSLOOP_TEST_DATABASE_URL=... python3 -m unittest discover -s app -p test_dashboard_db.py`. 연결별 임시 테이블만 사용하며 운영 계정·사건·차단을 생성하지 않는다.

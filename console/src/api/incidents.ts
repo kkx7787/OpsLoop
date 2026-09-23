@@ -1,6 +1,7 @@
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { ACTION_STATUS, isIncidentAction, type IncidentAction, type IncidentStatus, type Severity, type Verdict } from '@/lib/domain'
 import { api } from './client'
+import { monitoringKeys } from './monitoring-keys'
 
 /**
  * 인시던트 API(app/main.py). 응답 필드 이름은 서버 그대로 둔다(snake_case).
@@ -377,6 +378,7 @@ export function useVerdictMutation(key: string) {
       queryClient.setQueryData<IncidentDetail>(incidentKeys.detail(key), (prev) => (prev ? applyVerdict(prev, created) : prev))
       void queryClient.invalidateQueries({ queryKey: incidentKeys.lists() })
       void queryClient.invalidateQueries({ queryKey: ruleKeys.quality() })
+      void queryClient.invalidateQueries({ queryKey: monitoringKeys.summary })
     },
   })
 }
@@ -390,6 +392,8 @@ export function useActionMutation(key: string) {
       queryClient.setQueryData<IncidentDetail>(incidentKeys.detail(key), (prev) => (prev ? applyAction(prev, created) : prev))
       void queryClient.invalidateQueries({ queryKey: incidentKeys.lists() })
       if (BLOCKLIST_ACTIONS.has(created.action)) void queryClient.invalidateQueries({ queryKey: incidentKeys.detail(key) })
+      void queryClient.invalidateQueries({ queryKey: monitoringKeys.summary })
+      if (BLOCKLIST_ACTIONS.has(created.action)) void queryClient.invalidateQueries({ queryKey: monitoringKeys.blocklist })
     },
   })
 }

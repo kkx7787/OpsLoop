@@ -2,6 +2,7 @@ import { screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderRoutes, stubMe } from '@/test/render'
 import { routes } from './router'
+import { MONITORING_SUMMARY } from '@/test/monitoring-fixtures'
 
 function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -12,6 +13,8 @@ function stubIncidents(me: unknown) {
   const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
     const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
     const url = new URL(raw, 'http://localhost')
+    if (url.pathname === '/api/stats/summary') return json(MONITORING_SUMMARY, 200)
+    if (url.pathname === '/api/blocklist') return json([], 200)
     if (url.pathname === '/api/me') return json(me, 200)
     if (url.pathname === '/api/incidents') return json({ total: 0, limit: 50, offset: 0, items: [] }, 200)
     if (url.pathname === '/api/rules/quality') return json([], 200)
@@ -36,17 +39,14 @@ describe('경로표', () => {
     expect(screen.getByRole('navigation', { name: '주 메뉴' })).toBeInTheDocument()
   })
 
-  it('대시보드는 / 에 있고 자리 페이지는 제목 · 화면 번호 · 구현 예정 WBS 를 보인다', async () => {
-    stubMe({ username: 'han', role: 'operator' })
-    renderRoutes(routes, '/')
-    expect(await screen.findByRole('heading', { level: 1, name: '미판정 현황' })).toBeInTheDocument()
-    expect(screen.getByText('S-02')).toBeInTheDocument()
-    expect(screen.getByText('구현 예정')).toBeInTheDocument()
-    expect(screen.getByText('WBS 3.6.4')).toBeInTheDocument()
+  it.each([['/', '미판정 현황'], ['/blocklist', '차단 목록']])('%s는 구현 화면이다', async (path, title) => {
+    stubIncidents({ username: 'han', role: 'operator' })
+    renderRoutes(routes, path)
+    expect(await screen.findByRole('heading', { level: 1, name: title })).toBeInTheDocument()
+    expect(screen.queryByText('구현 예정')).toBeNull()
   })
 
   it.each([
-    ['/blocklist', '차단 목록', 'S-06'],
     ['/rules', '규칙과 리플레이', 'S-07'],
     ['/sources', '출발지 분석', 'S-09'],
     ['/reports', '보고서', 'S-11'],
