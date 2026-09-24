@@ -709,13 +709,14 @@ CREATE OR REPLACE TRIGGER trg_audit_blocklist
     AFTER UPDATE OF released_at, expires_at, actor_ip OR DELETE ON blocklist
     FOR EACH ROW EXECUTE FUNCTION audit_blocklist();
 
--- 감사 기록 조회 (S-14). 차단 변경과 콘솔에서 발급·취소한 노드 토큰의 메타데이터만 담는다
+-- 감사 기록 조회 (S-14). 차단 변경 · 콘솔에서 발급·취소한 노드 토큰 · 알림 채널 변경의 메타데이터만 담는다
 CREATE OR REPLACE VIEW audit_log AS
 SELECT ts, eventid, username AS actor, host(src_ip) AS db_client, input AS detail
   FROM events
- WHERE sensor = 'audit' AND (eventid LIKE 'console.block.%' OR eventid LIKE 'console.node.token.%');
+ WHERE sensor = 'audit' AND (eventid LIKE 'console.block.%' OR eventid LIKE 'console.node.token.%'
+                             OR eventid LIKE 'console.notify.%');
 
--- 차단 변경·등록 토큰 감사 행은 추가만 된다. 적재기 · 다리는 INSERT … DO NOTHING 만 하고,
+-- 차단 변경 · 등록 토큰 · 알림 채널 감사 행은 추가만 된다. 적재기 · 다리는 INSERT … DO NOTHING 만 하고,
 --   parse_decoy.py 의 출처 재분류는 decoy 행만 고치므로 걸리지 않는다
 CREATE OR REPLACE FUNCTION audit_append_only() RETURNS trigger
 LANGUAGE plpgsql AS $$
@@ -725,7 +726,8 @@ END;
 $$;
 CREATE OR REPLACE TRIGGER trg_audit_append_only
     BEFORE UPDATE OR DELETE ON events
-    FOR EACH ROW WHEN (OLD.sensor = 'audit' AND (OLD.eventid LIKE 'console.block.%' OR OLD.eventid LIKE 'console.node.token.%'))
+    FOR EACH ROW WHEN (OLD.sensor = 'audit' AND (OLD.eventid LIKE 'console.block.%' OR OLD.eventid LIKE 'console.node.token.%'
+                                                 OR OLD.eventid LIKE 'console.notify.%'))
     EXECUTE FUNCTION audit_append_only();
 
 -- 역할 분리 (이슈 #31 · 2026-09-24)
@@ -808,6 +810,68 @@ BEGIN
         REVOKE ALL ON ALL TABLES IN SCHEMA public FROM opsloop_backup;
         REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM opsloop_backup;
         GRANT pg_read_all_data TO opsloop_backup WITH INHERIT TRUE;      -- pg_dump 에 필요한 읽기 전부. 역할이 NOINHERIT 여도 물려받는다
+    END IF;
+END
+$$;
+
+-- 알림 (이슈 #33)
+--   콘솔이 Microsoft Teams(Workflows 웹훅 · Adaptive Card) 와 일반 웹훅(JSON) 으로 사건을 알린다.
+--   등급은 즉시(immediate) 와 일일 요약(daily 09:00 KST), 사건 종류는 incident.created · pending.overdue · node.silent 다.
+--   url 은 비밀값이다. 콘솔은 응답 · 감사 · 이력 · 로그 어디에도 원문을 넣지 않고 호스트와 끝 4자만 보인다.
+--   메시지 틀은 문자 치환만 한다 ({event_label} {count} {severity_counts} {rule_id} {rule_name} {severity} {who}
+--   {elapsed} {first_ts} {incident_key} {link}). 형식 지정자는 받지 않는다.
+CREATE TABLE IF NOT EXISTS notify_channels (
+    id              bigserial PRIMARY KEY,
+    name            text        NOT NULL UNIQUE,
+    kind            text        NOT NULL CHECK (kind IN ('teams', 'webhook')),
+    url             text        NOT NULL,
+    grade           text        NOT NULL CHECK (grade IN ('immediate', 'daily')),
+    events          text[]      NOT NULL DEFAULT '{incident.created,pending.overdue,node.silent}',
+    min_severity    text        NOT NULL DEFAULT 'low' CHECK (min_severity IN ('critical', 'high', 'medium', 'low')),
+    batch_seconds   integer     NOT NULL DEFAULT 300 CHECK (batch_seconds BETWEEN 0 AND 86400),
+    template_header text        NOT NULL DEFAULT '[OpsLoop] {event_label} {count}건',
+    template_item   text        NOT NULL DEFAULT '{rule_id} {rule_name} · {severity} · {who} · {elapsed}',
+    enabled         boolean     NOT NULL DEFAULT true,
+    created_by      text,
+    created_at      timestamptz NOT NULL DEFAULT now(),
+    updated_by      text,
+    updated_at      timestamptz NOT NULL DEFAULT now()
+);
+-- 알림 기준 시각. 만들 때 · 다시 켤 때 · 등급이나 사건 종류 · 최소 심각도로 범위를 넓힐 때 now() 가 된다.
+--   발송기는 이 시각 뒤에 생긴 사건 · 목표를 넘긴 미판정만 넣어, 켜는 순간 밀린 알림이 쏟아지지 않게 한다.
+ALTER TABLE notify_channels ADD COLUMN IF NOT EXISTS enabled_at timestamptz NOT NULL DEFAULT now();
+
+-- 발송 이력. (채널, 사건 종류, 대상) 이 같으면 한 번만 넣는다. 대상은 incident_key · 'node:<id>@<침묵 시작 ISO>' ·
+--   'YYYY-MM-DD'(일일 요약) · 'test:<uuid>'(시험 발송) 이다. payload 는 요약만 담고 원문 로그를 넣지 않는다.
+--   보내기는 status='queued' AND next_attempt_at <= now() 인 행을 FOR UPDATE SKIP LOCKED 로 집는다.
+--   실패하면 attempts 를 올리고 1 · 5 · 15분 뒤 다시 보내며, 넘기면 failed 다. error 는 예외 이름 · 응답 코드만이다.
+CREATE TABLE IF NOT EXISTS notify_deliveries (
+    id              bigserial PRIMARY KEY,
+    channel_id      bigint      NOT NULL REFERENCES notify_channels (id) ON DELETE CASCADE,
+    event           text        NOT NULL
+                    CHECK (event IN ('incident.created', 'pending.overdue', 'node.silent', 'daily.summary', 'test')),
+    subject_key     text        NOT NULL,
+    payload         jsonb       NOT NULL,
+    status          text        NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'sending', 'sent', 'failed')),
+    attempts        integer     NOT NULL DEFAULT 0,
+    next_attempt_at timestamptz NOT NULL DEFAULT now(),
+    claimed_at      timestamptz,
+    claimed_by      text,
+    response_code   integer,
+    error           text,
+    created_at      timestamptz NOT NULL DEFAULT now(),
+    sent_at         timestamptz,
+    UNIQUE (channel_id, event, subject_key)
+);
+CREATE INDEX IF NOT EXISTS idx_notify_deliveries_due     ON notify_deliveries (status, next_attempt_at);
+CREATE INDEX IF NOT EXISTS idx_notify_deliveries_channel ON notify_deliveries (channel_id, created_at DESC);
+
+-- 콘솔 역할(opsloop_console)이 있으면 알림 표의 읽기 · 쓰기와 시퀀스 사용을 준다. 역할은 여기서 만들지 않는다.
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'opsloop_console') THEN
+        GRANT SELECT, INSERT, UPDATE ON notify_channels, notify_deliveries TO opsloop_console;
+        GRANT USAGE ON SEQUENCE notify_channels_id_seq, notify_deliveries_id_seq TO opsloop_console;
     END IF;
 END
 $$;

@@ -32,6 +32,8 @@ from proposals import propose
 from dashboard import dashboard_metrics
 from access import require_role
 from operations import router as operations_router
+from notify import router as notify_router
+from notifier import Notifier
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 NOTIFY_CHANNEL = "opsloop_incident"
@@ -99,9 +101,14 @@ async def lifespan(app: FastAPI):
     await listener.add_listener(NOTIFY_CHANNEL, on_notify)
     app.state.listener = listener
 
+    # 알림 발송기 (이슈 #33). 큐 채우기 · 보내기 두 루프를 여기서 띄우고 종료 때 취소한다.
+    app.state.notifier = Notifier(app.state.pool)
+    await app.state.notifier.start()
+
     try:
         yield
     finally:
+        await app.state.notifier.stop()
         await listener.remove_listener(NOTIFY_CHANNEL, on_notify)
         await listener.close()
         await app.state.pool.close()
@@ -113,6 +120,7 @@ app = FastAPI(title="OpsLoop API", version="0.1.0", lifespan=lifespan)
 # 세션 검사 안쪽에 둔다. 화면 번들도 로그인 뒤에만 나간다.
 web.serve(app)
 app.include_router(operations_router)
+app.include_router(notify_router)
 
 
 OPEN_PATHS = ("/health", "/login", "/logout", "/docs", "/openapi.json")

@@ -38,7 +38,7 @@ export const routes: RouteObject[] = [
           { path: 'reports', element: <PlaceholderPage screen={SCREENS.reports} /> },
           { path: 'nodes', lazy: async () => ({ Component: (await import('@/pages/nodes/NodesPage')).NodesPage }) },
           { path: 'nodes/new', lazy: async () => ({ Component: (await import('@/pages/nodes/NodeEnrollmentPage')).NodeEnrollmentPage }), handle: { crumb: '노드 추가' } satisfies RouteHandle },
-          { path: 'alerts', element: <PlaceholderPage screen={SCREENS.alerts} /> },
+          { path: 'alerts', lazy: async () => ({ Component: (await import('@/pages/alerts/AlertsPage')).AlertsPage }) },
           { path: 'audit', lazy: async () => ({ Component: (await import('@/pages/audit/AuditPage')).AuditPage }) },
           { path: 'accounts', element: <PlaceholderPage screen={SCREENS.accounts} /> },
           ...(import.meta.env.DEV

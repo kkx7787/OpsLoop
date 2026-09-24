@@ -163,8 +163,8 @@ async def audit_log(request: Request, actor: str = Query(default='',max_length=1
                     limit: int = Query(default=25,ge=1,le=100), offset: int = Query(default=0,ge=0)):
     require_role(request,'admin')
     interval(since,until)
-    # LIKE와 달리 %·_도 문자 그대로 검색한다. 대상은 detail 전체가 아니라 node/ip 필드다.
-    source = """WITH records AS (SELECT *, substring(detail from '(?:^|[[:space:]])(?:node|ip|target)=([^[:space:]]+)') AS target
+    # LIKE와 달리 %·_도 문자 그대로 검색한다. 대상은 detail 전체가 아니라 node · ip · target · channel 필드다.
+    source = """WITH records AS (SELECT *, substring(detail from '(?:^|[[:space:]])(?:node|ip|target|channel)=([^[:space:]]+)') AS target
                               FROM audit_log) """
     where = """WHERE ($1='' OR position(lower($1) in lower(coalesce(actor,'')))>0)
         AND ($2='' OR position(lower($2) in lower(coalesce(target,'')))>0)

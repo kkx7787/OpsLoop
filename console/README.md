@@ -24,6 +24,7 @@ src/api/client.ts      fetch 공통 인스턴스(api). 시간 초과 15초 · 40
 src/api/queryClient.ts 재시도 규칙: 5xx · 네트워크만 2회
 src/api/incidents.ts   인시던트 목록(useIncidentsPage · 페이지별 limit/offset) · 상세(useIncident) · 판정 · 조치(useVerdictMutation · useActionMutation) · 규칙 품질. 쿼리 키는 incidentKeys · ruleKeys
 src/api/monitoring.ts  대시보드(useSummary) · 차단 목록(useBlocklist). 기존 API 조회 · 30초 재조회 · 서버 시각으로 만료 계산
+src/api/notify.ts      알림 채널(useChannels · createChannel · updateChannel · testChannel) · 발송 이력(useDeliveries). 채널 주소는 함수로만 보내고 캐시에 두지 않는다. 쿼리 키는 notifyKeys
 src/api/live-context.ts 공통 연결 상태. S-10에서 웹소켓 끊김과 REST 조회 실패를 구별
 src/api/live.ts        실시간 통보(WS /ws). useLiveUpdates 가 한 번 잇고 통보마다 해당 쿼리를 무효화한다. 끊기면 1초 → 30초 지수 백오프. 재접속하면 놓친 통보를 보완하도록 목록·상세·지표를 재조회
 src/auth/roles.ts      권한표(화면 설계 15장). can(role, action) · permission(role, action)
@@ -34,6 +35,7 @@ src/components/        atoms · molecules · organisms · templates. index.ts �
   organisms/nav/       메뉴 조각: nav-items(자료형 · findNavItem) · NavMenu · Brand · UserPanel(로그아웃 폼) · SensorSummary
   organisms/incidents/       인시던트 목록(S-03) 조각: 조건(filters · 주소 왕복) · 표 행 · 모바일 카드 · 높이 제한 목록 · 페이지 탐색 · 조건 막대 · 경과 시간
   organisms/incident-detail/ 인시던트 상세(S-04) · 판정 패널(S-05) 조각: 머리글 · 구역 ①~⑤ · 조치 막대 · 판정 패널 · 이력 · format(서버 행 → 글)
+  organisms/notify/          알림 설정(S-12) 조각: 채널 양식(ChannelForm · 주소 password 형 · 틀 미리보기) · 채널 표(ChannelTable) · 발송 이력(DeliveryTable) · template(자리표시자 치환)
   organisms/           TopBar(경로 표시 · 실시간 연결 표시 · KST 시계 · 새로고침 · 모바일 메뉴 단추) · LiveIndicator · SideNav(208px) · MobileNav(서랍)
   templates/           AppLayout(사이드바 + 상단바 + 본문 · /api/me 확인 · 401 → 로그인 · 실시간 통보 연결) · breadcrumbs
 src/app/router.tsx     경로표(react-router 7). / · /incidents · /incidents/:key · /blocklist · /rules · /sources · /reports · /nodes · /alerts · /audit · /accounts · *
@@ -45,6 +47,7 @@ src/pages/             구현 화면 및 나머지 화면 자리(PlaceholderPage
   pages/blocklist/      차단 목록(S-06): 활성·만료·해제 · 검색·페이지 탐색 · 관리자 해제
   pages/incidents/       인시던트 목록 화면(IncidentsPage). 조건·page·page_size를 주소에 두어 새로고침·뒤로 가기·공유에도 남는다
   pages/incident-detail/ 인시던트 상세 · 판정 화면(IncidentDetailPage). 사건 키가 바뀌면 판정 소요 시계를 다시 시작한다
+  pages/alerts/          알림 설정(S-12): 채널 표 · 추가/수정 양식 · 사용/중지 · 시험 발송 · 발송 이력. admin 이 아니면 403
 src/test/              vitest setup(WebSocket 은 아무 일도 하지 않는 소켓) · render(메모리 라우터 · /api/me 스텁)
 ```
 
@@ -100,3 +103,17 @@ src/test/              vitest setup(WebSocket 은 아무 일도 하지 않는 �
 - 노드·감사는 30초 조회와 웹소켓 재접속 시 재조회한다. 판정 통보는 규칙 집계, 조치 통보는 감사 기록도 갱신한다.
 - 배포 전 `infra/migrations/20260923_console_ops.sql`을 적용한다. 새 표를 만들지 않고 최신 판정 집계 뷰, 감사 조회 뷰, 토큰 감사 행의 변경·삭제 방지 트리거를 갱신한다.
 - DB 시험: `OPSLOOP_TEST_DATABASE_URL=... python3 -m unittest discover -s app -p 'test_*db.py'`. 연결별 임시 테이블만 사용한다. 운영 테이블에 쓰는 `audit_event`는 시험에서 임시 삽입으로 교체한다.
+
+## 알림 (S-12 · #33)
+
+- `/alerts`(S-12): admin만 알림 채널(Microsoft Teams Workflows 웹훅 · 일반 웹훅 JSON)을 만들고 고치고 시험 발송하며, 발송 이력을 채널·상태별로 조회한다. 등급은 즉시(immediate)와 일일 요약(daily 09:00 KST), 사건 종류는 `incident.created` · `pending.overdue` · `node.silent` 다.
+- Teams 쪽 준비: Power Automate 에서 "Teams 웹훅 요청을 받으면 채널에 게시" 흐름을 만들고 나온 주소를 화면에 입력한다. 콘솔은 그 트리거 형식(`type: message` + Adaptive Card 1.4, "콘솔에서 보기" 단추)으로 보내고 2xx(보통 202)면 성공이다. Teams 주소는 https · 호스트 `*.environment.api.powerplatform.com` 만 받는다(옛 `*.logic.azure.com` · `*.webhook.office.com` 은 동작하지 않아 거부하고 흐름을 다시 저장하라고 안내한다).
+- 메시지 틀은 채널마다 화면에서 고친다: 머리말(`template_header`, 채널 · 사건 종류당 한 번)과 항목 한 줄(`template_item`, 사건마다 최대 20개, 넘으면 '외 n건'), 끝에 콘솔 링크. 자리표시자는 `{event_label}` `{count}` `{severity_counts}` `{rule_id}` `{rule_name}` `{severity}` `{who}` `{elapsed}` `{first_ts}` `{incident_key}` `{link}` 만 문자 치환한다(`str.format` 금지 · 형식 지정자 불허, 모르는 자리표시자는 그대로, 빈 값은 `-`). 원문 로그 · 입력된 비밀번호 · 내부 주소는 본문에 넣지 않는다. 시험 발송도 같은 틀에 예시 값을 채워 보낸다.
+- API 는 `GET/POST /api/notify/channels`, `PUT /api/notify/channels/{id}`, `POST /api/notify/channels/{id}/test`, `GET /api/notify/deliveries` 다. 채널 만들기·바꾸기는 `audit_event` 와 같은 트랜잭션이며 감사 상세에는 바뀐 필드 이름만 남긴다.
+- 발송기는 콘솔 API 안에서 돈다(큐 채우기 30초 · 보내기 15초). 묶음 시간은 (채널, 사건 종류) 무리의 첫 사건부터 재고, 그 안에 들어온 사건을 모두 한 메시지로 보낸다. 실패하면 1 · 5 · 15분 뒤 다시 보내며 3회를 넘기면 `failed` 다. 콘솔 두 대가 같은 행을 집지 않도록 DB 에서 잠그고, 결과는 자기가 집은 행에만 기록한다.
+- 채널을 만들거나 다시 켜거나 범위(등급 · 사건 종류 · 최소 심각도)를 넓히면 그 시각(`enabled_at`) 뒤의 사건 · 목표 초과만 보낸다. 끄면 대기 중인 알림은 보내지 않음(`ChannelDisabled`)으로 닫고, 사건 종류 · 등급을 바꿔 더는 보내지 않을 대기 알림은 `ChannelChanged` 로 닫는다.
+- 일일 요약 채널은 사건 종류 · 최소 심각도 · 묶음 시간 · 항목 틀을 쓰지 않는다. 양식은 이 칸을 숨기고, 미리보기는 요약 모양(머리말 + 고정 요약 줄)으로 그린다. 즉시 채널 미리보기는 1건일 때와 여러 건일 때를 같이 보인다.
+- 발송 실패 원인은 예외 이름(`gaierror` · `ConnectionRefusedError` · `TimeoutError` · `SSLCertVerificationError`)이나 응답 코드로 남기고, 화면은 이를 조치 안내(이름 해석 · 방화벽 · 인증서 · 워크플로 삭제나 주소 만료 · Teams 전송 제한)로 바꿔 보인다.
+- 채널 주소는 비밀값이다. 서버는 https 만 받고, 일반 웹훅은 사설 · 링크로컬 · localhost 주소(`ipaddress` 로 판정, 이름은 해석하지 않음)와 `user:pass@` 를 거부한다. 응답과 화면에는 호스트와 끝 4자만 보이고, 발송 이력·감사 기록·서버 로그에는 주소와 응답 본문을 넣지 않는다. 채널 목록 응답은 `no-store` 다.
+- 배포 전 `infra/migrations/20260924_notify.sql` 을 적용한다(`notify_channels` · `notify_deliveries` 표, 감사 조회 뷰 · 변경 방지 트리거 갱신). 이력의 `payload` 에는 요약만 넣고 원문 로그를 넣지 않는다.
+- 화면(`/alerts`): 채널 표(사용/중지 토글 · 시험 발송 · 수정) · 추가/수정 양식 · 발송 이력(채널 · 상태 필터, 서버 페이지 탐색)이며 30초마다 재조회한다. 주소 입력은 password 형이고 수정 때 비우면 서버가 기존 주소를 유지한다. 양식의 '예시 미리보기'는 자리표시자를 예시 값으로 바꿔 화면에서만 그리며(`organisms/notify/template.ts`), 저장 전 시뮬레이션이 아니다. 시험 발송 결과는 띠(Banner)로 보이고 이력에 `test` 로 남는다.
