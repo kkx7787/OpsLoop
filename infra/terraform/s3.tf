@@ -57,10 +57,9 @@ resource "aws_s3_bucket_versioning" "archive" {
   }
 }
 
-# 원장에 쓰는 인스턴스와 각자의 경로. 옛 허니팟(instances.tf)은 이전이 끝나 정의를 걷어내면 함께 빠진다
+# 원장에 쓰는 인스턴스와 각자의 경로. 새 노드는 여기에 더해야 원장에 쓴다 (옛 허니팟은 2026-09-25 종료 · 이슈 #37)
 locals {
   ledger_writers = merge(
-    { honeypot = { sid = "OnlyOwnHostHoneypot", arn = aws_instance.honeypot.arn, id = aws_instance.honeypot.id, sensors = ["cowrie", "decoy"] } },
     { gateway = { sid = "OnlyOwnHostGateway", arn = aws_instance.gateway.arn, id = aws_instance.gateway.id, sensors = ["gateway"] } },
     { for idx, i in aws_instance.honeypot_dmz : "honeypot_dmz_${idx}" => { sid = "OnlyOwnHostHoneypotDmz${idx}", arn = i.arn, id = i.id, sensors = ["cowrie", "decoy"] } },
   )

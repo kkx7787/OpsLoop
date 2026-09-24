@@ -2,89 +2,36 @@
 
 콘솔에서 손으로 만든 자원을 코드의 관리 아래로 옮긴다.
 
-## 왜 새로 만들지 않는가
+## 관리하는 자원
 
-수집 노드에는 축적된 원문 로그가 있고, 공인 주소가 바뀌면 유입 중인
-공격이 끊긴다. 재현성을 확보하려고 실측 데이터를 버리는 것은 순서가
-뒤바뀐 일이므로, 기존 자원을 가져오는 방식을 택했다.
+| 파일 | 자원 |
+|---|---|
+| `dmz.tf` | DMZ VPC · 공개 · DMZ 서브넷 · 라우트 표 · S3 게이트웨이 엔드포인트 |
+| `gateway.tf` | 관문 방화벽 인스턴스 · ENI · EIP · 보안그룹 |
+| `honeypot_dmz.tf` | DMZ 허니팟(허니팟 · 웹 디코이 한 대) · 보안그룹 |
+| `ssm_endpoints.tf` | SSM 전용 인터페이스 엔드포인트 3개 |
+| `iam.tf` | 센서 역할 · 관문 역할 · 원장 읽기 사용자 |
+| `s3.tf` | 원장 버킷 · 버킷 정책(인스턴스별 쓰기 경계) |
 
-## 준비
+처음에는 콘솔에서 손으로 만든 수집 노드(허니팟)와 앱 노드를 `import` 로 가져와 관리했다.
+2026-09-25 두 노드를 종료하며 정의(`instances.tf` · `security_groups.tf` · 앱 노드 전용 SSM 역할)를
+걷어냈다(이슈 #37). 앱 노드 디스크는 스냅샷 `snap-0e36ac5b0cf30b362` 로 보관한다. 옛 허니팟의 원문은
+원장(`host=i-058726c1a0671fe1d`)에 남아 있고 이미 적재돼 있다.
+
+## 준비 · 절차
 
 로컬에 AWS 자격증명이 필요하다. 저장소에는 어떤 키도 두지 않는다.
 
 ```bash
-aws configure          # ~/.aws/credentials 에 저장된다
-aws sts get-caller-identity
-```
-
-## 절차
-
-### 1. 값 채우기
-
-```bash
-cp terraform.tfvars.example terraform.tfvars
-```
-
-콘솔에서 확인할 값은 넷이다.
-
-| 값 | 확인 위치 |
-|---|---|
-| `vpc_id`, `subnet_id` | EC2 → 인스턴스 → 네트워킹 탭 |
-| `import_*_instance_id` | 인스턴스 목록의 인스턴스 ID |
-| `import_*_sg_id` | EC2 → 보안 그룹 |
-| `admin_cidr` | 현재 공인 IP + `/32` |
-
-AMI 두 개는 아직 비워둔다. 3단계에서 채운다.
-
-### 2. 초기화와 첫 가져오기
-
-```bash
+aws login                                  # 또는 aws configure
+eval "$(aws configure export-credentials --format env)"
+cp terraform.tfvars.example terraform.tfvars   # 처음 한 번. 값은 저장소에 올리지 않는다
 terraform init
 terraform plan
 ```
 
-AMI 가 비어 있어 이 단계에서는 오류가 난다. 임시로 아무 값이나 넣고
-가져오기를 먼저 수행한다.
-
-```bash
-terraform plan  -var 'honeypot_ami=ami-0' -var 'app_ami=ami-0'
-terraform apply -var 'honeypot_ami=ami-0' -var 'app_ami=ami-0'
-```
-
-가져오기가 끝나면 상태 파일에 실제 값이 들어온다.
-
-### 3. 실제 AMI 채우기
-
-```bash
-terraform state show aws_instance.honeypot | grep -m1 '^ *ami'
-terraform state show aws_instance.app      | grep -m1 '^ *ami'
-```
-
-두 값을 `terraform.tfvars` 에 옮겨 적는다.
-
-### 4. 계획이 비워질 때까지 반복
-
-```bash
-terraform plan
-```
-
-`No changes` 가 나올 때까지 코드를 실제 상태에 맞춘다. 콘솔에서 만든
-자원에는 코드에 적지 않은 기본값이 붙어 있어 몇 차례 조정이 필요하다.
-
-**계획에 `destroy` 나 `replace` 가 보이면 적용하지 않는다.** 인스턴스에
-`prevent_destroy` 를 걸어두어 실수로 지워지지는 않으나, 계획이 그렇게
-나온다는 것은 코드가 실제와 어긋났다는 뜻이다.
-
-### 5. 마무리
-
-계획이 비워지면 가져오기용 잔재를 제거한다.
-
-```bash
-rm imports.tf
-```
-
-`variables.tf` 의 `import_*` 변수와 `terraform.tfvars` 의 해당 항목도
-함께 지운다. 이 시점부터 코드가 인프라의 정본이다.
+**계획에 `destroy` 나 `replace` 가 보이면 적용하지 않는다.** 인스턴스 교체는 원장에 아직 오르지 않은
+원문을 잃고 공인 주소가 바뀐다. 이유를 확인한 뒤에만 적용한다.
 
 ## 이후
 
@@ -98,9 +45,8 @@ terraform plan     # 콘솔에서 누가 무엇을 바꿨는지 드러난다
 ## DMZ 재구성 (이슈 #15 · #19)
 
 허니팟을 관문 방화벽 뒤 DMZ 서브넷으로 내린다. 새 VPC(`dmz.tf`) · 방화벽(`gateway.tf`) ·
-SSM 엔드포인트(`ssm_endpoints.tf`) · DMZ 허니팟(`honeypot_dmz.tf`)이 더해지고, 기존
-노드(`instances.tf`)는 이전이 끝날 때까지 그대로다. 설계는 `docs/2026-09-18-네트워크-설계.md`
-2.1 · 3.1 · 4장.
+SSM 엔드포인트(`ssm_endpoints.tf`) · DMZ 허니팟(`honeypot_dmz.tf`)이 더해졌다. 옛 노드는 이전 뒤
+종료했다(4단계). 설계는 `docs/2026-09-18-네트워크-설계.md` 2.1 · 3.1 · 4장.
 
 미리 알아둘 것 둘.
 
@@ -264,20 +210,21 @@ sudo systemctl restart chrony && chronyc sources     # 169.254.169.123 만
 목록 · 읽기 · 삭제 · 다른 host 경로 쓰기 · 관문 발생원 행세 · 모르는 host · 원장 밖 접두사 모두 AccessDenied,
 자기 조각 덮어쓰기는 PreconditionFailed(한 번 쓰기)여야 한다. 2026-09-23 1차 결과는 이슈 #19 PR 에 있다.
 
-### 4. 전환 · 옛 인스턴스 종료
+### 4. 전환 · 옛 인스턴스 종료 (2026-09-25 완료 · 이슈 #37)
 
-방화벽 EIP 로 공격이 들어오기 시작하면(`gateway.log` 의 gw-input-drop, 원장의 새 host 로
-cowrie · decoy 조각) 48시간 두 인스턴스를 대조한다. 옛 인스턴스 종료는 #10 전환(옛 수집
-끄기) 뒤에 하고, 그때 `instances.tf` 의 정의와 `prevent_destroy`, `s3.tf` 의 `ledger_writers`
-옛 허니팟 항목을 함께 걷어낸다.
-앱 노드 종료(3.1.5)도 그 뒤다.
+DMZ 허니팟이 9/23 14시부터 관문 EIP 로 유입을 받았고, 내부망 적재 전환(#20)은 그 전에 끝났다.
+옛 허니팟은 DMZ 밖에서 인터넷 유출이 열려 있어 격리 설계와 어긋나므로 9/25 종료했다. 순서:
 
-옛 인스턴스를 종료한 뒤에 할 일:
+1. 옛 허니팟에서 cowrie · 디코이를 멈추고 업로더를 한 번 돌려 마지막 조각을 올린 뒤 타이머를 끈다.
+   데이터 노드 적재 한 회차로 받은 것을 확인한다(구멍 0).
+2. 옛 앱 노드 디스크 스냅샷을 뜬다(보관).
+3. `instances.tf` · `security_groups.tf` · 앱 노드 전용 SSM 역할 · 옛 변수 · 출력 · `s3.tf` 의
+   `ledger_writers` 옛 허니팟 항목을 지우고 plan(추가 0 · 변경 1 · 삭제 15) → apply.
+4. 데이터 노드 `/etc/default/opsloop-ingest` 의 `OPSLOOP_HOSTS` 에서 옛 ID 를 뺀다. 두면 옛 생존 신호가
+   15분을 넘겨 매 회차 종료 코드 11(오래된 생존 신호)이 난다.
 
-- 데이터 노드 `OPSLOOP_HOSTS` 에서 옛 ID 를 뺀다. 두면 옛 생존 신호가 15분을 넘겨 매 회차
-  종료 코드 11(오래된 생존 신호)이 난다. 옛 host 의 원장은 그대로 남고 이미 적재돼 있다.
-- 이전에 쓴 AMI 와 그 스냅샷을 등록 해제 · 삭제한다(`aws ec2 deregister-image`, `delete-snapshot`).
-  이미지에는 원문 로그와 업로더 설정이 담겨 있다.
+DMZ 허니팟 이미지(`honeypot_dmz_ami`)는 재구축용으로 남긴다. 이미지 전 비밀 검사로 원문 로그 · 옛 접속
+정보가 없음을 확인한 이미지다.
 
 ## 남은 과제
 
