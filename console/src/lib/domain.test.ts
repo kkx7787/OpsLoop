@@ -6,6 +6,7 @@ import {
   actionLabel,
   elapsedTone,
   INCIDENT_ACTIONS,
+  isCircularRule,
   sensorOf,
   VERDICT_DESCRIPTION,
   VERDICT_TARGET_SECONDS,
@@ -90,5 +91,12 @@ describe('VERDICT_DESCRIPTION', () => {
     }
     expect(VERDICT_DESCRIPTION.benign_positive).toContain('오탐으로 세지 않는다')
     expect(VERDICT_DESCRIPTION.undetermined).toContain('지표에서는 뺀다')
+  })
+})
+
+describe('isCircularRule', () => {
+  it('규칙 조건과 판정 근거가 겹치는 규칙(판정 기준 §6)만 순환이다. R006(키 심기) 포함', () => {
+    for (const rule of ['R002', 'R003', 'R004', 'R006']) expect(isCircularRule(rule)).toBe(true)
+    for (const rule of ['R001', 'R005', 'R101', 'R201', '', null, undefined]) expect(isCircularRule(rule)).toBe(false)
   })
 })

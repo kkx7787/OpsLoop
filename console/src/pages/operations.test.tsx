@@ -39,6 +39,13 @@ describe('규칙 결과',()=>{
     expect(screen.getByText('서로 다른 두 버전과 동일한 시작·종료 구간을 선택해 주세요.')).toBeInTheDocument()
     expect(screen.getByRole('link',{name:'R001 · v2'})).toHaveAttribute('href','/incidents?rule_id=R001')
   })
+  it('순환 규칙(R006 포함)은 오탐률 대신 순환 규칙으로 표시한다',async()=>{
+    setup('/rules')
+    const row=(await screen.findByRole('link',{name:'R006 · v3'})).closest('tr')!
+    expect(within(row).getByText('순환 규칙')).toBeInTheDocument()
+    const plain=screen.getByRole('link',{name:'R001 · v2'}).closest('tr')!
+    expect(within(plain).queryByText('순환 규칙')).toBeNull()
+  })
   it('KST 구간을 UTC로 전달하고 한쪽만 입력하면 조회하지 않는다',async()=>{
     const {fetch}=setup('/rules')
     await screen.findByText('50.0%')

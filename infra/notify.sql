@@ -10,9 +10,20 @@
 -- target 은 IP 가 아닌 대상(user:<이름> · node:<id>)이다 (schema.sql 이슈 #14 블록).
 -- NEW.target 으로 읽지 않고 행을 jsonb 로 바꿔 꺼낸다. 이 파일이 그 블록보다 먼저 적용되면
 -- NEW.target 은 모든 인시던트 INSERT(허니팟 v1 · v2 포함)를 실패시키지만, 이렇게 하면 NULL 로 나간다.
+--
+-- 커밋 때 행이 남아 있을 때만 알린다 (지연 제약 트리거).
+--   탐지는 인시던트를 먼저 넣고 같은 트랜잭션에서 억제 · 같은 페이로드 흡수(규칙 v3) 대상을 지운다. 5분마다 전 기간을
+--   다시 도는 운영에서는 지울 인시던트가 회차마다 다시 들어갔다 지워진다(실험 DB v3 한 회차: 405건 넣고 405건 지움).
+--   행마다 바로 알리면 NOTIFY 는 커밋 때 나가므로 지운 인시던트도 콘솔 실시간 통보로 나간다. 그래서 트리거를
+--   커밋 직전으로 미루고, 그때 행이 없으면 알리지 않는다. 같은 트랜잭션에서 지운 행만 빠지고 나머지는 전과 같다.
+--   AFTER INSERT 라 이어지는 사건의 갱신(ON CONFLICT DO UPDATE)에는 전처럼 울리지 않는다.
+--   다시 적용해도 같다. 한 트랜잭션으로 적용한다(psql -1). DROP 과 CREATE 사이에 넣은 행의 알림이 빠지지 않게.
 
 CREATE OR REPLACE FUNCTION notify_incident() RETURNS trigger AS $$
 BEGIN
+    IF NOT EXISTS (SELECT 1 FROM incidents WHERE incident_key = NEW.incident_key) THEN
+        RETURN NULL;
+    END IF;
     PERFORM pg_notify('opsloop_incident', json_build_object(
         'incident_key', NEW.incident_key,
         'rule_id',      NEW.rule_id,
@@ -25,11 +36,12 @@ BEGIN
         'signal_count', NEW.signal_count,
         'status',       NEW.status
     )::text);
-RETURN NEW;
+RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trg_notify_incident ON incidents;
-CREATE TRIGGER trg_notify_incident
+CREATE CONSTRAINT TRIGGER trg_notify_incident
     AFTER INSERT ON incidents
+    DEFERRABLE INITIALLY DEFERRED
     FOR EACH ROW EXECUTE FUNCTION notify_incident();

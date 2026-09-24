@@ -13,6 +13,7 @@ import { PageHeader } from '@/components/molecules/PageHeader'
 import { MonitoringStatus } from '@/components/organisms/MonitoringStatus'
 import { ApiErrorState } from '@/components/organisms/states/ApiErrorState'
 import { LoadingState } from '@/components/organisms/states/LoadingState'
+import { isCircularRule } from '@/lib/domain'
 import { readInterval } from '@/lib/interval'
 
 const cell = 'px-4 py-2.5 whitespace-nowrap'
@@ -48,7 +49,7 @@ export function RulesPage() {
         <CardHeader title="규칙별 판정 집계" aside={<Select aria-label="규칙 버전" fieldSize="sm" value={version} onChange={e => setVersion(e.target.value)}><option value="">전체 버전</option>{versions.map(v => <option key={v.version}>{v.version}</option>)}</Select>} />
         <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="규칙별 판정 집계 표"><table className="w-full text-left text-sm">
           <thead className="border-b border-line text-xs text-ink-muted"><tr>{['규칙 · 버전', '사건', '판정', '실제 위협', '무시 가능', '오탐', '양성 정탐', '미결', '비조치율', '오탐률'].map(t => <th key={t} className={cell}>{t}</th>)}</tr></thead>
-          <tbody className="divide-y divide-line">{shown.map(r => <tr key={`${r.rule_id}:${r.rule_version}`}><td className={cell}><Link title="이 규칙의 모든 버전 사건 보기" to={`/incidents?rule_id=${encodeURIComponent(r.rule_id)}`}><span className="font-mono">{r.rule_id}</span> · {r.rule_version}</Link><div className="text-xs text-ink-muted">{names.get(`${r.rule_version}:${r.rule_id}`)?.name ?? '이름 미기록'}</div></td>{[r.incidents,r.judged,r.threats,r.non_actionable,r.false_positives,r.benign_positives,r.undetermined].map((n,i) => <td key={i} className={`${cell} tabular-nums`}>{n}</td>)}<td className={cell}>{percent(r.non_action_rate)}</td><td className={cell}>{['R002','R003','R004'].includes(r.rule_id) ? <span title="규칙 조건과 판정 근거가 겹쳐 독립적인 정확도 지표로 사용하지 않습니다">순환 규칙</span> : percent(r.false_positive_rate)}</td></tr>)}</tbody>
+          <tbody className="divide-y divide-line">{shown.map(r => <tr key={`${r.rule_id}:${r.rule_version}`}><td className={cell}><Link title="이 규칙의 모든 버전 사건 보기" to={`/incidents?rule_id=${encodeURIComponent(r.rule_id)}`}><span className="font-mono">{r.rule_id}</span> · {r.rule_version}</Link><div className="text-xs text-ink-muted">{names.get(`${r.rule_version}:${r.rule_id}`)?.name ?? '이름 미기록'}</div></td>{[r.incidents,r.judged,r.threats,r.non_actionable,r.false_positives,r.benign_positives,r.undetermined].map((n,i) => <td key={i} className={`${cell} tabular-nums`}>{n}</td>)}<td className={cell}>{percent(r.non_action_rate)}</td><td className={cell}>{isCircularRule(r.rule_id) ? <span title="규칙 조건과 판정 근거가 겹쳐 독립적인 정확도 지표로 사용하지 않습니다">순환 규칙</span> : percent(r.false_positive_rate)}</td></tr>)}</tbody>
         </table></div>
         {!shown.length && <p className="p-4 text-sm text-ink-muted">선택한 조건에 집계된 사건이 없습니다.</p>}
         <p className="m-0 border-t border-line px-4 py-3 text-xs text-ink-muted">사건별 마지막 판정 기준. 비조치 = 무시 가능 + 오탐 + 양성 정탐. 비율의 분모에서 미결은 제외합니다.</p>

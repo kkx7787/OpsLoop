@@ -76,30 +76,40 @@ function Count({ label, value, warning }: { label: string; value: number; warnin
   return <div className="px-4 py-4"><div className="text-xs text-ink-muted">{label}</div><div className={cn('mt-1.5 text-xl font-semibold tabular-nums', warning && value > 0 && 'text-warning')}>{value.toLocaleString()}건</div></div>
 }
 
+/** 같은 페이로드 흡수 차단 행(규칙 v3). 근거 사건은 첫 사건이고 행의 출발지는 흡수 출발지다(서버 absorbed_reason_tag) */
+function isAbsorbedBlock(entry: Pick<BlockEntry, 'reason'>): boolean {
+  return entry.reason?.startsWith('흡수: ') ?? false
+}
+
 function BlockRow({ entry, now, allowed, stale, onNotice, refresh }: { entry: BlockEntry; now: number; allowed: boolean; stale: boolean; onNotice: (notice: Notice) => void; refresh: () => void }) {
   const mutation = useActionMutation(entry.incident_key ?? '')
   const [confirming, setConfirming] = useState(false)
   const [note, setNote] = useState('')
   const live = isActiveBlock(entry, now)
+  const absorbed = isAbsorbedBlock(entry)
   const canRelease = allowed && live && !!entry.incident_key && !stale
   const label = entry.released_at ? '해제됨' : !live ? '만료됨' : entry.enforced_at ? '집행 확인' : '집행 대기'
+  // 풀 행의 출발지를 함께 보낸다. 흡수 차단 행은 근거 사건(첫 사건)의 출발지와 이 행의 출발지가 달라,
+  // 사건 키만 보내면 서버가 첫 사건 출발지의 차단을 푼다. 서버는 이 행이 그 사건의 흡수 차단일 때만 이 행 하나를 푼다
   function release(event: FormEvent) {
     event.preventDefault()
     if (!canRelease) return
-    mutation.mutate({ action: 'unblock_ip', ...(note.trim() ? { note: note.trim() } : {}) }, {
+    mutation.mutate({ action: 'unblock_ip', actor_ip: entry.actor_ip, ...(note.trim() ? { note: note.trim() } : {}) }, {
       onSuccess: () => { setConfirming(false); onNotice({ tone: 'success', message: `${entry.actor_ip} 차단 해제를 기록했습니다` }) },
       onError: error => { onNotice({ tone: 'danger', message: describeError(error) }); refresh() },
     })
   }
   return <li className={cn('grid min-w-0 grid-cols-2 items-start gap-3 px-4 py-3 text-sm', COLUMNS)}>
     <div className="col-span-2 font-mono font-semibold break-all xl:col-span-1">{entry.actor_ip}</div>
-    <div className="col-span-2 min-w-0 xl:col-span-1"><div className="break-words">{entry.reason || '사유 미기록'}</div><div className="mt-1 text-xs">{entry.incident_key ? <Link className="break-all" to={`/incidents/${encodeURIComponent(entry.incident_key)}`}>{entry.incident_key.split('|')[0]} · 사건 보기</Link> : <span className="text-ink-muted">근거 사건 없음</span>}</div></div>
+    <div className="col-span-2 min-w-0 xl:col-span-1"><div className="break-words">{entry.reason || '사유 미기록'}</div><div className="mt-1 text-xs">{entry.incident_key ? <Link className="break-all" to={`/incidents/${encodeURIComponent(entry.incident_key)}`}>{entry.incident_key.split('|')[0]} · {absorbed ? '첫 사건 보기' : '사건 보기'}</Link> : <span className="text-ink-muted">근거 사건 없음</span>}</div></div>
     <div><Badge tone={live && !entry.enforced_at ? 'warning' : 'neutral'}>{label}</Badge><div className="mt-1 break-all text-xs text-ink-muted">{entry.method || '집행 정보 없음'}</div>{entry.enforce_note && <p className="m-0 mt-1 break-words text-xs text-ink-muted">{entry.enforce_note}</p>}</div>
     <div className="text-xs"><span className="block text-ink-muted xl:hidden">만료 시각 (KST)</span>{entry.expires_at ? <Time value={entry.expires_at} format="short" /> : '만료 없음'}{entry.released_at && <div className="mt-1 text-ink-muted">해제 <Time value={entry.released_at} format="short" />{entry.released_by && ` · ${entry.released_by}`}</div>}</div>
     <div className="break-words text-xs text-ink-muted"><span className="xl:hidden">요청자 </span>{entry.requested_by || '미기록'}</div>
     <div className="justify-self-end xl:justify-self-start">{allowed && live ? <Button size="sm" disabled={!canRelease || mutation.isPending} disabledReason={stale ? '최신 목록을 확인한 뒤 해제해 주세요' : '연결된 근거 사건이 없어 해제할 수 없습니다'} onClick={() => setConfirming(!confirming)} aria-expanded={confirming}>해제</Button> : <span className="text-xs text-ink-muted">{live ? 'admin만' : '—'}</span>}</div>
     {confirming && live && <form className="col-span-2 flex flex-col gap-2 rounded-panel border border-line bg-canvas p-3 xl:col-span-6" aria-label={`${entry.actor_ip} 해제 확인`} onSubmit={release}>
-      <p className="m-0 text-sm">{entry.actor_ip} 차단을 해제할까요? 요청은 조치·감사 이력에 남습니다.</p>
+      <p className="m-0 text-sm">{absorbed
+        ? `${entry.actor_ip} 의 흡수 차단 한 곳만 해제할까요? 첫 사건 출발지의 차단과 다른 흡수 차단은 그대로 두고, 이 출발지는 이후 후속 차단에서도 빠집니다. 요청은 첫 사건의 조치·감사 이력에 남습니다.`
+        : `${entry.actor_ip} 차단을 해제할까요? 요청은 조치·감사 이력에 남습니다.`}</p>
       <Input aria-label="해제 사유" maxLength={1000} placeholder="해제 사유 (선택)" value={note} onChange={event => setNote(event.target.value)} />
       <div className="flex gap-2"><Button type="submit" variant="primary" loading={mutation.isPending} disabled={!canRelease}>해제 확정</Button><Button onClick={() => setConfirming(false)} disabled={mutation.isPending}>취소</Button></div>
     </form>}

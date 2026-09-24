@@ -25,7 +25,7 @@ export function DashboardPage() {
           <Metric label="가장 오래된 미판정" value={data.pending.total ? formatDuration(data.pending.oldest_seconds * 1000) : '없음'} warn={data.pending.overdue > 0} />
           <Metric label="미판정" value={`${data.pending.total.toLocaleString()}건`} href="/incidents?judged=false" />
           <Metric label="판정 목표 초과" value={`${data.pending.overdue.toLocaleString()}건`} note={`목표 임박 ${data.pending.warning.toLocaleString()}건`} warn={data.pending.overdue > 0} />
-          <Metric label="활성 차단 요청" value={`${data.blocked_ips.toLocaleString()}건`} href="/blocklist" />
+          <Metric label="활성 차단 요청" value={`${data.blocked_ips.toLocaleString()}건`} href="/blocklist" note={absorbedNote(data.absorbed_unblocked)} warn={!!data.absorbed_unblocked?.sources} />
         </dl>
       </Card>
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
@@ -81,6 +81,12 @@ export function DashboardPage() {
       <p className="m-0 text-xs text-ink-muted">최근 원문 수집 <Time value={data.latest_event} format="short" zone /> · 웹소켓 통보 시 갱신 · 30초마다 재조회</p>
     </>}
   </div>
+}
+
+/** 판정 뒤에 흡수됐는데 차단이 없는 출발지. 첫 사건 상세의 함께 차단(후속 차단)으로 막는다 */
+function absorbedNote(unblocked: { sources: number; incidents: number } | undefined): string | undefined {
+  if (!unblocked?.sources) return undefined
+  return `판정 뒤 흡수 미차단 ${unblocked.sources.toLocaleString()}곳 · 첫 사건 ${unblocked.incidents.toLocaleString()}건`
 }
 
 function Metric({ label, value, note, href, warn }: { label: string; value: string; note?: string; href?: string; warn?: boolean }) {

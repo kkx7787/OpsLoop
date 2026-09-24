@@ -4,6 +4,7 @@
 가짜 풀러 · 파서 · 탐지기를 둔 임시 APP 로 돌린다. 가짜 파서는 파일 안에 POISON 이 있으면 실패한다.
 """
 import importlib.machinery
+import json
 import importlib.util
 import os
 import sys
@@ -23,8 +24,8 @@ with open(os.environ["FAKE_LOG"], "a") as f:
     for p in files:
         f.write(os.path.basename(p) + "\\n")
 """
-FAKE_DETECT = """import os
-open(os.environ["FAKE_DETECT"], "a").write("run\\n")
+FAKE_DETECT = """import json, os, sys
+open(os.environ["FAKE_DETECT"], "a").write(json.dumps(sys.argv[1:]) + "\\n")
 """
 
 
@@ -77,7 +78,10 @@ class IngestTest(unittest.TestCase):
         return open(self.log).read().split()
 
     def detected(self):
-        return open(self.detect).read().count("run")
+        return len(open(self.detect).read().splitlines())
+
+    def detect_args(self):
+        return [json.loads(line) for line in open(self.detect).read().splitlines()]
 
     def run_main(self, *args):
         old = sys.argv
@@ -98,6 +102,16 @@ class IngestTest(unittest.TestCase):
         self.assertEqual(sorted(self.loaded()), ["a.jsonl", "b.jsonl"])
         self.assertEqual((self.inbox("cowrie"), self.inbox("decoy")), ([], []))
         self.assertEqual(self.detected(), 1)
+
+    def test_탐지는_규칙_파일을_밝혀_부른다(self):
+        # detect.py 의 기본값(rules.json, v1)에 맡기면 규칙 버전 전환이 운영에 닿지 않는다. 기본은 v3 이고 되돌릴 수 있다
+        self.assertEqual(self.m.RULES, "rules_v3.json")
+        self.assertEqual(self.run_main(), 0)
+        self.m.RULES = "rules_v2.json"
+        self.assertEqual(self.run_main(), 0)
+        rules = os.path.join(self.app, "detector")
+        self.assertEqual(self.detect_args(), [["--run", "--rules", os.path.join(rules, "rules_v3.json")],
+                                              ["--run", "--rules", os.path.join(rules, "rules_v2.json")]])
 
     def test_관문_기록은_gateway_파서로(self):
         self.put("gateway", "g.jsonl", b"2026-09-22T01:02:03+00:00 gw kernel: gw-forward-drop SRC=203.0.113.7\n")

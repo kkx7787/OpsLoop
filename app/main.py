@@ -15,6 +15,7 @@ OpsLoop API (WBS 3.1)
 """
 
 import asyncio
+import ipaddress
 import json
 import os
 from contextlib import asynccontextmanager
@@ -24,16 +25,19 @@ from typing import Literal, Optional
 import asyncpg
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 import auth
 import web
-from proposals import propose
+from proposals import CIRCULAR_RULES, SSH_RULES, propose
 from dashboard import dashboard_metrics
 from access import require_role
 from operations import router as operations_router
 from notify import router as notify_router
 from notifier import Notifier
+from absorbed import (ABSORBED_STATE_SQL, FOLLOW_RELEASE_SQL, FOLLOW_STATE_SQL, FOLLOW_UPSERT_SQL, NO_BLOCK_NETS,
+                      RELEASE_ABSORBED_SQL, UNBLOCKED_AFTER_VERDICT_SQL, AbsorbedFollower, absorbed_note,
+                      absorbed_reason_tag, block_absorbed)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 NOTIFY_CHANNEL = "opsloop_incident"
@@ -104,10 +108,14 @@ async def lifespan(app: FastAPI):
     # 알림 발송기 (이슈 #33). 큐 채우기 · 보내기 두 루프를 여기서 띄우고 종료 때 취소한다.
     app.state.notifier = Notifier(app.state.pool)
     await app.state.notifier.start()
+    # 흡수 후속 차단 (absorbed.py). 함께 차단을 고른 첫 사건에 뒤늦게 흡수된 출발지를 같은 만료로 올린다
+    app.state.follower = AbsorbedFollower(app.state.pool)
+    await app.state.follower.start()
 
     try:
         yield
     finally:
+        await app.state.follower.stop()
         await app.state.notifier.stop()
         await listener.remove_listener(NOTIFY_CHANNEL, on_notify)
         await listener.close()
@@ -128,11 +136,17 @@ OPEN_PATHS = ("/health", "/login", "/logout", "/docs", "/openapi.json")
 # 규칙 조건과 판정 근거가 겹치는 규칙. 여기서 나오는 위협 판정은 규칙의
 # 정확성을 증명하지 않는다. 같은 것을 두 번 센 것이다. detector/triage.py 와
 # 같은 판단이며, 콘솔도 같은 경고를 보여야 판정자가 같은 기준으로 본다.
+# 판정 기준 §6. R003 은 v3 에서도 순환이다(키 심기를 R006 으로 떼었을 뿐 남은 조건이 파일 투하다).
+# 키는 proposals.CIRCULAR_RULES 와 같다(아래 assert).
 CIRCULAR = {
     "R002": "규칙 조건이 '로그인 성공 + 명령 실행'이고 판정 기준의 위협 조건도 같다",
     "R003": "규칙 조건이 파일 이동이고 판정 기준의 위협 조건도 같다",
     "R004": "규칙 조건이 경유 시도이고 판정 기준의 위협 조건도 같다",
+    "R006": "규칙 조건이 authorized_keys 쓰기이고 판정 기준의 위협 조건(SSH 키 심기)도 같다",
 }
+assert set(CIRCULAR) == CIRCULAR_RULES, "순환 규칙 목록이 proposals.py 와 다르다"
+# 중복 후보를 찾는 규칙(SSH 판정 기준을 쓰는 허니팟 규칙). 상수라 문장에 그대로 넣는다.
+SSH_RULES_SQL = ", ".join(f"'{r}'" for r in sorted(SSH_RULES))
 
 # 인시던트 구간 앞뒤로 볼 여유. 한 세션에서 나온 인시던트는 폭이 0초라
 # 구간만 보면 그 세션의 로그인과 명령이 범위 밖으로 빠진다.
@@ -145,6 +159,31 @@ WINDOW_AFTER = "30 minutes"
 # 실제로 무언가를 한 흔적만 남긴다.
 BEHAVIOR_LIKE = ["%.login.success", "%.command.input", "%.session.file_%",
                  "%direct-tcpip%", "%.action.%"]
+
+# ----------------------------------------------------------------------
+#  같은 페이로드 흡수 (규칙 v3 · incident_absorbed)
+# ----------------------------------------------------------------------
+#  차단 · 해제 · 후속 차단의 문장과 규칙은 absorbed.py 에 있다. detector/triage.py record 도 같은 규칙이다.
+#  흡수 차단 행은 incident_key = 첫 사건 키 · reason = '흡수: <첫 사건 키>' 로 남는다. 이 둘이 함께 · 한 곳 풀 때 고르는 표시다.
+#  억제(kind = suppressed) 행의 출발지는 가린 흡수 인시던트의 출발지와 같아 따로 넣지 않는다.
+
+ABSORBED_SHOWN = 200   # 상세에 보이는 흡수 기록 행 수. 수(total · sources · blocked)는 전체를 센다
+
+# 규칙이 같은 페이로드 흡수를 쓰는가(규칙 정의의 params.absorb_same_payload). 흡수 기록이 아직 없는 첫 사건도
+# 함께 차단(후속 차단 약속)을 고를 수 있어야 한다. 판정 · 차단이 흡수보다 먼저 오는 것이 보통이다.
+ABSORBS_SQL = """
+    SELECT EXISTS (SELECT 1 FROM rule_versions rv, jsonb_array_elements(rv.definition -> 'rules') r
+                   WHERE rv.rule_version = $1 AND r ->> 'id' = $2 AND (r -> 'params') ? 'absorb_same_payload')"""
+
+
+def absorbed_reason(row) -> str:
+    """흡수 기록 한 행을 화면의 '흡수 사유' 한 줄로 쓴다."""
+    if row["kind"] == "suppressed":
+        via = (row["via_key"] or "").split("|")[0] or "흡수 사건"
+        return f"흡수된 {via} 사건과 같은 출발지 · 같은 구간의 낮은 알림(억제)"
+    what = {"R003": "같은 파일을 24시간 안에 다시 투하",
+            "R006": "같은 SSH 키를 24시간 안에 다시 심음"}.get(row["rule_id"], "같은 페이로드를 24시간 안에 반복")
+    return f"{what}(흡수)"
 
 
 @app.middleware("http")
@@ -356,17 +395,21 @@ async def get_incident(incident_key: str):
               AND ts BETWEEN $2::timestamptz - interval '{WINDOW_BEFORE}' AND $3::timestamptz + interval '{WINDOW_AFTER}'
               AND eventid LIKE 'cowrie.%'
             GROUP BY eventid""", actor, *window) if actor else []
-        covered = await c.fetchval("""
+        # 중복 제안의 근거는 같은 규칙 버전의 사건에서만 찾는다. 버전이 바뀌면 사건을 가르는
+        # 조건이 달라 앞 버전의 위협 판정이 이 사건의 대표라는 보장이 없다.
+        covered = await c.fetchval(f"""
             SELECT i.incident_key FROM incidents i
             JOIN LATERAL (
                 SELECT verdict FROM verdicts WHERE incident_key = i.incident_key
                 ORDER BY created_at DESC, id DESC LIMIT 1
             ) v ON v.verdict = 'threat'
             WHERE i.actor_ip = $1::inet AND i.incident_key <> $2
-              AND i.rule_id IN ('R001', 'R002', 'R003', 'R004', 'R005')
+              AND i.rule_version = $5
+              AND i.rule_id IN ({SSH_RULES_SQL})
               AND i.first_ts <= $4::timestamptz + interval '15 minutes'
               AND i.last_ts >= $3::timestamptz - interval '15 minutes'
-            ORDER BY i.first_ts, i.incident_key LIMIT 1""", actor, incident_key, *window) if actor else None
+            ORDER BY i.first_ts, i.incident_key LIMIT 1""",
+            actor, incident_key, *window, inc["rule_version"]) if actor else None
 
         # ② 규칙이 보지 않은 증거. 규칙이 본 것만으로 판정하면 규칙의 시야를
         #    그대로 물려받는다. 같은 구간에 같은 출발지가 실제로 한 일을 모은다.
@@ -395,6 +438,27 @@ async def get_incident(incident_key: str):
             SELECT reason, method, created_at, expires_at, released_at, enforced_at
             FROM blocklist WHERE actor_ip = $1::inet""", actor) if actor else None
 
+        # 같은 페이로드 흡수 (규칙 v3). 이 사건이 첫 사건이면, 지운 인시던트(kind = absorbed)와 가린 것이 그것뿐이라
+        # 억제한 같은 출발지의 낮은 알림(kind = suppressed)이 incident_absorbed 에 남는다. 근거(evidence.absorbed)는
+        # 판정 때 굳고 max_sources 에서 잘리므로 차단 근거는 이 표에서 읽는다. 판정 뒤에 붙은 흡수도 여기 보인다.
+        # 흡수는 출발지가 있는 사건(허니팟 규칙)에만 생긴다. 목록은 흡수 · 첫 시각 순 200행, 수는 전체를 센다.
+        absorbed = await c.fetch(f"""
+            SELECT host(actor_ip) AS actor_ip, kind, rule_id, member_key, via_key, first_ts, last_ts,
+                   signal_count, cardinality(sessions) AS sessions, payloads[1] AS payload
+            FROM incident_absorbed WHERE first_key = $1
+            ORDER BY kind, first_ts, member_key LIMIT {ABSORBED_SHOWN}""", incident_key) if actor else []
+        absorbed_n = await c.fetchrow("""
+            SELECT count(*) AS total,
+                   count(DISTINCT actor_ip) FILTER (WHERE kind = 'absorbed'
+                                                    AND actor_ip IS DISTINCT FROM $2::inet) AS sources
+            FROM incident_absorbed WHERE first_key = $1""", incident_key, actor) if actor else None
+        # 흡수 출발지의 차단 상태(absorbed.py ABSORBED_STATE_SQL). 함께 차단 확인 창이 넣지 않을 곳(사람이 푼 곳 ·
+        # 차단 금지 대역 · 다른 사건 차단)을 미리 보인다. 후속 차단 약속이 살아 있으면 그 만료를 함께 낸다
+        absorbed_state = await c.fetchrow(ABSORBED_STATE_SQL, incident_key, absorbed_reason_tag(incident_key),
+                                          actor, NO_BLOCK_NETS, 20) if actor else None
+        follow = await c.fetchrow(FOLLOW_STATE_SQL, incident_key) if actor else None
+        absorbs = await c.fetchval(ABSORBS_SQL, inc["rule_version"], inc["rule_id"]) if actor else False
+
         # ④ 원문. 요약이 아니라 근거가 된 원본 줄이다.
         raw = await c.fetch(f"""
             SELECT ts, sensor, eventid, session, username, password IS NOT NULL AS has_password,
@@ -417,6 +481,22 @@ async def get_incident(incident_key: str):
     }
     # 비밀번호 원문은 화면에 내지 않는다. 타인의 실제 자격증명일 수 있다.
     d["raw"] = [row_to_dict(r) for r in raw]
+    st = dict(absorbed_state) if absorbed_state else {}
+    d["absorbed"] = {
+        "items": [row_to_dict(r) | {"reason": absorbed_reason(r)} for r in absorbed],
+        # total: 기록 전체(억제 포함) · sources: 흡수 출발지(이 사건 출발지 제외 · 중복 제거) · blocked: 이 사건 흡수
+        # 차단으로 살아 있는 곳(함께 · 한 곳 풀 수) · kept: 다른 사건 차단으로 살아 있는 곳 · skipped: 사람이 풀어 함께
+        # 차단에서 빼는 곳(앞 20곳) · unblockable: 차단 금지 대역
+        **{k: (absorbed_n[k] if absorbed_n else 0) for k in ("total", "sources")},
+        "blocked": st.get("blocked", 0),
+        "kept": st.get("kept", 0),
+        "skipped": list(st.get("skipped") or []),
+        "skipped_total": st.get("skipped_total", 0),
+        "unblockable": st.get("unblockable", 0),
+        # 규칙이 흡수를 쓰는가(흡수 기록이 아직 없어도 함께 차단 · 후속 차단을 고를 수 있다) · 살아 있는 후속 차단 약속
+        "absorbs": bool(absorbs),
+        "follow": row_to_dict(follow) if follow else None,
+    }
     d["circular"] = CIRCULAR.get(inc["rule_id"])
     d["proposal"] = propose(inc["rule_id"], {r["eventid"]: r["n"] for r in counts}, covered)
     return d
@@ -443,6 +523,10 @@ async def summary():
         blocked = await c.fetchval(
             "SELECT count(*) FROM blocklist WHERE released_at IS NULL "
             "AND (expires_at IS NULL OR expires_at > $1)", as_of)
+        # 판정 뒤에 흡수됐는데 차단이 없는 출발지(absorbed.py). 흡수는 첫 사건이 판정 · 차단된 뒤에도 붙고 알림이
+        # 없으므로, 함께 차단을 고르지 않았으면 여기서만 드러난다. 흡수 기록 표가 없는 DB(v3 전)에서는 생략한다
+        unblocked = await c.fetchrow(UNBLOCKED_AFTER_VERDICT_SQL, NO_BLOCK_NETS) \
+            if await c.fetchval("SELECT to_regclass('incident_absorbed') IS NOT NULL") else None
 
     return {
         **metrics,
@@ -454,6 +538,7 @@ async def summary():
         "actors": ev["actors"],
         "latest_event": ev["latest"].isoformat() if ev["latest"] else None,
         "blocked_ips": blocked,
+        **({"absorbed_unblocked": dict(unblocked)} if unblocked else {}),
     }
 
 
@@ -468,6 +553,24 @@ class ActionIn(BaseModel):
     note: Optional[str] = Field(default=None, max_length=1000)
     # 차단은 되돌릴 수 있는 완화 조치다. 만료 없는 차단은 언젠가 정상 사용자를 막는다.
     expires_hours: int = Field(default=24, ge=1, le=720)
+    # 첫 사건의 차단 · 해제에 같은 페이로드로 흡수된 출발지(incident_absorbed)를 함께 넣는가. 기본은 이 사건 출발지만.
+    #   흡수된 인시던트는 지워져 상세가 없으므로 첫 사건에서만 걸고 푼다. 차단 · 해제 밖의 조치에서는 쓰지 않는다.
+    #   차단에 주면 만료 전까지 새로 흡수되는 출발지도 같은 만료로 올린다(후속 차단 약속, absorbed.py).
+    include_absorbed: bool = False
+    # 해제할 차단 행의 출발지. 차단 목록 화면은 행마다 이 값을 넘긴다. 행의 incident_key 가 가리키는 사건의 출발지와
+    # 행의 출발지가 다를 수 있기 때문이다(흡수 차단 행: 출발지 = 흡수 출발지, 근거 사건 = 첫 사건).
+    #   없거나 이 사건 출발지와 같으면 이 사건 출발지의 차단을 푼다. 다르면 이 사건의 흡수 차단 한 행만 푼다.
+    actor_ip: Optional[str] = Field(default=None, max_length=64)
+
+    @field_validator("actor_ip")
+    @classmethod
+    def _ip(cls, v):
+        if v is None:
+            return v
+        try:
+            return str(ipaddress.ip_address(v.strip()))
+        except ValueError:
+            raise ValueError("actor_ip 는 IP 주소여야 합니다")
 
 
 class VerdictIn(BaseModel):
@@ -502,35 +605,43 @@ async def add_action(incident_key: str, body: ActionIn, request: Request):
             # 넘기지 않으면 감사 행의 행위자가 'db:<DB 역할>' 로 남아 R201 이 사람별로 세지 못한다.
             await c.execute("SELECT set_config('opsloop.actor', $1, true)", user["u"])
             inc = await c.fetchrow(
-                "SELECT host(actor_ip) actor_ip FROM incidents WHERE incident_key = $1",
+                "SELECT host(actor_ip) actor_ip, rule_id, rule_version FROM incidents WHERE incident_key = $1",
                 incident_key)
             if inc is None:
                 raise HTTPException(404, "인시던트를 찾을 수 없습니다")
+            inc_rule, inc_version = inc["rule_id"], inc["rule_version"]
 
-            if body.action == "unblock_ip":
+            with_absorbed = body.include_absorbed and body.action in ("block_ip", "unblock_ip")
+            # 요청한 행이 이 사건 출발지의 차단인가, 이 사건의 흡수 차단 한 행인가
+            single = None
+            if body.actor_ip is not None:
+                if body.action != "unblock_ip":
+                    raise HTTPException(400, "actor_ip 는 차단 해제에만 씁니다")
+                same = bool(inc["actor_ip"]) and await c.fetchval("SELECT $1::inet = $2::inet",
+                                                                   body.actor_ip, inc["actor_ip"])
+                if not same:
+                    if with_absorbed:
+                        raise HTTPException(400, "흡수 차단 한 곳 해제와 함께 해제는 같이 쓸 수 없습니다")
+                    single = body.actor_ip
+
+            own_live = False
+            if body.action == "unblock_ip" and single is None:
                 # 확인 창을 연 뒤 만료·해제·재차단됐을 수 있다. 같은 행을 잠근 뒤 최신 상태를 검사한다.
                 blocked = await c.fetchrow("""
                     SELECT incident_key, released_at, expires_at,
                            expires_at IS NULL OR expires_at > clock_timestamp() AS unexpired
                     FROM blocklist WHERE actor_ip = $1::inet FOR UPDATE""", inc["actor_ip"])
-                if (not blocked or blocked["released_at"] is not None or not blocked["unexpired"]
-                        or blocked["incident_key"] != incident_key):
+                own_live = bool(blocked and blocked["released_at"] is None and blocked["unexpired"]
+                                and blocked["incident_key"] == incident_key)
+                # 흡수 차단을 함께 풀 때는 이 출발지의 차단이 이미 풀렸어도 흡수 차단만 풀 수 있다(아래에서 0곳이면 409)
+                if not own_live and not with_absorbed:
                     raise HTTPException(409, "차단이 만료·해제되었거나 근거 사건이 변경됐습니다. 목록을 새로 확인해 주세요")
-
-            rec = await c.fetchrow("""
-                INSERT INTO actions (incident_key, action, operator, note)
-                VALUES ($1, $2, $3, $4)
-                RETURNING id, action, operator, note, created_at""",
-                incident_key, body.action, user["u"], body.note)
-
-            new_status = ACTION_STATUS.get(body.action)
-            if new_status:
-                await c.execute("UPDATE incidents SET status = $1 WHERE incident_key = $2",
-                                new_status, incident_key)
 
             # 차단은 목록에 실제 상태로 남는다. 조치가 기록으로만 끝나지 않게.
             # 살아 있는 차단에 다시 차단을 걸 때 만료를 앞당기지 않는다. 앞당기면 차단 조치로 차단을 줄이는 셈이고
             # (감사에는 shortened 로 남아 R201 이 센다), 만료 없는 차단(triage)도 24시간 뒤에 풀린다. 풀린 차단은 새로 건다.
+            absorbed = None
+            follow_expires = None
             if body.action == "block_ip" and inc["actor_ip"]:
                 await c.execute("""
                     INSERT INTO blocklist (actor_ip, reason, incident_key, requested_by, expires_at)
@@ -546,17 +657,90 @@ async def add_action(incident_key: str, body: ActionIn, request: Request):
                         released_at = NULL, released_by = NULL, created_at = now()""",
                     inc["actor_ip"], body.note or "console", incident_key, user["u"],
                     body.expires_hours)
-            elif body.action == "unblock_ip" and inc["actor_ip"]:
+                # 흡수된 출발지도 같은 만료로 올린다(absorbed.py BLOCK_ABSORBED_SQL). 흡수를 쓰는 규칙이면 후속 차단 약속을
+                # 남겨, 만료 전까지 새로 흡수되는 출발지도 콘솔이 같은 만료로 올린다. 약속이 살아 있으면 만료는 늦추기만 한다.
+                # 첫 사건이 아니거나 흡수를 쓰지 않는 규칙이면 0곳이고 약속도 없다.
+                if with_absorbed:
+                    if await c.fetchval(ABSORBS_SQL, inc_version, inc_rule):
+                        follow_expires = await c.fetchval(FOLLOW_UPSERT_SQL, incident_key, body.expires_hours,
+                                                          user["u"])
+                    expires = follow_expires or await c.fetchval(
+                        "SELECT now() + make_interval(hours => $1)", body.expires_hours)
+                    absorbed = await block_absorbed(c, incident_key, inc["actor_ip"], user["u"], expires)
+                    absorbed = {k: absorbed[k] for k in ("blocked", "kept", "skipped", "skipped_total", "unblockable")}
+                    absorbed["follow_expires_at"] = follow_expires.isoformat() if follow_expires else None
+            elif body.action == "unblock_ip" and single is not None:
+                # 흡수 차단 한 곳 해제. 이 사건의 살아 있는 흡수 차단 행만 푼다. 잘못 묶인 한 곳을 첫 사건 전체 해제 없이
+                # 푼다. 사람이 푼 행(released_by)은 후속 차단 · 다시 함께 차단에서 빠진다(absorbed.py).
+                row = await c.fetchrow("""
+                    SELECT incident_key, reason, released_at,
+                           expires_at IS NULL OR expires_at > clock_timestamp() AS unexpired
+                    FROM blocklist WHERE actor_ip = $1::inet FOR UPDATE""", single)
+                if not (row and row["released_at"] is None and row["unexpired"]
+                        and row["incident_key"] == incident_key and row["reason"] == absorbed_reason_tag(incident_key)):
+                    raise HTTPException(409, "이 사건의 살아 있는 흡수 차단이 아닙니다. 만료·해제됐거나 다른 사건의 "
+                                             "차단입니다. 목록을 새로 확인해 주세요")
+                await c.execute("UPDATE blocklist SET released_at = now(), released_by = $2 WHERE actor_ip = $1::inet",
+                                single, user["u"])
+                absorbed = {"released": 1, "actor_ip": single}
+            elif body.action == "unblock_ip":
                 # 살아 있는 차단만 푼다. 이미 풀린 차단을 다시 풀면 처음 해제한 시각과 사람이 덮인다
-                changed = await c.execute(
-                    "UPDATE blocklist SET released_at = now(), released_by = $2 "
-                    "WHERE actor_ip = $1::inet AND released_at IS NULL "
-                    "AND (expires_at IS NULL OR expires_at > clock_timestamp()) AND incident_key = $3",
-                    inc["actor_ip"], user["u"], incident_key)
-                if changed != "UPDATE 1":
-                    raise HTTPException(409, "차단 상태가 변경됐습니다. 목록을 새로 확인해 주세요")
+                if own_live:
+                    changed = await c.execute(
+                        "UPDATE blocklist SET released_at = now(), released_by = $2 "
+                        "WHERE actor_ip = $1::inet AND released_at IS NULL "
+                        "AND (expires_at IS NULL OR expires_at > clock_timestamp()) AND incident_key = $3",
+                        inc["actor_ip"], user["u"], incident_key)
+                    if changed != "UPDATE 1":
+                        raise HTTPException(409, "차단 상태가 변경됐습니다. 목록을 새로 확인해 주세요")
+                # 흡수 차단 함께 해제와 R201(차단 대량 해제, detector/rules_audit.json a1)
+                #   풀리는 행마다 감사 트리거가 console.block.released 를 같은 사람 · 같은 시각으로 남기므로, 흡수 차단
+                #   3곳 이상을 함께 풀면 R201(한 사람 10분 3건)이 뜬다. 의도된 동작이다. R201 은 건별 검토 없는 해제를
+                #   다른 사람이 보게 하는 규칙이고, 첫 사건 하나의 판단으로 수십 곳을 푸는 것이 바로 그 경우다.
+                #   흡수 차단을 R201 에서 빼면(사유 · 사건 키로 거르면) 흡수 차단을 걸었다 푸는 것으로 대량 해제를
+                #   감출 수 있다. R201 인시던트의 항목에는 풀린 행마다 incident=<첫 사건 키> 가 남아, 판정자가 한 번의
+                #   흡수 해제임을 확인하고 정상 업무면 양성 정탐으로 닫는다.
+                #   평소의 해제 경로는 만료다. 흡수 차단은 콘솔 · triage 모두 만료가 있고(후속 차단도 약속의 만료),
+                #   만료는 행을 고치지 않아 감사 이벤트가 없다(R201 과 무관). 함께 풀기는 첫 사건 판정을 뒤집는 등 흡수
+                #   전체가 틀렸을 때 쓴다. 잘못 묶인 한 곳은 actor_ip 로 그 행만 푼다(위). 함께 풀면 후속 차단 약속도 거둔다.
+                if with_absorbed:
+                    released = await c.execute(RELEASE_ABSORBED_SQL, incident_key, user["u"],
+                                               absorbed_reason_tag(incident_key))
+                    stopped = await c.execute(FOLLOW_RELEASE_SQL, incident_key, user["u"])
+                    absorbed = {"released": int(released.split()[-1]), "follow_stopped": stopped == "UPDATE 1"}
+                    if not own_live and absorbed["released"] == 0 and not absorbed["follow_stopped"]:
+                        raise HTTPException(409, "풀 차단이 없습니다. 이 출발지와 흡수 차단이 이미 만료·해제됐거나 "
+                                                 "근거 사건이 변경됐습니다. 목록을 새로 확인해 주세요")
+
+            # 조치 기록. 흡수 출발지를 함께 다룬 조치는 이력에서 알아보게 메모 끝에 곳 수를 붙인다.
+            note = body.note
+            tag = None
+            if absorbed and "actor_ip" in absorbed:
+                tag = f"[흡수 차단 {absorbed['actor_ip']} 한 곳 해제]"
+            elif absorbed and "released" in absorbed and (absorbed["released"] or absorbed["follow_stopped"]):
+                tag = f"[흡수 차단 {absorbed['released']}곳 함께 해제" + (" · 후속 차단 중지" if absorbed["follow_stopped"]
+                                                                   else "") + "]"
+            elif absorbed and "blocked" in absorbed and (follow_expires or any(
+                    absorbed[k] for k in ("blocked", "kept", "skipped_total", "unblockable"))):
+                tag = absorbed_note(absorbed)
+                if follow_expires:
+                    tag = tag[:-1] + " · 만료 전 새 흡수도 차단]"
+            if tag:
+                note = f"{note} {tag}" if note else tag
+            rec = await c.fetchrow("""
+                INSERT INTO actions (incident_key, action, operator, note)
+                VALUES ($1, $2, $3, $4)
+                RETURNING id, action, operator, note, created_at""",
+                incident_key, body.action, user["u"], note)
+
+            new_status = ACTION_STATUS.get(body.action)
+            if new_status:
+                await c.execute("UPDATE incidents SET status = $1 WHERE incident_key = $2",
+                                new_status, incident_key)
 
     payload = row_to_dict(rec) | {"incident_key": incident_key}
+    if absorbed is not None:
+        payload["absorbed"] = absorbed
     await hub.broadcast({"type": "action.created", "data": payload})
     return payload
 

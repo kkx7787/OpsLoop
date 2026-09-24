@@ -99,6 +99,22 @@ export interface ActionRecord {
 
 export interface ActionCreated extends ActionRecord {
   incident_key: string
+  /**
+   * 흡수 출발지를 함께 다룬 조치. 차단(include_absorbed)은 blocked(이 사건 흡수 차단) · kept(다른 사건 차단으로 둠) ·
+   * skipped_total(사람이 풀어 넣지 않음) · unblockable(차단 금지 대역) · follow_expires_at(후속 차단 약속 만료),
+   * 함께 해제는 released · follow_stopped, 한 곳 해제(actor_ip)는 released = 1 · actor_ip
+   */
+  absorbed?: {
+    blocked?: number
+    kept?: number
+    skipped?: string[]
+    skipped_total?: number
+    unblockable?: number
+    follow_expires_at?: string | null
+    released?: number
+    follow_stopped?: boolean
+    actor_ip?: string
+  }
 }
 
 /** 같은 출발지의 다른 사건(최근 20건) */
@@ -155,6 +171,53 @@ export interface ActorBlock {
   enforced_at: string | null
 }
 
+/**
+ * 같은 페이로드 흡수(규칙 v3 · incident_absorbed) 한 행. 이 사건이 첫 사건일 때만 있다.
+ *  kind absorbed    같은 페이로드를 24시간 안에 다시 투하 · 심어 첫 사건에 묶여 지워진 인시던트
+ *  kind suppressed  가린 것이 흡수된 인시던트뿐이라 억제로 지운 같은 출발지의 낮은 알림(via_key 가 가린 흡수 인시던트)
+ */
+export interface AbsorbedRow {
+  actor_ip: string | null
+  kind: 'absorbed' | 'suppressed'
+  rule_id: string
+  member_key: string
+  via_key: string | null
+  first_ts: string
+  last_ts: string
+  signal_count: number
+  /** 세션 수 */
+  sessions: number
+  /** 페이로드(파일 해시 · 키 지문) 첫 값 */
+  payload: string | null
+  /** 흡수 사유 한 줄(서버가 쓴다) */
+  reason: string
+}
+
+/**
+ * 흡수 기록. 첫 사건의 근거(evidence.absorbed)는 판정 때 굳고 앞 100곳만 담으므로 차단 근거는 이것이다.
+ * items 는 흡수 먼저 · 첫 시각 순 최대 200행, 수는 전체를 센다.
+ */
+export interface AbsorbedInfo {
+  items: AbsorbedRow[]
+  /** 기록 전체(억제 포함) */
+  total: number
+  /** 흡수 출발지 수(이 사건 출발지 제외 · 중복 제거) */
+  sources: number
+  /** 이 사건의 흡수 차단으로 지금 살아 있는 행 수(함께 풀 수) */
+  blocked: number
+  /** 다른 사건 차단으로 살아 있는 흡수 출발지(함께 차단해도 그 사건 것으로 둔다) */
+  kept?: number
+  /** 사람이 풀어 함께 차단 · 후속 차단에서 빼는 출발지(앞 20곳)와 그 전체 수 */
+  skipped?: string[]
+  skipped_total?: number
+  /** 차단 금지 대역(사설 · 예약 주소)이라 넣지 않는 출발지 수 */
+  unblockable?: number
+  /** 규칙이 같은 페이로드 흡수를 쓰는가. 흡수 기록이 아직 없어도 함께 차단(후속 차단 약속)을 고를 수 있다 */
+  absorbs?: boolean
+  /** 살아 있는 후속 차단 약속. 만료 전까지 새로 흡수되는 출발지를 콘솔이 같은 만료로 차단한다 */
+  follow?: { expires_at: string; requested_by: string | null } | null
+}
+
 export interface ActorInfo {
   /** 이 출발지의 실제 이벤트 이력. 출발지가 없는 사건(target 만 있는 건)은 null */
   history: ActorHistory | null
@@ -170,8 +233,10 @@ export interface IncidentDetail extends IncidentBase {
   behavior: BehaviorRow[]
   actor: ActorInfo
   raw: RawLine[]
-  /** 판정 근거와 규칙 조건이 겹치는 규칙(R002 · R003 · R004)의 경고 문장. 아니면 null */
+  /** 판정 근거와 규칙 조건이 겹치는 규칙(R002 · R003 · R004 · R006)의 경고 문장. 아니면 null */
   circular: string | null
+  /** 같은 페이로드 흡수 기록(규칙 v3). 이전 서버에서는 생략된다 */
+  absorbed?: AbsorbedInfo
   /** 서버가 전체 관측 구간에서 계산한 제안. 없으면 추측하지 않는다. */
   proposal?: { verdict: Verdict | null; reasons: string[] }
 }
@@ -228,6 +293,13 @@ export interface ActionInput {
   note?: string
   /** 차단 만료(1..720시간, 기본 24) */
   expires_hours?: number
+  /** 차단 · 해제에 이 사건(첫 사건)의 흡수 출발지를 함께 넣는가. 넣지 않으면 이 출발지만(서버 기본 false) */
+  include_absorbed?: boolean
+  /**
+   * 해제할 차단 행의 출발지(차단 목록 화면). 이 사건 출발지와 다르면 이 사건의 흡수 차단 그 한 행만 푼다.
+   * 흡수 차단 행은 근거 사건(첫 사건)의 출발지와 행의 출발지가 다르다
+   */
+  actor_ip?: string
 }
 
 // ---------------------------------------------------------------- 쿼리 키

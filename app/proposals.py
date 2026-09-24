@@ -6,16 +6,24 @@
 """
 
 
+# SSH 판정 기준을 쓰는 허니팟 규칙. 중복 후보(app/main.py get_incident 의 rule_id IN)도 이 목록에서 찾는다.
+SSH_RULES = frozenset({"R001", "R002", "R003", "R004", "R005", "R006"})
+# 규칙 조건과 판정 근거가 겹치는 규칙(판정 기준 §6). app/main.py CIRCULAR 의 키와 같아야 한다.
+#   R003 은 v3 에서도 순환이다. 키 심기 리다이렉트를 R006 으로 떼었을 뿐 남은 조건(업로드 · 리다이렉트 저장)이
+#   판정 기준의 '파일 투하'와 같다. R006 은 조건과 판정 근거가 모두 authorized_keys 쓰기다.
+CIRCULAR_RULES = frozenset({"R002", "R003", "R004", "R006"})
+
+
 def propose(rule_id, counts, covered_by=None):
     def result(verdict, *reasons):
         return {"verdict": verdict, "reasons": list(reasons)}
 
-    if rule_id not in {"R001", "R002", "R003", "R004", "R005"}:
+    if rule_id not in SSH_RULES:
         return result(None, "이 규칙 유형에는 자동 제안 기준이 없습니다. 증거를 보고 직접 판정하세요.")
     if covered_by:
         return result("non_actionable", f"같은 출발지·겹치는 구간에 이미 실제 위협으로 판정된 사건이 있습니다: {covered_by}",
                       "대표 사건의 조치 범위를 확인한 뒤 중복 여부를 판정하세요.")
-    if rule_id in {"R002", "R003", "R004"}:
+    if rule_id in CIRCULAR_RULES:
         return result(None, "규칙 조건과 위협 판정 근거가 겹칩니다. 같은 증거를 정답으로 재사용하지 않고 직접 판정하세요.")
 
     fails = counts.get("cowrie.login.failed", 0)

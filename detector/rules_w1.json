@@ -1,6 +1,6 @@
 {
-  "rule_version": "w1",
-  "note": "관제 대상의 웹 · 인증 계층 규칙. 발생원(web-01 sshd · nginx, 콘솔, 웹 디코이)이 아니라 범주와 동작(eventid)으로 매칭해 노드를 더해도 파일을 고치지 않는다. 1분 다리(opsloop-agents)가 적재 직후 s1 다음에 돌린다. n1(R101 최소판)은 파일과 rule_versions 이력을 남긴 채 실행만 멈추고 이 버전이 대신한다(n1 저장 인시던트 0건이라 키가 상하지 않는다). 허니팟 규칙(v1 · v2)과 버전을 나눈 것은 정상 사용자가 있는 환경의 결과를 섞지 않기 위해서다. R101 · R102 임계치는 정상이 있는 곳에서 관측한 값이 아니므로 3.8.2 리플레이로 다시 정한다. 변경 시 rule_version 을 올린다. rule_versions 는 같은 버전을 다시 쓰지 않는다.",
+  "rule_version": "w2",
+  "note": "관제 대상의 웹 · 인증 계층 규칙. 발생원(web-01 sshd · nginx, 콘솔, 웹 디코이)이 아니라 범주와 동작(eventid)으로 매칭해 노드를 더해도 파일을 고치지 않는다. 1분 다리(opsloop-agents)가 적재 직후 s1 다음에 돌린다. n1(R101 최소판)은 파일과 rule_versions 이력을 남긴 채 실행만 멈추고 이 버전이 대신한다(n1 저장 인시던트 0건이라 키가 상하지 않는다). 허니팟 규칙(v1 · v2)과 버전을 나눈 것은 정상 사용자가 있는 환경의 결과를 섞지 않기 위해서다. R101 · R102 임계치는 정상이 있는 곳에서 관측한 값이 아니므로 3.8.2 리플레이로 다시 정한다. 변경 시 rule_version 을 올린다. rule_versions 는 같은 버전을 다시 쓰지 않는다. w2: R102 의 404 집계에서 사이트 메타데이터 조회(robots.txt · security.txt · humans.txt · ads.txt · sitemap.xml · favicon · apple-touch-icon · .well-known 아래 등록된 이름 몇 개와 관측된 robots.txt)를 뺀다. 2회차 판정에서 w1 R102 159.223.46.221(9/22 19:53 UTC)이 오탐이었고, 404 6건이 모두 robots.txt · security.txt · favicon 과 그 변형 위치였다. R101 · R103 · R104 는 w1 과 같다. 파일 이름은 다리 · 설치 스크립트가 부르는 이름이라 그대로 둔다. 버전이 달라 인시던트 키가 R10x|w2|… 로 w1 과 다르다. w1 인시던트와 판정은 그대로 남고, w2 로 처음 돌면 w1 에서 뜬 다른 인시던트가 w2 키로 한 번 새로 뜬다(운영 DB 9/24 11:46 UTC 172.237.27.147 R102 는 404 258회 중 메타데이터가 2회라 256회로 그대로 뜬다).",
   "aggregation": {
     "window_gap_seconds": 900,
     "comment": "관제 대상의 연속 활동 분포가 아직 없어 허니팟 규칙과 같은 15분에서 시작한다. 고정 창으로 신호를 만드는 R101 · R102 는 규칙별로 창의 두 배를 준다."
@@ -23,7 +23,8 @@
         "threshold": 5
       },
       "rationale": "관측 근거가 없다. 디코이 실패 0건, web-01 실패 0건, 콘솔 4건(자체 시험 · 한 창)이라 분포를 낼 수 없다. n1 R101 과 같은 출발점(10분 5회)이며, 외부 관례(fail2ban 기본 findtime 10분 · maxretry 5)와 허니팟 R001(15분 5회)을 이었다. 실제 서버에서는 실패만 반복하는 쪽이 다수라 실패만 센다(v2 R001 참조). 없는 사용자 시도(sshd.login.invalid_user)도 같은 행위라 함께 센다. eventid 가 발생원 이름으로 시작해 cowrie 이벤트는 걸리지 않으므로 발생원을 정하지 않는다. 출발지 주의(위험 3): 콘솔이 실제 클라이언트 주소를 받기(HAProxy forwardfor · 도커 포트 전달) 전에는 console.login.failed 의 출발지가 인프라 주소로 묶인다. 9/22 덤프의 콘솔 로그인 6건은 모두 도커 브리지 게이트웨이(172.18.0.1)이고, 내부망에서는 HAProxy(192.168.50.1)가 될 수 있다. 그러면 콘솔 사용자 전원이 한 행위자로 묶인다. 점프 호스트를 거친 web-01 SSH 도 192.168.50.1 로 보인다. 이런 인시던트의 차단은 인프라 주소를 막게 되므로 출발지를 확인한 뒤 판정하고, 차단 금지 목록은 3.9 에서 둔다. 10분 고정창으로 신호를 만들므로 통합 창은 슬롯 경계에 걸리지 않도록 창의 두 배인 20분이다. 3.8.2 리플레이로 다시 정한다.",
-      "aggregation_gap_seconds": 1200
+      "aggregation_gap_seconds": 1200,
+      "changed_from_w1": "없음"
     },
     {
       "id": "R102",
@@ -39,11 +40,19 @@
         "http_status": [
           404
         ],
+        "exclude_url_patterns": [
+          "^/(robots|security|humans|ads)\\.txt$",
+          "^/sitemap\\.xml$",
+          "^/favicon(\\.ico)?$",
+          "^/apple-touch-icon(-[0-9]+x[0-9]+)?(-precomposed)?\\.png$",
+          "^/\\.well-known/(security\\.txt|robots\\.txt|change-password|openid-configuration|assetlinks\\.json|apple-app-site-association)$"
+        ],
         "window_seconds": 600,
         "threshold": 5
       },
-      "rationale": "디코이 4일 관측: 출발지별 10분 창 52개, p50 1 · p90 2 · p95 2 · p99 4 · 최대 4. 5는 관측 최대를 넘는 최소 정수라 4일간 오탐 0이다. web-01 은 이 값을 빌린다. 공격 전용 환경의 값이므로 정상이 있는 곳의 오탐률은 3.8.2 리플레이로 검증하기 전에는 주장하지 않는다. 발생원 대신 eventid 로 한정해 노드를 더해도 파일을 고치지 않는다. 콘솔 요청은 HAProxy 요청 줄(haproxy.request)을 파싱하기 전이라 넣지 않았다. 10분 고정창이라 통합 창은 창의 두 배인 20분이다.",
-      "aggregation_gap_seconds": 1200
+      "rationale": "디코이 4일 관측: 출발지별 10분 창 52개, p50 1 · p90 2 · p95 2 · p99 4 · 최대 4. 5는 관측 최대를 넘는 최소 정수라 4일간 오탐 0이다. web-01 은 이 값을 빌린다. 공격 전용 환경의 값이므로 정상이 있는 곳의 오탐률은 3.8.2 리플레이로 검증하기 전에는 주장하지 않는다. 발생원 대신 eventid 로 한정해 노드를 더해도 파일을 고치지 않는다. 콘솔 요청은 HAProxy 요청 줄(haproxy.request)을 파싱하기 전이라 넣지 않았다. 10분 고정창이라 통합 창은 창의 두 배인 20분이다. w2 (exclude_url_patterns): 404 가 나도 사이트 메타데이터 조회는 경로 탐색이 아니다. 브라우저 · 검색 로봇 · 보안 연락처 수집기가 어느 사이트에나 묻는 고정 이름이고, 없는 경로를 찾는 행위가 아니다. w1 오탐(159.223.46.221, 9/22 19:53 UTC)은 1초 안의 404 6건이 /robots.txt · /.well-known/security.txt · /favicon.ico · /.well-known/robots.txt · /favicon · /security.txt 였다. url 전체가 다음 중 하나일 때만 뺀다: /robots.txt · /security.txt · /humans.txt · /ads.txt · /sitemap.xml · /favicon · /favicon.ico · /apple-touch-icon(-크기)(-precomposed).png · /.well-known/ 아래 등록된 이름(security.txt · change-password · openid-configuration · assetlinks.json · apple-app-site-association)과 w1 오탐에서 관측된 /.well-known/robots.txt. .well-known 은 이름을 하나씩 적는다. 한 단계 이름을 모두 빼면 /.well-known/admin · /.well-known/backup · /.well-known/config.json 같은 탐색도 빠져 10분 5회 임계치 아래로 숨을 수 있고, /.well-known/acme-challenge/*.php · /.well-known/pki-validation/*.php 처럼 웹셸을 찾는 흔한 탐색 경로도 그 아래에 있다(적지 않은 이름 · 두 단계 이상 · .php 등은 센다). 실험 DB 의 .well-known 404 는 security.txt 3건 · robots.txt 1건뿐이다. 질의 문자열이 붙거나(/robots.txt?…) 앞에 다른 경로가 붙은(/x/robots.txt) 요청, 대소문자를 바꾼 요청도 센다. 빠지는 것은 이름이 정해진 조회뿐이라 이 목록으로 탐색을 숨길 수 없다. 실험 DB(디코이 9/18 ~ 9/24): 404 147건(provenance=real) 중 73건(50%, 38개 출발지)이 메타데이터였다(/favicon.ico 58 · /robots.txt 5 · /sitemap.xml 4 · /.well-known/security.txt 3 · 나머지 3). 출발지 · 10분 창 분포는 w1 108개 창 p50 1 · p90 2 · p95 2 · p99 4 · 최대 6 에서 w2 71개 창 p50 1 · p90 1 · p95 1 · p99 2 · 최대 2 가 된다. 임계치에 닿던 창은 159.223.46.221(6 → 0) 하나였고 w2 에서 사라진다. 운영 DB(읽기 전용 조회, 9/24 13시 UTC 까지)의 172.237.27.147(nmap, 404 258회)은 메타데이터 2회를 빼도 256회라 그대로 뜬다. 판정이 오탐 1건이라 조건을 바꾸는 처방이고(판정 기준 §3 표), 임계치(10분 5회)를 옮길 근거는 없어 그대로 둔다.",
+      "aggregation_gap_seconds": 1200,
+      "changed_from_w1": "exclude_url_patterns 추가"
     },
     {
       "id": "R103",
@@ -57,7 +66,8 @@
           "decoy"
         ]
       },
-      "rationale": "로그인에 성공한 뒤 무언가를 한 디코이 세션이다. parse_decoy 가 세션을 웹 계층 뜻으로 재집계한다(command_count = 로그인 뒤 진단 입력 · 화면 조회). 불리언이라 임계치가 없다. 양성 0건이라 합성으로만 검증한다. 결함 후보(위험 5): 디코이는 로그인 성공 뒤 대시보드로 리디렉트하며 decoy.action.view 를 남긴다. 그래서 command_count 가 1 이상이 되어 이 규칙이 사실상 '로그인 성공'이 된다(v1 R002 의 echo 와 같은 구조). 양성 표본 없이 조건을 고치면 추측이므로 w2 후보로 둔다. v1 R002 는 발생원을 정하지 않아 같은 세션을 함께 잡을 수 있다."
+      "rationale": "로그인에 성공한 뒤 무언가를 한 디코이 세션이다. parse_decoy 가 세션을 웹 계층 뜻으로 재집계한다(command_count = 로그인 뒤 진단 입력 · 화면 조회). 불리언이라 임계치가 없다. 양성 0건이라 합성으로만 검증한다. 결함 후보(위험 5): 디코이는 로그인 성공 뒤 대시보드로 리디렉트하며 decoy.action.view 를 남긴다. 그래서 command_count 가 1 이상이 되어 이 규칙이 사실상 '로그인 성공'이 된다(v1 R002 의 echo 와 같은 구조). 양성 표본 없이 조건을 고치면 추측이므로 w2 후보로 둔다. v1 R002 는 발생원을 정하지 않아 같은 세션을 함께 잡을 수 있다.",
+      "changed_from_w1": "없음. 결함 후보(위험 5)는 양성 표본이 아직 없어 다음 버전 후보로 남긴다"
     },
     {
       "id": "R104",
@@ -72,7 +82,8 @@
           "console"
         ]
       },
-      "rationale": "이벤트 하나로 성립한다. 업로드 시도는 세션 재집계의 downloads 와 같은 이벤트다. 양성 0건. 발생원을 decoy · console 로 한정해 다른 발생원이 같은 이름을 만들어도 걸리지 않게 한다(Cowrie 반입은 v1 R003 이 본다). 콘솔에 업로드가 생기면 같은 조건이 환경에 따라 정탐 · 오탐으로 갈리는 사례가 된다."
+      "rationale": "이벤트 하나로 성립한다. 업로드 시도는 세션 재집계의 downloads 와 같은 이벤트다. 양성 0건. 발생원을 decoy · console 로 한정해 다른 발생원이 같은 이름을 만들어도 걸리지 않게 한다(Cowrie 반입은 v1 R003 이 본다). 콘솔에 업로드가 생기면 같은 조건이 환경에 따라 정탐 · 오탐으로 갈리는 사례가 된다.",
+      "changed_from_w1": "없음"
     }
   ]
 }
