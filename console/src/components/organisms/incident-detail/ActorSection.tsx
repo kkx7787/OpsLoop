@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
-import type { ActorInfo, RelatedIncident } from '@/api/incidents'
+import type { AbsorbedInfo, ActorInfo, RelatedIncident } from '@/api/incidents'
 import { Badge } from '../../atoms/Badge'
 import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { Time } from '../../atoms/Time'
@@ -13,14 +13,18 @@ export interface ActorSectionProps {
   actor: ActorInfo
   related: RelatedIncident[]
   actorIp: string | null
+  /** 같은 페이로드 흡수 기록(규칙 v3). 이 사건이 첫 사건일 때만 행이 있다 */
+  absorbed?: AbsorbedInfo
   className?: string
 }
 
 /**
- * ③ 행위자 이력: 최초 · 최근 관측, 누적 이벤트, 관측된 센서, 다른 규칙 탐지, 차단 이력, 같은 출발지의 다른 사건.
+ * ③ 행위자 이력: 최초 · 최근 관측, 누적 이벤트, 관측된 센서, 다른 규칙 탐지, 차단 이력, 같은 페이로드 흡수,
+ * 같은 출발지의 다른 사건.
  * 허니팟 · 디코이 접속 이력은 결정적 근거다. 그 자산에 접근한 출발지가 정상 사용자일 가능성은 사실상 없다(화면 설계 5장).
+ * 첫 사건이면 같은 페이로드로 흡수된 다른 출발지도 이 사건의 행위자로 보인다. 흡수된 인시던트는 지워져 상세가 없다.
  */
-export function ActorSection({ actor, related, actorIp, className }: ActorSectionProps) {
+export function ActorSection({ actor, related, actorIp, absorbed, className }: ActorSectionProps) {
   const { history, rules, blocked } = actor
   const state = blocked ? blockState(blocked) : null
   return (
@@ -89,6 +93,8 @@ export function ActorSection({ actor, related, actorIp, className }: ActorSectio
         </>
       )}
 
+      {absorbed && (absorbed.total > 0 || absorbed.follow) && <AbsorbedList absorbed={absorbed} />}
+
       <div className="flex flex-col gap-1.5">
         <span className="text-xs text-ink-muted">같은 출발지의 다른 사건 · 최근 {related.length}건</span>
         {related.length === 0 ? (
@@ -141,6 +147,77 @@ export function ActorSection({ actor, related, actorIp, className }: ActorSectio
         )}
       </div>
     </DetailSection>
+  )
+}
+
+/** 흡수 사유 옆에 보이는 페이로드 앞자리. 전체는 title 로 본다 */
+function shortPayload(payload: string | null): string | null {
+  if (!payload) return null
+  return payload.length > 20 ? `${payload.slice(0, 19)}…` : payload
+}
+
+/**
+ * 같은 페이로드 흡수(규칙 v3 · incident_absorbed). 첫 사건 근거(①의 absorbed)는 판정 때 굳고 앞 100곳만 담으므로
+ * 차단 근거는 이 목록이다. 판정 뒤에 붙은 흡수와, 가린 것이 흡수뿐이라 억제한 같은 출발지의 낮은 알림도 보인다.
+ */
+function AbsorbedList({ absorbed }: { absorbed: AbsorbedInfo }) {
+  const { items, total, sources, blocked, follow } = absorbed
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-xs text-ink-muted">
+        <strong className="font-semibold text-ink">같은 페이로드 흡수 {sources}곳</strong> · 기록 {total}건(억제 포함)
+        {blocked > 0 && ` · 이 사건의 흡수 차단 ${blocked}곳 유지 중`}
+      </span>
+      {follow && (
+        <span className="text-xs text-ink-muted">
+          후속 차단 중 · 새로 흡수되는 출발지도 <Time value={follow.expires_at} format="datetime" /> 까지 차단합니다
+        </span>
+      )}
+      {items.length > 0 && <div className={`${TABLE.wrap} max-h-80`}>
+        <table className={TABLE.table} aria-label="같은 페이로드 흡수">
+          <thead>
+            <tr>
+              <th scope="col" className={TABLE.th}>
+                출발지
+              </th>
+              <th scope="col" className={TABLE.th}>
+                첫 시각 (KST)
+              </th>
+              <th scope="col" className={TABLE.th}>
+                세션
+              </th>
+              <th scope="col" className={TABLE.th}>
+                흡수 사유
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((row) => (
+              <tr key={row.member_key} data-kind={row.kind}>
+                <td className={`${TABLE.td} ${TABLE.mono}`}>{row.actor_ip ?? '—'}</td>
+                <td className={`${TABLE.td} ${TABLE.mono}`}>
+                  <Time value={row.first_ts} format="datetime" />
+                </td>
+                <td className={`${TABLE.td} ${TABLE.mono}`}>{row.sessions}</td>
+                <td className={TABLE.td}>
+                  {row.reason}
+                  {row.payload && (
+                    <span className="ml-1.5 font-mono text-ink-muted" title={row.payload}>
+                      {shortPayload(row.payload)}
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>}
+      {total > items.length && (
+        <span className="text-xs text-ink-muted">
+          앞 {items.length}건만 보입니다 · 전체 {total}건
+        </span>
+      )}
+    </div>
   )
 }
 

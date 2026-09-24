@@ -1,7 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import type { RouteObject } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { incidentPath, type IncidentDetail } from '@/api/incidents'
+import { incidentPath, type AbsorbedInfo, type IncidentDetail } from '@/api/incidents'
 import { ACTION_STATUS } from '@/lib/domain'
 import { noRetryClient, renderRoutes } from '@/test/render'
 import { IncidentDetailPage } from './IncidentDetailPage'
@@ -48,6 +48,22 @@ function detail(extra: Partial<IncidentDetail> = {}): IncidentDetail {
   }
 }
 
+/** 같은 페이로드 흡수(규칙 v3) 기록. 흡수 2곳(한 곳은 두 번) · 억제 1건, 흡수 차단 3곳 유지 중 */
+const KEY_FP = 'SHA256:MkYY9qiVsFGBC5WkjoClCkwEFW5iSjcGQF7m4n4H7Cw'
+function absorbed(extra: Partial<AbsorbedInfo> = {}): AbsorbedInfo {
+  return {
+    items: [
+      { actor_ip: '198.51.100.2', kind: 'absorbed', rule_id: 'R006', member_key: 'R006|v3|198.51.100.2|a', via_key: null, first_ts: '2026-09-18T07:00:00+00:00', last_ts: '2026-09-18T07:00:00+00:00', signal_count: 1, sessions: 1, payload: KEY_FP, reason: '같은 SSH 키를 24시간 안에 다시 심음(흡수)' },
+      { actor_ip: '198.51.100.3', kind: 'absorbed', rule_id: 'R006', member_key: 'R006|v3|198.51.100.3|b', via_key: null, first_ts: '2026-09-18T08:00:00+00:00', last_ts: '2026-09-18T08:00:00+00:00', signal_count: 1, sessions: 2, payload: KEY_FP, reason: '같은 SSH 키를 24시간 안에 다시 심음(흡수)' },
+      { actor_ip: '198.51.100.2', kind: 'suppressed', rule_id: 'R002', member_key: 'R002|v3|198.51.100.2|c', via_key: 'R006|v3|198.51.100.2|a', first_ts: '2026-09-18T07:00:01+00:00', last_ts: '2026-09-18T07:00:09+00:00', signal_count: 1, sessions: 1, payload: null, reason: '흡수된 R006 사건과 같은 출발지 · 같은 구간의 낮은 알림(억제)' },
+    ],
+    total: 3,
+    sources: 2,
+    blocked: 3,
+    ...extra,
+  }
+}
+
 function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 }
@@ -81,7 +97,8 @@ function stubApi({ role = 'operator', body = detail(), status = 200 }: StubOptio
     }
     if (url === `${incidentPath(KEY)}/actions` && method === 'POST') {
       const sent = JSON.parse(String(init?.body)) as Record<string, unknown>
-      const created = { id: 4, note: null, ...sent, operator: 'han', created_at: '2026-09-18T08:00:00+00:00', incident_key: KEY }
+      const created = { id: 4, note: null, ...sent, operator: 'han', created_at: '2026-09-18T08:00:00+00:00', incident_key: KEY,
+        ...(sent.include_absorbed ? { absorbed: sent.action === 'block_ip' ? { blocked: 2, kept: 0 } : { released: 3 } } : {}) }
       if (isDetail(state)) {
         const next = ACTION_STATUS[sent.action as keyof typeof ACTION_STATUS] ?? state.status
         state = { ...state, status: next, actions: [...state.actions, created as unknown as IncidentDetail['actions'][number]] }
@@ -358,6 +375,108 @@ describe('IncidentDetailPage', () => {
     expect(await screen.findByRole('heading', { level: 1, name: '데이터를 불러오지 못했습니다' })).toBeInTheDocument()
     expect(screen.getByText('데이터베이스 연결 실패 (HTTP 503)')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '다시 시도' })).toBeInTheDocument()
+  })
+
+  it('첫 사건이면 ③ 에 같은 페이로드 흡수 목록(출발지 · 첫 시각 · 세션 · 사유)을 보인다', async () => {
+    stubApi({ body: detail({ rule_id: 'R006', rule_name: 'SSH 키 심기', absorbed: absorbed({ total: 250 }) }) })
+    renderRoutes(routes(), PATH)
+    const actor = await screen.findByRole('region', { name: '행위자 이력' })
+    expect(within(actor).getByText('같은 페이로드 흡수 2곳')).toBeInTheDocument()
+    expect(within(actor).getByText(/이 사건의 흡수 차단 3곳 유지 중/)).toBeInTheDocument()
+    const table = within(actor).getByRole('table', { name: '같은 페이로드 흡수' })
+    const rows = within(table).getAllByRole('row').slice(1)
+    expect(rows).toHaveLength(3)
+    expect(within(rows[1]).getByText('198.51.100.3')).toBeInTheDocument()
+    expect(within(rows[1]).getByText('2')).toBeInTheDocument()
+    expect(within(rows[0]).getByText(/같은 SSH 키를 24시간 안에/)).toBeInTheDocument()
+    expect(within(rows[0]).getByTitle(KEY_FP)).toBeInTheDocument()
+    expect(within(rows[2]).getByText(/억제/)).toBeInTheDocument()
+    expect(within(actor).getByText('앞 3건만 보입니다 · 전체 250건')).toBeInTheDocument()
+  })
+
+  it('흡수 기록이 없는 사건은 흡수 목록 · 함께 차단 선택을 보이지 않는다', async () => {
+    stubApi({ body: detail({ absorbed: { items: [], total: 0, sources: 0, blocked: 0 } }) })
+    renderRoutes(routes(), PATH)
+    const { panel } = await readyPanel()
+    expect(screen.queryByRole('table', { name: '같은 페이로드 흡수' })).toBeNull()
+    fireEvent.click(panel.getByRole('button', { name: '차단' }))
+    expect(panel.queryByRole('checkbox')).toBeNull()
+  })
+
+  it('차단 확인에서 흡수된 출발지를 함께 차단하도록 고를 수 있다(기본은 이 출발지만)', async () => {
+    const fetch = stubApi({ body: detail({ absorbed: absorbed() }) })
+    renderRoutes(routes(), PATH)
+    const { panel } = await readyPanel()
+    fireEvent.click(panel.getByRole('button', { name: '차단' }))
+    const confirm = within(panel.getByRole('form', { name: '차단 확인' }))
+    const check = confirm.getByRole('checkbox', { name: '흡수된 출발지 2곳도 함께 차단' })
+    expect(check).not.toBeChecked()
+    fireEvent.click(check)
+    fireEvent.click(confirm.getByRole('button', { name: '차단 확정' }))
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toBeDefined())
+    expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'block_ip', expires_hours: 24, include_absorbed: true })
+    expect(await panel.findByText(/흡수 출발지 2곳 함께 차단/)).toBeInTheDocument()
+
+    // 다시 열면 선택은 꺼져 있다
+    fireEvent.click(panel.getByRole('button', { name: '차단' }))
+    expect(panel.getByRole('checkbox', { name: '흡수된 출발지 2곳도 함께 차단' })).not.toBeChecked()
+  })
+
+  it('흡수를 쓰는 규칙은 흡수 기록이 아직 없어도 함께 차단(후속 차단)을 고를 수 있고, 넣지 않을 곳을 미리 밝힌다', async () => {
+    const fetch = stubApi({ body: detail({ rule_id: 'R006', absorbed: { items: [], total: 0, sources: 0, blocked: 0, absorbs: true, follow: null } }) })
+    renderRoutes(routes(), PATH)
+    const { panel } = await readyPanel()
+    fireEvent.click(panel.getByRole('button', { name: '차단' }))
+    const confirm = within(panel.getByRole('form', { name: '차단 확인' }))
+    fireEvent.click(confirm.getByRole('checkbox', { name: '앞으로 흡수되는 출발지도 함께 차단' }))
+    fireEvent.click(confirm.getByRole('button', { name: '차단 확정' }))
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'block_ip', expires_hours: 24, include_absorbed: true }))
+  })
+
+  it('함께 차단 안내에 사람이 푼 곳 · 차단 금지 대역을 적고, 후속 차단 중이면 ③ 과 해제 확인에 보인다', async () => {
+    const follow = { expires_at: '2026-09-19T07:00:00+00:00', requested_by: 'han' }
+    stubApi({ role: 'admin', body: detail({ absorbed: absorbed({ skipped: ['198.51.100.9'], skipped_total: 1, unblockable: 2, follow }) }) })
+    renderRoutes(routes(), PATH)
+    const { panel } = await readyPanel()
+    expect(within(screen.getByRole('region', { name: '행위자 이력' })).getByText(/후속 차단 중 · 새로 흡수되는 출발지도/)).toBeInTheDocument()
+    fireEvent.click(panel.getByRole('button', { name: '차단' }))
+    const block = within(panel.getByRole('form', { name: '차단 확인' }))
+    expect(block.getByText(/사람이 푼 1곳\(198\.51\.100\.9\)은 다시 걸지 않습니다/)).toBeInTheDocument()
+    expect(block.getByText(/차단 금지 대역\(사설 · 예약 주소\) 2곳은 넣지 않습니다/)).toBeInTheDocument()
+    fireEvent.click(panel.getByRole('button', { name: '취소' }))
+    fireEvent.click(panel.getByRole('button', { name: '차단 해제' }))
+    expect(within(panel.getByRole('form', { name: '차단 해제 확인' })).getByRole('checkbox', { name: '흡수 차단 3곳도 함께 해제 · 후속 차단 중지' })).toBeInTheDocument()
+  })
+
+  it('admin 해제 확인은 흡수 차단 함께 해제를 고를 수 있고 3곳 이상이면 R201 을 알린다', async () => {
+    const fetch = stubApi({ role: 'admin', body: detail({ absorbed: absorbed() }) })
+    renderRoutes(routes(), PATH)
+    const { panel } = await readyPanel()
+    fireEvent.click(panel.getByRole('button', { name: '차단 해제' }))
+    const confirm = within(panel.getByRole('form', { name: '차단 해제 확인' }))
+    expect(confirm.getByText(/차단 대량 해제\(R201\) 알림이 뜹니다/)).toBeInTheDocument()
+    fireEvent.click(confirm.getByRole('checkbox', { name: '흡수 차단 3곳도 함께 해제' }))
+    fireEvent.click(confirm.getByRole('button', { name: '차단 해제 확정' }))
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'unblock_ip', include_absorbed: true }))
+    expect(await panel.findByText(/흡수 차단 3곳 함께 해제/)).toBeInTheDocument()
+  })
+
+  it('이 출발지 차단이 풀렸어도 흡수 차단이 살아 있으면 흡수 차단만 풀 수 있다', async () => {
+    const released = { reason: 'console', method: 'nft', created_at: '2026-09-18T07:00:00+00:00', expires_at: '2999-01-01T00:00:00+00:00', released_at: '2026-09-18T09:00:00+00:00', enforced_at: '2026-09-18T07:00:10+00:00' }
+    const fetch = stubApi({ role: 'admin', body: detail({ absorbed: absorbed({ blocked: 2 }), actor: { ...detail().actor, blocked: released } }) })
+    renderRoutes(routes(), PATH)
+    const { panel } = await readyPanel()
+    const release = panel.getByRole('button', { name: '차단 해제' })
+    expect(release).not.toHaveAttribute('aria-disabled')
+    fireEvent.click(release)
+    const confirm = within(panel.getByRole('form', { name: '차단 해제 확인' }))
+    expect(confirm.getByText(/흡수 차단/, { selector: 'p' })).toHaveTextContent('이 사건의 흡수 차단 2곳만 지금 풉니다')
+    const check = confirm.getByRole('checkbox', { name: '흡수 차단 2곳도 함께 해제' })
+    expect(check).toBeChecked()
+    expect(check).toBeDisabled()
+    expect(confirm.queryByText(/R201/)).toBeNull()
+    fireEvent.click(confirm.getByRole('button', { name: '차단 해제 확정' }))
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'unblock_ip', include_absorbed: true }))
   })
 
   it('출발지가 없는 사건(대상만)은 행위 · 이력을 모을 수 없다고 알리고 차단은 흐리다', async () => {

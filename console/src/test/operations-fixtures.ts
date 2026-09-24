@@ -1,7 +1,11 @@
 import type { AuditEntry, NodeEntry, RulesResult } from '@/api/operations'
 export const RULES: RulesResult = {
   as_of: '2026-09-23T08:00:00Z', since: null, until: null,
-  rows: [{ rule_id: 'R001', rule_version: 'v2', incidents: 4, judged: 3, judged_effective: 2, threats: 1, non_actionable: 1, false_positives: 0, benign_positives: 0, undetermined: 1, non_action_rate: 50, false_positive_rate: 0 }],
+  rows: [
+    { rule_id: 'R001', rule_version: 'v2', incidents: 4, judged: 3, judged_effective: 2, threats: 1, non_actionable: 1, false_positives: 0, benign_positives: 0, undetermined: 1, non_action_rate: 50, false_positive_rate: 0 },
+    // 순환 규칙(키 심기, 규칙 v3). 오탐률 대신 '순환 규칙'으로 보인다
+    { rule_id: 'R006', rule_version: 'v3', incidents: 5, judged: 1, judged_effective: 1, threats: 1, non_actionable: 0, false_positives: 0, benign_positives: 0, undetermined: 0, non_action_rate: 0, false_positive_rate: 0 },
+  ],
   versions: ['v1','v2'].map(version => ({ version, created_at: '2026-09-08T00:00:00Z', reason: '중복 경보 조건 조정', rules: [{ id: 'R001', name: 'SSH 무차별 대입', enabled: true, severity: 'medium', rationale: '반복 인증 실패', change: null }] })),
   runs: [{ id: 1, rule_version: 'v2', since: null, until: null, started_at: '2026-09-23T08:00:00Z', finished_at: '2026-09-23T08:00:01Z', incidents: 0 }],
 }

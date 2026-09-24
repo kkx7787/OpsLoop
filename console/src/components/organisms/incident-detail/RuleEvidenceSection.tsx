@@ -16,7 +16,7 @@ const SESSIONS_SHOWN = 20
 
 /**
  * ① 규칙이 본 것: 관측값 · 임계치와 비교된 값 · 신호 수 · 세션 수 · 규칙이 남긴 표본.
- * 순환 규칙(R002 · R003 · R004)은 판정 근거와 규칙 조건이 겹친다는 사실을 먼저 보인다(화면 설계 5장).
+ * 순환 규칙(R002 · R003 · R004 · R006, lib/domain CIRCULAR_RULES)은 판정 근거와 규칙 조건이 겹친다는 사실을 먼저 보인다(화면 설계 5장).
  */
 export function RuleEvidenceSection({ detail, className }: RuleEvidenceSectionProps) {
   const evidence = detail.evidence

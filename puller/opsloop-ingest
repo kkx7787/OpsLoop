@@ -11,6 +11,8 @@ opsloop-ingest.service 가 opsloop-pull 사용자로 5분마다 돌린다.
                 파서에는 메모리 상한을 걸어, 큰 줄 하나가 서비스 전체를 강제 종료시키지 않고 그 파일만 격리되게 한다.
   3. 탐지       가져오기가 정상(0)이거나 생존 신호 이상(11)일 때만 한다. 구멍 · 일시 오류 · 디스크 부족이면
                 데이터가 덜 들어온 상태이므로 보류한다 (중간이 빈 채로 탐지하면 쪼개진 인시던트가 남는다).
+                규칙 파일은 OPSLOOP_RULES(detector/ 안의 파일 이름, 기본 rules_v3.json)다. detect.py 의 기본값(v1)에
+                맡기지 않는다. 규칙 버전 전환은 이 값과 운영 detector_runs 의 버전으로 확인한다.
   4. 격리 재시도 적재 · 탐지가 끝난 뒤 회차당 20개까지, 실패할수록 간격을 늘려(5분 → 최대 1시간) 다시 넣어 본다.
                 DB 가 잠깐 끊겨 격리된 파일은 저절로 돌아온다.
 
@@ -41,6 +43,9 @@ S3_ENV = os.environ.get("OPSLOOP_S3_ENV", "/etc/opsloop/s3-pull.env")
 DB_ENV = os.environ.get("OPSLOOP_DB_ENV", "/etc/opsloop/collector.env")
 # 탐지기는 자기 역할(opsloop_detector)로 붙는다. 파일이 없으면 적재기와 같은 접속 정보로 돈다 (이슈 #31)
 DETECT_ENV = os.environ.get("OPSLOOP_DETECTOR_ENV", "/etc/opsloop/detector.env")
+# 허니팟 규칙 파일. 되돌릴 때는 /etc/default/opsloop-ingest 에 OPSLOOP_RULES=rules_v2.json 처럼 적는다.
+# v3 는 incident_absorbed 표(infra/migrations/20260925_v3_absorbed.sql)가 없으면 탐지가 실패한다(install-ingest.sh 가 먼저 본다)
+RULES = os.environ.get("OPSLOOP_RULES", "rules_v3.json")
 SENSORS = ("cowrie", "decoy", "gateway")   # 편지함 이름이자 파서 이름(parse_<센서>.py). 풀러의 SENSORS 와 같다
 BATCH_FILES, BATCH_BYTES = 200, 32 * 1024 * 1024
 PARSER_MEM = 384 * 1024 * 1024       # 파서 한 개의 주소 공간 상한. 넘으면 MemoryError 로 실패하고 그 파일만 격리된다
@@ -244,7 +249,8 @@ def main():
 
     detect_failed = False
     if rc_pull in DETECT_OK:
-        r = subprocess.run([sys.executable, os.path.join(APP, "detector", "detect.py"), "--run"], env=env_detect, cwd=APP)
+        r = subprocess.run([sys.executable, os.path.join(APP, "detector", "detect.py"), "--run",
+                            "--rules", os.path.join(APP, "detector", RULES)], env=env_detect, cwd=APP)
         detect_failed = r.returncode != 0
         if detect_failed:
             log(f"탐지 실패 (종료 코드 {r.returncode})", 3)

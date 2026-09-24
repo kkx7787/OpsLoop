@@ -89,6 +89,18 @@ export function verdictTargetSeconds(severity: Severity | string, ruleId?: strin
   return isSeverity(severity) ? VERDICT_TARGET_SECONDS[severity] : VERDICT_TARGET_SECONDS.low
 }
 
+/**
+ * 순환 규칙: 규칙 조건과 판정 근거가 겹치는 규칙(판정 기준 §6 · app/proposals.py CIRCULAR_RULES 와 같다).
+ * 여기서 나온 위협 판정은 규칙이 정확하다는 증거가 아니라 같은 것을 두 번 센 것이라, 오탐률 대신 중복률을 본다.
+ * R006(SSH 키 심기, 규칙 v3)은 조건과 판정 근거가 모두 authorized_keys 쓰기다. R003 은 v3 에서도 순환이다
+ * (키 심기를 R006 으로 떼었을 뿐 남은 조건이 파일 투하다).
+ */
+export const CIRCULAR_RULES: ReadonlySet<string> = new Set(['R002', 'R003', 'R004', 'R006'])
+
+export function isCircularRule(ruleId: string | null | undefined): boolean {
+  return CIRCULAR_RULES.has(ruleId ?? '')
+}
+
 /** 경과 상태. ok → warn(목표의 2/3 경과, 주황) → over(목표 초과, 빨강). 화면 설계 3장 · 4장. */
 export type ElapsedTone = 'ok' | 'warn' | 'over'
 

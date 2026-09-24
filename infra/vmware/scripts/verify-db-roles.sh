@@ -43,7 +43,19 @@ q opsloop_ingest   "INSERT INTO events SELECT * FROM events WHERE false" 허용
 q opsloop_detector "INSERT INTO verdicts SELECT * FROM verdicts WHERE false" 거부
 q opsloop_detector "INSERT INTO events SELECT * FROM events WHERE false" 거부
 q opsloop_detector "UPDATE blocklist SET released_at = now() WHERE false" 거부
+q opsloop_detector "SELECT node_id, addr, registered_at FROM nodes LIMIT 0" 허용
+q opsloop_detector "SELECT token_hash FROM nodes LIMIT 0" 거부
 q opsloop_detector "INSERT INTO incidents SELECT * FROM incidents WHERE false" 허용
+q opsloop_detector "UPDATE incidents SET status = status WHERE false" 거부
+q opsloop_detector "UPDATE incidents SET last_ts = last_ts, evidence = evidence WHERE false" 허용
+q opsloop_detector "SELECT incident_key FROM incidents WHERE false FOR UPDATE SKIP LOCKED" 허용
+q opsloop_detector "INSERT INTO incident_absorbed SELECT * FROM incident_absorbed WHERE false" 허용
+q opsloop_detector "UPDATE incident_absorbed SET kind = kind WHERE false" 거부
+q opsloop_detector "SELECT count(*) FROM absorbed_blocks" 거부
+q opsloop_console  "SELECT count(*) FROM incident_absorbed" 허용
+q opsloop_console  "INSERT INTO incident_absorbed SELECT * FROM incident_absorbed WHERE false" 거부
+q opsloop_console  "UPDATE absorbed_blocks SET released_at = now() WHERE false" 허용
+q opsloop_console  "DELETE FROM absorbed_blocks WHERE false" 거부
 q opsloop_backup   "INSERT INTO events SELECT * FROM events WHERE false" 거부
 q opsloop_backup   "SELECT count(*) FROM events" 허용
 q opsloop_gate     "SELECT count(*) FROM events" 거부

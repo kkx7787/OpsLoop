@@ -23,6 +23,11 @@ export interface Summary {
   oldest_pending: PendingIncident[]
   rule_quality: Array<{ rule_id: string; rule_version: string; incidents: number; judged_effective: number; non_action: number; non_action_rate: number | null }>
   blocked_ips: number
+  /**
+   * 첫 사건을 위협으로 판정한 뒤에 같은 페이로드로 흡수됐는데 차단이 없는 출발지(규칙 v3). 흡수는 알림이 없어
+   * 여기서만 드러난다. 흡수 기록 표가 없는 서버는 생략한다. first_key 는 그런 첫 사건 하나(바로 가기)
+   */
+  absorbed_unblocked?: { sources: number; incidents: number; first_key: string | null }
   latest_event: string | null
 }
 

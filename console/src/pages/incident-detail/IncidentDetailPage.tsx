@@ -76,7 +76,7 @@ function IncidentDetailView({ incidentKey }: IncidentDetailViewProps) {
         <div className="flex min-w-0 flex-col gap-3">
           <RuleEvidenceSection detail={detail} />
           <BehaviorSection rows={detail.behavior} actorIp={detail.actor_ip} />
-          <ActorSection actor={detail.actor} related={detail.related} actorIp={detail.actor_ip} />
+          <ActorSection actor={detail.actor} related={detail.related} actorIp={detail.actor_ip} absorbed={detail.absorbed} />
           <RawLogSection raw={detail.raw} />
         </div>
         <ResponseSection detail={detail} openedAt={openedAt} className="min-w-0" />

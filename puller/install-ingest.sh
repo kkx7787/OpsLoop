@@ -24,6 +24,34 @@ id opsloop-pull >/dev/null 2>&1 || useradd --system --shell /usr/sbin/nologin --
 install -d -o opsloop-pull -g opsloop-pull -m 750 /var/lib/opsloop
 install -d -o root -g opsloop-pull -m 750 /etc/opsloop
 
+echo "== 규칙 파일 (opsloop-ingest 의 OPSLOOP_RULES, 기본 rules_v3.json)"
+# 코드를 바꾸기 전에 본다. 탐지가 흡수 기록 표를 쓰는 규칙(v3)인데 표나 권한이 없으면 5분마다 탐지가 실패하므로
+# 여기서 멈춘다(앞 판이 그대로 돈다). 되돌릴 때는 /etc/default/opsloop-ingest 에 OPSLOOP_RULES=rules_v2.json 을 적는다
+RULES=$(sed -n 's/^OPSLOOP_RULES=//p' /etc/default/opsloop-ingest 2>/dev/null | tail -1)
+RULES=${RULES:-rules_v3.json}
+[ -f "$SRC/detector/$RULES" ] || { echo "  규칙 파일 없음: detector/$RULES" >&2; exit 1; }
+read -r RULE_VERSION NEEDS_ABSORBED < <(python3 - "$SRC/detector/$RULES" <<'PY'
+import json, sys
+doc = json.load(open(sys.argv[1]))
+need = any(r.get("enabled", True) and ("absorb_same_payload" in r.get("params", {}) or "baseline_days" in r.get("params", {}))
+           for r in doc["rules"])
+print(doc["rule_version"], "yes" if need else "no")
+PY
+)
+echo "  $RULES (규칙 버전 $RULE_VERSION)"
+if [ "$NEEDS_ABSORBED" = yes ]; then
+  if [ ! -s /etc/opsloop/detector.env ]; then
+    echo "  /etc/opsloop/detector.env 가 없어 흡수 기록 표를 확인하지 못했다. install-collector.sh 를 먼저 돌린다" >&2; exit 1
+  fi
+  sudo -u opsloop-pull sh -c "set -a; . /etc/opsloop/detector.env; python3 -c '
+import os, psycopg2
+c = psycopg2.connect(os.environ[\"DATABASE_URL\"], connect_timeout=10).cursor()
+c.execute(\"SELECT to_regclass(%s) IS NOT NULL AND has_table_privilege(%s, %s)\", (\"incident_absorbed\", \"incident_absorbed\", \"INSERT\"))
+raise SystemExit(0 if c.fetchone()[0] else 1)'" \
+    || { echo "  탐지 역할이 incident_absorbed 에 넣을 수 없다. infra/migrations/20260925_v3_absorbed.sql 을 먼저 적용한다" >&2; exit 1; }
+  echo "  incident_absorbed 표 · 탐지 역할 쓰기 권한 확인"
+fi
+
 echo "== 코드 $VERSION (root 소유. 파이프라인이 자기 코드를 바꿀 수 없다)"
 rm -rf /opt/opsloop/app.new
 install -d -m 755 /opt/opsloop /opt/opsloop/app.new
@@ -81,3 +109,5 @@ else
   echo "  없음. Mac 에서 읽기 키를 넣은 뒤 타이머를 켠다"
 fi
 echo "설치 완료. 한 번 실행: sudo systemctl start opsloop-ingest.service; journalctl -u opsloop-ingest -n 60"
+echo "규칙 버전 확인: 다음 회차 뒤 detector_runs 의 최근 행이 $RULE_VERSION 인지 본다"
+echo "  SELECT rule_version, max(started_at) FROM detector_runs WHERE started_at > now() - interval '15 minutes' GROUP BY 1;"

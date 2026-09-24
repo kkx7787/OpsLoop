@@ -730,13 +730,31 @@ CREATE OR REPLACE TRIGGER trg_audit_append_only
                                                  OR OLD.eventid LIKE 'console.notify.%'))
     EXECUTE FUNCTION audit_append_only();
 
+-- 판정된 인시던트의 끝 시각 · 건수 · 근거는 고치지 않는다. 판정자가 본 근거가 판정 기록과 함께 남아야 한다.
+--   탐지 적재(detect.py ON_CONFLICT_GROW)의 WHERE 는 문장 시작 때의 스냅샷으로 판정을 본다. 콘솔 · triage 가
+--   판정을 넣고 인시던트 상태를 바꾼 뒤 커밋하기를 적재가 행 잠금에서 기다렸다면, 그 판정은 WHERE 에 보이지
+--   않는다. 트리거 안의 질의는 새 스냅샷을 쓰므로 여기서 다시 보고 그 행의 갱신만 건너뛴다(오류 없이 0행).
+--   상태(status) 변경은 이 열들을 건드리지 않으므로 걸리지 않는다.
+CREATE OR REPLACE FUNCTION incidents_keep_judged() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM verdicts v WHERE v.incident_key = OLD.incident_key) THEN
+        RETURN NULL;
+    END IF;
+    RETURN NEW;
+END;
+$$;
+CREATE OR REPLACE TRIGGER trg_incidents_keep_judged
+    BEFORE UPDATE OF last_ts, signal_count, session_count, evidence ON incidents
+    FOR EACH ROW EXECUTE FUNCTION incidents_keep_judged();
+
 -- 역할 분리 (이슈 #31 · 2026-09-24)
 --   구성요소마다 최소 권한 역할로 붙는다. 역할은 비밀번호 때문에 여기서 만들지 않는다
 --   (데이터 노드: collector/install-collector.sh, 콘솔: infra/vmware/scripts/db-console-role.sh).
 --   역할이 있을 때만 권한을 주고, 먼저 모두 거둬 여러 번 적용해도 아래 권한만 남게 한다.
 --   뷰(audit_log 등)를 참조하므로 이 파일의 맨 끝에 둔다.
 --     opsloop_ingest    다리(pull_loki.py) · 파서(--load · --reclassify) — 원문 · 세션 · 지표 적재, 노드 수신 기록
---     opsloop_detector  탐지기(detect.py) — 규칙 실행, 인시던트 생성 · 억제, 실행 기록
+--     opsloop_detector  탐지기(detect.py) — 규칙 실행, 인시던트 생성 · 갱신 · 억제, 실행 기록
 --     opsloop_console   콘솔 API · triage.py — 판정 · 조치 · 차단 · 등록 토큰 · 감사 기록 · 로그인 기록
 --     opsloop_backup    pg_dump — 읽기 전용
 --   소유자 opsloop 는 스키마 적용 · nodes.py(관리 단말) · auth.py add(계정) 에만 쓴다.
@@ -769,9 +787,13 @@ BEGIN
         REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM opsloop_detector;
         GRANT SELECT ON events, sessions, incidents, verdicts, actions, node_metrics, detector_runs, rule_versions,
                         rule_quality TO opsloop_detector;
-        GRANT SELECT (node_id, status, logs, registered_at) ON nodes TO opsloop_detector;
+        -- addr: R301 i2 가 관문 거부 줄의 출발지를 등록 주소와 맞춘다. token_hash · agent_fp 는 여전히 뺀다
+        GRANT SELECT (node_id, status, logs, registered_at, addr) ON nodes TO opsloop_detector;
         GRANT INSERT ON incidents, rule_versions, detector_runs TO opsloop_detector;
         GRANT DELETE ON incidents TO opsloop_detector;                    -- 억제: 판정 · 조치 없는 건만 코드가 고른다
+        -- 이어지는 사건 갱신(ON CONFLICT DO UPDATE): 끝 시각 · 건수 · 근거만. 판정 없는 건만 문장이 고르고
+        -- trg_incidents_keep_judged 가 다시 막는다. 억제 전 잠금(FOR UPDATE SKIP LOCKED)도 이 열 권한으로 된다
+        GRANT UPDATE (last_ts, signal_count, session_count, evidence) ON incidents TO opsloop_detector;
         GRANT USAGE ON SEQUENCE detector_runs_id_seq TO opsloop_detector;
     END IF;
 END
@@ -810,6 +832,65 @@ BEGIN
         REVOKE ALL ON ALL TABLES IN SCHEMA public FROM opsloop_backup;
         REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM opsloop_backup;
         GRANT pg_read_all_data TO opsloop_backup WITH INHERIT TRUE;      -- pg_dump 에 필요한 읽기 전부. 역할이 NOINHERIT 여도 물려받는다
+    END IF;
+END
+$$;
+
+-- 같은 페이로드 흡수 기록 (규칙 v3)
+--   detect.py 가 같은 페이로드 흡수로 지운 인시던트(kind = absorbed)와, 가린 것이 흡수된 인시던트뿐이라 억제로 지운
+--   같은 출발지의 낮은 알림(kind = suppressed, via_key = 가린 흡수 인시던트)을 첫 사건(first_key) 아래 남긴다.
+--   차단 근거(출발지 · 첫 시각 · 세션 · 키)는 이 표다. 상한 없이 모두 남는다.
+--   incidents.evidence 와 따로 둔다. 판정된 첫 사건의 근거는 굳지만(trg_incidents_keep_judged) 이 표에는 판정 뒤의
+--   흡수도 붙는다. 탐지는 지우는 문장에서 지운 행을 그대로 여기에 넣으므로, 지운 인시던트는 모두 여기 있다.
+--   탐지 역할은 넣기만 한다(고치거나 지우지 않는다). 첫 사건을 참조 키로 걸지 않는다. 첫 사건이 지워져도 근거는 남는다.
+--   rule_version · actor_ip 색인: 기준선 이탈 v3 가 지운 인시던트의 출발지도 제외 행위자로 센다.
+--   규칙 v3 를 쓰기 전에 적용한다(infra/migrations/20260925_v3_absorbed.sql 이 이 블록과 같다). 역할 블록이 모든 표의
+--   권한을 먼저 거두므로 권한은 여기서 다시 준다. 역할 블록 뒤에 있어야 한다.
+CREATE TABLE IF NOT EXISTS incident_absorbed (
+    first_key     text        NOT NULL,
+    member_key    text        NOT NULL,
+    kind          text        NOT NULL CHECK (kind IN ('absorbed', 'suppressed')),
+    via_key       text,
+    rule_id       text        NOT NULL,
+    rule_version  text        NOT NULL,
+    actor_ip      inet,
+    first_ts      timestamptz NOT NULL,
+    last_ts       timestamptz NOT NULL,
+    signal_count  integer     NOT NULL,
+    sessions      text[]      NOT NULL DEFAULT '{}',
+    payloads      text[]      NOT NULL DEFAULT '{}',
+    recorded_at   timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (first_key, member_key),
+    CHECK ((kind = 'suppressed') = (via_key IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS incident_absorbed_member ON incident_absorbed (member_key);
+CREATE INDEX IF NOT EXISTS incident_absorbed_actor ON incident_absorbed (rule_version, actor_ip);
+
+-- 흡수 후속 차단 약속 (규칙 v3)
+--   첫 사건을 차단하며 흡수 출발지 함께 차단을 고르면 콘솔 · triage 가 여기에 만료와 함께 남긴다. 흡수는 첫 사건이
+--   판정 · 차단된 뒤에도 24시간 창 끝까지 붙으므로, 콘솔이 주기적으로 약속이 살아 있는 첫 사건의 새 흡수 출발지를
+--   같은 만료로 차단 목록에 올린다(app/absorbed.py AbsorbedFollower). 함께 해제하면 거둔다(released_at).
+--   탐지 역할은 이 표를 보지 못한다(차단 목록 권한이 없는 것과 같다).
+CREATE TABLE IF NOT EXISTS absorbed_blocks (
+    first_key     text        PRIMARY KEY,
+    expires_at    timestamptz NOT NULL,
+    requested_by  text,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    released_at   timestamptz,
+    released_by   text
+);
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'opsloop_detector') THEN
+        GRANT SELECT, INSERT ON incident_absorbed TO opsloop_detector;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'opsloop_console') THEN
+        -- 콘솔 상세의 흡수 목록과 흡수 출발지 함께 차단 · 해제(app/main.py · triage.py). 차단 목록 쓰기는 역할 블록의
+        -- blocklist INSERT · UPDATE 로 된다. 표를 고치거나 지우지 못한다
+        GRANT SELECT ON incident_absorbed TO opsloop_console;
+        -- 후속 차단 약속: 함께 차단 · 해제(add_action · triage record)와 후속 차단 루프. 지우지 못한다
+        GRANT SELECT, INSERT, UPDATE ON absorbed_blocks TO opsloop_console;
     END IF;
 END
 $$;

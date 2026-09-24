@@ -22,6 +22,12 @@ describe('대시보드', () => {
     expect(fetch.mock.calls.every(([path]) => String(path) === '/api/stats/summary')).toBe(true)
   })
 
+  it('판정 뒤에 흡수됐는데 차단이 없는 출발지를 활성 차단 옆에 알린다', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ ...MONITORING_SUMMARY, absorbed_unblocked: { sources: 12, incidents: 2, first_key: 'R006|v3|192.0.2.1|x' } })))
+    renderPage()
+    expect(await screen.findByText('판정 뒤 흡수 미차단 12곳 · 첫 사건 2건')).toBeInTheDocument()
+  })
+
   it('0건도 정상 수신 여부를 확인하도록 안내하며 비율을 만들어내지 않는다', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ ...MONITORING_SUMMARY, pending: { total: 0, overdue: 0, warning: 0, oldest_seconds: 0, age_distribution: [0,0,0,0,0] }, oldest_pending: [], rule_quality: [] })))
     renderPage()

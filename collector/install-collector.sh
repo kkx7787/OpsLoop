@@ -89,14 +89,17 @@ mv "$APP/.collector.new" "$APP/collector"
 ls "$APP/collector" | sed 's/^/    /'
 app_ver=$(cat "$APP/VERSION" 2>/dev/null || echo 없음)
 [ "$app_ver" = "$VERSION" ] || echo "  경고: parser · detector 는 커밋 $app_ver 이다. 같은 커밋으로 install-ingest.sh 를 돌리고 이 스크립트를 다시 돌린다"
-# 다리가 돌리는 규칙 파일은 pull_loki.py RULESETS 와 같다 (s1 · w1 · a1 · i1)
+# 다리가 돌리는 규칙 파일은 pull_loki.py RULESETS 와 같다 (s1 · w2 · a1 · i2)
 for f in parser/parse_agent.py parser/exclusions.txt detector/detect.py detector/rules_self.json \
          detector/rules_w1.json detector/rules_audit.json detector/rules_infra.json; do
   [ -e "$APP/$f" ] || echo "  경고: $APP/$f 가 없다. 다리가 적재 · 탐지를 하지 못한다"
 done
 grep -q -- '--quiet' "$APP/detector/detect.py" 2>/dev/null || echo "  경고: detect.py 가 --quiet 를 모른다 (구판). 다리의 탐지가 실패한다"
 { grep -q '"operator_rate"' "$APP/detector/detect.py" && grep -q '"node_silence"' "$APP/detector/detect.py"; } 2>/dev/null \
-  || echo "  경고: detect.py 가 operator_rate · node_silence 를 모른다 (구판). 다리의 a1 · i1 탐지가 실패한다"
+  || echo "  경고: detect.py 가 operator_rate · node_silence 를 모른다 (구판). 다리의 a1 · i2 탐지가 실패한다"
+# 구판은 i2 의 관문 거부 쪼개기를 모르고 넘어가 9/21 같은 공백을 i2 키로 다시 띄운다
+grep -q 'split_on_gate_reject' "$APP/detector/detect.py" 2>/dev/null \
+  || echo "  경고: detect.py 가 split_on_gate_reject 를 모른다 (구판). i2 R301 이 관문 거부 공백을 거르지 못한다"
 
 # ── DB 역할 · 접속 파일 (이슈 #31) ────────────────────────────────────────────
 # 역할마다 접속 파일 하나. 파일이 없으면 새 비밀번호로 만들고, 역할이 없거나 비밀번호가 파일과 다르면
@@ -233,10 +236,21 @@ check_priv "관문 nodes.token_hash 읽기 · enroll 실행 · events 읽기 · 
 check_priv "적재 events 삽입 · events 삭제 · incidents 삽입 · nodes.token_hash 읽기" "t f f f" \
   "SELECT has_table_privilege('opsloop_ingest','events','INSERT'), has_table_privilege('opsloop_ingest','events','DELETE'),
           has_table_privilege('opsloop_ingest','incidents','INSERT'), has_column_privilege('opsloop_ingest','nodes','token_hash','SELECT')"
-check_priv "탐지 incidents 삽입 · incidents 삭제 · verdicts 삽입 · events 삽입 · nodes.token_hash 읽기" "t t f f f" \
+# 탐지 갱신은 incidents 의 끝 시각 · 건수 · 근거 네 열만이다. 표 전체 · status 갱신은 없어야 한다
+check_priv "탐지 incidents 삽입 · 삭제 · 네 열 갱신 · 표 갱신 · status 갱신 · verdicts 삽입 · events 삽입 · nodes.token_hash 읽기" "t t t f f f f f" \
   "SELECT has_table_privilege('opsloop_detector','incidents','INSERT'), has_table_privilege('opsloop_detector','incidents','DELETE'),
+          has_column_privilege('opsloop_detector','incidents','last_ts','UPDATE')
+            AND has_column_privilege('opsloop_detector','incidents','signal_count','UPDATE')
+            AND has_column_privilege('opsloop_detector','incidents','session_count','UPDATE')
+            AND has_column_privilege('opsloop_detector','incidents','evidence','UPDATE'),
+          has_table_privilege('opsloop_detector','incidents','UPDATE'),
+          has_column_privilege('opsloop_detector','incidents','status','UPDATE'),
           has_table_privilege('opsloop_detector','verdicts','INSERT'), has_table_privilege('opsloop_detector','events','INSERT'),
           has_column_privilege('opsloop_detector','nodes','token_hash','SELECT')"
+# R301 i2 는 관문 거부 줄의 출발지를 노드의 등록 주소와 맞춘다
+check_priv "탐지 nodes.addr 읽기 · nodes.agent_fp 읽기" "t f" \
+  "SELECT has_column_privilege('opsloop_detector','nodes','addr','SELECT'),
+          has_column_privilege('opsloop_detector','nodes','agent_fp','SELECT')"
 check_priv "콘솔 verdicts 삽입 · events 삭제 · events 갱신 · incidents 삭제 · nodes.token_hash · enrollments.token_hash · console_users.role 갱신" "t f f f f f f" \
   "SELECT has_table_privilege('opsloop_console','verdicts','INSERT'), has_table_privilege('opsloop_console','events','DELETE'),
           has_table_privilege('opsloop_console','events','UPDATE'), has_table_privilege('opsloop_console','incidents','DELETE'),
