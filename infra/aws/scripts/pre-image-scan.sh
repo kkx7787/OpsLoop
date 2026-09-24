@@ -3,7 +3,7 @@
 #  허니팟 이미지(AMI) 뜨기 전 비밀 검사 (이슈 #19)
 #
 #  목적
-#    옛 허니팟(instances.tf 의 aws_instance.honeypot)에서 AMI 를 뜨면 디스크가 통째로 DMZ 허니팟
+#    옛 허니팟(i-058726c1a0671fe1d, 2026-09-25 종료)에서 AMI 를 뜨면 디스크가 통째로 DMZ 허니팟
 #    (honeypot_dmz.tf)에 복사된다. 옛 직접 적재 경로(scripts/install-collector.sh · scripts/deploy.sh)가
 #    허니팟에 남겼을 수 있는 DB 접속 문자열(/etc/opsloop/collector.env 의 DATABASE_URL,
 #    /usr/local/bin/opsloop-collect, opsloop-collect.service · .timer, ~/opsloop, 저장소 사본),

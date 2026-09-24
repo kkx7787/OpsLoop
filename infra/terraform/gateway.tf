@@ -148,7 +148,7 @@ resource "aws_instance" "gateway" {
     encrypted             = false
   }
 
-  # 메타데이터 서비스는 토큰을 요구하는 방식만 허용한다 (instances.tf 와 같다)
+  # 메타데이터 서비스는 토큰을 요구하는 방식만 허용한다 (DMZ 허니팟과 같다)
   metadata_options {
     http_endpoint               = "enabled"
     http_tokens                 = "required"
