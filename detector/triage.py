@@ -37,8 +37,10 @@ OpsLoop - 인시던트 검토 도구 (WBS 2.5 / 폐루프 입력부)
 
 import argparse
 import os
+import re
 import sys
 import time
+import unicodedata
 
 try:
     import psycopg2
@@ -223,6 +225,42 @@ def observed_of(evidence, signal_count):
 
 def local(ts):
     return ts.astimezone().strftime("%m-%d %H:%M:%S")
+
+
+# 기본 무시 문자(Default_Ignorable) 가운데 Cf 가 아닌 것(한글 채움 · 결합 자소 연결 · 이형 선택자 등)과 점자 빈칸 U+2800. 아무것도 그리지 않는다
+IGNORABLE = re.compile("[\u034f\u115f\u1160\u17b4\u17b5\u180b-\u180f\u2800\u3164\ufe00-\ufe0f\uffa0\ufff0-\ufff8"
+                       "\U000e0000-\U000e0fff]")
+
+
+def shown(v, n=None):
+    """공격자가 정한 값(아이디 · 비밀번호 · 명령 · URL 등)을 판정 화면에 찍을 모습. 원문은 DB 에 그대로 둔다.
+
+    파서는 NUL 만 지우므로 ESC · C1(U+009B CSI) · 방향 제어 · 제로폭이 그대로 온다. 그대로 찍으면 ANSI 이스케이프로
+    화면을 지우거나 제안 · 근거 줄을 덮어쓰고, U+202E 로 글자 순서를 뒤집는다. 그래서 숨은 문자(형식 문자 Cf · 탭과
+    줄바꿈 밖의 제어 문자 Cc · 줄과 문단 구분자 U+2028 · U+2029)는 표식 ⟨U+XXXX⟩ 로, 줄바꿈은 ↵ 로(가짜 줄을 만들지 못하게), 탭은 빈칸으로 바꾼다.
+    기본 무시 문자(한글 채움 U+3164 · U+034F · 이형 선택자)도 표식으로 바꾼다. 콘솔 revealHidden 과 같은 규칙이다.
+    n 이 있으면 표식을 가르지 않고 n 자 안으로 자르고, 잘렸으면 끝을 '…' 로 둔다. 긴 공백으로 터미널 자동 줄바꿈을
+    일으켜 가짜 '제안' 줄을 만들지 못하게, 공격자 값은 모두 n 을 준다.
+    """
+    pieces = []
+    for c in str(v)[:None if n is None else n + 1]:
+        if c == "\n":
+            pieces.append("↵")
+        elif c == "\t":
+            pieces.append(" ")
+        elif unicodedata.category(c) in ("Cf", "Cc", "Zl", "Zp") or IGNORABLE.match(c):
+            pieces.append(f"⟨U+{ord(c):04X}⟩")
+        else:
+            pieces.append(c)
+    if n is None or sum(map(len, pieces)) <= n:
+        return "".join(pieces)
+    out, size = [], 0
+    for piece in pieces:
+        if size + len(piece) > n - 1:
+            break
+        out.append(piece)
+        size += len(piece)
+    return "".join(out) + "…"
 
 
 # ────────────────────────────────────────────────────────────────
@@ -418,7 +456,7 @@ def show(row, idx, total, ev, suggestion, basis, observed, unit):
               + ("   [이미 차단됨]" if ev["blocked"] else ""))
     else:
         # IP 가 아닌 대상(user:<이름> · node:<id>)이다. 차단 목록에 올릴 출발지가 없다
-        print(f"  대상     {target}")
+        print(f"  대상     {shown(target, 80)}")
     print(f"  기간     {local(first_ts)} ~ {local(last_ts)}"
           f"   ({int((last_ts - first_ts).total_seconds())}초)")
     print(f"  규모     신호 {n_sig}건 · 세션 {n_sess}개")
@@ -428,17 +466,17 @@ def show(row, idx, total, ev, suggestion, basis, observed, unit):
     if ev["creds"]:
         print("\n  로그인 시도")
         for u, p, n in ev["creds"]:
-            print(f"    {(u or '-'):<14} / {(p or '-'):<18} {n:>4}회")
+            print(f"    {shown(u or '-', 32):<14} / {shown(p or '-', 32):<18} {n:>4}회")
 
     if ev["commands"]:
         print("\n  실행한 명령")
         for cmd, n in ev["commands"]:
-            print(f"    {cmd.replace(chr(10), ' ')[:62]}" + (f"  ({n}회)" if n > 1 else ""))
+            print(f"    {shown(cmd, 62)}" + (f"  ({n}회)" if n > 1 else ""))
 
     if ev["files"]:
         print("\n  파일 이동")
         for eid, sha, url in ev["files"]:
-            print(f"    {eid.split('.')[-1]:<12} {(url or sha or '-')[:50]}")
+            print(f"    {shown(eid.split('.')[-1], 12):<12} {shown(url or sha or '-', 50)}")
 
     if len(ev["also"]) > 1:
         print("\n  같은 출발지가 걸린 다른 규칙")
@@ -449,7 +487,7 @@ def show(row, idx, total, ev, suggestion, basis, observed, unit):
     if ab.get("total"):
         print(f"\n  같은 페이로드 흡수 {ab['sources']}곳 · 기록 {ab['total']}건 (억제 · 판정 뒤 흡수 포함)")
         for a_ip, a_ts, a_sess, kind in ab["sample"]:
-            print(f"    {(a_ip or '-'):<16} {local(a_ts)}  세션 {a_sess}  {'흡수' if kind == 'absorbed' else '억제'}")
+            print(f"    {(a_ip or '-'):<16} {local(a_ts)}  세션 {shown(a_sess or '-', 24)}  {'흡수' if kind == 'absorbed' else '억제'}")
         if ab["total"] > len(ab["sample"]):
             print(f"    … 외 {ab['total'] - len(ab['sample'])}건 (전체는 콘솔 상세)")
         st = ab.get("state") or {}

@@ -17,6 +17,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import quote, urlsplit
 
 from dashboard import PENDING
+from untrusted import reveal
 
 log = logging.getLogger("opsloop.notify")
 
@@ -52,6 +53,8 @@ LEGACY_TEAMS_SUFFIXES = (".logic.azure.com", ".webhook.office.com")
 NUMERIC_LABEL_RE = re.compile(r"0x[0-9a-f]*|[0-9]+")
 PLACEHOLDER_RE = re.compile(r"\{([a-z_]+)\}")
 BRACE_RE = re.compile(r"\{([^{}]*)\}")
+# 틀에 넣는 값 하나의 글자 수 상한(표식으로 바꾼 뒤). 넘치면 '…' 로 끝난다.
+VALUE_MAX = 200
 
 
 # ----------------------------------------------------------------------
@@ -129,14 +132,33 @@ def validate_template(template: str) -> str:
     return template
 
 
+def clean_value(value) -> str:
+    """틀에 넣을 값 하나를 정리한다(이슈 #41). 숨은 문자(방향 제어 · 제로폭 · 제어 문자)는 ⟨U+XXXX⟩ 표식,
+    줄바꿈 · 탭은 공백, VALUE_MAX 글자 상한. 한 값이 알림 안에서 가짜 줄 · 뒤집힌 글자를 만들지 못한다.
+    지금 값(규칙 이름 · 출발지 IP · user:<콘솔 계정> · node:<id>)은 공격자가 정하지 못하지만 규칙이 늘어도 막히게 둔다."""
+    return reveal(value, newline=" ", limit=VALUE_MAX)
+
+
+def clean_payload(payload: dict) -> dict:
+    """웹훅 items 의 글자 값도 틀 값과 같게 정리한다. 받는 쪽이 마크다운 · HTML 로 그릴 수 있다.
+    incident_key 는 받는 쪽이 DB · 콘솔 주소와 맞춰 보는 식별자라 원문 그대로 둔다(JSON 문자열로만 나간다)."""
+    return {k: clean_value(v) if isinstance(v, str) and k != "incident_key" else v for k, v in payload.items()}
+
+
 def render(template: str, values: dict) -> str:
-    """문자 치환만 한다. str.format 은 쓰지 않는다. 아는 자리표시자만 바꾸고 값이 없으면 '-' 다."""
+    """문자 치환만 한다. str.format 은 쓰지 않는다. 아는 자리표시자만 바꾸고 값이 없으면 '-' 다.
+
+    값은 clean_value 로 정리한다. {link} 만 그대로 둔다. 콘솔 주소(OPSLOOP_CONSOLE_URL) 뒤에 사건 키를
+    quote(safe='') 로 붙인 것이라 콘솔 경로를 벗어나지 못하고, 자르면 링크가 깨진다.
+    """
     def swap(match):
         name = match.group(1)
         if name not in PLACEHOLDERS:
             return match.group(0)
         value = values.get(name)
-        return "-" if value is None or value == "" else str(value)
+        if value is None or value == "":
+            return "-"
+        return str(value) if name == "link" else clean_value(value)
     return PLACEHOLDER_RE.sub(swap, template)
 
 
@@ -238,19 +260,28 @@ def build_message(channel, event: str, payloads: list, now=None) -> dict:
     return {"title": render(channel["template_header"], header_values), "lines": lines, "link": link}
 
 
+def text_block(text: str, **run) -> dict:
+    """마크다운을 해석하지 않는 글 한 덩이. TextBlock 은 [글](주소) · **굵게** · 목록 기호를 해석해
+    값 안에 링크 · 가짜 줄을 만들 수 있다. RichTextBlock 의 TextRun 은 글자를 그대로 보인다(Adaptive Card 1.2+)."""
+    return {"type": "RichTextBlock", "inlines": [{"type": "TextRun", "text": text} | run]}
+
+
 def teams_card(message: dict) -> dict:
-    """Power Automate 'Teams 웹훅 요청을 받으면' 트리거가 받는 Adaptive Card 모양."""
+    """Power Automate 'Teams 웹훅 요청을 받으면' 트리거가 받는 Adaptive Card 모양.
+    머리말 한 덩이 뒤에 항목 줄마다 한 덩이. 줄을 \\n 으로 잇지 않으므로 줄바꿈 해석에 기대지 않는다.
+    링크는 Action.OpenUrl 하나뿐이고 콘솔 주소다."""
+    body = [text_block(message["title"], weight="Bolder", size="Medium")]
+    body += [text_block(line) for line in message["lines"]]
     return {"type": "message", "attachments": [{
         "contentType": "application/vnd.microsoft.card.adaptive", "contentUrl": None,
         "content": {"$schema": "http://adaptivecards.io/schemas/adaptive-card.json", "type": "AdaptiveCard", "version": "1.4",
-                    "body": [{"type": "TextBlock", "text": message["title"], "weight": "Bolder", "size": "Medium", "wrap": True},
-                             {"type": "TextBlock", "text": "\n".join(message["lines"]), "wrap": True}],
+                    "body": body,
                     "actions": [{"type": "Action.OpenUrl", "title": "콘솔에서 보기", "url": message["link"]}]}}]}
 
 
 def webhook_body(event: str, message: dict, payloads: list) -> dict:
     return {"source": "opsloop", "event": event, "title": message["title"], "lines": message["lines"],
-            "items": payloads, "console_url": message["link"]}
+            "items": [clean_payload(p) for p in payloads], "console_url": message["link"]}
 
 
 def build_body(channel, event: str, payloads: list, now=None) -> dict:

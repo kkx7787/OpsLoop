@@ -28,6 +28,7 @@ import {
   Switch,
   Textarea,
   Time,
+  UntrustedText,
   VerdictBadge,
 } from '@/components'
 import { SEVERITIES, VERDICTS } from '@/lib/domain'
@@ -143,6 +144,28 @@ export function ComponentCatalog() {
           </span>
           <Kbd>/</Kbd>
         </Row>
+      </Section>
+
+      <Section title="비신뢰 문자열">
+        <p className="m-0 text-xs text-ink-muted">로그 · 공격자 입력은 UntrustedText 로 그린다. 숨은 문자는 표식, 줄바꿈은 ↵, 값 전체는 방향 격리, 긴 값은 접는다.</p>
+        <Row>
+          <span className="text-sm">대상 <UntrustedText value={'user:admin\u{202E}gnp.exe'} /> · 뒤 필드</span>
+          <span className="text-sm">
+            계정 <UntrustedText value={'ad\u{200B}min'} />
+          </span>
+          <span className="font-mono text-xs">
+            <UntrustedText value={'\u{1B}[31m빨강 \u{2066}x\u{2069} \u{FEFF}'} />
+          </span>
+        </Row>
+        <p className="m-0 font-mono text-xs">
+          input=<UntrustedText value={'ls\n2026-09-18 15:00:00 decoy login.success'} />
+        </p>
+        <p className="m-0 font-mono text-xs">
+          <UntrustedText value={'A'.repeat(300)} max={80} />
+        </p>
+        <span className="block w-60 truncate text-sm" title="한 줄 말줄임(clip)">
+          <UntrustedText value={`user:${'L'.repeat(120)}`} clip />
+        </span>
       </Section>
 
       <Section title="입력">

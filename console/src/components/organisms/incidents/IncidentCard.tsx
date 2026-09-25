@@ -2,7 +2,9 @@ import type { ComponentProps } from 'react'
 import { Link } from 'react-router'
 import type { Incident } from '@/api/incidents'
 import { cn } from '@/lib/cn'
+import { revealHidden } from '@/lib/untrusted'
 import { SeverityBadge } from '../../atoms/SeverityBadge'
+import { UntrustedText } from '../../atoms/UntrustedText'
 import { VerdictBadge } from '../../atoms/VerdictBadge'
 import { IncidentStatusLabel } from './IncidentStatusLabel'
 import { ElapsedTime } from './ElapsedTime'
@@ -36,10 +38,18 @@ export function IncidentCard({ incident, elapsedSeconds, className, ...rest }: I
         </div>
         <div className="flex min-w-0 items-baseline gap-1.5 text-sm">
           <span className="shrink-0 font-mono font-medium">{incident.rule_id}</span>
-          <span className="truncate text-ink-muted">{incident.rule_name}</span>
+          <span className="truncate text-ink-muted" title={revealHidden(incident.rule_name)}>
+            <UntrustedText value={incident.rule_name} clip />
+          </span>
         </div>
-        <div className="truncate font-mono text-sm text-ink-muted">{sourceOf(incident)}</div>
-        {incident.actor_ip && incident.target && <div className="truncate text-xs text-ink-muted">대상 {incident.target}</div>}
+        <div className="truncate font-mono text-sm text-ink-muted" title={revealHidden(sourceOf(incident))}>
+          <UntrustedText value={sourceOf(incident)} clip />
+        </div>
+        {incident.actor_ip && incident.target && (
+          <div className="truncate text-xs text-ink-muted" title={revealHidden(incident.target)}>
+            대상 <UntrustedText value={incident.target} clip />
+          </div>
+        )}
         <div className="flex items-center justify-between gap-2 border-t border-black/5 pt-2 text-xs">
           <IncidentStatusLabel status={incident.status} />
           {incident.verdict ? <VerdictBadge verdict={incident.verdict} /> : <span className="font-medium text-primary">미판정</span>}

@@ -1,7 +1,9 @@
 import { Link } from 'react-router'
 import { APPLICABILITY_LABEL, MAPPING_LABEL, ROLE_LABEL, type CveCti, type IncidentCti, type SignatureCti } from '@/api/cti'
 import { isApiError } from '@/api/errors'
+import { revealHidden } from '@/lib/untrusted'
 import { Badge } from '../../atoms/Badge'
+import { UntrustedText } from '../../atoms/UntrustedText'
 import { Banner } from '../../molecules/Banner'
 import { CtiFreshnessFacts } from '../assets/CtiFreshnessFacts'
 import { APPLICABILITY_TONE, cvssTone, formatCvss, formatPercentile, formatProbability, ransomwareLabel, staleSources, truncate } from '../assets/cti-format'
@@ -96,8 +98,12 @@ function SignatureBlock({ signature: s }: { signature: SignatureCti }) {
   return (
     <div className="flex flex-col gap-1.5" data-signature={s.id}>
       <div className="flex flex-wrap items-center gap-1.5 text-sm">
-        <strong className="font-semibold">{s.product}</strong>
-        <span className="text-xs text-ink-muted">{s.vendor}</span>
+        <strong className="min-w-0 font-semibold">
+          <UntrustedText value={s.product} max={120} />
+        </strong>
+        <span className="min-w-0 text-xs text-ink-muted">
+          <UntrustedText value={s.vendor} max={120} />
+        </span>
         <Badge tone={s.mapping === 'explicit' ? 'info' : 'neutral'}>{MAPPING_LABEL[s.mapping] ?? s.mapping}</Badge>
         <span className="text-xs text-ink-muted">적용</span>
         <Badge tone={APPLICABILITY_TONE[s.summary] ?? 'neutral'} data-applicability={s.summary}>
@@ -108,7 +114,9 @@ function SignatureBlock({ signature: s }: { signature: SignatureCti }) {
           {s.methods && s.methods.length > 0 && ` · ${s.methods.join(' · ')} 만`}
         </span>
       </div>
-      <p className="m-0 text-xs leading-5 text-ink-muted">{s.source}</p>
+      <p className="m-0 text-xs leading-5 text-ink-muted">
+        <UntrustedText value={s.source} />
+      </p>
       {s.kev_products && (
         <span className="text-xs text-ink-muted">
           {s.kev_products.length > 0 ? `KEV 에 이 제품 항목 ${s.kev_products.length}건 · 아래 CVE 표에 함께 보입니다` : 'KEV 에 이 제품 항목이 없습니다.'}
@@ -118,7 +126,7 @@ function SignatureBlock({ signature: s }: { signature: SignatureCti }) {
         <span className="text-xs text-ink-muted">자산 표가 비어 있어 적용 여부를 판정하지 못했습니다. 자산 수집을 먼저 돌려야 합니다.</span>
       ) : (
         <div className={TABLE.wrap}>
-          <table className={TABLE.table} aria-label={`${s.product} 자산 적용`}>
+          <table className={TABLE.table} aria-label={`${revealHidden(s.product)} 자산 적용`}>
             <thead>
               <tr>
                 <th scope="col" className={TABLE.th}>
@@ -145,7 +153,9 @@ function SignatureBlock({ signature: s }: { signature: SignatureCti }) {
                   <td className={TABLE.td}>
                     <Badge tone={APPLICABILITY_TONE[a.status] ?? 'neutral'}>{APPLICABILITY_LABEL[a.status] ?? a.status}</Badge>
                   </td>
-                  <td className={`${TABLE.td} min-w-[220px]`}>{a.reason}</td>
+                  <td className={`${TABLE.td} min-w-[220px]`}>
+                    <UntrustedText value={a.reason} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -190,14 +200,22 @@ function CveTable({ cves, showSignatures }: { cves: CveCti[]; showSignatures: bo
             return (
               <tr key={c.cve_id} data-kev={c.kev ? 'yes' : 'no'}>
                 <td className={TABLE.td}>
-                  <span className={`${TABLE.mono} font-medium`}>{c.cve_id}</span>
-                  {showSignatures && <span className="block font-mono text-2xs text-ink-muted">{c.signature_ids.join(' · ')}</span>}
+                  <span className={`${TABLE.mono} font-medium`}>
+                    <UntrustedText value={c.cve_id} max={64} />
+                  </span>
+                  {showSignatures && (
+                    <span className="block font-mono text-2xs text-ink-muted">
+                      <UntrustedText value={c.signature_ids.join(' · ')} max={120} />
+                    </span>
+                  )}
                 </td>
                 <td className={TABLE.td}>
                   {c.kev ? (
-                    <span className="inline-flex items-center gap-1.5 whitespace-nowrap" title={c.kev.due_date ? `조치 기한 ${c.kev.due_date}` : undefined}>
+                    <span className="inline-flex items-center gap-1.5 whitespace-nowrap" title={c.kev.due_date ? `조치 기한 ${revealHidden(c.kev.due_date)}` : undefined}>
                       <Badge tone="danger">KEV</Badge>
-                      <span className={TABLE.mono}>{c.kev.date_added}</span>
+                      <span className={TABLE.mono}>
+                        <UntrustedText value={c.kev.date_added} max={64} />
+                      </span>
                     </span>
                   ) : (
                     <span className="text-ink-muted">—</span>
@@ -212,7 +230,7 @@ function CveTable({ cves, showSignatures }: { cves: CveCti[]; showSignatures: bo
                 </td>
                 <td className={TABLE.td}>
                   {c.cvss ? (
-                    <Badge tone={cvssTone(c.cvss.severity)} title={[c.cvss.version && `CVSS ${c.cvss.version}`, c.cvss.vector].filter(Boolean).join(' · ') || undefined}>
+                    <Badge tone={cvssTone(c.cvss.severity)} title={revealHidden([c.cvss.version && `CVSS ${c.cvss.version}`, c.cvss.vector].filter(Boolean).join(' · ')) || undefined}>
                       {formatCvss(c.cvss.score, c.cvss.severity)}
                     </Badge>
                   ) : (
@@ -228,8 +246,8 @@ function CveTable({ cves, showSignatures }: { cves: CveCti[]; showSignatures: bo
                     <span className="text-ink-muted">—</span>
                   )}
                 </td>
-                <td className={`${TABLE.td} min-w-[220px]`} title={summary ?? undefined}>
-                  {truncate(summary)}
+                <td className={`${TABLE.td} min-w-[220px]`} title={summary ? revealHidden(summary) : undefined}>
+                  <UntrustedText value={truncate(summary)} />
                 </td>
               </tr>
             )

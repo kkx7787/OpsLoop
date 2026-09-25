@@ -44,6 +44,12 @@ describe('ransomwareLabel · Ubuntu 등급', () => {
     expect(ransomwareLabel('Other')).toBe('Other')
   })
 
+  it('모르는 원문은 숨은 문자를 표식으로 바꿔 돌려준다', () => {
+    expect(ransomwareLabel('Kn\u{202E}own')).toBe('Kn⟨U+202E⟩own')
+    expect(ubuntuPriorityLabel('hi\u{200B}gh')).toBe('hi⟨U+200B⟩gh')
+    expect(formatCvss(9.8, 'crit\u{202E}ical')).toBe('9.8 CRIT⟨U+202E⟩ICAL')
+  })
+
   it('Ubuntu 등급 원문(소문자)을 그대로 보이지 않는다', () => {
     expect(ubuntuPriorityLabel('critical')).toBe('긴급')
     expect(ubuntuPriorityLabel('negligible')).toBe('무시 가능')

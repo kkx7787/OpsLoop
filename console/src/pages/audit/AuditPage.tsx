@@ -6,6 +6,7 @@ import { Button } from '@/components/atoms/Button'
 import { Card, CardHeader } from '@/components/atoms/Card'
 import { Input } from '@/components/atoms/Input'
 import { Time } from '@/components/atoms/Time'
+import { UntrustedText } from '@/components/atoms/UntrustedText'
 import { Banner } from '@/components/molecules/Banner'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { MonitoringStatus } from '@/components/organisms/MonitoringStatus'
@@ -14,6 +15,7 @@ import { ApiErrorState } from '@/components/organisms/states/ApiErrorState'
 import { ForbiddenState } from '@/components/organisms/states/ForbiddenState'
 import { LoadingState } from '@/components/organisms/states/LoadingState'
 import { readInterval } from '@/lib/interval'
+import { revealHidden } from '@/lib/untrusted'
 
 const EVENTS: Record<string, string> = {
   'console.block.released': '차단 해제',
@@ -57,9 +59,9 @@ export function AuditPage() {
         <div className="overflow-x-auto" role="region" aria-label="감사 기록 표" tabIndex={0}><table className="w-full min-w-[720px] text-left text-sm">
           <thead className="border-b border-line text-xs text-ink-muted"><tr>{['시각 (KST)','행위자','종류','대상','기록'].map(t => <th key={t} className={cell}>{t}</th>)}</tr></thead>
           <tbody className="divide-y divide-line">{query.data.rows.map((r,i) => <tr key={`${r.ts}:${r.eventid}:${i}`}>
-            <td className={`${cell} whitespace-nowrap`}><Time value={r.ts} /></td><td className={cell}>{r.actor || '미기록'}</td>
-            <td className={`${cell} whitespace-nowrap`}>{EVENTS[r.eventid] ?? r.eventid}</td><td className={`${cell} font-mono`}>{r.target || '—'}</td>
-            <td className={`${cell} max-w-md`}><details><summary aria-label={`${r.target || "대상 미기록"} 감사 상세 보기`} className="cursor-pointer text-ink-muted">상세 보기</summary><p className="break-all font-mono text-xs leading-5">{r.detail || '내용 미기록'}</p><p className="text-xs text-ink-muted">이벤트 {r.eventid}<br />DB 연결 주소 {r.db_client || '미기록'}</p></details></td>
+            <td className={`${cell} whitespace-nowrap`}><Time value={r.ts} /></td><td className={cell}><UntrustedText value={r.actor} max={64} fallback="미기록" /></td>
+            <td className={`${cell} whitespace-nowrap`}>{EVENTS[r.eventid] ?? <UntrustedText value={r.eventid} max={64} />}</td><td className={`${cell} max-w-60 font-mono break-all`}><UntrustedText value={r.target} fallback="—" /></td>
+            <td className={`${cell} max-w-md`}><details><summary aria-label={`${r.target ? revealHidden(r.target) : '대상 미기록'} 감사 상세 보기`} className="cursor-pointer text-ink-muted">상세 보기</summary><p className="break-all font-mono text-xs leading-5"><UntrustedText value={r.detail} fallback="내용 미기록" /></p><p className="text-xs text-ink-muted">이벤트 <UntrustedText value={r.eventid} max={64} /><br />DB 연결 주소 <UntrustedText value={r.db_client} max={64} fallback="미기록" /></p></details></td>
           </tr>)}</tbody>
         </table></div>
         {!query.data.rows.length && <p className="p-4 text-sm text-ink-muted">조건에 맞는 감사 기록이 없습니다.</p>}

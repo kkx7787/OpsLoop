@@ -31,7 +31,9 @@ echo "== 4. 거부 기록이 남는가"
 if ssh_fw "sudo journalctl -k --since '-5 min' | grep -c 'fw-forward-drop'" 2>/dev/null | grep -qv '^0$'; then
   echo "  [정상] 방화벽 거부 로그 기록됨"; ok=$((ok+1)); else echo "  [문제] 거부 로그가 없음"; ng=$((ng+1)); fi
 echo "== 5. 부하분산과 헬스체크"
-check "HAProxy 통계 페이지" 통과 curl -fsS --max-time 5 http://$FW:8404/
+# 통계 페이지는 방화벽 안(127.0.0.1)에서만 열린다. 관리망에서 바로는 닿지 않아야 한다 (이슈 #41)
+check "HAProxy 통계 페이지 (방화벽 안 127.0.0.1)" 통과 ssh_fw "curl -fsS --max-time 5 http://127.0.0.1:8404/"
+check "HAProxy 통계 페이지 관리망 직접 (막힘)" 실패 curl -fsS --max-time 5 http://$FW:8404/
 check "콘솔 진입점 응답" 통과 curl -fsS --max-time 5 http://$FW:8443/health
 echo "== 6. 관제 대상 web-01 (이슈 #11 · 수집 설계 6장)"
 check "web-01 → 데이터 노드 수집 관문 3101" 통과 ssh_in $W1 "$(tcp $D1 3101)"

@@ -4,6 +4,7 @@ import { BlocklistPage } from './BlocklistPage'
 import { applyLiveMessage } from '@/api/live'
 import { noRetryClient, renderRoutes } from '@/test/render'
 import { blockEntry, json } from '@/test/monitoring-fixtures'
+import { expectInertDom, expectLongFolds, expectMixedRevealed, HOSTILE, LONG, MIXED } from '@/test/hostile-fixtures'
 
 afterEach(() => vi.unstubAllGlobals())
 function setup(role = 'admin', failing = false) {
@@ -95,5 +96,32 @@ describe('차단 목록', () => {
     const before = fetch.mock.calls.filter(([url]) => String(url).startsWith('/api/blocklist')).length
     act(() => applyLiveMessage(client, { type: 'action.created', data: { action: 'block_ip' } }))
     await waitFor(() => expect(fetch.mock.calls.filter(([url]) => String(url).startsWith('/api/blocklist')).length).toBeGreaterThan(before))
+  })
+})
+
+describe('차단 목록 · 비신뢰 문자열(#41)', () => {
+  it('사유 · 방식 · 집행 메모 · 요청자 · 해제자를 글자로만 그리고 숨은 문자는 표식 · 2만 자는 접는다', async () => {
+    const rows = [
+      blockEntry({ reason: MIXED, method: HOSTILE.style, enforce_note: LONG, requested_by: HOSTILE.rlo }),
+      blockEntry({ actor_ip: '192.0.2.10', released_at: '2026-09-23T07:00:00Z', released_by: HOSTILE.zwsp }),
+    ]
+    vi.stubGlobal('fetch', vi.fn<typeof globalThis.fetch>(async (input) => {
+      const url = String(input)
+      if (url === '/api/me') return json({ username: 'tester', role: 'admin' })
+      if (url.startsWith('/api/blocklist')) return json(rows)
+      return json({}, 404)
+    }))
+    const { container } = renderRoutes([{ path: '/blocklist', element: <BlocklistPage /> }], '/blocklist', noRetryClient())
+    expect(await screen.findByText('192.0.2.8')).toBeInTheDocument()
+    expectInertDom(container)
+    expectMixedRevealed(container)
+    expect(container.textContent).toContain(HOSTILE.style)
+    expect(container.textContent).toContain('요청자 admin⟨U+202E⟩gnp.exe')
+    expectLongFolds(container)
+
+    fireEvent.click(screen.getByRole('button', { name: '해제 1' }))
+    expect(await screen.findByText('192.0.2.10')).toBeInTheDocument()
+    expect(container.textContent).toContain(' · ad⟨U+200B⟩min')
+    expectInertDom(container)
   })
 })

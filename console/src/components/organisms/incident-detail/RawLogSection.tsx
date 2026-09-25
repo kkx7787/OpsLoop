@@ -1,8 +1,9 @@
-import { useId, useState } from 'react'
+import { Fragment, useId, useState } from 'react'
 import type { RawLine } from '@/api/incidents'
 import { Button } from '../../atoms/Button'
+import { UntrustedText } from '../../atoms/UntrustedText'
 import { DetailSection } from './DetailSection'
-import { formatRawLine, MAX_ROWS } from './format'
+import { MAX_ROWS, rawLineFields } from './format'
 
 export interface RawLogSectionProps {
   raw: RawLine[]
@@ -11,7 +12,11 @@ export interface RawLogSectionProps {
   className?: string
 }
 
-/** ④ 원문 로그: 판단 근거가 된 원본 줄. 요약이 아니라 원문이다. 비밀번호 원문은 서버가 주지 않는다 */
+/**
+ * ④ 원문 로그: 판단 근거가 된 원본 줄. 요약이 아니라 원문이다. 비밀번호 원문은 서버가 주지 않는다.
+ * 필드마다 UntrustedText 로 격리한다. 값 안의 줄바꿈은 ↵ 로 보여 한 줄(li)이 가짜 로그 줄을 만들지 못한다.
+ * 긴 줄이 접혀 넘어간 부분은 들여 써서(내어쓰기), 줄 머리(시각)에서 시작하는 것만 진짜 원문 줄로 읽히게 한다
+ */
 export function RawLogSection({ raw, defaultOpen = false, className }: RawLogSectionProps) {
   const [open, setOpen] = useState(defaultOpen)
   const listId = useId()
@@ -41,8 +46,14 @@ export function RawLogSection({ raw, defaultOpen = false, className }: RawLogSec
         <>
           <ol id={listId} className="m-0 max-h-[480px] list-none overflow-auto bg-canvas p-3 font-mono text-2xs leading-4 text-ink" aria-label="원문 로그 줄">
             {shown.map((row, i) => (
-              <li key={i} className="whitespace-pre-wrap break-all">
-                {formatRawLine(row)}
+              <li key={i} className="-indent-4 pl-4 whitespace-pre-wrap break-all">
+                {rawLineFields(row).map((field, j) => (
+                  <Fragment key={j}>
+                    {j > 0 && '  '}
+                    {field.label}
+                    <UntrustedText value={field.value} />
+                  </Fragment>
+                ))}
               </li>
             ))}
           </ol>

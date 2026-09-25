@@ -4,9 +4,11 @@ import { DELIVERY_EVENT_LABEL, DELIVERY_STATUSES, DELIVERY_STATUS_LABEL, type De
 import { Card, CardHeader } from '@/components/atoms/Card'
 import { Select } from '@/components/atoms/Select'
 import { Time } from '@/components/atoms/Time'
+import { UntrustedText } from '@/components/atoms/UntrustedText'
 import { IncidentPagination } from '@/components/organisms/incidents/IncidentPagination'
 import { ApiErrorState } from '@/components/organisms/states/ApiErrorState'
 import { LoadingState } from '@/components/organisms/states/LoadingState'
+import { revealHidden } from '@/lib/untrusted'
 import { DeliveryStatusBadge } from './ChannelTable'
 import { deliveryProblem } from './problem'
 
@@ -34,7 +36,7 @@ export function DeliveryTable({ channels, filters, onFilters, data, pending, fet
       <CardHeader title="발송 이력" aside={<>
         <label htmlFor={`${id}-channel`}>채널</label>
         <Select id={`${id}-channel`} fieldSize="sm" className="h-7 w-auto" value={filters.channel_id ?? ''} onChange={(e) => set({ channel_id: e.target.value ? Number(e.target.value) : undefined })}>
-          <option value="">전체</option>{channels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          <option value="">전체</option>{channels.map((c) => <option key={c.id} value={c.id}>{revealHidden(c.name)}</option>)}
         </Select>
         <label htmlFor={`${id}-status`}>상태</label>
         <Select id={`${id}-status`} fieldSize="sm" className="h-7 w-auto" value={filters.status ?? ''} onChange={(e) => set({ status: (e.target.value || undefined) as DeliveryStatus | undefined })}>
@@ -50,12 +52,12 @@ export function DeliveryTable({ channels, filters, onFilters, data, pending, fet
               const problem = deliveryProblem(r.error, r.response_code)
               return <tr key={r.id}>
                 <td className={`${cell} whitespace-nowrap`}><Time value={r.created_at} format="short" /></td>
-                <td className={cell}>{r.channel_name}</td>
+                <td className={cell}><UntrustedText value={r.channel_name} max={120} /></td>
                 <td className={`${cell} whitespace-nowrap`}>{DELIVERY_EVENT_LABEL[r.event] ?? r.event}</td>
-                <td className={`${cell} max-w-xs break-all font-mono text-xs`}>{r.subject_key}</td>
+                <td className={`${cell} max-w-xs break-all font-mono text-xs`}><UntrustedText value={r.subject_key} /></td>
                 <td className={cell}><DeliveryStatusBadge status={r.status} /></td>
                 <td className={`${cell} tabular-nums`}>{r.attempts}</td>
-                <td className={`${cell} max-w-64 text-xs`}>{problem ? <span className="break-keep text-danger">{problem}</span> : r.response_code ?? '—'}</td>
+                <td className={`${cell} max-w-64 text-xs`}>{problem ? <span className="break-keep text-danger"><UntrustedText value={problem} /></span> : r.response_code ?? '—'}</td>
                 <td className={`${cell} text-xs whitespace-nowrap`}>{r.status === 'sent' ? <Time value={r.sent_at} format="short" /> : r.status === 'queued' ? <>다음 <Time value={r.next_attempt_at} format="short" /></> : '—'}</td>
               </tr>
             })}</tbody>

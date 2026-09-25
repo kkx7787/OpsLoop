@@ -3,6 +3,7 @@ import { cn } from '@/lib/cn'
 import { sensorOf, type Sensor } from '@/lib/domain'
 import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { Time } from '../../atoms/Time'
+import { UntrustedText } from '../../atoms/UntrustedText'
 import { VerdictBadge } from '../../atoms/VerdictBadge'
 import { PageHeader } from '../../molecules/PageHeader'
 import { ElapsedClock } from './ElapsedClock'
@@ -26,7 +27,7 @@ export function IncidentHeader({ detail, className }: IncidentHeaderProps) {
   return (
     <div className={cn('flex min-w-0 flex-col gap-3', className)}>
       <PageHeader
-        title={<><span className="font-mono text-ink-muted">{detail.rule_id}</span> {detail.rule_name}</>}
+        title={<><span className="font-mono text-ink-muted">{detail.rule_id}</span> <UntrustedText value={detail.rule_name} /></>}
         badges={<>
           <SeverityBadge severity={detail.severity} />
           <StatusBadge status={detail.status} />
@@ -42,7 +43,9 @@ export function IncidentHeader({ detail, className }: IncidentHeaderProps) {
           </div>
           {detail.target && <div className="flex min-w-0 flex-col gap-1">
             <dt className="text-ink-muted">대상</dt>
-            <dd className="m-0 break-all font-mono text-sm font-medium">{detail.target}</dd>
+            <dd className="m-0 break-all font-mono text-sm font-medium">
+              <UntrustedText value={detail.target} />
+            </dd>
           </div>}
           <div className="flex flex-col gap-1">
             <dt className="text-ink-muted">발생 구간 · KST</dt>
@@ -59,7 +62,9 @@ export function IncidentHeader({ detail, className }: IncidentHeaderProps) {
         </dl>
         <details className="text-xs text-ink-muted">
           <summary className="w-fit cursor-pointer py-1">사건 키</summary>
-          <code className="block break-all pb-1 font-mono">{detail.incident_key}</code>
+          <code className="block break-all pb-1 font-mono">
+            <UntrustedText value={detail.incident_key} />
+          </code>
         </details>
       </div>
     </div>

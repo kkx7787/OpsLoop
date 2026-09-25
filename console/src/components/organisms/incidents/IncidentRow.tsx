@@ -3,7 +3,9 @@ import { Link, useNavigate } from 'react-router'
 import type { Incident } from '@/api/incidents'
 import { cn } from '@/lib/cn'
 import { sensorOf } from '@/lib/domain'
+import { revealHidden } from '@/lib/untrusted'
 import { SeverityBadge } from '../../atoms/SeverityBadge'
+import { UntrustedText } from '../../atoms/UntrustedText'
 import { VerdictBadge } from '../../atoms/VerdictBadge'
 import { ElapsedTime } from './ElapsedTime'
 import { IncidentStatusLabel } from './IncidentStatusLabel'
@@ -63,13 +65,21 @@ export function IncidentRow({ incident, elapsedSeconds, rowIndex, className, onC
           <Link to={href} className="shrink-0 font-mono text-xs font-medium text-primary">
             {incident.rule_id}
           </Link>
-          <span className="truncate font-medium text-ink" title={incident.rule_name}>{incident.rule_name}</span>
+          <span className="truncate font-medium text-ink" title={revealHidden(incident.rule_name)}>
+            <UntrustedText value={incident.rule_name} clip />
+          </span>
         </div>
         <span className="text-xs text-ink-muted tabular-nums">{incident.signal_count} 신호 · {incident.session_count} 세션</span>
       </div>
       <div role="cell" className="flex min-w-0 flex-col gap-0.5">
-        <span className="truncate font-mono" title={sourceOf(incident)}>{sourceOf(incident)}</span>
-        {incident.actor_ip && incident.target && <span className="truncate text-xs text-ink-muted" title={incident.target}>대상 {incident.target}</span>}
+        <span className="truncate font-mono" title={revealHidden(sourceOf(incident))}>
+          <UntrustedText value={sourceOf(incident)} clip />
+        </span>
+        {incident.actor_ip && incident.target && (
+          <span className="truncate text-xs text-ink-muted" title={revealHidden(incident.target)}>
+            대상 <UntrustedText value={incident.target} clip />
+          </span>
+        )}
         <span className="text-xs text-ink-muted">{sensorOf(incident.rule_id)}</span>
       </div>
       <div role="cell">

@@ -5,6 +5,8 @@ import { LiveContext } from '@/api/live-context'
 import { applyLiveMessage } from '@/api/live'
 import { noRetryClient, renderRoutes } from '@/test/render'
 import { MONITORING_SUMMARY, json } from '@/test/monitoring-fixtures'
+import { revealHidden } from '@/lib/untrusted'
+import { expectInertDom, expectMixedRevealed, LONG, MIXED } from '@/test/hostile-fixtures'
 
 afterEach(() => vi.unstubAllGlobals())
 function renderPage() { return renderRoutes([{ path: '/', element: <DashboardPage /> }], '/', noRetryClient()) }
@@ -76,5 +78,35 @@ describe('대시보드', () => {
     expect(await screen.findByText('실시간 연결이 끊겼습니다')).toBeInTheDocument()
     expect(screen.getByText(/30초마다 별도로 조회/)).toBeInTheDocument()
     expect(await screen.findByText('6시간 12분')).toBeInTheDocument()
+  })
+})
+
+describe('대시보드 · 비신뢰 문자열(#41)', () => {
+  it('먼저 확인할 사건의 대상은 표식으로 바꾼 뒤 한 줄로 자르고 링크 안에 단추를 두지 않는다', async () => {
+    const base = MONITORING_SUMMARY.oldest_pending[0]
+    const oldest = [
+      { ...base, incident_key: `R201|v2|user:${MIXED}|x`, rule_id: 'R201', actor_ip: null, target: `user:${MIXED}` },
+      { ...base, incident_key: 'R201|v2|user:long|x', rule_id: 'R201', actor_ip: null, target: `user:${LONG}` },
+    ]
+    vi.stubGlobal('fetch', vi.fn(async () => json({ ...MONITORING_SUMMARY, oldest_pending: oldest })))
+    const { container } = renderPage()
+    const first = await screen.findByTitle(revealHidden(`user:${MIXED}`))
+    expect(first).toHaveClass('truncate')
+    expectInertDom(container)
+    expectMixedRevealed(container)
+    const long = screen.getByTitle(`user:${LONG}`)
+    expect(long.textContent).toBe(`user:${'L'.repeat(495)}…`)
+    expect(long.closest('a')?.querySelector('button')).toBeNull()
+  })
+
+  it('먼저 확인할 사건의 긴 규칙 이름도 링크 안에서 단추 없이 잘리고 전체는 말풍선으로 본다', async () => {
+    const base = MONITORING_SUMMARY.oldest_pending[0]
+    vi.stubGlobal('fetch', vi.fn(async () => json({ ...MONITORING_SUMMARY, oldest_pending: [{ ...base, rule_name: LONG }] })))
+    renderPage()
+    const name = await screen.findByTitle(LONG)
+    expect(name.textContent).toBe(`${base.rule_id}${'L'.repeat(500)}…`)
+    const link = name.closest('a')
+    expect(link).not.toBeNull()
+    expect(link?.querySelector('button')).toBeNull()
   })
 })

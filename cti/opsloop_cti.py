@@ -59,6 +59,7 @@ import re
 import socket
 import sys
 import time
+import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -126,6 +127,9 @@ _CTRL = re.compile(r"[\x00-\x1f\x7f-\x9f]")   # C0 · DEL · C1(U+0080~009F, CSI
 # 짝 없는 대리 문자(\ud800 등). JSON 의 \ud800 이스케이프로 들어올 수 있고, UTF-8 로 인코딩되지 않아
 # 로그 출력 · DB 인자(psycopg2)에서 예외가 나 묶음 전체를 실패로 만든다
 _SURROGATE = re.compile("[\ud800-\udfff]")
+# 숨은 문자는 형식 문자(유니코드 일반 범주 Cf)다. 방향 제어(U+202A~202E · U+2066~2069) · 제로폭(U+200B~200F) · BOM(U+FEFF) ·
+# 소프트 하이픈(U+00AD) · 태그 문자(U+E0001 · U+E0020~E007F) 등이다. 'nginx<U+202E>gpj.exe' 는 화면에서 뒤집혀 보이고
+# 'ad<U+200B>min' 은 'admin' 과 같아 보인다. re 는 범주(\p{Cf})를 몰라 unicodedata 로 본다. 제어 문자(Cc)는 _CTRL 이 맡는다
 
 
 class CtiError(Exception):
@@ -148,10 +152,38 @@ def log(msg, level=6):
     print(f"<{level}>{msg}" if _JOURNAL else msg, flush=True)
 
 
+_HIDDEN = ("Cf", "Zl", "Zp")
+# 기본 무시 문자(Default_Ignorable) 가운데 Cf 가 아닌 것(한글 채움 · 결합 자소 연결 · 이형 선택자 등)과 점자 빈칸 U+2800. 아무것도 그리지 않는다
+_IGNORABLE = re.compile("[\u034f\u115f\u1160\u17b4\u17b5\u180b-\u180f\u2800\u3164\ufe00-\ufe0f\uffa0\ufff0-\ufff8"
+                        "\U000e0000-\U000e0fff]")
+
+
+def _hidden(c):
+    return unicodedata.category(c) in _HIDDEN or _IGNORABLE.match(c) is not None
+
+
+def has_hidden(v):
+    """숨은 문자(형식 문자 Cf · 줄과 문단 구분자 · 기본 무시 문자)가 있는가. ASCII 에는 없다."""
+    return not v.isascii() and any(_hidden(c) for c in v)
+
+
+def reveal(v, n=None):
+    """숨은 문자(형식 문자 Cf · U+2028 · U+2029 · 기본 무시 문자)를 보이는 표식 ⟨U+XXXX⟩ 로 바꾼다(콘솔 revealHidden 과 같은 꼴).
+    n 이 있으면 표식을 가르지 않고 n 자 안으로 자른다. 한 글자가 한 글자 이상이 되므로 앞 n 자만 보면 된다."""
+    out, size = [], 0
+    for c in v[:n]:
+        piece = f"⟨U+{ord(c):04X}⟩" if _hidden(c) else c
+        if n is not None and size + len(piece) > n:
+            break
+        out.append(piece)
+        size += len(piece)
+    return "".join(out)
+
+
 def safe(v, n=300):
     """바깥에서 온 값(노드 · 원천 응답)을 로그 · 오류 문구에 쓸 때. 줄바꿈으로 가짜 로그 줄을 만들지 못하게 하고,
-    짝 없는 대리 문자는 UTF-8 로 쓸 수 없어 '?' 로 바꾼다."""
-    return _SURROGATE.sub("?", _CTRL.sub("?", str(v)))[:n]
+    짝 없는 대리 문자는 UTF-8 로 쓸 수 없어 '?' 로, 숨은 문자는 표식 ⟨U+XXXX⟩ 로 바꾼다."""
+    return reveal(_SURROGATE.sub("?", _CTRL.sub("?", str(v)[:n])), n)
 
 
 def why(e):
@@ -1412,21 +1444,24 @@ FETCHERS = {"kev": fetch_kev, "epss": fetch_epss, "osv": fetch_osv, "nvd": fetch
 # 아는 키만 옮겨 담는다. 틀린 자산은 그 자산만 last_error 로 남기고 건너뛴다.
 
 def text(v, field, limit=256, optional=False, pattern=None):
-    """짧은 문자열 필드. 제어 문자 · 짝 없는 대리 문자(UTF-8 로 쓸 수 없어 DB 인자에서 예외가 난다)는 받지 않는다."""
+    """짧은 문자열 필드. 제어 문자 · 숨은 문자(형식 문자 Cf) · 짝 없는 대리 문자(UTF-8 로 쓸 수 없어 DB 인자에서 예외가
+    난다)는 받지 않는다. 이름 · 버전 · 호스트명에는 숨은 문자가 쓰일 까닭이 없고, 판정 근거 문장에 섞여 표시를 위조한다."""
     if v is None and optional:
         return None
-    if not isinstance(v, str) or len(v) > limit or _CTRL.search(v) or _SURROGATE.search(v):
-        raise ValueError(f"{field} 는 제어 문자가 없는 {limit}자 이하 문자열이어야 한다")
+    if (not isinstance(v, str) or len(v) > limit or _CTRL.search(v) or _SURROGATE.search(v)
+            or has_hidden(v)):
+        raise ValueError(f"{field} 는 제어 문자 · 숨은 문자가 없는 {limit}자 이하 문자열이어야 한다")
     if pattern is not None and not pattern.fullmatch(v):
         raise ValueError(f"{field} 형식이 틀리다: {safe(v, 60)}")
     return v
 
 
 def error_text(v, field):
-    """오류 문구. 자유 문장이라 거부하지 않고 제어 문자는 빈칸, 짝 없는 대리 문자는 U+FFFD 로 바꾼다."""
+    """오류 문구. 자유 문장이라 거부하지 않고 제어 문자는 빈칸, 짝 없는 대리 문자는 U+FFFD, 숨은 문자는 표식 ⟨U+XXXX⟩ 로
+    바꾼다. 표식 때문에 길어져도(한 글자 최대 10자) 자르지 않는다. 무엇이 들어왔는지가 조사 근거다."""
     if not isinstance(v, str) or len(v) > 512:
         raise ValueError(f"{field} 는 512자 이하 문자열이어야 한다")
-    return _SURROGATE.sub("\ufffd", _CTRL.sub(" ", v))
+    return reveal(_SURROGATE.sub("\ufffd", _CTRL.sub(" ", v)))
 
 
 def listing(v, field, cap, item=dict):

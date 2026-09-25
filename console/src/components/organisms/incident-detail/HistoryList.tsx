@@ -4,6 +4,7 @@ import { VERDICT_LABEL } from '@/lib/domain'
 import { formatDuration } from '@/lib/time'
 import { Badge } from '../../atoms/Badge'
 import { Time } from '../../atoms/Time'
+import { UntrustedText } from '../../atoms/UntrustedText'
 import { VerdictBadge } from '../../atoms/VerdictBadge'
 import { mergeHistory } from './format'
 import { TABLE } from './table-styles'
@@ -62,8 +63,12 @@ export function HistoryList({ detail, className }: HistoryListProps) {
                   </div>
                 )}
               </td>
-              <td className={`${TABLE.td} whitespace-nowrap`}>{entry.operator}</td>
-              <td className={`${TABLE.td} break-words`}>{entry.note ?? <span className="text-ink-muted">—</span>}</td>
+              <td className={`${TABLE.td} whitespace-nowrap`}>
+                <UntrustedText value={entry.operator} max={64} />
+              </td>
+              <td className={`${TABLE.td} break-words`}>
+                <UntrustedText value={entry.note} fallback={<span className="text-ink-muted">—</span>} />
+              </td>
             </tr>
           ))}
         </tbody>

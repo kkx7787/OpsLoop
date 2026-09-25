@@ -20,6 +20,7 @@ src/styles/index.css   디자인 토큰(@theme): 색 · 글자 크기 · 모서�
 src/lib/cn.ts          cn(...) = twMerge(clsx(...)). 새 토큰(모서리 · 그림자 · 자간)은 여기 등록
 src/lib/domain.ts      심각도 · 판정값 · 상태 값과 화면 표기 · 발생원(sensorOf) · 판정 목표 시간(verdictTargetSeconds · elapsedTone) · 조치 이름
 src/lib/time.ts        KST 표시 · 경과 시간(secondsSince)
+src/lib/untrusted.ts   비신뢰 문자열 표시 규칙(#41): revealHidden(숨은 문자 → 표식 문자열) · untrustedParts · 글자 수(코드 포인트)
 src/api/client.ts      fetch 공통 인스턴스(api). 시간 초과 15초 · 401 은 /login?next= 로 한 번만 이동 · 오류는 ApiError
 src/api/queryClient.ts 재시도 규칙: 5xx · 네트워크만 2회
 src/api/incidents.ts   인시던트 목록(useIncidentsPage · 페이지별 limit/offset) · 상세(useIncident) · 판정 · 조치(useVerdictMutation · useActionMutation) · 규칙 품질. 쿼리 키는 incidentKeys · ruleKeys
@@ -51,7 +52,7 @@ src/pages/             구현 화면 및 나머지 화면 자리(PlaceholderPage
   pages/incident-detail/ 인시던트 상세 · 판정 화면(IncidentDetailPage). 사건 키가 바뀌면 판정 소요 시계를 다시 시작한다
   pages/alerts/          알림 설정(S-12): 채널 표 · 추가/수정 양식 · 사용/중지 · 시험 발송 · 발송 이력. admin 이 아니면 403
   pages/assets/          자산 · 취약점(#39, 경로 /inventory): 주목 CVE · 신선도 요약 · 자산 표 · 고른 자산의 주요 패키지 · 이미지 · 배포판 취약점(?asset= 로 주소에 남는다)
-src/test/              vitest setup(WebSocket 은 아무 일도 하지 않는 소켓) · render(메모리 라우터 · /api/me 스텁)
+src/test/              vitest setup(WebSocket 은 아무 일도 하지 않는 소켓) · render(메모리 라우터 · /api/me 스텁) · hostile-fixtures(악성 표본 · DOM 점검)
 ```
 
 ## 규칙
@@ -135,3 +136,16 @@ src/test/              vitest setup(WebSocket 은 아무 일도 하지 않는 �
 - CVSS 등급은 NVD 대문자(`9.8 CRITICAL`)로, Ubuntu 우선순위는 한국어(긴급 · 높음 · 중간 · 낮음 · 무시 가능)로 적는다. 사건 심각도 배지(소문자 critical 등)와 섞이지 않게 하려는 것이다.
 - 배포: API 와 화면 빌드를 함께 배포한다. DB 에 `infra/migrations/20260925_cti.sql` 을 적용하기 전에는 두 화면 모두 표가 없다는 안내를 보인다.
 
+## 비신뢰 문자열 표시 (#41)
+
+로그 · 공격자 입력 · 자산 수집 결과는 공격자가 고른 글자일 수 있다. 원문은 서버 · DB 에 그대로 두고(증거), 화면은 **보이는 모습만** 바꾼다.
+
+- 모든 비신뢰 값은 `atoms/UntrustedText`(`value` · `max` 기본 500 · `clip` · `fallback` · `className`)로 그린다. JSX 글자로만 넣고 `dangerouslySetInnerHTML` · 마크다운 렌더러 · 외부 링크 · 이미지를 쓰지 않는다(oxlint `react/no-danger` · `react/jsx-no-script-url` · `react/jsx-no-target-blank` 가 막는다). 링크는 같은 출처 경로(`/incidents/<부호화한 키>` 등)만 만든다.
+- 숨은 문자 = 유니코드 Cf(형식 문자: 방향 제어 U+202A~U+202E · U+2066~U+2069 · 제로폭 U+200B~U+200F · BOM U+FEFF · 태그 문자 U+E0001 · U+E0020~U+E007F 등) + Cc(제어 문자: ESC U+001B · CSI U+009B · CR U+000D 등) 중 탭 · 줄바꿈을 뺀 것. 줄 · 문단 구분자(U+2028 · U+2029), 기본 무시 문자(Default_Ignorable: 한글 채움 U+3164 · 결합 자소 연결 U+034F · 이형 선택자 U+FE00~U+FE0F 등), 점자 빈칸(U+2800)도 넣는다. 서버(app/untrusted.py) · 수집기 · 판정 도구 · 파서 요약도 같은 규칙이다. 표식 `⟨U+202E⟩`(경고색 작은 배지)로 보인다.
+- 줄바꿈은 `↵` 배지로 보인다. 원문 로그 한 줄 안에서 가짜 로그 줄(`\n2026-09-18 15:00:00 … login.success`)을 만들지 못한다. 탭은 공백 하나다. 여러 줄로 보여야 하는 비신뢰 값은 없다.
+- 값 전체를 `<bdi dir="ltr">` 로 격리해 옆 값 · 뒤 필드의 방향이 뒤집히지 않는다. 원문 로그는 필드마다 따로 격리하고 필드 사이는 공백 두 칸이다.
+- `max` 자(표식으로 바꾸기 전 원문 글자 수 · 코드 포인트)를 넘으면 앞부분만 보이고 `… N자 더 · 펼치기` 단추로 펼친다(접기 단추도 있다). 긴 무공백 문자열은 칸 안에서 끊는다(`overflow-wrap: anywhere`). 표 머리글이 되는 표본 키 · 세션 칩 · 행위자 이름처럼 짧아야 하는 자리는 `max` 를 64 등으로 줄인다.
+- 한 줄 말줄임(`truncate`) 자리(목록 행 · 모바일 카드 · 대시보드 링크)는 `clip` 으로 그린다. 표식으로 바꾼 뒤 CSS 로 자르고, 행을 누르면 상세로 가므로 펼치기 단추를 두지 않는다. 전체는 `title` 로 본다.
+- `title` · `aria-label` · `<option>` 처럼 문자열만 들어가는 자리는 `lib/untrusted` 의 `revealHidden` 을 거친다.
+- 적용한 자리: 원문 로그 · 행위 · 증거 표본(키와 값 · 세션 칩) · 사건 머리(대상 · 사건 키) · 목록 행/카드 · 대시보드 · 판정/조치 기록(사유 · 메모 · 행위자 · 제안 근거) · 행위자 구역(차단 사유 · 방식 · 센서 · 흡수 사유 · 페이로드) · 차단 목록 · 취약점 연계 · 자산 표 · 자산 상세 · 주목 CVE · 알림 발송 이력(대상 · 원인)과 채널의 마지막 오류 · 감사 기록 · 주소로 받은 사건 키(404 화면)와 규칙 조건.
+- 시험: `src/test/hostile-fixtures.ts` 의 악성 표본(태그 · `javascript:` · 마크다운 링크 · 이미지 · `<at>` 멘션 · CSS · dns-prefetch · U+202E · U+200B · U+2066/2069 · BOM · ESC · CSI · 가짜 줄 · CRLF · 2만 자)을 화면마다 넣고, img · svg(앱 아이콘 제외) · iframe · object · embed · style · link · script 0 · on* 속성 0 · 모든 href 가 같은 출처 경로 · 글자와 글자 속성에 숨은 문자 원문 0 · 표식과 ↵ 표시 · 2만 자 접힘/펼침을 본다(`expectInertDom` · `expectMixedRevealed` · `expectLongFolds`).

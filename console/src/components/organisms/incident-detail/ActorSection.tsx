@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { AbsorbedInfo, ActorInfo, RelatedIncident } from '@/api/incidents'
+import { revealHidden, sliceCodePoints } from '@/lib/untrusted'
 import { Badge } from '../../atoms/Badge'
 import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { Time } from '../../atoms/Time'
+import { UntrustedText } from '../../atoms/UntrustedText'
 import { DetailSection } from './DetailSection'
 import { BLOCK_STATE_LABEL, BLOCK_STATE_TONE, blockState, incidentHref } from './format'
 import { StatusBadge } from './StatusBadge'
@@ -44,9 +46,11 @@ export function ActorSection({ actor, related, actorIp, absorbed, className }: A
             <span className="text-xs text-ink-muted">관측된 센서 · 허니팟 · 디코이 접속 이력은 결정적 근거다</span>
             {history?.sensors && history.sensors.length > 0 ? (
               <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0" aria-label="관측된 센서">
-                {history.sensors.map((sensor) => (
-                  <li key={sensor}>
-                    <Badge tone="violet">{sensor}</Badge>
+                {history.sensors.map((sensor, i) => (
+                  <li key={`${i}-${sensor}`} className="max-w-full min-w-0">
+                    <Badge tone="violet" className="max-w-full whitespace-normal">
+                      <UntrustedText value={sensor} max={64} />
+                    </Badge>
                   </li>
                 ))}
               </ul>
@@ -77,8 +81,8 @@ export function ActorSection({ actor, related, actorIp, absorbed, className }: A
             {blocked && state ? (
               <dl className="m-0 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3" data-block-state={state}>
                 <Fact label="상태" value={<Badge tone={BLOCK_STATE_TONE[state]}>{BLOCK_STATE_LABEL[state]}</Badge>} />
-                <Fact label="사유" value={blocked.reason ?? '—'} />
-                <Fact label="방식" value={blocked.method ?? '—'} />
+                <Fact label="사유" value={<UntrustedText value={blocked.reason} fallback="—" />} />
+                <Fact label="방식" value={<UntrustedText value={blocked.method} fallback="—" />} />
                 <Fact label="요청" value={<Time value={blocked.created_at} format="datetime" />} />
                 <Fact label="집행" value={blocked.enforced_at ? <Time value={blocked.enforced_at} format="datetime" /> : '아직 집행 전'} />
                 <Fact
@@ -125,7 +129,7 @@ export function ActorSection({ actor, related, actorIp, absorbed, className }: A
                 {related.map((r) => (
                   <tr key={r.incident_key}>
                     <td className={TABLE.td}>
-                      <Link to={incidentHref(r.incident_key)} className="font-mono font-medium" title={r.incident_key}>
+                      <Link to={incidentHref(r.incident_key)} className="font-mono font-medium" title={revealHidden(r.incident_key)}>
                         {r.rule_id}
                       </Link>
                     </td>
@@ -150,10 +154,9 @@ export function ActorSection({ actor, related, actorIp, absorbed, className }: A
   )
 }
 
-/** 흡수 사유 옆에 보이는 페이로드 앞자리. 전체는 title 로 본다 */
-function shortPayload(payload: string | null): string | null {
-  if (!payload) return null
-  return payload.length > 20 ? `${payload.slice(0, 19)}…` : payload
+/** 흡수 사유 옆에 보이는 페이로드 앞 19자(원문 글자 수). 표식으로 바꾸는 것은 그리는 쪽(UntrustedText)이다 */
+function shortPayload(payload: string): string {
+  return payload.length > 20 ? sliceCodePoints(payload, 19) : payload
 }
 
 /**
@@ -200,10 +203,11 @@ function AbsorbedList({ absorbed }: { absorbed: AbsorbedInfo }) {
                 </td>
                 <td className={`${TABLE.td} ${TABLE.mono}`}>{row.sessions}</td>
                 <td className={TABLE.td}>
-                  {row.reason}
+                  <UntrustedText value={row.reason} />
                   {row.payload && (
-                    <span className="ml-1.5 font-mono text-ink-muted" title={row.payload}>
-                      {shortPayload(row.payload)}
+                    <span className="ml-1.5 font-mono text-ink-muted" title={revealHidden(row.payload)}>
+                      <UntrustedText value={shortPayload(row.payload)} />
+                      {shortPayload(row.payload) !== row.payload && '…'}
                     </span>
                   )}
                 </td>

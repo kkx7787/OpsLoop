@@ -8,6 +8,8 @@ R006(키 심기)은 순환 규칙이다.
 SSH 허니팟 규칙(R001~R006, app/proposals.py SSH_RULES) 밖에는 판정을 제안하지 않는다(판정 기준 §8).
 웹 · 감사 · 인프라 · 요청 경로 서명(R105 · R106) 사건에 같은 출발지의 cowrie 기록이 있어도 제안이 없고, 일괄 수락에서도
 남는다.
+판정 화면은 공격자 값(아이디 · 비밀번호 · 명령 · URL)의 제어 문자(ESC · C1) · 숨은 문자를 ⟨U+XXXX⟩ 표식으로, 줄바꿈을 ↵ 로
+보인다. ANSI 이스케이프로 판정자 터미널을 지우거나 제안 · 근거 줄을 덮어쓰지 못한다.
 
   - 가짜 커서: DB 없이 조회 문장과 인자에 규칙 버전이 들어가는지 본다
   - 임시 테이블: OPSLOOP_TEST_DATABASE_URL 이 있으면 연결 전용 임시 테이블(search_path=pg_temp)에서
@@ -149,6 +151,83 @@ class OverlapQueryTests(unittest.TestCase):
         suggestion, basis = triage.propose("R003", ev)
         self.assertEqual(suggestion, "non_actionable")
         self.assertIn("R002", basis[1])
+
+
+class HostileDisplayTests(unittest.TestCase):
+    """공격자가 정한 값(cowrie 아이디 · 비밀번호 · 명령 · 내려받은 URL)은 파서가 NUL 만 지워 ESC · C1 · 방향 제어가 DB 에
+    그대로 있다. 판정 화면에 찍기 전에 보이는 표식으로 바꾼다. 원문(DB)은 그대로 둔다."""
+
+    ESC = ("\x1b[2J\x1b[H", "\x1b]0;x\x07", "\x9b31m", "\x1b[1A\x1b[2K")
+
+    @staticmethod
+    def hidden(text):
+        """출력에 남은 제어 문자(줄바꿈 제외) · 숨은 문자(Cf)."""
+        import unicodedata
+        return [f"U+{ord(c):04X}" for c in text if unicodedata.category(c) in ("Cf", "Cc") and c != "\n"]
+
+    def test_표식_규칙(self):
+        self.assertEqual(triage.shown("a\x1b[31mb"), "a⟨U+001B⟩[31mb")
+        self.assertEqual(triage.shown("\x9b2K\x07\x7f\x00"), "⟨U+009B⟩2K⟨U+0007⟩⟨U+007F⟩⟨U+0000⟩")
+        self.assertEqual(triage.shown("admin\u202egnp.exe"), "admin⟨U+202E⟩gnp.exe")
+        self.assertEqual(triage.shown("ad\u200bmin\ufeff\u2066x\u2069\U000e0041"),
+                         "ad⟨U+200B⟩min⟨U+FEFF⟩⟨U+2066⟩x⟨U+2069⟩⟨U+E0041⟩")
+        self.assertEqual(triage.shown("줄1\u2028줄2\u2029"), "줄1⟨U+2028⟩줄2⟨U+2029⟩")
+        self.assertEqual(triage.shown("줄1\r\n2026-09-18 15:00:00 decoy\tlogin.success"),
+                         "줄1⟨U+000D⟩↵2026-09-18 15:00:00 decoy login.success")
+        self.assertEqual(triage.shown("<img src=//a.attacker.test/p.png> 한글"), "<img src=//a.attacker.test/p.png> 한글")
+        # 자를 때 표식을 가르지 않는다
+        self.assertEqual(triage.shown("ab\x1bcd", 5), "ab…")
+        self.assertEqual(triage.shown("ab\x1bcd", 12), "ab⟨U+001B⟩cd")
+        self.assertEqual(triage.shown("x" * 62, 62), "x" * 62)
+        self.assertEqual(triage.shown("x" * 20000, 62), "x" * 61 + "…")
+        # 기본 무시 문자와 점자 빈칸도 표식이다
+        self.assertEqual(triage.shown("adm\u3164in\u034f\ufe0f\u2800"), "adm⟨U+3164⟩in⟨U+034F⟩⟨U+FE0F⟩⟨U+2800⟩")
+
+    def test_판정_화면에_제어_문자가_나가지_않는다(self):
+        row = ("R002|v3|192.0.2.8|t", "R002", "v3", "로그인 후 명령", "high", ACTOR, T0, T0 + timedelta(seconds=30),
+               3, 1, {}, "open", None)
+        ev = {"blocked": False, "also": [],
+              "creds": [("root" + self.ESC[0], "pw" + self.ESC[1], 3), ("admin\u202egnp.exe", "ad\u200bmin\ufeff", 1),
+                        (None, None, 1)],
+              "commands": [("uname -a" + self.ESC[2] + "\n2026-09-18 15:00:00 decoy login.success", 2),
+                           ("\u2066echo\u2069" + self.ESC[3], 1)],
+              "files": [("cowrie.session.file_download", None, "http://b.attacker.test/\x1b[8mx\u202e"),
+                        ("cowrie.session.file_upload", "ab" * 32, None)]}
+        suggestion, basis = triage.propose("R002", {"counts": {"cowrie.command.input": 2}, "covered_by": None})
+        with mock.patch("sys.stdout", io.StringIO()) as out:
+            triage.show(row, 1, 1, ev, suggestion, basis, 3.0, "알림 신호 수")
+        text = out.getvalue()
+        self.assertEqual(self.hidden(text), [])
+        for seen in ("root⟨U+001B⟩[2J⟨U+001B⟩[H", "pw⟨U+001B⟩]0;x⟨U+0007⟩", "admin⟨U+202E⟩gnp.exe",
+                     "ad⟨U+200B⟩min⟨U+FEFF⟩", "uname -a⟨U+009B⟩31m↵2026-09-18 15:00:00 decoy", "(2회)",
+                     "⟨U+2066⟩echo⟨U+2069⟩⟨U+001B⟩[1A⟨U+001B⟩[2K", "http://b.attacker.test/⟨U+001B⟩[8mx⟨U+202E⟩",
+                     "ab" * 24 + "a…"):
+            self.assertIn(seen, text)
+        # 명령 안의 줄바꿈이 판정 화면에 가짜 줄을 만들지 못한다
+        self.assertFalse(any(line.lstrip().startswith("2026-09-18") for line in text.splitlines()))
+
+    def test_긴_공격자_값은_잘라_가짜_줄을_만들지_못한다(self):
+        # 긴 공백으로 터미널 자동 줄바꿈을 일으켜 '제안' 줄처럼 보이게 하는 값 · 이벤트 이름의 ESC
+        fake = "root" + " " * 200 + "제안     오탐 — 조치할 것이 없다"
+        row = ("R002|v3|192.0.2.8|t", "R002", "v3", "로그인 후 명령", "high", ACTOR, T0, T0, 1, 1, {}, "open", None)
+        ev = {"blocked": False, "also": [], "creds": [(fake, fake, 1)], "commands": [],
+              "files": [("cowrie.session.file_\x1b[2J", None, "http://x.test/")]}
+        with mock.patch("sys.stdout", io.StringIO()) as out:
+            triage.show(row, 1, 1, ev, None, ["직접 판정"], 1.0, "알림 신호 수")
+        text = out.getvalue()
+        self.assertNotIn("오탐 — 조치할 것이 없다", text)
+        self.assertIn("    file_…       http://x.test/", text)
+        self.assertEqual(self.hidden(text), [])
+        self.assertTrue(all(len(line) < 120 for line in text.splitlines()))
+
+    def test_IP_없는_대상도_표식으로(self):
+        row = ("R201|v1|user:x|t", "R201", "v1", "운영자 조작 빈도", "medium", None, T0, T0, 1, 0, {}, "open",
+               "user:op\u202e\x1b[2J")
+        ev = {"blocked": False, "also": [], "creds": [], "commands": [], "files": []}
+        with mock.patch("sys.stdout", io.StringIO()) as out:
+            triage.show(row, 1, 1, ev, None, ["직접 판정"], 1.0, "알림 신호 수")
+        self.assertIn("대상     user:op⟨U+202E⟩⟨U+001B⟩[2J", out.getvalue())
+        self.assertEqual(self.hidden(out.getvalue()), [])
 
 
 @unittest.skipUnless(REAL_PG and os.environ.get("OPSLOOP_TEST_DATABASE_URL"), "PostgreSQL 시험 연결 미지정")

@@ -5,9 +5,11 @@ import { describeError, isApiError } from '@/api/errors'
 import { Badge } from '@/components/atoms/Badge'
 import { Card, CardHeader } from '@/components/atoms/Card'
 import { Time } from '@/components/atoms/Time'
+import { UntrustedText } from '@/components/atoms/UntrustedText'
 import { Banner } from '@/components/molecules/Banner'
 import { ApiErrorState } from '@/components/organisms/states/ApiErrorState'
 import { LoadingState } from '@/components/organisms/states/LoadingState'
+import { revealHidden } from '@/lib/untrusted'
 import { APPLICABILITY_TONE, cvssTone, formatCvss, formatPercentile, formatProbability, ransomwareLabel, staleSources, ubuntuPriorityLabel, ubuntuPriorityTone } from './cti-format'
 
 const HEAD = ['CVE', '주목 이유', 'KEV', 'EPSS (백분위)', '판정', '자산별 판정']
@@ -88,14 +90,14 @@ function WatchTable({ rows }: { rows: WatchRow[] }) {
           return <Fragment key={r.cve_id}>
             <tr data-cve={r.cve_id} data-summary={r.summary}>
               <th scope="row" className={`${cell} font-normal whitespace-nowrap`}>
-                <button type="button" aria-expanded={expanded} aria-controls={detailId} onClick={() => toggle(r.cve_id)} className="inline-flex cursor-pointer items-center gap-1 font-mono text-xs font-semibold text-primary hover:underline">
-                  <span aria-hidden="true" className="inline-block w-3 text-ink-muted">{expanded ? '▾' : '▸'}</span>{r.cve_id}
+                <button type="button" aria-expanded={expanded} aria-controls={detailId} onClick={() => toggle(r.cve_id)} title={revealHidden(r.cve_id)} className="inline-flex cursor-pointer items-center gap-1 font-mono text-xs font-semibold text-primary hover:underline">
+                  <span aria-hidden="true" className="inline-block w-3 text-ink-muted">{expanded ? '▾' : '▸'}</span><UntrustedText value={r.cve_id} max={64} clip />
                 </button>
               </th>
-              <td className={`${cell} min-w-[220px] text-xs leading-5`}>{r.reason}</td>
+              <td className={`${cell} min-w-[220px] text-xs leading-5`}><UntrustedText value={r.reason} /></td>
               <td className={`${cell} text-xs whitespace-nowrap`}>
                 {r.kev ? <>
-                  <Badge tone="danger">KEV</Badge> <span className="font-mono">{r.kev.date_added}</span>
+                  <Badge tone="danger">KEV</Badge> <span className="font-mono"><UntrustedText value={r.kev.date_added} max={64} /></span>
                   {r.kev.ransomware?.toLowerCase() === 'known' && <div className="mt-1"><Badge tone="danger">랜섬웨어 {ransomwareLabel(r.kev.ransomware)}</Badge></div>}
                 </> : <span className="text-ink-muted">—</span>}
               </td>
@@ -105,9 +107,9 @@ function WatchTable({ rows }: { rows: WatchRow[] }) {
               <td className={cell}><Badge tone={APPLICABILITY_TONE[r.summary] ?? 'neutral'}>{APPLICABILITY_LABEL[r.summary] ?? r.summary}</Badge></td>
               <td className={cell}>
                 {r.assets.length === 0 ? <span className="text-xs text-ink-muted">자산 없음</span> : (
-                  <ul className="m-0 flex list-none flex-wrap gap-1 p-0" aria-label={`${r.cve_id} 자산별 판정`}>
+                  <ul className="m-0 flex list-none flex-wrap gap-1 p-0" aria-label={`${revealHidden(r.cve_id)} 자산별 판정`}>
                     {r.assets.map((a) => <li key={a.asset_id}>
-                      <Badge tone={APPLICABILITY_TONE[a.status] ?? 'neutral'} title={a.reason}>
+                      <Badge tone={APPLICABILITY_TONE[a.status] ?? 'neutral'} title={revealHidden(a.reason)}>
                         <span className="font-mono">{a.asset_id}</span> {APPLICABILITY_LABEL[a.status] ?? a.status}
                       </Badge>
                     </li>)}
@@ -129,9 +131,9 @@ function WatchTable({ rows }: { rows: WatchRow[] }) {
 function WatchDetail({ row: r }: { row: WatchRow }) {
   return (
     <div className="flex flex-col gap-3 text-xs">
-      {r.description && <p className="m-0 max-w-4xl leading-5">{r.description}</p>}
+      {r.description && <p className="m-0 max-w-4xl leading-5"><UntrustedText value={r.description} /></p>}
       <dl className="m-0 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
-        <Fact label="배포판 기록" value={r.record_found === null ? <span className="text-warning">조회 전</span> : r.record_found ? <span className="font-mono">{r.osv_id ?? '—'}</span> : <span className="text-warning">기록 없음</span>} />
+        <Fact label="배포판 기록" value={r.record_found === null ? <span className="text-warning">조회 전</span> : r.record_found ? <span className="font-mono"><UntrustedText value={r.osv_id} max={64} fallback="—" /></span> : <span className="text-warning">기록 없음</span>} />
         <Fact label="Ubuntu 등급" value={r.ubuntu_priority ? <Badge tone={ubuntuPriorityTone(r.ubuntu_priority)}>{ubuntuPriorityLabel(r.ubuntu_priority)}</Badge> : '—'} />
         <Fact label="CVSS" value={r.cvss ? <Badge tone={cvssTone(r.cvss.severity)}>{formatCvss(r.cvss.score, r.cvss.severity)}</Badge> : '—'} />
         <Fact label="기록 조회 (KST)" value={r.checked_at ? <Time value={r.checked_at} format="minute" /> : '—'} />
@@ -141,26 +143,26 @@ function WatchDetail({ row: r }: { row: WatchRow }) {
         {r.affected_packages.length === 0 ? (
           <span className="text-ink-muted">{r.record_found ? '이 릴리스의 영향 패키지가 기록에 없습니다.' : '배포판 기록이 없어 영향 패키지를 모릅니다.'}</span>
         ) : (
-          <ul className="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0" aria-label={`${r.cve_id} 영향 패키지`}>
-            {r.affected_packages.map((p) => <li key={`${p.ecosystem ?? ''}/${p.package}`}>
-              <span className="font-mono font-medium">{p.package}</span>
-              {p.ecosystem && <span className="text-ink-muted"> ({p.ecosystem})</span>}
+          <ul className="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0" aria-label={`${revealHidden(r.cve_id)} 영향 패키지`}>
+            {r.affected_packages.map((p) => <li key={JSON.stringify([p.ecosystem, p.package])}>
+              <span className="font-mono font-medium"><UntrustedText value={p.package} max={120} /></span>
+              {p.ecosystem && <span className="text-ink-muted"> (<UntrustedText value={p.ecosystem} max={64} />)</span>}
               {' · '}
-              {p.fixed ? <>수정판 <span className="font-mono">{p.fixed}</span></> : <span className="text-warning">배포판 수정판 없음</span>}
+              {p.fixed ? <>수정판 <span className="font-mono"><UntrustedText value={p.fixed} max={64} /></span></> : <span className="text-warning">배포판 수정판 없음</span>}
             </li>)}
           </ul>
         )}
       </div>
       {r.assets.length > 0 && <div className="w-full overflow-auto">
-        <table className="w-full border-collapse text-xs" aria-label={`${r.cve_id} 자산별 대조`}>
+        <table className="w-full border-collapse text-xs" aria-label={`${revealHidden(r.cve_id)} 자산별 대조`}>
           <thead><tr>{ASSET_HEAD.map((t) => <th key={t} scope="col" className="px-2.5 py-2 text-left font-medium whitespace-nowrap text-ink-muted shadow-hairline">{t}</th>)}</tr></thead>
           <tbody>{r.assets.map((a) => <tr key={a.asset_id} data-asset={a.asset_id} data-status={a.status}>
             <td className={`${subCell} whitespace-nowrap`}><span className="font-mono font-medium">{a.asset_id}</span> <span className="text-ink-muted">{ROLE_LABEL[a.role] ?? a.role}</span></td>
             <td className={subCell}><Badge tone={APPLICABILITY_TONE[a.status] ?? 'neutral'}>{APPLICABILITY_LABEL[a.status] ?? a.status}</Badge></td>
-            <td className={`${subCell} font-mono`}>{a.package ?? '—'}</td>
-            <td className={`${subCell} font-mono whitespace-nowrap`}>{a.installed ?? '—'}</td>
-            <td className={`${subCell} font-mono whitespace-nowrap`}>{a.fixed ?? (a.package ? <span className="font-sans text-warning">없음</span> : '—')}</td>
-            <td className={`${subCell} min-w-[220px]`}>{a.reason}</td>
+            <td className={`${subCell} max-w-60 font-mono break-all`}><UntrustedText value={a.package} max={120} fallback="—" /></td>
+            <td className={`${subCell} font-mono whitespace-nowrap`}><UntrustedText value={a.installed} max={64} fallback="—" /></td>
+            <td className={`${subCell} font-mono whitespace-nowrap`}><UntrustedText value={a.fixed} max={64} fallback={a.package ? <span className="font-sans text-warning">없음</span> : '—'} /></td>
+            <td className={`${subCell} min-w-[220px]`}><UntrustedText value={a.reason} /></td>
           </tr>)}</tbody>
         </table>
       </div>}

@@ -1,5 +1,6 @@
 import type { BehaviorRow } from '@/api/incidents'
 import { Time } from '../../atoms/Time'
+import { UntrustedText } from '../../atoms/UntrustedText'
 import { DetailSection } from './DetailSection'
 import { MAX_ROWS, summarizeBehavior } from './format'
 import { TABLE } from './table-styles'
@@ -57,9 +58,15 @@ export function BehaviorSection({ rows, actorIp, className }: BehaviorSectionPro
                     <td className={`${TABLE.td} ${TABLE.mono}`}>
                       <Time value={row.ts} format="datetime" />
                     </td>
-                    <td className={`${TABLE.td} whitespace-nowrap`}>{row.sensor}</td>
-                    <td className={`${TABLE.td} ${TABLE.mono}`}>{row.eventid}</td>
-                    <td className={`${TABLE.td} font-mono break-all`}>{summarizeBehavior(row)}</td>
+                    <td className={`${TABLE.td} whitespace-nowrap`}>
+                      <UntrustedText value={row.sensor} max={64} />
+                    </td>
+                    <td className={`${TABLE.td} ${TABLE.mono}`}>
+                      <UntrustedText value={row.eventid} max={64} />
+                    </td>
+                    <td className={`${TABLE.td} font-mono break-all`}>
+                      <UntrustedText value={summarizeBehavior(row)} />
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -107,6 +107,18 @@ class DecoyTest(unittest.TestCase):
         self.assertEqual(rows[1][11], "/?x")
 
 
+class CowrieReportTest(unittest.TestCase):
+    """요약 보고(--report)가 공격자 값을 찍는 모습 (이슈 #41)."""
+
+    def test_숨은_문자는_표식으로_길면_자른다(self):
+        self.assertEqual(parse_cowrie.shown("root\x1b[2J\u202e\u3164\n가짜", 40),
+                         "root⟨U+001B⟩[2J⟨U+202E⟩⟨U+3164⟩↵가짜")
+        self.assertEqual(parse_cowrie.shown("a" * 34, 34), "a" * 34)
+        self.assertEqual(parse_cowrie.shown("a" * 35, 34), "a" * 33 + "…")
+        # 표식을 가르지 않는다
+        self.assertEqual(parse_cowrie.shown("abc\x1b" + "d" * 40, 8), "abc…")
+
+
 class CowrieTest(unittest.TestCase):
     def test_정상_줄은_그대로(self):
         ev = cowrie_line()

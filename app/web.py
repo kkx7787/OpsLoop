@@ -3,8 +3,8 @@
 
 화면 번들 서빙 · 보안 헤더 · 출처 확인 · 로그인 화면을 이곳에 모은다. main.py 는 부르기만 한다.
 
-  serve(app)  화면 번들과 /api/me. 세션 검사(main.require_session)보다 먼저 붙여 그 안쪽에 둔다.
-              화면 번들도 로그인 뒤에만 나간다.
+  serve(app)  화면 번들 · /api/me · /api/csp-report. 세션 검사(main.require_session)보다 먼저 붙여 그 안쪽에 둔다.
+              화면 번들도 로그인 뒤에만 나간다. 위반 보고만 세션 없이 받는다(main.OPEN_PATHS).
   guard(app)  보안 헤더 · CORS(설정 시) · 출처 확인. 세션 검사보다 나중에 붙여 그 바깥에 둔다.
 
 미들웨어는 나중에 붙인 것이 바깥에 선다. 요청은 바깥부터 거친다.
@@ -12,21 +12,28 @@
 
 화면은 API 와 같은 출처로 나간다(HAProxy :8443 → 콘솔 A · B :8000). 그래서 CORS 는 기본으로 끄고,
 상태를 바꾸는 요청은 출처가 같을 때만 받는다. 쿠키의 SameSite=Lax 는 같은 사이트의 다른 포트
-(같은 방화벽 주소의 :8404 같은 곳)에서 오는 요청까지는 막지 못한다. 주소가 IP 이면 포트만 달라도 같은 사이트다.
+(같은 방화벽 주소의 다른 포트)에서 오는 요청까지는 막지 못한다. 주소가 IP 이면 포트만 달라도 같은 사이트다.
 """
 
+import base64
+import hashlib
 import html
+import json
 import mimetypes
 import os
+import time
+from collections import deque
 from pathlib import Path
 from string import Template
 from urllib.parse import urlencode, urlsplit
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.websockets import WebSocketClose
+
+from untrusted import reveal
 
 # 화면 빌드 결과. Mac 에서 console/ 의 npm run build 가 만든다. git 에는 넣지 않는다.
 # 없으면 main.py 의 자리표시 화면이 그대로 나온다. 요청마다 보므로 시험에서 바꿔 끼울 수 있다.
@@ -45,37 +52,62 @@ def _under(path: str, prefixes) -> bool:
 # ──────────────────────────────────────────────────────────────
 #  보안 헤더
 # ──────────────────────────────────────────────────────────────
-CSP = "; ".join([
-    "default-src 'self'",
-    # 인라인 스크립트를 막는다. 화면 번들은 파일로만 나가고 로그인 화면은 스크립트가 없다.
-    "script-src 'self'",
-    # 스크립트는 막고 스타일만 연다. 로그인 화면과 화면 라이브러리가 인라인 스타일을 쓴다.
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data:",
-    "connect-src 'self'",
-    # 내부망에는 인터넷이 없다. 외부 글꼴을 쓰지 않는다.
-    "font-src 'self'",
-    "object-src 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-    "frame-ancestors 'none'",
-])
+#  공격자 문자열이 화면에 섞여 들어와도 담당자 브라우저가 밖으로 요청하지 않게 하는 두 번째 방어선이다(이슈 #41).
+#  서버에는 인터넷이 없지만 담당자 단말(관리망 · VPN)은 인터넷에 닿는다. 브라우저 쪽 방어는 CSP 와 화면 렌더가 전부다.
+#  위반은 같은 출처의 /api/csp-report 로만 보고한다. 외부 수집 서비스로 보내면 그 자체가 콘솔을 드러내는 경로가 된다.
+CSP_REPORT_PATH = "/api/csp-report"
+
+
+def _csp(style: str) -> str:
+    return "; ".join([
+        "default-src 'self'",
+        # 인라인 스크립트를 막는다. 화면 번들은 파일로만 나가고 로그인 화면은 스크립트가 없다.
+        "script-src 'self'",
+        # 화면 번들은 CSS 파일과 CSSOM(style 속성 설정)만 쓴다. 주입된 <style> · style 속성으로 버튼을 가리는
+        # 표시 위조를 막는다. 로그인 화면의 <style> 하나만 그 응답에 해시로 연다(LOGIN_CSP).
+        f"style-src {style}",
+        # data: 이미지는 번들이 쓰지 않는다. 주입된 가짜 경고 그림을 막는다.
+        "img-src 'self'",
+        "connect-src 'self'",
+        # 외부 글꼴을 쓰지 않는다.
+        "font-src 'self'",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+        # 위반 보고. report-to 는 넣지 않는다. report-to 가 있으면 Chrome 은 report-uri 를 무시하는데,
+        # Reporting-Endpoints 는 보안 문맥(https · localhost)에서만 받으므로 평문 HTTP 콘솔(:8443)에서는 보고가 하나도
+        # 나가지 않는다(2026-09-25 Chromium 에서 확인). 콘솔을 https 로 옮기면 report-to 와 Reporting-Endpoints 를 더한다.
+        f"report-uri {CSP_REPORT_PATH}",
+    ])
+
+
+CSP = _csp("'self'")
 
 BASE_HEADERS = (
     ("x-content-type-options", "nosniff"),
     ("x-frame-options", "DENY"),
     ("referrer-policy", "same-origin"),
+    # 링크 · link 요소의 호스트 이름을 미리 조회하지 않는다. DNS 조회는 CSP 로 막히지 않고,
+    # 공격자 호스트가 그려지면 열람만으로 공격자 DNS 에 시각이 찍힌다. 콘솔은 평문 HTTP 라 기본으로 켜진다.
+    ("x-dns-prefetch-control", "off"),
+    ("cross-origin-opener-policy", "same-origin"),
+    # 같은 사이트의 다른 포트에서 /api 응답을 끼워 넣지 못하게 한다.
+    ("cross-origin-resource-policy", "same-origin"),
+    ("permissions-policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()"),
 )
-
-# Swagger UI · ReDoc 은 CDN 스크립트와 인라인 스크립트를 쓴다. 이 경로만 CSP 를 뺀다.
-DOCS_PATHS = ("/docs", "/redoc", "/openapi.json")
 
 
 class SecurityHeaders:
-    """모든 HTTP 응답에 보안 헤더를 붙인다. 응답이 이미 정한 값은 덮지 않는다."""
+    """모든 HTTP 응답에 보안 헤더를 붙인다. 응답이 이미 정한 값은 덮지 않는다.
 
-    def __init__(self, app):
+    docs_paths 는 API 문서 화면(OPSLOOP_API_DOCS=1 일 때만 켜짐)의 경로다. Swagger UI 는 CDN 스크립트와
+    인라인 스크립트를 쓰므로 이 경로만 CSP 를 뺀다. 문서가 꺼져 있으면 비어 있어 모든 응답에 CSP 가 붙는다.
+    """
+
+    def __init__(self, app, docs_paths=()):
         self.app = app
+        self.docs_paths = tuple(docs_paths)
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -84,7 +116,7 @@ class SecurityHeaders:
 
         path = scope["path"]
         extra = list(BASE_HEADERS)
-        if not _under(path, DOCS_PATHS):
+        if not _under(path, self.docs_paths):
             extra.append(("content-security-policy", CSP))
         # 판정 · 조치 기록이 공용 PC 의 캐시에 남지 않게 한다.
         if _under(path, ("/api",)):
@@ -161,7 +193,11 @@ def origin_problem(headers: Headers, trusted=frozenset()):
 
 
 class OriginCheck:
-    """POST · PUT · PATCH · DELETE 와 웹소켓 핸드셰이크의 출처를 본다. /login · /logout 도 포함한다."""
+    """POST · PUT · PATCH · DELETE 와 웹소켓 핸드셰이크의 출처를 본다. /login · /logout 도 포함한다.
+
+    예외는 POST /api/csp-report 하나뿐이다. 브라우저가 보내는 위반 보고에는 Origin · 쿠키가 없을 수 있다.
+    이 경로는 상태를 바꾸지 않고 로그 한 줄만 남긴다(크기 · 빈도 상한).
+    """
 
     def __init__(self, app, trusted=frozenset()):
         self.app = app
@@ -169,7 +205,8 @@ class OriginCheck:
 
     async def __call__(self, scope, receive, send):
         kind = scope["type"]
-        if kind == "websocket" or (kind == "http" and scope["method"] in UNSAFE_METHODS):
+        exempt = kind == "http" and scope["method"] == "POST" and scope["path"] == CSP_REPORT_PATH
+        if not exempt and (kind == "websocket" or (kind == "http" and scope["method"] in UNSAFE_METHODS)):
             headers = Headers(scope=scope)
             problem = origin_problem(headers, self.trusted)
             if problem:
@@ -220,7 +257,9 @@ def guard(app) -> None:
     if cors:
         app.add_middleware(CORSMiddleware, allow_origins=cors, allow_credentials=True,
                            allow_methods=["*"], allow_headers=["*"])
-    app.add_middleware(SecurityHeaders)
+    # 문서 화면이 켜진 앱(main 은 OPSLOOP_API_DOCS=1 일 때만)에서만 그 경로의 CSP 를 뺀다.
+    docs = tuple(p for p in (getattr(app, name, None) for name in ("docs_url", "redoc_url", "openapi_url")) if p)
+    app.add_middleware(SecurityHeaders, docs_paths=docs)
     app.add_exception_handler(Exception, _server_error)
 
 
@@ -313,8 +352,103 @@ async def me(request: Request):
     return {"username": user["u"], "role": user["r"]}
 
 
+# ──────────────────────────────────────────────────────────────
+#  CSP 위반 보고 수집 (이슈 #41)
+#
+#  세션 없이 받는다(main.OPEN_PATHS). 출처 확인도 이 경로만 건너뛴다(OriginCheck).
+#  보고에는 공격자가 넣은 주소가 들어 있다. 필요한 필드만 숨은 문자를 표식으로 바꾸고 잘라 한 줄로 남긴다(도커 로그).
+#  DB 에는 넣지 않는다. 받는 형식 · 크기 · 빈도를 묶어 로그 넘치기를 막는다.
+# ──────────────────────────────────────────────────────────────
+CSP_REPORT_TYPES = frozenset({"application/csp-report", "application/reports+json", "application/json"})
+CSP_REPORT_MAX = 8 * 1024        # 본문 상한(바이트)
+CSP_REPORT_PER_MINUTE = 60       # 프로세스 전체에서 1분에 남기는 보고 줄 수. 넘치면 429
+CSP_REPORT_ENTRIES = 10          # 요청 하나에서 남기는 보고 수(reports+json 은 여러 건을 묶어 보낸다)
+CSP_FIELD_MAX = 200              # 필드 하나의 글자 수(표식으로 바꾼 뒤)
+_csp_seen = deque()
+
+
+def _csp_take(now: float, n: int) -> int:
+    """지난 60초 안에 남긴 줄 수가 상한 아래면 이번 요청에서 남길 줄 수(최대 n)를 세고 돌려준다. 0 이면 한도가 찼다.
+    형식 · 크기를 통과한 보고만 센다. 쓰레기 요청으로 한도를 채워 진짜 보고를 밀어내지 못하게 한다."""
+    while _csp_seen and now - _csp_seen[0] >= 60:
+        _csp_seen.popleft()
+    take = min(n, CSP_REPORT_PER_MINUTE - len(_csp_seen))
+    _csp_seen.extend([now] * max(take, 0))
+    return max(take, 0)
+
+
+def csp_entries(data) -> list:
+    """application/csp-report({"csp-report": …})와 Reporting API([{"type": "csp-violation", "body": …}])를
+    같은 필드(document-uri · violated-directive · blocked-uri · source-file · line)로 푼다. 다른 모양은 버린다."""
+    out = []
+    for item in data if isinstance(data, list) else [data]:
+        if not isinstance(item, dict):
+            continue
+        if isinstance(item.get("csp-report"), dict):
+            r = item["csp-report"]
+            out.append({"document-uri": r.get("document-uri"),
+                        "violated-directive": r.get("violated-directive") or r.get("effective-directive"),
+                        "blocked-uri": r.get("blocked-uri"), "source-file": r.get("source-file"),
+                        "line": r.get("line-number")})
+        elif isinstance(item.get("body"), dict):
+            b = item["body"]
+            out.append({"document-uri": b.get("documentURL") or item.get("url"),
+                        "violated-directive": b.get("effectiveDirective") or b.get("violatedDirective"),
+                        "blocked-uri": b.get("blockedURL"), "source-file": b.get("sourceFile"),
+                        "line": b.get("lineNumber")})
+    return out[:CSP_REPORT_ENTRIES]
+
+
+def csp_log_line(entry: dict) -> str:
+    """보고 한 건을 한 줄로 쓴다. 값은 숨은 문자 · 줄바꿈을 표식으로 바꾸고 자른 뒤 따옴표로 감싼다."""
+    parts = []
+    for name in ("document-uri", "violated-directive", "blocked-uri", "source-file", "line"):
+        value = entry.get(name)
+        if value is None or value == "":
+            parts.append(f"{name}=-")
+        elif name == "line" and isinstance(value, int) and not isinstance(value, bool) and 0 <= value < 10 ** 7:
+            parts.append(f"{name}={value}")
+        else:
+            text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+            parts.append(f"{name}={json.dumps(reveal(text, limit=CSP_FIELD_MAX), ensure_ascii=False)}")
+    return "[csp] 위반 보고 " + " ".join(parts)
+
+
+def _report_error(status: int, detail: str) -> JSONResponse:
+    return JSONResponse({"detail": detail}, status_code=status)
+
+
+@router.post(CSP_REPORT_PATH, status_code=204)
+async def csp_report(request: Request):
+    kind = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    if kind not in CSP_REPORT_TYPES:
+        return _report_error(415, "위반 보고 형식이 아닙니다")
+    try:
+        declared = int(request.headers.get("content-length") or 0)
+    except ValueError:
+        declared = 0
+    if declared > CSP_REPORT_MAX:
+        return _report_error(413, "위반 보고가 너무 큽니다")
+    body = b""
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > CSP_REPORT_MAX:
+            return _report_error(413, "위반 보고가 너무 큽니다")
+    try:
+        data = json.loads(body)
+    except (ValueError, RecursionError):   # 깨진 JSON · 글자 부호 · 8 KiB 안의 깊은 중첩
+        return _report_error(400, "위반 보고를 해석할 수 없습니다")
+    entries = csp_entries(data)
+    take = _csp_take(time.monotonic(), len(entries)) if entries else 0
+    if entries and take == 0:
+        return _report_error(429, "위반 보고가 너무 많습니다")
+    for entry in entries[:take]:
+        print(csp_log_line(entry), flush=True)
+    return Response(status_code=204)
+
+
 def serve(app) -> None:
-    """화면 번들과 /api/me 를 붙인다. 세션 검사 미들웨어보다 먼저 불러 그 안쪽에 둔다."""
+    """화면 번들과 /api/me · /api/csp-report 를 붙인다. 세션 검사 미들웨어보다 먼저 불러 그 안쪽에 둔다."""
     app.include_router(router)
     app.add_middleware(ConsoleFiles)
 
@@ -361,7 +495,9 @@ def to_login(request: Request) -> RedirectResponse:
 # ──────────────────────────────────────────────────────────────
 #  로그인 화면 (S-01)
 #
-#  서버가 그린다. 모양은 와이어프레임 Login 을 따른다. 스크립트가 없고 스타일은 인라인이다(CSP).
+#  서버가 그린다. 모양은 와이어프레임 Login 을 따른다. 스크립트가 없고 스타일은 <style> 하나다.
+#  그 <style> 만 이 응답의 CSP 에 해시로 연다(LOGIN_CSP). 스타일을 고치면 해시는 모듈을 읽을 때 다시 계산된다.
+#  style= 속성은 쓰지 않는다('unsafe-hashes' 없이 막힌다).
 #  필드 이름(username · password)과 기록(console.login.*)은 바꾸지 않는다. next 만 숨은 필드로 더한다.
 # ──────────────────────────────────────────────────────────────
 LOGIN_ERROR = "아이디 또는 비밀번호가 올바르지 않습니다."
@@ -406,6 +542,12 @@ $error<input type="hidden" name="next" value="$next">
 <p class="note">가입 화면은 없습니다. 계정은 관리자가 명령줄로 발급합니다.<br>로그인 시도는 디코이와 같은 형식으로 기록되어 규칙 검증에 쓰입니다.</p>
 </main></body></html>""")
 
+LOGIN_STYLE = LOGIN_PAGE.template.split("<style>", 1)[1].split("</style>", 1)[0]
+# 치환이 스타일을 바꾸면 해시가 어긋나 로그인 화면이 모양 없이 나온다.
+assert "$" not in LOGIN_STYLE, "로그인 화면 <style> 에 치환 자리가 있으면 해시가 어긋난다"
+LOGIN_STYLE_HASH = base64.b64encode(hashlib.sha256(LOGIN_STYLE.encode("utf-8")).digest()).decode()
+LOGIN_CSP = _csp(f"'self' 'sha256-{LOGIN_STYLE_HASH}'")
+
 
 def login_page(*, error: bool = False, next_path=None, username: str = "",
                status_code: int = 200) -> HTMLResponse:
@@ -418,4 +560,5 @@ def login_page(*, error: bool = False, next_path=None, username: str = "",
         user_focus="" if username else " autofocus",
         password_focus=" autofocus" if username else "",
     )
-    return HTMLResponse(body, status_code=status_code, headers={"Cache-Control": "no-store"})
+    return HTMLResponse(body, status_code=status_code,
+                        headers={"Cache-Control": "no-store", "Content-Security-Policy": LOGIN_CSP})
