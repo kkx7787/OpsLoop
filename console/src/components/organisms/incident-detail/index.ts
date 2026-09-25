@@ -2,6 +2,7 @@
  * 인시던트 상세(S-04) · 판정 패널(S-05)의 구역 컴포넌트. 페이지(pages/incident-detail)가 조립한다.
  *  머리글  IncidentHeader(규칙 · 심각도 · 상태 · 발생원 · 출발지 · 경과) · ElapsedClock · StatusBadge
  *  구역    ① RuleEvidenceSection · ② BehaviorSection · ③ ActorSection · ④ RawLogSection · ⑤ ResponseSection
+ *          ⑥ VulnLinkPanel(취약점 연계 · #39, 서명 규칙 사건만)
  *  ⑤ 안   ActionBar(조치) · VerdictPanel(판정) · HistoryList(이력)
  */
 export { ActionBar } from './ActionBar'
@@ -50,3 +51,5 @@ export { StatusBadge } from './StatusBadge'
 export type { StatusBadgeProps } from './StatusBadge'
 export { VerdictPanel } from './VerdictPanel'
 export type { VerdictPanelProps } from './VerdictPanel'
+export { VulnLinkPanel } from './VulnLinkPanel'
+export type { VulnLinkPanelProps } from './VulnLinkPanel'

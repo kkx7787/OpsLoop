@@ -1,5 +1,6 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
+import { ctiKeys } from './cti'
 import { incidentKeys, ruleKeys } from './incidents'
 import { nodeKey, auditKey } from './operations'
 import { monitoringKeys } from './monitoring-keys'
@@ -136,7 +137,8 @@ export function connectLive(queryClient: QueryClient, options: LiveOptions = {})
       if (!mine()) return
       if (connectedBefore) {
         // 끊긴 동안의 통보는 다시 오지 않으므로 재접속 때 현재 상태를 재조회한다.
-        for (const queryKey of [incidentKeys.all, ruleKeys.all, monitoringKeys.summary, monitoringKeys.blocklist, nodeKey, auditKey]) {
+        // CVE · KEV 연계(ctiKeys)는 통보가 없고 하루 단위로 바뀌지만, 오래 끊겼다 이어진 뒤에는 신선도를 다시 맞춘다.
+        for (const queryKey of [incidentKeys.all, ruleKeys.all, monitoringKeys.summary, monitoringKeys.blocklist, nodeKey, auditKey, ctiKeys.all]) {
           void queryClient.invalidateQueries({ queryKey })
         }
       }

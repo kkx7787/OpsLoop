@@ -400,7 +400,7 @@ class ConsoleFilesTest(Base):
     def test_screen_paths_get_index(self):
         self.build_console()
         self.login_as()
-        for path in ("/", "/incidents", "/incidents/web-01:R002:1.2.3.4", "/accounts",
+        for path in ("/", "/incidents", "/incidents/web-01:R002:1.2.3.4", "/accounts", "/inventory",
                      "/no/such/screen", "/index.html", "/apiary"):
             r = self.client.get(path)
             self.assertEqual(r.status_code, 200, path)
@@ -409,6 +409,21 @@ class ConsoleFilesTest(Base):
             self.assertTrue(r.headers["content-type"].startswith("text/html"), path)
             self.assertEqual(r.headers["content-security-policy"], web.CSP, path)
         self.assertEqual(self.client.head("/incidents").status_code, 200)
+
+    def test_screen_routes_do_not_collide_with_server_paths(self):
+        """화면 라우터의 맨 위 경로가 서버 경로(SERVER_PATHS) 아래에 있으면 새로고침 · 새 탭에서 404 가 난다.
+
+        이슈 #39 에서 자산 화면을 /assets 로 두었다가 번들 폴더(/assets)와 겹친 일이 있어 경로를 /inventory 로 바꿨다.
+        """
+        import re
+        router = (Path(__file__).resolve().parent.parent / "console" / "src" / "app" / "router.tsx")
+        if not router.exists():
+            self.skipTest("console 소스가 없다")
+        paths = re.findall(r"path: '([^':/][^']*)'", router.read_text(encoding="utf-8"))
+        self.assertIn("inventory", paths)
+        for p in paths:
+            top = "/" + p.split("/")[0]
+            self.assertFalse(web._under(top, web.SERVER_PATHS), top)
 
     def test_assets(self):
         self.build_console()

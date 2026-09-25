@@ -1,0 +1,35 @@
+[Unit]
+Description=OpsLoop CTI 갱신 (KEV · EPSS · OSV · NVD 원본 → S3 cti/ · DB, 안에서 밖으로만 연결한다)
+Wants=network-online.target time-sync.target
+# 시계가 틀리면 S3 서명이 거부된다
+After=network-online.target time-sync.target docker.service
+
+[Service]
+Type=oneshot
+User=opsloop-cti
+Group=opsloop-cti
+# 버킷 · 상태 폴더 · 지역만. 비밀(DB 접속 · S3 쓰기 키)은 실행기가 /etc/opsloop/cti.env · s3-cti.env 에서
+# 직접 읽는다 (셸로 읽지 않는다. S3 키는 S3 클라이언트에만, DATABASE_URL 은 DB 연결에만 넘긴다)
+EnvironmentFile=/etc/default/opsloop-cti
+ExecStart=/usr/local/bin/opsloop-cti fetch
+# 출처 하나라도 실패하면 종료 코드 1 로 남겨 systemctl --failed 에 드러나게 한다
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/opsloop-cti
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+SystemCallFilter=@system-service
+# EPSS 전체 CSV(약 37만 줄)는 gzip 원본을 메모리에 받아 줄 단위로 풀며 관심 CVE 만 남긴다(풀린 전체를 들고 있지 않다).
+# 줄 하나는 256자 상한이라 줄바꿈 없는 큰 입력(깨졌거나 변조된 원천)도 메모리에 올리기 전에 멈춘다.
+# 가장 큰 것은 OSV 원본 문서(질의 결과 · 상세 500건 · 주목 CVE 기록 50건 이하)와 KEV(약 1.7 MiB)의 파싱 사본이라
+# 수십 MiB 안쪽이다. 넉넉히 512M
+MemoryMax=512M
+# NVD 는 키 없는 한도(30초에 5회) 때문에 요청 사이 6.5초를 쉰다. 60건이면 약 7분, 여기에 OSV 조회 · 상세 500건 ·
+# EPSS 받기와 5xx · 시간 초과 재시도(60초 × 3회)를 더해도 한 시간이면 된다. 넘겨서 죽어도 출처마다 따로 커밋돼 있다
+TimeoutStartSec=3600

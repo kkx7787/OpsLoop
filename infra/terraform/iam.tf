@@ -136,3 +136,34 @@ resource "aws_iam_user_policy" "archive_read" {
   user   = aws_iam_user.archive_reader.name
   policy = data.aws_iam_policy_document.archive_read.json
 }
+
+# ══════════════════════════════════════════════════════════════
+#  공개 취약점 정보 쓰기 사용자 (이슈 #39)
+#
+#  데이터 노드의 수집기(opsloop-cti)가 KEV · EPSS · OSV · NVD 원본과 자산 조사 결과를
+#  cti/ 에 올릴 때 쓴다. 올리기만 된다. 읽기 · 목록 · 삭제가 없고 원장(raw/ · hb/)에는
+#  쓰지 못한다(버킷 정책). 센서 · 관문 역할, 원장 읽기 사용자와 주체를 나눈다.
+#  원본 키에 내용 해시가 들어가 같은 날 같은 내용은 412 로 끝나므로 읽기가 필요 없다.
+#  원본을 다시 읽는 재현 작업은 관리자 자격으로 한다.
+#  액세스 키는 Terraform 으로 만들지 않는다. 만들면 비밀값이 상태 파일에 평문으로 남는다.
+#  키는 CLI 로 발급해 데이터 노드 /etc/opsloop/s3-cti.env 에 파이프로 바로 넣는다 (README).
+# ══════════════════════════════════════════════════════════════
+
+resource "aws_iam_user" "cti_writer" {
+  name = "opsloop-cti-writer"
+  tags = { purpose = "internal data node archives CTI originals" }
+}
+
+data "aws_iam_policy_document" "cti_put" {
+  statement {
+    sid       = "PutCtiOnly"
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.archive.arn}/cti/*"]
+  }
+}
+
+resource "aws_iam_user_policy" "cti_put" {
+  name   = "opsloop-cti-put"
+  user   = aws_iam_user.cti_writer.name
+  policy = data.aws_iam_policy_document.cti_put.json
+}

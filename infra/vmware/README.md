@@ -103,7 +103,8 @@ Mac(관리망 192.168.70.1)
 | `opsloop_gate` | 수집 관문 | 데이터 노드 `/etc/opsloop/gate.env` | nodes 네 열 읽기 · `enroll_node` |
 | `opsloop_ingest` | 다리(pull_loki) · 파서 | `/etc/opsloop/collector.env` | events · sessions · node_metrics 적재, nodes 수신 기록 |
 | `opsloop_detector` | 탐지기(detect.py) | `/etc/opsloop/detector.env` | 규칙 입력 읽기, incidents 생성 · 억제 · 이어지는 사건 갱신(끝 시각 · 건수 · 근거 네 열), detector_runs |
-| `opsloop_console` | 콘솔 API · triage.py | 콘솔 `~/opsloop/.env` · 데이터 노드 `/etc/opsloop/triage.env` | 판정 · 조치 · 차단 · 등록 토큰 · 감사 · 로그인 기록. 토큰 해시 · 계정 역할은 못 본다/못 고친다 |
+| `opsloop_console` | 콘솔 API · triage.py | 콘솔 `~/opsloop/.env` · 데이터 노드 `/etc/opsloop/triage.env` | 판정 · 조치 · 차단 · 등록 토큰 · 감사 · 로그인 기록 · CTI 표 읽기. 토큰 해시 · 계정 역할은 못 본다/못 고친다 |
+| `opsloop_cti` | CTI 수집기(`opsloop-cti`: 공개 정보 갱신 · 자산 적재, 이슈 #39) | `/etc/opsloop/cti.env` | 공개 정보 · 자산 표(`cti_*` · `asset_*`) 쓰기(`cti_snapshots` 는 추가만), `rule_versions` 읽기. 이벤트 · 사건 · 판정은 못 본다 |
 | `opsloop_backup` | `backup-db.sh` 의 pg_dump | 없음 (컨테이너 안 로컬 접속) | 읽기 전부 |
 | `opsloop` (소유자) | 스키마 · `nodes.py` · `auth.py add` | `/etc/opsloop/admin.env` (root 만) · compose `.env` | 전부 |
 
@@ -137,6 +138,110 @@ Teams 쪽 준비: Power Automate 에서 "Teams 웹훅 요청을 받으면 채널
 배포 순서: 새 콘솔 이미지를 올리기 전에 `infra/migrations/20260924_notify.sql` 을 먼저 적용한다. 표가 없으면 알림만 멈추고 콘솔의 다른 기능은 뜬다.
 콘솔 VM 마다 compose `.env` 에 `OPSLOOP_WORKER=opsloop-console-a`(B 는 `-b`)를 둔다. 발송기가 집은 알림을 이 이름으로 표시하므로, 재기동 때 자기가 보내던 알림을 바로 되찾는다.
 
+## CVE · KEV 연계 (이슈 #39)
+
+공개 취약점 정보(CISA KEV · EPSS · 배포판 취약점 OSV · NVD)와 노드 자산 조사 결과를 사건 옆에 붙여 보인다.
+판정값이 아니라 조사 우선순위 정보다(`docs/2026-09-08-판정-기준.md` §8). 원본은 S3 `cti/` 에 한 번만 쓰고,
+원본을 남기지 못한 회차는 DB 도 갱신하지 않는다(`infra/terraform/README.md` 'CTI 원본 보관').
+
+```
+데이터 노드  opsloop-cti.timer (하루 1회) ─ KEV · EPSS · OSV · NVD 받기 ─→ S3 cti/ (원본) ─→ DB cti_*
+Mac          collect-assets.sh (매일 05:10) ─ 노드마다 cti/probe.py ─→ data01 opsloop-cti load-assets ─→ S3 cti/ ─→ DB asset_*
+콘솔 API     DB 읽기 ─→ 사건 상세 '취약점 연계' 구역 · 자산 · 취약점 화면(/inventory, 맨 위 '주목 CVE' 표)
+```
+
+| 구성 | 위치 |
+|---|---|
+| 수집기 | 데이터 노드 `/opt/opsloop/cti` (root 소유. `install-ingest.sh` 의 앱 폴더 교체와 따로 둔다) · 실행 래퍼 `/usr/local/bin/opsloop-cti` (`fetch` · `load-assets` · `status`) |
+| 주기 | `opsloop-cti.timer` 부팅 15분 뒤 · 하루 간격 · 무작위 30분. 달력 타이머는 쓰지 않는다(위 '시간 동기화') |
+| 설정 | `/etc/default/opsloop-cti` (비밀 아님. 처음 설치 때만 만든다) · 상태 폴더 `/var/lib/opsloop-cti` |
+| 비밀 | `/etc/opsloop/cti.env` (DB 역할 `opsloop_cti`, 설치기가 만든다) · `/etc/opsloop/s3-cti.env` (S3 쓰기 사용자 키, Mac 에서 파이프로 넣는다). 둘 다 0640 root:opsloop-cti 이고 셸로 읽지 않는다 |
+| 자산 수집 | Mac `scripts/collect-assets.sh` (SSH 다섯 대 · SSM 두 대) · `scripts/install-assets-agent.sh` (launchd `local.opsloop.assets`, 기록 `~/opsloop-assets/assets.log`) |
+| 주목 CVE 목록 | 저장소 `cti/watchlist.json` → 설치기가 `/opt/opsloop/cti/watchlist.json` 으로 함께 둔다 (아래 '주목 CVE 목록 바꾸기') |
+| 탐지 규칙 | `detector/rules_cve.json`(c1: R105 제품 식별 탐색 · R106 알려진 취약점 공격 시도). 1분 다리(`opsloop-agents`)가 s1 · w2 · a1 · i2 다음에 돌린다 |
+| 화면 | 사건 상세 '취약점 연계' 구역(R105 · R106 사건에만) · 자산 · 취약점 화면 `/inventory` (사이드 메뉴 '자산 · 취약점') |
+
+설치 순서 (Mac, 저장소 루트):
+
+```bash
+# 1. S3 cti/ 경계 · 쓰기 사용자: infra/terraform/README.md 'CTI 원본 보관' 1단계 (plan 기대값을 확인한 뒤 apply)
+# 2. 탐지 규칙 c1 (detector/rules_cve.json · detect.py 의 url_signature · pull_loki.py 의 c1 레그): 같은 커밋으로
+#    install-ingest.sh 를 먼저, install-collector.sh 를 다음에 (위 '데이터베이스 역할' 절 1번과 같은 명령).
+#    install-ingest.sh 가 앱 폴더(detector 포함)를 바꾸고 install-collector.sh 가 다리와 스키마(CTI 절 포함)를 올린다.
+#    거꾸로 올리면 새 다리가 옛 detect.py 로 c1 을 돌려 매 회차 실패(종료 1)로 끝난다 (install-collector.sh 가
+#    'url_signature 를 모른다' 경고를 낸다). 3번 설치기도 이 둘이 만든 /etc/opsloop · rule_versions 표를 먼저 본다
+C=$(git rev-parse --short HEAD)
+git archive "$C" collector parser detector puller infra | ssh -F ~/.ssh/config.opsloop data01 \
+  "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo bash /tmp/ol/puller/install-ingest.sh $C && sudo bash /tmp/ol/collector/install-collector.sh $C"
+#    확인 (1 ~ 2분 뒤): 탐지 실행 기록에 c1 이 있고, 다리 기록에 '탐지 실패 rules_cve.json' 이 없다
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n docker exec opsloop-db psql -U opsloop -d opsloop -Atc "SELECT rule_version, max(started_at) FROM detector_runs GROUP BY 1 ORDER BY 2 DESC LIMIT 8"'
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n journalctl -u opsloop-agents --since -5min --no-pager | grep -c "탐지 실패"'   # 0
+#    c1 이 rule_versions 에 들어가야 수집기가 서명 CVE 를 EPSS · NVD 관심 집합에 넣는다. 그래서 수집기 첫 회차(5번)보다 먼저 한다
+# 3. 데이터 노드: 사용자 · 코드 · 주목 CVE 목록 · 설정 · 접속 파일 · DB 역할 · 마이그레이션(20260925_cti.sql) · 단위 (타이머는 켜지 않는다)
+git archive "$C" cti infra/migrations/20260925_cti.sql | ssh -F ~/.ssh/config.opsloop data01 \
+  "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo bash /tmp/ol/cti/install-cti.sh $C"
+# 4. S3 쓰기 키 · 검증: infra/terraform/README.md 'CTI 원본 보관' 2 · 3단계 (3번이 만든 opsloop-cti 그룹이 있어야 키를 넣을 수 있다)
+# 5. 한 번 돌려 확인한다. 끝날 때까지 기다린다 (NVD 는 요청 사이 6.5초를 쉰다. 상한 1시간)
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n systemctl start opsloop-cti.service; sudo -n journalctl -u opsloop-cti -n 60 --no-pager'
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n -u opsloop-cti /usr/local/bin/opsloop-cti status'
+#    출처별 마지막 성공 시각을 본다. 실패한 출처는 cti_snapshots 의 error 에 이유가 남고 그 출처의 DB 는 바뀌지 않는다
+# 6. 타이머를 켠다 (부팅 15분이 이미 지났으므로 30분 안에 한 번 더 돈다. 같은 원본은 412 로 끝나 겹치지 않는다)
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n systemctl enable --now opsloop-cti.timer'
+# 7. 자산 수집: 보내지 않고 묶음 · 요약만 본 뒤 적재하고, 매일 돌게 올린다
+infra/vmware/scripts/collect-assets.sh --dry-run > /dev/null
+infra/vmware/scripts/collect-assets.sh
+infra/vmware/scripts/install-assets-agent.sh
+# 8. 콘솔 이미지 갱신 (app/cti.py · 화면). 3번의 마이그레이션이 먼저 들어가 있어야 한다.
+#    확인: 사이드 메뉴 '자산 · 취약점'(/inventory) 맨 위 '주목 CVE' 표와 자산 표, R105 · R106 사건 상세의 '취약점 연계' 구역
+```
+
+- 적재기는 받은 자산의 배포판 대조(OSV)를 바로 한다. 자산 CVE 의 NVD 정보는 다음 회차에 채워진다.
+- **AWS 두 대(gateway · honeypot-dmz)는 로그인 뒤 손으로 돌린다.** launchd 안에서는 AWS 로그인이 대개 만료돼 있어
+  빠진다. `aws login` 뒤 `infra/vmware/scripts/collect-assets.sh --only gateway,honeypot-dmz --aws`. 빠진 날은 옛
+  결과가 남고, 48시간이 지나면 콘솔에 '정보 오래됨'(해당 여부 미확인)으로 보인다.
+- 평소 꺼 둔 console-b 는 연결 실패로 보내져 옛 결과를 두고 시도 기록만 고친다(종료 코드 1, 알림 없음).
+- **`20260924_db_roles.sql` 을 다시 적용하면 `20260925_cti.sql` 도 다시 적용한다.** `20260924_db_roles.sql` 은 콘솔
+  역할의 표 권한을 먼저 모두 거두고 정해 둔 표만 다시 주므로 콘솔의 CTI 표 읽기가 사라진다(콘솔 API 의 취약점 연계 ·
+  자산 조회가 권한 오류로 멈춘다). 수집기 역할(`opsloop_cti`)의 권한은 거두지 않는다. `20260925_round2.sql` 은 탐지
+  역할만 거두고 `20260925_v3_absorbed.sql` 은 권한을 거두지 않으므로 CTI 권한과 무관하다. `opsloop_cti` 의 권한을
+  거두는 곳은 `20260925_cti.sql` 과 `infra/schema.sql` 의 CTI 절뿐이고 둘 다 거둔 뒤 곧바로 다시 준다.
+  `20260925_cti.sql` 은 여러 번 적용해도 같다. `install-collector.sh` 는 `infra/schema.sql` 전체(끝에 같은 CTI 절이
+  있다)를 적용하므로 따로 할 일이 없다.
+
+```bash
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n docker exec -i opsloop-db psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -q' \
+  < infra/migrations/20260925_cti.sql
+infra/vmware/scripts/verify-db-roles.sh     # opsloop_cti 와 콘솔 역할의 CTI 표 권한까지 본다
+```
+
+- 콘솔: CTI 표가 없으면 API 가 `available: false` 로 답해 취약점 연계 구역 · 자산 화면만 비고 다른 기능은 그대로 뜬다.
+
+### 주목 CVE 목록 바꾸기
+
+주목 CVE 는 자산에 걸리지 않은(이미 고친) 널리 알려진 CVE 도 자산마다 설치 버전과 배포판(Ubuntu) 수정판을 비교해
+보이려고 정해 둔 목록이다(`docs/2026-09-08-판정-기준.md` §8 '주목 CVE'). 수집기 `fetch` 의 osv 단계가 하루 한 번
+CVE 마다 `UBUNTU-<CVE>` 기록을 받아 `cti_watch` 를 목록과 같게 맞추고, 콘솔 자산 · 취약점 화면(`/inventory`) 맨 위
+'주목 CVE' 표가 자산별 판정(해당 · 비해당 · 미확인)을 보인다. 데이터 노드의 사본 `/opt/opsloop/cti/watchlist.json` 은
+설치기가 코드 폴더와 함께 통째로 바꾸므로 거기서 직접 고치지 않는다.
+
+1. 저장소의 `cti/watchlist.json` 을 고치고 커밋한다. 항목은 `{"cve": "CVE-YYYY-NNNN", "reason": "…"}` 이고 이유는
+   200자 이하, 중복 없이 50개 이하다. 목록에서 뺀 CVE 는 다음 fetch 가 `cti_watch` 에서 지운다.
+2. 같은 커밋으로 `install-cti.sh` 를 다시 돌린다(위 설치 순서 3번 명령). 설치기는 목록을 실행기의 검증 함수로 먼저
+   보고, 틀리면 코드를 바꾸지 않고 멈춘다. 이미 있는 역할 · 비밀번호 · 설정 · 키는 그대로 두고 타이머 상태도 바꾸지 않는다.
+3. 다음 fetch 에 반영된다(타이머, 하루 한 번). 바로 보려면 osv · nvd 만 돌린다. osv 단계가 기록을 받고 EPSS 는
+   마지막 EPSS 사본에서 채우며, NVD 는 주목 CVE 를 맨 앞에 받는다(요청 사이 6.5초).
+
+```bash
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n -u opsloop-cti /usr/local/bin/opsloop-cti fetch --only osv,nvd'
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n -u opsloop-cti /usr/local/bin/opsloop-cti status'
+#    '주목 CVE' 줄마다 기록 있음(UBUNTU-…) · 배포판 기록 없음 · 조회 전 과 조회 시각이 나온다
+```
+
+- OSV 에 `UBUNTU-<CVE>` 기록이 없는(404) CVE 는 화면에 미확인('배포판(Ubuntu) 기록이 없다')으로 보인다. 비해당으로
+  읽지 않는다. 기록은 있는데 이 릴리스(Ubuntu 24.04)의 영향 항목이 없는 CVE(2026-09-25 조회로 CVE-2021-4034 ·
+  CVE-2021-3156)는 비해당('배포판 기록에 이 릴리스(…)의 영향 패키지가 없다')이다.
+- 타이머 회차가 돌고 있으면 끝날 때까지 기다린다(20분이 넘으면 종료 1). 그때는 타이머 회차가 끝난 뒤 다시 돌린다.
+
 ## 파일
 
 | 경로 | 내용 |
@@ -145,6 +250,6 @@ Teams 쪽 준비: Power Automate 에서 "Teams 웹훅 요청을 받으면 채널
 | `netplan/*.yaml` | 노드별 고정 주소 |
 | `fw/nftables.conf` | 내부 방화벽 규칙 (설계 3.2 규칙표) |
 | `haproxy/haproxy.cfg` | 콘솔 분배 · 헬스체크 2초 × 3회 |
-| `scripts/*.sh` | 네트워크 생성 · seed · 복제 · 구성 · 검증 · DB 백업 |
+| `scripts/*.sh` | 네트워크 생성 · seed · 복제 · 구성 · 검증 · DB 백업 · 자산 수집 |
 
 비밀번호와 개인 키는 저장소에 넣지 않는다. seed 이미지도 저장소 밖(`~/Virtual Machines.localized`)에 만든다.

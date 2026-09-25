@@ -18,6 +18,7 @@ function stubIncidents(me: unknown) {
     if (url.pathname === '/api/me') return json(me, 200)
     if (url.pathname === '/api/incidents') return json({ total: 0, limit: 50, offset: 0, items: [] }, 200)
     if (url.pathname === '/api/nodes') return json({ as_of: '', rows: [] }, 200)
+    if (url.pathname === '/api/assets') return json({ as_of: '', available: false }, 200)
     if (url.pathname === '/api/rules/quality') return json(url.searchParams.has('details') ? { rows: [], versions: [], runs: [] } : [], 200)
     return json({ detail: '없는 경로' }, 404)
   })
@@ -40,7 +41,7 @@ describe('경로표', () => {
     expect(screen.getByRole('navigation', { name: '주 메뉴' })).toBeInTheDocument()
   })
 
-  it.each([['/', '미판정 현황'], ['/blocklist', '차단 목록'], ['/rules', '규칙 · 리플레이'], ['/nodes', '수집 노드']])('%s는 구현 화면이다', async (path, title) => {
+  it.each([['/', '미판정 현황'], ['/blocklist', '차단 목록'], ['/rules', '규칙 · 리플레이'], ['/nodes', '수집 노드'], ['/inventory', '자산 · 취약점']])('%s는 구현 화면이다', async (path, title) => {
     stubIncidents({ username: 'han', role: 'operator' })
     renderRoutes(routes, path)
     expect(await screen.findByRole('heading', { level: 1, name: title })).toBeInTheDocument()
@@ -75,6 +76,14 @@ describe('경로표', () => {
     expect(screen.getByRole('navigation', { name: '현재 위치' })).toHaveTextContent('관제›인시던트›사건 상세')
     expect(screen.getByRole('link', { name: '인시던트' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('link', { name: '인시던트 목록으로' })).toHaveAttribute('href', '/incidents')
+  })
+
+  it('/inventory 는 수집 묶음의 자산 · 취약점 메뉴가 현재 위치다', async () => {
+    stubIncidents({ username: 'han', role: 'viewer' })
+    renderRoutes(routes, '/inventory?asset=web-01')
+    expect(await screen.findByRole('heading', { level: 1, name: '자산 · 취약점' })).toBeInTheDocument()
+    expect(within(screen.getByRole('navigation', { name: '주 메뉴' })).getByRole('link', { name: '자산 · 취약점' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('navigation', { name: '현재 위치' })).toHaveTextContent('수집›자산 · 취약점')
   })
 
   it('관리 화면은 admin 이 아니면 403 안내(숨기지 않고 이유를 보인다)', async () => {

@@ -19,6 +19,10 @@ OpsLoop - 인시던트 검토 도구 (WBS 2.5 / 폐루프 입력부)
     4. 양성 정탐(benign_positive)도 제안하지 않는다. 행위자가 조사 기관인지는
        역방향 조회와 정방향 재확인을 거쳐야 하고, 이름은 소유자가 마음대로
        정할 수 있어 자동 판정의 근거로 삼기에 위험하다.
+    5. SSH 허니팟 규칙(R001~R006) 밖에는 제안하지 않는다. 제안 근거(로그인 · 명령 ·
+       파일 · 경유)는 cowrie 기록이라 웹 · 감사 · 인프라 · 요청 경로 서명(R105 · R106)
+       사건의 판정 근거가 아니다. 콘솔(app/proposals.py SSH_RULES)과 같은 경계다.
+       CVE · KEV 정보도 판정값이 아니라 조사 우선순위 정보라 제안에 쓰지 않는다.
 
   수락과 뒤집기를 나눠 기록한다. 뒤집힌 비율이 낮으면 기준이 잘 잡힌 것이고,
   높으면 기준 문서를 고쳐야 한다는 뜻이다. 이 비율 자체가 지표다.
@@ -54,6 +58,10 @@ VERDICTS = {
 }
 LABEL = {v: l for v, l in VERDICTS.values()}
 SEV_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+
+# SSH 판정 기준(판정 기준 §2)을 쓰는 허니팟 규칙. 이 밖의 규칙에는 판정을 제안하지 않는다(제안 원칙 5).
+# app/proposals.py SSH_RULES 와 같은 목록이다(test_triage.py 가 맞춰 본다)
+SSH_RULES = frozenset({"R001", "R002", "R003", "R004", "R005", "R006"})
 
 # 조건과 판정 근거가 겹치는 규칙. 여기서 나오는 위협 판정은 규칙의 정확성을
 # 증명하지 않는다. 화면에 그 사실을 밝히고, 중복 여부만 제안한다.
@@ -340,6 +348,15 @@ def rule_absorbs(cur, version, rule_id):
 
 def propose(rule_id, ev):
     """(판정, 근거줄들) 또는 (None, 근거줄들) 을 돌려준다."""
+    # 0순위: SSH 판정 기준 밖 규칙이다. 같은 출발지의 cowrie 기록 · 중복 여부가 있어도 판정을 제안하지 않는다.
+    # 일괄 수락([a])도 제안이 없는 사건은 남겨 둔다. 중복 정보는 참고로만 보인다
+    if rule_id not in SSH_RULES:
+        lines = ["이 규칙 유형에는 자동 제안 기준이 없다. 증거를 보고 직접 판정한다",
+                 "SSH 판정 기준(로그인 · 명령 · 파일 · 경유)을 웹 · 감사 · 인프라 · 서명 규칙에 옮기지 않는다"]
+        if ev["covered_by"]:
+            lines.append(f"같은 출발지 · 같은 구간에 {ev['covered_by']} 가 더 높은 심각도로 이미 떴다 (참고)")
+        return None, lines
+
     c = ev["counts"]
     fails = c.get("cowrie.login.failed", 0)
     oks = c.get("cowrie.login.success", 0)
@@ -544,7 +561,8 @@ def triage(conn, rule_id, limit, operator, absorbed_hours=ABSORBED_HOURS):
 
     print(f"\n  미판정 {len(rows)}건.")
     print("  제안이 붙은 것은 엔터로 수락, 다르게 보이면 t/n/f 로 뒤집습니다.")
-    print("  제안이 없는 것은 조건과 판정 근거가 겹치는 규칙이라 직접 보셔야 합니다.\n")
+    print("  제안이 없는 것은 SSH 판정 기준 밖 규칙(웹 · 감사 · 인프라 · 서명)이거나 근거가 될 행위 기록이 없는 것이라"
+          " 직접 보셔야 합니다.\n")
 
     taken = flipped = skipped = judged = auto_done = 0
     auto = False

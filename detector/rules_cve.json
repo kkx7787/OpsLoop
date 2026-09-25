@@ -1,0 +1,319 @@
+{
+  "rule_version": "c1",
+  "note": "공개 취약점 정보(CVE · KEV) 연계 규칙 (이슈 #39). 요청 경로를 서명 표와 맞춰 '무엇을 노렸는지'를 제품 · CVE 이름으로 남긴다. 판정 · 심각도를 CVE 로 정하지 않는다. KEV · EPSS · CVSS 와 자산 해당 여부는 탐지가 아니라 콘솔이 CTI 표에서 붙이는 조사 우선순위 정보다. 그래서 공개 정보가 매일 바뀌어도 이 파일의 버전은 바뀌지 않는다. 1분 다리(opsloop-agents)가 s1 · w2 · a1 · i2 다음에 돌린다. 웹 규칙(w2)에 넣지 않고 파일을 나눈 것은 w2 의 버전을 올리면 기존 웹 사건 키가 모두 바뀌어 다시 뜨기 때문이다. 서명을 더하거나 고치면 rule_version 을 올린다(c2). 그러면 이 파일의 사건 키가 바뀌어 과거 매치가 새 키로 한 번 다시 뜬다. 보이는 것의 한계: 웹 디코이(decoy.request)의 url 은 1회 퍼센트 디코딩된 경로만이고 질의 문자열이 없다. web-01(nginx.request)의 url 은 원시 요청 대상($request_uri)이라 질의 · 퍼센트 인코딩이 그대로 남는다. 다만 루트 위로 올라가는 경로는 nginx 가 400 으로 거절하면서 url 을 비워 보이지 않는다. 요청 헤더는 User-Agent 만, 본문은 저장하지 않는다. 그래서 서명은 경로(와 필요하면 메서드)만 보고, web-01 의 질의 문자열이 붙어도 맞도록 끝에 (\\?.*)? 를 둔다. 두 형태(원시 · 1회 디코딩)를 모두 맞도록 대소문자를 가리지 않고 %2e 같은 인코딩을 패턴에 함께 적는다. 패턴은 ^ 로 시작해 $ 로 끝나야 하고 엔진이 ^(?:…)$ 로 감싸 PostgreSQL ~* 로 맞춘다(파이썬 re.fullmatch(…, re.I | re.S) 와 같은 답. PostgreSQL 의 . 은 줄바꿈에도 맞는다). 알려진 한계(w2 R102 와 같은 구조): 사건 키는 묶음의 첫 신호 시각이다. 다리는 web-01 요청을 1분 안에 넣지만 디코이 요청은 5분 적재기가 늦게 넣는다. 그래서 같은 출발지의 더 이른 디코이 요청이 나중에 들어오면 다음 회차에 첫 시각이 앞당겨진 새 키 사건이 생기고(알림도 한 번 더 간다) 먼저 뜬 사건은 미판정으로 남는다. 이 파일에는 억제가 없어 옛 키 사건을 지우지 않는다. 요청 하나가 곧 신호라 R102(404 누적)보다 쉽게 생긴다. 판정자는 같은 출발지 · 겹치는 구간의 R105 · R106 사건을 함께 보고 판정한다(자동 제안은 하지 않는다).",
+  "aggregation": {
+    "window_gap_seconds": 900,
+    "comment": "관측된 제품 탐색은 출발지 하나가 몇 초 안에 여러 경로를 두드리는 형태라 다른 규칙군과 같은 15분에서 시작한다. 한 출발지가 15분 안에 여러 제품을 찾으면 사건 하나에 서명 여럿이 남는다."
+  },
+  "rules": [
+    {
+      "id": "R105",
+      "name": "제품 식별 탐색",
+      "severity": "low",
+      "type": "url_signature",
+      "enabled": true,
+      "params": {
+        "eventids": [
+          "nginx.request",
+          "decoy.request"
+        ],
+        "signatures": [
+          {
+            "id": "confluence",
+            "pattern": "^/confluence(/.*)?(\\?.*)?$",
+            "product": "Confluence",
+            "vendor": "Atlassian",
+            "cves": [],
+            "kev_match": {
+              "vendor": "^Atlassian$",
+              "product": "^Confluence"
+            },
+            "asset_match": {
+              "platforms": [
+                "linux"
+              ],
+              "packages": [],
+              "images": [
+                "(^|/)confluence(:|@|$)"
+              ],
+              "note": "배포판 패키지가 없는 제품이라 컨테이너 이미지 이름으로만 본다. 직접 내려받아 설치한 것은 자산 표에 보이지 않는다."
+            },
+            "mapping": "analyst",
+            "source": "/confluence/ 는 Atlassian Confluence 의 흔한 배포 경로다. 관측된 /confluence/rest/applinks/1.0/manifest 는 버전을 알려 주는 공개 엔드포인트다."
+          },
+          {
+            "id": "dlink-hnap",
+            "pattern": "^/hnap1/?(\\?.*)?$",
+            "product": "D-Link 라우터 (HNAP)",
+            "vendor": "D-Link",
+            "cves": [],
+            "kev_match": {
+              "vendor": "^D-Link$",
+              "text": "HNAP"
+            },
+            "asset_match": {
+              "platforms": [
+                "appliance"
+              ],
+              "packages": [],
+              "images": []
+            },
+            "mapping": "analyst",
+            "source": "/HNAP1 은 D-Link 라우터의 HNAP(Home Network Administration Protocol) 엔드포인트다. KEV 의 CVE-2015-2051 은 HNAP 요청의 SOAPAction 헤더 명령 주입이다."
+          },
+          {
+            "id": "exchange-owa",
+            "pattern": "^/owa(/.*)?(\\?.*)?$",
+            "product": "Exchange Server",
+            "vendor": "Microsoft",
+            "cves": [],
+            "kev_match": {
+              "vendor": "^Microsoft$",
+              "product": "^Exchange( Server)?$"
+            },
+            "asset_match": {
+              "platforms": [
+                "windows"
+              ],
+              "packages": [],
+              "images": []
+            },
+            "mapping": "analyst",
+            "source": "/owa/ 는 Microsoft Exchange Server 의 Outlook on the web 경로다."
+          },
+          {
+            "id": "geoserver",
+            "pattern": "^/geoserver(/.*)?(\\?.*)?$",
+            "product": "GeoServer",
+            "vendor": "OSGeo",
+            "cves": [],
+            "kev_match": {
+              "vendor": "^OSGeo$",
+              "text": "GeoServer"
+            },
+            "asset_match": {
+              "platforms": [
+                "linux"
+              ],
+              "packages": [],
+              "images": [
+                "(^|/)geoserver(:|@|$)"
+              ],
+              "note": "배포판 패키지가 없는 제품이라 컨테이너 이미지 이름으로만 본다. 직접 내려받아 설치한 것은 자산 표에 보이지 않는다."
+            },
+            "mapping": "analyst",
+            "source": "GeoServer 기본 배포의 웹 관리 화면이 /geoserver/web/ 아래에 있다. 관측된 AboutGeoServerPage 는 버전을 보여 주는 화면이다. KEV 의 JAI-EXT 항목(CVE-2022-24816)은 이름에 GeoServer 가 들어 있어 함께 잡힌다."
+          },
+          {
+            "id": "ivanti-connect-secure",
+            "pattern": "^/dana-na(/.*)?(\\?.*)?$",
+            "product": "Connect Secure (옛 Pulse Connect Secure)",
+            "vendor": "Ivanti",
+            "cves": [],
+            "kev_match": {
+              "vendor": "^(Ivanti|Pulse Secure)$",
+              "product": "Connect Secure"
+            },
+            "asset_match": {
+              "platforms": [
+                "appliance"
+              ],
+              "packages": [],
+              "images": []
+            },
+            "mapping": "analyst",
+            "source": "/dana-na/ 는 Pulse Connect Secure · Ivanti Connect Secure 의 웹 경로다. 관측된 /dana-na/nc/nc_gina_ver.txt 는 버전 확인에 쓰인다."
+          },
+          {
+            "id": "ivanti-vtm",
+            "pattern": "^/apps/zxtm(/.*)?(\\?.*)?$",
+            "product": "Virtual Traffic Manager",
+            "vendor": "Ivanti",
+            "cves": [],
+            "kev_match": {
+              "vendor": "^Ivanti$",
+              "product": "^Virtual Traffic Manager$"
+            },
+            "asset_match": {
+              "platforms": [
+                "linux",
+                "appliance"
+              ],
+              "packages": [],
+              "images": [
+                "(^|/)(vtm|zxtm)(:|@|$)"
+              ],
+              "note": "배포판 패키지가 없는 제품이라 컨테이너 이미지 이름으로만 본다."
+            },
+            "mapping": "analyst",
+            "source": "/apps/zxtm/ 는 Ivanti(옛 Pulse Secure · Riverbed) Virtual Traffic Manager 관리 화면 경로다. KEV 의 CVE-2024-7593 은 이 관리 화면의 인증 우회다."
+          },
+          {
+            "id": "qnap-qts",
+            "pattern": "^/cgi-bin/authlogin\\.cgi(\\?.*)?$",
+            "product": "QTS (QNAP NAS)",
+            "vendor": "QNAP",
+            "cves": [],
+            "kev_match": {
+              "vendor": "^QNAP",
+              "product": "^(QTS|.*Network.Attached Storage.*)$"
+            },
+            "asset_match": {
+              "platforms": [
+                "appliance"
+              ],
+              "packages": [],
+              "images": []
+            },
+            "mapping": "analyst",
+            "source": "/cgi-bin/authLogin.cgi 는 QNAP NAS 운영체제(QTS)의 로그인 CGI 다. KEV 의 QNAP 항목 중 앱(Photo Station 등) · 영상 장비(VioStor)는 이 경로와 무관해 뺀다."
+          },
+          {
+            "id": "samsung-magicinfo",
+            "pattern": "^/magicinfo(/.*)?(\\?.*)?$",
+            "product": "MagicINFO 9 Server",
+            "vendor": "Samsung",
+            "cves": [],
+            "kev_match": {
+              "vendor": "^Samsung$",
+              "product": "^MagicINFO"
+            },
+            "asset_match": {
+              "platforms": [
+                "windows"
+              ],
+              "packages": [],
+              "images": []
+            },
+            "mapping": "analyst",
+            "source": "/MagicInfo/ 는 Samsung MagicINFO 9 Server 웹 콘솔 경로다. 관측된 /MagicInfo/config.js 는 설정 조회다. KEV 의 CVE-2024-7399 는 같은 경로 아래 업로드 서블릿의 경로 조작이다."
+          }
+        ]
+      },
+      "rationale": "관측 근거: 운영 DB(9/18 ~ 9/24)의 요청 669건 중 제품을 콕 집은 경로가 여덟 제품에 걸쳐 나왔다(GeoServer 5건 · Exchange · MagicINFO · Ivanti vTM · Connect Secure · QNAP · Confluence · D-Link HNAP 각 1~2건). 모두 공격 페이로드 없이 제품이 있는지 확인하는 요청이었다. 이 규칙은 '무엇을 찾았는지'를 제품 이름으로 남기는 것이 목적이고, CVE 는 제품 단위로 KEV 에서 찾아 붙인다(서명에 CVE 를 적지 않는다). 제품이 없으면 공격이 성립하지 않으므로 심각도는 low 다. 우리 자산에 그 제품이 있는지는 콘솔이 자산 표로 보인다. 서명은 관측된 경로만 넣었다. 출처가 불확실한 경로(/AppsHome.do · /boaform/ · /setup.cgi · /Main_Login.asp · /cgi-bin/luci 등)는 대응 제품 · KEV 항목을 확정할 수 없어 넣지 않았다. 404 반복(w2 R102)과 파일이 달라 서로 억제하지 않는다. 한 출발지가 두 규칙에 함께 뜰 수 있다."
+    },
+    {
+      "id": "R106",
+      "name": "알려진 취약점 공격 시도",
+      "severity": "medium",
+      "type": "url_signature",
+      "enabled": true,
+      "params": {
+        "eventids": [
+          "nginx.request",
+          "decoy.request"
+        ],
+        "signatures": [
+          {
+            "id": "apache-path-traversal",
+            "pattern": "^/(cgi-bin|icons)/((\\.|%2e|%%32%65){2}/)+.*$",
+            "product": "Apache HTTP Server",
+            "vendor": "Apache",
+            "cves": [
+              "CVE-2021-41773",
+              "CVE-2021-42013"
+            ],
+            "asset_match": {
+              "platforms": [
+                "linux"
+              ],
+              "packages": [
+                "apache2"
+              ],
+              "images": [
+                "(^|/)httpd(:|@|$)"
+              ]
+            },
+            "mapping": "analyst",
+            "source": "NVD 설명은 Apache 2.4.49 · 2.4.50 의 경로 정규화 결함만 적는다. /cgi-bin/ · /icons/ 아래 .%2e 반복(42013 은 %%32%65 이중 인코딩)은 공개 PoC 형태다. 디코이는 1회 디코딩된 ../ 로, web-01 은 루트를 넘으면 400 으로 거절하며 url 을 남기지 않아 보이지 않는다."
+          },
+          {
+            "id": "gpon-diag-form",
+            "pattern": "^/gponform/diag_form(\\?.*)?$",
+            "product": "GPON 라우터",
+            "vendor": "Dasan",
+            "cves": [
+              "CVE-2018-10561",
+              "CVE-2018-10562"
+            ],
+            "asset_match": {
+              "platforms": [
+                "appliance"
+              ],
+              "packages": [],
+              "images": []
+            },
+            "mapping": "explicit",
+            "source": "NVD CVE-2018-10561 설명이 /GponForm/diag_FORM?images/ 를 인증 우회 예로 직접 적는다. CVE-2018-10562 는 같은 폼의 dest_host 명령 주입이다. 질의 문자열(?images/)은 디코이에 남지 않아 경로만 본다."
+          },
+          {
+            "id": "hikvision-weblanguage",
+            "pattern": "^/sdk/weblanguage(\\?.*)?$",
+            "methods": [
+              "PUT"
+            ],
+            "product": "Hikvision 카메라 웹 서버",
+            "vendor": "Hikvision",
+            "cves": [
+              "CVE-2021-36260"
+            ],
+            "asset_match": {
+              "platforms": [
+                "appliance"
+              ],
+              "packages": [],
+              "images": []
+            },
+            "mapping": "analyst",
+            "source": "NVD 설명은 웹 서버의 명령 주입만 적는다. PUT /SDK/webLanguage 본문의 language 값에 명령을 넣는 형태는 공개 PoC 다. 같은 경로의 GET 은 제품 확인이라 PUT 만 센다(본문은 저장하지 않는다)."
+          },
+          {
+            "id": "log4shell-in-path",
+            "pattern": "^.*(\\$|%24)(\\{|%7b)jndi(:|%3a).*$",
+            "product": "Log4j2",
+            "vendor": "Apache",
+            "cves": [
+              "CVE-2021-44228",
+              "CVE-2021-45046"
+            ],
+            "asset_match": {
+              "platforms": [
+                "linux"
+              ],
+              "packages": [
+                "apache-log4j2",
+                "liblog4j2-java"
+              ],
+              "images": [],
+              "note": "애플리케이션에 묶여 들어간 log4j 는 패키지 목록에 보이지 않는다."
+            },
+            "mapping": "analyst",
+            "source": "Log4Shell 은 로그에 남는 아무 문자열로 들어온다. 이 서명은 요청 경로에 넣은 경우만 본다. 헤더 · 본문은 저장하지 않아 대부분의 시도가 보이지 않는다."
+          },
+          {
+            "id": "phpunit-eval-stdin",
+            "pattern": "^(/.*)?/phpunit/src/util/php/eval-stdin\\.php(\\?.*)?$",
+            "product": "PHPUnit",
+            "vendor": "PHPUnit",
+            "cves": [
+              "CVE-2017-9841"
+            ],
+            "asset_match": {
+              "platforms": [
+                "linux"
+              ],
+              "packages": [
+                "phpunit"
+              ],
+              "images": [],
+              "note": "composer 로 내려받은 vendor/ 아래 PHPUnit 은 패키지 목록에 보이지 않는다."
+            },
+            "mapping": "explicit",
+            "source": "NVD CVE-2017-9841 설명이 Util/PHP/eval-stdin.php 와 노출된 /vendor 폴더를 직접 적는다."
+          }
+        ]
+      },
+      "rationale": "관측 근거가 없다. 운영 DB(9/18 ~ 9/24)에 이 다섯 서명에 맞는 요청은 0건이고, 합성 시험으로만 검증한다. KEV 에 오른 CVE 중 요청 경로(와 메서드)만으로 공격 형태를 알아볼 수 있고 허니팟에 흔히 들어오는 것만 골랐다. 서명마다 CVE 를 명시하고, NVD 설명이 경로를 직접 적으면 mapping=explicit, 공개 PoC 형태에 기댄 것이면 analyst 로 적는다. 매치는 '알려진 공격 형태로 요청했다'는 시도 증거일 뿐 성공 증거가 아니다. 제품이 없는 자산에서는 성공할 수 없으므로 심각도는 medium 이다(알림 채널 기준 high 아래). 헤더 · 본문 · 질의 문자열 기반 공격(대부분의 Log4Shell, ThinkPHP invokefunction, Spring4Shell 등)은 저장하지 않는 값이라 넣지 않았다."
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+#!/bin/sh
+# CTI 수집기 실행 래퍼 (이슈 #39). cti/install-cti.sh 가 /usr/local/bin/opsloop-cti 로 깐다.
+# 코드는 root 소유 사본(/opt/opsloop/cti)이라 수집기가 자기 코드를 바꿀 수 없다.
+# 타이머: opsloop-cti.service (opsloop-cti 사용자, fetch)
+# 자산 적재: Mac 의 collect-assets.sh 가 ssh … 'sudo -n -u opsloop-cti /usr/local/bin/opsloop-cti load-assets' 로 부른다
+exec /usr/bin/python3 /opt/opsloop/cti/opsloop_cti.py "$@"

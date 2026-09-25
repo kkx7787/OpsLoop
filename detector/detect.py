@@ -23,6 +23,14 @@ OpsLoop - 탐지 엔진 (WBS 2.3 / PostgreSQL)
      incident_absorbed 표에 첫 사건 키와 함께 넣는다(출발지 · 첫 시각 · 세션 · 키, 상한 없음). 차단 근거는 이 표다.
      첫 사건의 근거(evidence.absorbed)에는 요약을 남기는데, 판정되면 굳으므로 판정 뒤의 흡수는 표에만 붙는다.
      옵션이 없는 규칙은 신호 · 적재 행 · 문장이 전과 같다. v3 는 infra/migrations/20260925_v3_absorbed.sql 이 필요하다.
+  8. 요청 경로 서명(url_signature, c1 R105 · R106). 요청 한 건이 서명 여럿에 맞아도 신호는 하나이고, 맞은 서명 id 를
+     신호에 남긴다. 표본(sample)은 5개라 run() 이 신호 전체의 서명 id · 발생원 합집합을 근거(evidence.signatures ·
+     sensors)에 붙인다. 서명 키가 없는 규칙은 근거가 전과 한 글자도 같다. 탐지는 서명의 id · pattern · methods 만
+     쓴다. 제품 · CVE · KEV 조건 · 자산 조건은 콘솔 · CTI 수집기가 rule_versions 의 정의에서 읽는 조사 정보이고,
+     심각도 · 판정을 CVE 로 정하지 않는다. 그래도 그 조건의 형식과 정규식(PostgreSQL · 파이썬이 같게 읽는 구문만,
+     regex_gap)은 탐지가 먼저 본다. 틀린 정의가 rule_versions 에 들어가면 같은 버전으로 고칠 수 없기 때문이다.
+     사건 키가 묶음의 첫 신호 시각이라, 더 이른 요청이 늦게 적재되면 새 키 사건이 생기고 먼저 뜬 사건이 남는다
+     (w2 R102 와 같은 구조적 한계, rules_cve.json note).
 
 사용
   export DATABASE_URL='postgresql://opsloop:PASSWORD@호스트:5432/opsloop'
@@ -31,6 +39,7 @@ OpsLoop - 탐지 엔진 (WBS 2.3 / PostgreSQL)
   python3 detect.py --run --rules rules_v2.json
   python3 detect.py --run --rules rules_v3.json
   python3 detect.py --run --rules rules_self.json --quiet     요약 표 없이
+  python3 detect.py --run --rules rules_cve.json
   python3 detect.py --list
   python3 detect.py --compare v1 v2
   python3 detect.py --quality
@@ -45,6 +54,7 @@ import os
 import re
 import statistics
 import sys
+import warnings
 from datetime import datetime, timedelta, timezone
 
 try:
@@ -602,6 +612,215 @@ GATE_SPLIT_SQL = (
     "FROM c WHERE c.b IS NOT NULL ORDER BY c.a")
 
 
+# url_signature 서명 하나의 형식. 파이썬 re.fullmatch 로 보므로 끝 줄바꿈도 받지 않는다
+SIG_ID_RE = re.compile(r"[a-z0-9][a-z0-9-]*")
+SIG_METHOD_RE = re.compile(r"[A-Z]+")
+SIG_CVE_RE = re.compile(r"CVE-[0-9]{4}-[0-9]{4,}")
+SIG_MAPPINGS = ("explicit", "analyst")
+# kev_match · asset_match 에 둘 수 있는 키. 모르는 키는 오타로 보고 거절한다(빠진 조건이 조용히 '비해당'이 되지 않게)
+SIG_KEV_KEYS = ("vendor", "product", "text")
+SIG_ASSET_KEYS = ("platforms", "packages", "images", "note")
+SIG_PLATFORMS = ("linux", "windows", "appliance")
+SIG_PACKAGE_RE = re.compile(r"[a-z0-9][a-z0-9+.-]+")    # dpkg 패키지 이름(바이너리 · 소스)
+REGEX_BOUND_RE = re.compile(r"\{[0-9]+(,[0-9]*)?\}")    # {m} · {m,} · {m,n}. 두 엔진 모두 수량자로 읽는다
+
+
+def regex_gap(text):
+    """PostgreSQL 정규식(ARE)과 파이썬 re 가 다르게 읽거나 한쪽만 받는 구문을 찾아 까닭을 돌려준다. 없으면 None.
+
+    서명의 정규식은 두 엔진이 읽는다. pattern 은 탐지가 PostgreSQL(~*)로 맞추고 시험이 파이썬으로 같은 답을 보며,
+    kev_match 는 콘솔이 PostgreSQL(~*)로 · CTI 수집기가 파이썬(re.search)으로, images 는 콘솔이 파이썬으로 맞춘다.
+    그래서 두 엔진이 같은 뜻으로 읽는 부분만 받는다. 거절하는 것:
+      \\b · \\B        파이썬은 단어 경계, PostgreSQL 은 백스페이스 · 역슬래시다
+      \\z             PostgreSQL 은 모르는 이스케이프다(파이썬은 3.14 부터 받는다)
+      \\1 ~ \\9        역참조. 대괄호 안에서는 파이썬이 8진 문자로 읽는 등 규칙이 다르다
+      (?: 밖의 (?    이름 붙은 그룹 (?P< · (?< , 앞 · 뒤 보기 (?= · (?! · (?<= , 인라인 플래그 (?i) · (?i:…) , (?> 등.
+                     PostgreSQL 은 플래그를 맨 앞에서만 받고 글자 뜻도 다르다(m 이 PostgreSQL 에서는 n 이다). 맨 앞도
+                     받지 않는다. 대소문자는 이미 가리지 않는다
+      [: · [= · [.   대괄호 안의 문자 부류([[:alpha:]] 등)를 PostgreSQL 은 부류로, 파이썬은 글자 모음으로 읽는다
+      대괄호 안의 [ · && · || · ~~ · --   파이썬이 겹친 집합 · 집합 연산으로 바꿀 수 있다고 경고한다(\\[ 로 쓴다)
+      {,n}           파이썬은 0~n 회로, PostgreSQL 은 글자로 읽는다
+      *+ · ++ · ?+   소유 수량자. 파이썬(3.11+)만 받는다
+    파이썬이 읽지 못하는 것(\\y · \\m 같은 PostgreSQL 전용 이스케이프 · 괄호 짝)은 re.compile 로 거절한다. 그 밖에
+    파이썬이 뜻이 바뀔 수 있다고 경고하는 것도 거절한다. 줄바꿈이 든 값에서 $ 의 뜻이 다른 것(파이썬은 끝 줄바꿈
+    앞에도 맞는다)은 구문이 아니라 값의 문제라 여기서 보지 않는다.
+    """
+    i, n = 0, len(text)
+    in_set = quant = False     # 대괄호 안인가 · 바로 앞이 수량자인가
+    while i < n:
+        c = text[i]
+        if c == "\\":
+            e = text[i + 1:i + 2]
+            if e in ("b", "B"):
+                return f"\\{e} 는 두 엔진의 뜻이 다르다(파이썬은 단어 경계, PostgreSQL 은 백스페이스 · 역슬래시)"
+            if e == "z":
+                return "\\z 는 PostgreSQL 이 모르는 이스케이프다"
+            if e and e in "123456789":
+                return "역참조(\\1 등)는 쓰지 않는다"
+            i, quant = i + 2, False
+            continue
+        if in_set:
+            if c == "[" and text[i + 1:i + 2] in (":", "=", "."):
+                return "대괄호 안의 [: · [= · [. 는 PostgreSQL 은 문자 부류로, 파이썬은 글자로 읽는다"
+            if c == "[":
+                return "대괄호 안의 [ 는 \\[ 로 쓴다(파이썬이 겹친 집합으로 바꿀 수 있다고 경고한다)"
+            if c in "&|~-" and text[i + 1:i + 2] == c:
+                return "대괄호 안의 && · || · ~~ · -- 는 파이썬이 집합 연산으로 바꿀 수 있다고 경고한다"
+            in_set = c != "]"
+            i += 1
+            continue
+        if c == "[":
+            in_set, quant = True, False
+            i += 1 + (text[i + 1:i + 2] == "^")
+            i += text[i:i + 1] == "]"                      # 맨 앞의 ] 는 글자다
+            continue
+        if c == "(" and text[i + 1:i + 2] == "?":
+            if text[i + 2:i + 3] != ":":
+                return ("(?: 밖의 (? 구문(이름 붙은 그룹 · 앞뒤 보기 · 인라인 플래그 등)은 두 엔진이 받는 범위와 뜻이 "
+                        "달라 쓰지 않는다")
+            i, quant = i + 3, False
+            continue
+        if c == "{":
+            if text[i + 1:i + 2] == ",":
+                return "{,n} 을 파이썬은 0~n 회로, PostgreSQL 은 글자로 읽는다"
+            m = REGEX_BOUND_RE.match(text, i)
+            if m:
+                i, quant = m.end(), True
+                continue
+        if c in "*+?":
+            if quant and c == "+":
+                return "소유 수량자(*+ · ++ · ?+ 등)는 PostgreSQL 이 받지 않는다"
+            quant = not (quant and c == "?")               # 수량자 뒤의 ? 는 게으른 표시라 수량자가 끝난다
+        else:
+            quant = False
+        i += 1
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        try:
+            re.compile(text)
+        except (re.error, Warning) as err:
+            return f"파이썬 re 가 받지 않는다 ({err})"
+    return None
+
+
+def check_sig_regex(rule, sid, where, text):
+    why = regex_gap(text)
+    if why:
+        raise ValueError(f"{rule['id']}: 서명 {sid} 의 {where} {text!r}: {why}")
+
+
+def check_sig_conditions(rule, sid, s):
+    """서명의 KEV 조건(kev_match) · 자산 조건(asset_match) 형식. 둘 다 없어도 되고, 있으면 계약 2장의 꼴이어야 한다.
+
+    kev_match  {vendor 정규식(필수), product · text 정규식(선택)} — 빈 문자열 · null 은 받지 않는다
+    asset_match {platforms ⊆ linux · windows · appliance(겹침 없이), packages dpkg 이름 목록, images 정규식 목록, note 선택}
+    정규식은 regex_gap 으로 두 엔진이 같게 읽는지 본다.
+    """
+    if "kev_match" in s:
+        km = s["kev_match"]
+        if not (isinstance(km, dict) and "vendor" in km and set(km) <= set(SIG_KEV_KEYS)
+                and all(isinstance(v, str) and v for v in km.values())):
+            raise ValueError(f"{rule['id']}: 서명 {sid} 의 kev_match 는 vendor(필수) · product · text 정규식 문자열만 "
+                             "둔다")
+        for k in SIG_KEV_KEYS:
+            if k in km:
+                check_sig_regex(rule, sid, f"kev_match.{k}", km[k])
+    if "asset_match" in s:
+        am = s["asset_match"]
+        if not (isinstance(am, dict) and {"platforms", "packages", "images"} <= set(am) <= set(SIG_ASSET_KEYS)):
+            raise ValueError(f"{rule['id']}: 서명 {sid} 의 asset_match 는 platforms · packages · images (와 선택 note)만 "
+                             "둔다")
+        pl = am["platforms"]
+        if not (isinstance(pl, list) and all(isinstance(x, str) and x in SIG_PLATFORMS for x in pl)
+                and len(set(pl)) == len(pl)):
+            raise ValueError(f"{rule['id']}: 서명 {sid} 의 asset_match.platforms 는 linux · windows · appliance 에서 "
+                             "겹치지 않게 고른 목록이어야 합니다")
+        if not (isinstance(am["packages"], list)
+                and all(isinstance(x, str) and SIG_PACKAGE_RE.fullmatch(x) for x in am["packages"])):
+            raise ValueError(f"{rule['id']}: 서명 {sid} 의 asset_match.packages 는 dpkg 패키지 이름(소문자 · 숫자 · + . -)"
+                             "의 목록이어야 합니다")
+        if not (isinstance(am["images"], list) and all(isinstance(x, str) and x for x in am["images"])):
+            raise ValueError(f"{rule['id']}: 서명 {sid} 의 asset_match.images 는 정규식 문자열의 목록이어야 합니다")
+        for x in am["images"]:
+            check_sig_regex(rule, sid, "asset_match.images", x)
+        if "note" in am and not (isinstance(am["note"], str) and am["note"]):
+            raise ValueError(f"{rule['id']}: 서명 {sid} 의 asset_match.note 는 비어 있지 않은 문자열이어야 합니다")
+
+
+def signals_url_signature(cur, rule, since, until):
+    """요청 경로 서명 (c1 R105 제품 식별 탐색 · R106 알려진 취약점 공격 시도).
+
+    params.eventids 의 요청 행(nginx.request · decoy.request) 가운데 url 이 서명의 pattern 에, 메서드가 서명의
+    methods 에 맞는 것이 신호다. eventid 로 반드시 한정한다. 디코이는 decoy.session.connect · decoy.login.* ·
+    decoy.action.* 행에도 같은 url 을 남겨, 한정하지 않으면 요청 하나가 두 번 잡힌다.
+    pattern 은 ^ 로 시작해 $ 로 끝나게 쓰고 엔진이 ^(?: … )$ 로 감싸 대소문자를 가리지 않고(~*) 맞춘다. 파이썬으로는
+    re.fullmatch(pattern, url, re.I | re.S) 와 같은 답이다. PostgreSQL 정규식의 . 은 줄바꿈에도 맞으므로 re.S 가
+    있어야 한다(디코이는 %0A 를 줄바꿈으로 풀어 url 에 남긴다). url 은 발생원마다 모양이 다르다. web-01(nginx)은
+    원시 요청 대상(질의 · 퍼센트 인코딩 그대로)이고 디코이는 1회 디코딩된 경로(질의 없음)라, 두 모양은 서명 쪽에서
+    함께 적는다.
+    methods(대문자 목록)가 있으면 그 메서드만, 없으면 메서드를 보지 않는다(메서드가 없는 행도 맞는다).
+    서명은 (id, 감싼 패턴, 메서드 정규식) 세 나란한 배열로 넘겨 SQL 이 unnest 로 다시 짝짓는다(GATE_SPLIT_SQL 과 같다).
+    요청 한 건(line_hash)이 서명 여럿에 맞아도 신호는 하나이고 detail.signatures 에 맞은 id 를 모두 정렬해 남긴다.
+
+    탐지는 서명의 id · pattern · methods 만 쓴다. product · vendor · cves · kev_match · asset_match · mapping ·
+    source 는 콘솔 · CTI 수집기가 rule_versions 의 정의에서 읽는다. 그래도 cves · mapping · kev_match · asset_match
+    는 형식을 여기서 본다(check_sig_conditions). 틀린 정의가 rule_versions 에 한 번 들어가면 같은 버전으로는 고칠 수
+    없기 때문이다(ON CONFLICT DO NOTHING). 검증이 실패하면 run() 이 커밋하지 않아 정의도 남지 않는다.
+    pattern · kev_match · images 정규식은 PostgreSQL 과 파이썬 re 가 같게 읽는 구문만 받는다(regex_gap).
+    심각도는 규칙 단위(R105 low · R106 medium)이고 CVE · KEV 로 바꾸지 않는다.
+    """
+    p = rule["params"]
+    eids = p.get("eventids")
+    if not (isinstance(eids, list) and eids and all(isinstance(x, str) and x for x in eids)):
+        raise ValueError(f"{rule['id']}: eventids 는 비어 있지 않은 문자열 목록이어야 합니다")
+    sigs = p.get("signatures")
+    if not (isinstance(sigs, list) and sigs):
+        raise ValueError(f"{rule['id']}: signatures 는 비어 있지 않은 목록이어야 합니다")
+    ids, pats, methods = [], [], []
+    for s in sigs:
+        sid = s.get("id") if isinstance(s, dict) else None
+        if not (isinstance(sid, str) and SIG_ID_RE.fullmatch(sid)):
+            raise ValueError(f"{rule['id']}: 서명 id 는 [a-z0-9][a-z0-9-]* 꼴이어야 합니다 ({sid!r})")
+        if sid in ids:
+            raise ValueError(f"{rule['id']}: 서명 id {sid} 가 겹칩니다")
+        pat = s.get("pattern")
+        if not (isinstance(pat, str) and len(pat) > 2 and pat[0] == "^" and pat[-1] == "$"):
+            raise ValueError(f"{rule['id']}: 서명 {sid} 의 pattern 은 ^ 로 시작해 $ 로 끝나는 정규식이어야 합니다")
+        ms = s.get("methods")
+        if "methods" in s and not (isinstance(ms, list) and ms
+                                   and all(isinstance(x, str) and SIG_METHOD_RE.fullmatch(x) for x in ms)):
+            raise ValueError(f"{rule['id']}: 서명 {sid} 의 methods 는 대문자 HTTP 메서드의 비어 있지 않은 목록이어야 합니다")
+        cves = s.get("cves")
+        if not (isinstance(cves, list) and all(isinstance(x, str) and SIG_CVE_RE.fullmatch(x) for x in cves)):
+            raise ValueError(f"{rule['id']}: 서명 {sid} 의 cves 는 CVE-연도-번호 꼴의 목록이어야 합니다")
+        if not (isinstance(s.get("mapping"), str) and s["mapping"] in SIG_MAPPINGS):
+            raise ValueError(f"{rule['id']}: 서명 {sid} 의 mapping 은 explicit · analyst 중 하나여야 합니다")
+        check_sig_regex(rule, sid, "pattern", pat)
+        check_sig_conditions(rule, sid, s)
+        ids.append(sid)
+        pats.append(f"^(?:{pat})$")
+        methods.append(f"^({'|'.join(ms)})$" if "methods" in s else "^.*$")
+    w, prm = range_clause(since, until, "ts", rule_sensors(rule))
+    cur.execute(URL_SIGNATURE_SQL.format(w=w), [ids, pats, methods] + prm + [eids])
+    return [(ts, ip, sess, {"eventid": ev, "sensor": sensor, "http_method": method, "url": url,
+                            "http_status": status, "signatures": list(got)})
+            for ts, ip, sess, ev, sensor, method, url, status, got in cur.fetchall()]
+
+
+# url_signature 신호 질의. {w} 에 range_clause 조각(provenance · 기간 · 발생원)이 들어간다.
+# 인자는 서명 id 목록 · 감싼 패턴 목록 · 메서드 정규식 목록(세 배열은 같은 길이), range_clause 인자, eventids 순서다.
+# range_clause 는 열 이름(provenance · ts · sensor)을 별칭 없이 쓴다. 서명 쪽 열은 sig_ 로 시작해 events 의 열과
+# 겹치지 않으므로 그 이름들은 events 의 열로 읽힌다. line_hash 가 events 의 기본 키라 나머지 열은
+# GROUP BY 에 넣지 않아도 고를 수 있다. id 정렬은 COLLATE "C"(바이트 순서)로 파이썬 sorted 와 같게 한다.
+# 탐지 역할의 events 읽기 권한으로 된다
+URL_SIGNATURE_SQL = (
+    "SELECT e.ts, e.src_ip, e.session, e.eventid, e.sensor, e.http_method, e.url, e.http_status, "
+    "array_agg(s.sig_id ORDER BY s.sig_id COLLATE \"C\") "
+    "FROM events e JOIN unnest(%s::text[], %s::text[], %s::text[]) AS s(sig_id, sig_pattern, sig_method) "
+    "ON e.url ~* s.sig_pattern AND coalesce(e.http_method, '') ~* s.sig_method "
+    "WHERE {w} AND eventid = ANY(%s) GROUP BY e.line_hash")
+
+
 COLLECTORS = {
     "session_threshold": signals_session_threshold,
     "actor_rate": signals_actor_rate,
@@ -611,6 +830,7 @@ COLLECTORS = {
     "operator_rate": signals_operator_rate,
     "node_silence": signals_node_silence,
     "key_plant": signals_key_plant,
+    "url_signature": signals_url_signature,
 }
 
 
@@ -1003,6 +1223,12 @@ def run(conn, rules_doc, since, until, verbose=True):
             evidence = {"sample": details[:5], "sessions": sessions[:10], **observed}
             if bare:
                 evidence["payloadless_signals"] = bare
+            # 요청 경로 서명(url_signature)은 표본 5개로는 큰 사건에서 맞은 서명 · 발생원을 다 보이지 못한다. 신호 전체에서
+            # 모아 붙인다(콘솔이 서명 id 로 제품 · CVE 를, 발생원으로 자산 해당 여부를 찾는다). 서명 키가 있는 신호가
+            # 없는 규칙은 근거가 전과 한 글자도 같다
+            if any("signatures" in m for m in metrics):
+                evidence["signatures"] = sorted({s for m in metrics for s in m.get("signatures", ())})
+                evidence["sensors"] = sorted({m["sensor"] for m in metrics if m.get("sensor") is not None})
             built.append(((key, rule["id"], version, rule["name"], rule["severity"], ip,
                            first_ts, last_ts, len(items), len(sessions)), target, evidence, payloads, sessions, bare))
 

@@ -1,0 +1,12 @@
+[Unit]
+Description=OpsLoop CTI 갱신 주기 실행 (하루)
+
+[Timer]
+# 달력 타이머(OnCalendar)는 쓰지 않는다. 부팅 직후 VM 시계가 앞서면 다음 실행이 밀린다 (infra/vmware/README.md 시간 동기화).
+# Mac 이 잠들어 VM 이 멈추면 주기가 늘어난다. 콘솔의 '정보 오래됨'(48시간) 표시가 이를 드러낸다
+OnBootSec=15min
+OnUnitActiveSec=1d
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target

