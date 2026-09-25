@@ -105,11 +105,12 @@ else:
 FAKE_STAT = r'''#!{py}
 import os, sys
 a = sys.argv[1:]
-if len(a) == 3 and a[:2] == ["-c", "%s"]:
+if len(a) == 3 and a[0] == "-c" and a[1] in ("%s", "%i"):
     try:
-        print(os.path.getsize(a[2]))
+        st = os.stat(a[2])
     except OSError:
         sys.exit(1)
+    print(st.st_size if a[1] == "%s" else st.st_ino)
 else:
     os.execv("/usr/bin/stat", ["/usr/bin/stat"] + a)
 '''
@@ -1515,6 +1516,27 @@ class CollectFwTest(unittest.TestCase):
         text = read_text(os.path.join(self.run_dir, "fw-haproxy.log"))
         self.assertIn("돌려졌다", text)
         self.assertIn("new file", text)
+
+    def test_rotated_log_keeps_tail_of_old_file(self):
+        # 자정 logrotate: 옛 파일은 .1 로 옮겨지고(같은 내용 · 시험 중 붙은 줄 포함) 새 파일이 생긴다
+        self.put(stats_csv("UP"))
+        with open(self.log, "w") as f:
+            f.write("old line before test\n")
+        proc = subprocess.Popen([BASH, COLLECT, self.run_dir, "--duration", "1", "--period", "0.3", "--log", self.log],
+                                env=self.sb.env(FAKE_CSV=self.csv), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        time.sleep(0.5)
+        with open(self.log, "a") as f:
+            f.write("before midnight GET /health?p=r1-1\n")
+        os.rename(self.log, self.log + ".1")
+        with open(self.log, "w") as f:
+            f.write("after midnight GET /health?p=r1-2\n")
+        out, err = proc.communicate(timeout=30)
+        self.assertEqual(proc.returncode, 0, err.decode())
+        text = read_text(os.path.join(self.run_dir, "fw-haproxy.log"))
+        self.assertIn("옛 파일(.1)의 뒷부분", text)
+        self.assertIn("before midnight GET /health?p=r1-1", text)
+        self.assertIn("after midnight GET /health?p=r1-2", text)
+        self.assertNotIn("old line before test", text)
 
     def test_unreadable_log(self):
         """로그를 읽을 수 없으면(권한 없음 · sudo 거절) 경고와 종료 1. fw.csv 는 남는다."""
