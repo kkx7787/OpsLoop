@@ -1,0 +1,215 @@
+<mxfile host="app.diagrams.net" agent="OpsLoop">
+  <diagram id="opsloop-arch-v8" name="서버·네트워크 구성도 v8">
+    <mxGraphModel dx="1443" dy="784" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=20;fontStyle=1;fontColor=#232F3E;" value="OpsLoop — 서버 · 네트워크 구성도" vertex="1">
+          <mxGeometry height="32" width="700" x="60" y="12" as="geometry" />
+        </mxCell>
+        <mxCell id="lg" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=11;fontStyle=1;fontColor=#232F3E;" value="구축 단계" vertex="1">
+          <mxGeometry height="20" width="300" x="1180" y="12" as="geometry" />
+        </mxCell>
+        <mxCell id="lg1" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=10;fontStyle=0;fontColor=#1F6F3F;" value="① 허니팟 — 2026-09-04 가동" vertex="1">
+          <mxGeometry height="18" width="300" x="1180" y="31" as="geometry" />
+        </mxCell>
+        <mxCell id="lg2" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=10;fontStyle=0;fontColor=#B3541E;" value="② 웹 디코이 — 2026-09-18 가동" vertex="1">
+          <mxGeometry height="18" width="300" x="1180" y="46" as="geometry" />
+        </mxCell>
+        <mxCell id="lg3" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=10;fontStyle=0;fontColor=#7A7F87;" value="③ DMZ · 내부망 — 2026-09-23 전환" vertex="1">
+          <mxGeometry height="18" width="300" x="1180" y="61" as="geometry" />
+        </mxCell>
+        <mxCell id="cloud" parent="1" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_aws_cloud_alt;strokeColor=#232F3E;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#232F3E;dashed=0;" value="AWS Cloud" vertex="1">
+          <mxGeometry height="740" width="760" x="180" y="96" as="geometry" />
+        </mxCell>
+        <mxCell id="region" parent="1" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_region;strokeColor=#147EBA;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#147EBA;dashed=1;" value="ap-northeast-2 (서울)" vertex="1">
+          <mxGeometry height="660" width="700" x="210" y="140" as="geometry" />
+        </mxCell>
+        <mxCell id="ssm" parent="region" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F34482;gradientDirection=north;fillColor=#BC1356;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.systems_manager;opacity=100;" value="Systems Manager&lt;br&gt;관리 접근 · 인바운드 없음" vertex="1">
+          <mxGeometry height="78" width="78" x="568" y="550" as="geometry" />
+        </mxCell>
+        <mxCell id="s3" parent="region" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#60A337;gradientDirection=north;fillColor=#277116;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.s3;opacity=100;" value="S3 — 로그 보관&lt;br&gt;게이트웨이 엔드포인트 경유&lt;br&gt;인스턴스별 쓰기 경계 · 한 번 쓰기&lt;br&gt;cti/ 공개 정보 원본 · 전용 쓰기 사용자" vertex="1">
+          <mxGeometry height="78" width="78" x="52" y="550" as="geometry" />
+        </mxCell>
+        <mxCell id="vpc" parent="1" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_vpc2;strokeColor=#248814;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#248814;dashed=0;" value="VPC  10.0.0.0/16" vertex="1">
+          <mxGeometry height="480" width="640" x="240" y="190" as="geometry" />
+        </mxCell>
+        <mxCell id="sub_pub" parent="1" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_public_subnet;strokeColor=#248814;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#248814;dashed=0;" value="공개 서브넷  10.0.1.0/24" vertex="1">
+          <mxGeometry height="150" width="580" x="270" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="igw" parent="sub_pub" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#945DF2;gradientDirection=north;fillColor=#5A30B5;strokeColor=#ffffff;dashed=0;verticalLabelPosition=middle;verticalAlign=middle;labelPosition=right;align=left;spacingLeft=8;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.internet_gateway;opacity=100;" value="" vertex="1">
+          <mxGeometry height="78" width="78" x="30" y="32" as="geometry" />
+        </mxCell>
+        <mxCell id="sub_dmz" parent="1" style="points=[[0,0],[0.25,0],[0.5,0],[0.75,0],[1,0],[1,0.25],[1,0.5],[1,0.75],[1,1],[0.75,1],[0.5,1],[0.25,1],[0,1],[0,0.75],[0,0.5],[0,0.25]];outlineConnect=0;gradientColor=none;html=1;whiteSpace=wrap;fontSize=12;container=1;pointerEvents=0;collapsible=0;recursiveResize=0;shape=mxgraph.aws4.group;grIcon=mxgraph.aws4.group_private_subnet;strokeColor=#147EBA;fillColor=none;verticalAlign=top;align=left;spacingLeft=30;fontColor=#147EBA;dashed=0;" value="DMZ 서브넷 (사설)  10.0.21.0/24" vertex="1">
+          <mxGeometry height="210" width="580" x="270" y="430" as="geometry" />
+        </mxCell>
+        <mxCell id="fw" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F78E04;gradientDirection=north;fillColor=#D05C17;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.ec2;opacity=100;" value="관문 방화벽&lt;br&gt;t3.micro / nftables / 10.0.1.10 · EIP" vertex="1">
+          <mxGeometry height="78" width="78" x="700" y="272" as="geometry" />
+        </mxCell>
+        <mxCell id="hp" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F78E04;gradientDirection=north;fillColor=#D05C17;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.ec2;opacity=100;" value="허니팟 · 웹 디코이  ①&lt;br&gt;t3.micro / 10.0.21.10&lt;br&gt;22 · 23 · 8080" vertex="1">
+          <mxGeometry height="78" width="78" x="340" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="decoy" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=#F78E04;gradientDirection=north;fillColor=#D05C17;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.ec2;opacity=100;" value="웹 디코이  ②&lt;br&gt;같은 인스턴스의 컨테이너&lt;br&gt;8080 · 가짜 admin" vertex="1">
+          <mxGeometry height="78" width="78" x="680" y="480" as="geometry" />
+        </mxCell>
+        <mxCell id="onprem" parent="1" style="rounded=0;html=1;whiteSpace=wrap;dashed=1;dashPattern=8 4;strokeColor=#6E7681;fillColor=none;verticalAlign=top;align=left;spacingLeft=12;fontSize=12;fontColor=#6E7681;" value="온프레미스 — 가상화 환경 (상시 가동 아님 · 인터넷에서 도달 불가)" vertex="1">
+          <mxGeometry height="740" width="490" x="990" y="96" as="geometry" />
+        </mxCell>
+        <mxCell id="intfw" parent="1" style="rounded=1;arcSize=8;html=1;whiteSpace=wrap;fillColor=#F5F7FA;strokeColor=#6E7681;fontColor=#232F3E;fontSize=11;align=center;verticalAlign=middle;" value="내부 방화벽 · HAProxy&lt;br&gt;세그먼트 경계 / 콘솔 분배" vertex="1">
+          <mxGeometry height="70" width="350" x="1060" y="170" as="geometry" />
+        </mxCell>
+        <mxCell id="seg_svc" parent="1" style="rounded=0;html=1;whiteSpace=wrap;dashed=1;strokeColor=#147EBA;fillColor=none;verticalAlign=top;align=left;spacingLeft=10;fontSize=11;fontColor=#147EBA;" value="서비스망  192.168.50.0/24" vertex="1">
+          <mxGeometry height="160" width="430" x="1020" y="290" as="geometry" />
+        </mxCell>
+        <mxCell id="con_a" parent="1" style="rounded=1;arcSize=8;html=1;whiteSpace=wrap;fillColor=#F5F7FA;strokeColor=#6E7681;fontColor=#232F3E;fontSize=11;align=center;verticalAlign=middle;" value="콘솔 A&lt;br&gt;192.168.50.11&lt;br&gt;FastAPI · React" vertex="1">
+          <mxGeometry height="90" width="125" x="1035" y="335" as="geometry" />
+        </mxCell>
+        <mxCell id="con_b" parent="1" style="rounded=1;arcSize=8;html=1;whiteSpace=wrap;fillColor=#F5F7FA;strokeColor=#6E7681;fontColor=#232F3E;fontSize=11;align=center;verticalAlign=middle;" value="콘솔 B&lt;br&gt;192.168.50.12&lt;br&gt;평소 꺼 둠 · 장애 전환용" vertex="1">
+          <mxGeometry height="90" width="125" x="1305" y="335" as="geometry" />
+        </mxCell>
+        <mxCell id="seg_data" parent="1" style="rounded=0;html=1;whiteSpace=wrap;dashed=1;strokeColor=#147EBA;fillColor=none;verticalAlign=top;align=left;spacingLeft=10;fontSize=11;fontColor=#147EBA;" value="데이터망  192.168.60.0/24" vertex="1">
+          <mxGeometry height="150" width="430" x="1020" y="490" as="geometry" />
+        </mxCell>
+        <mxCell id="datanode" parent="1" style="rounded=1;arcSize=8;html=1;whiteSpace=wrap;fillColor=#F5F7FA;strokeColor=#6E7681;fontColor=#232F3E;fontSize=11;align=center;verticalAlign=middle;" value="데이터 노드&lt;br&gt;192.168.60.11&lt;br&gt;수집 · 탐지 · PostgreSQL · Loki&lt;br&gt;구성요소별 DB 역할 · 수집 관문 3101&lt;br&gt;CTI 수집기 (하루 1회)" vertex="1">
+          <mxGeometry height="90" width="320" x="1075" y="535" as="geometry" />
+        </mxCell>
+        <mxCell id="seg_mgmt" parent="1" style="rounded=0;html=1;whiteSpace=wrap;dashed=1;strokeColor=#147EBA;fillColor=none;verticalAlign=top;align=left;spacingLeft=10;fontSize=11;fontColor=#147EBA;" value="관리망  192.168.70.0/24" vertex="1">
+          <mxGeometry height="120" width="430" x="1020" y="680" as="geometry" />
+        </mxCell>
+        <mxCell id="user" parent="1" style="rounded=1;arcSize=8;html=1;whiteSpace=wrap;fillColor=#F5F7FA;strokeColor=#6E7681;fontColor=#232F3E;fontSize=11;align=center;verticalAlign=middle;" value="담당자 단말&lt;br&gt;콘솔에서 판정 · 조치 · VPN (Tailscale)&lt;br&gt;자산 조사 (매일 · SSH · SSM)" vertex="1">
+          <mxGeometry height="60" width="320" x="1075" y="720" as="geometry" />
+        </mxCell>
+        <mxCell id="hook" parent="1" style="sketch=0;outlineConnect=0;fontColor=#232F3E;gradientColor=none;fillColor=#ffffff;strokeColor=#232F3E;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=11;shape=mxgraph.aws4.traditional_server;" value="외부 통보 채널&lt;br&gt;Teams (Workflows 웹훅)" vertex="1">
+          <mxGeometry height="66" width="66" x="1520" y="335" as="geometry" />
+        </mxCell>
+        <mxCell id="web01" parent="1" style="rounded=1;arcSize=8;html=1;whiteSpace=wrap;fillColor=#F5F7FA;strokeColor=#6E7681;fontColor=#232F3E;fontSize=11;align=center;verticalAlign=middle;" value="web-01 (관제 대상)&lt;br&gt;192.168.50.21&lt;br&gt;nginx · Alloy" vertex="1">
+          <mxGeometry height="90" width="125" x="1170" y="335" as="geometry" />
+        </mxCell>
+        <mxCell id="e_web01" parent="1" edge="1" source="web01" target="datanode" style="exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.49;entryY=0;entryDx=0;entryDy=0;edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;fontColor=#147EBA;strokeColor=#147EBA;dashed=0;endArrow=block;endFill=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" value="3101 수집 관문">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ssm_ep" parent="1" style="rounded=1;arcSize=8;html=1;whiteSpace=wrap;fillColor=#F5F7FA;strokeColor=#6E7681;fontColor=#232F3E;fontSize=11;align=center;verticalAlign=middle;" value="SSM 전용 엔드포인트 ×3&lt;br&gt;DMZ 10.0.21.251 ~ 253&lt;br&gt;DMZ 밖은 관문이 전부 거부 · 기록" vertex="1">
+          <mxGeometry height="50" width="196" x="528" y="696" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="3d_dfEGzUpJGTInkwF6W-13" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;fontColor=#232F3E;strokeColor=#232F3E;dashed=0;endArrow=block;endFill=1;jettySize=auto;exitX=0.477;exitY=0.067;exitDx=0;exitDy=0;exitPerimeter=0;" target="igw" value="">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="99" y="332.42" />
+              <mxPoint x="99" y="310" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="3d_dfEGzUpJGTInkwF6W-14" connectable="0" parent="e1" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];fontFamily=Helvetica;fontSize=11;fontColor=#232F3E;fontStyle=0;" value="인터넷&lt;div&gt;공격 유입&lt;/div&gt;" vertex="1">
+          <mxGeometry relative="1" x="-0.7104" y="-2" as="geometry">
+            <mxPoint x="4" y="32" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="igw" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;fontColor=#232F3E;strokeColor=#232F3E;dashed=0;endArrow=block;endFill=1;jettySize=auto;" target="fw" value="22 · 23 · 8080 만 도달">
+          <mxGeometry relative="1" x="0.6894" y="-9" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="540" y="300" />
+              <mxPoint x="540" y="300" />
+            </Array>
+            <mxPoint x="380" y="310" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="fw" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;fontColor=#DD3522;strokeColor=#DD3522;dashed=0;endArrow=block;endFill=1;jettySize=auto;" target="hp" value="전달 22 · 23">
+          <mxGeometry relative="1" x="-0.5754" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="490" y="330" />
+              <mxPoint x="490" y="519.03" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="fw" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;fontColor=#DD3522;strokeColor=#DD3522;dashed=0;endArrow=block;endFill=1;jettySize=auto;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="decoy" value="전달 8080">
+          <mxGeometry relative="1" x="0.2564" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="820" y="311.03" />
+              <mxPoint x="820" y="415.03" />
+              <mxPoint x="718.97" y="415.03" />
+            </Array>
+            <mxPoint x="739" y="350" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e5" edge="1" parent="1" source="hp" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;fontColor=#248814;strokeColor=#248814;dashed=0;endArrow=block;endFill=1;jettySize=auto;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" target="s3" value="올리기만">
+          <mxGeometry relative="1" x="0.1375" y="1" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="300.05" y="520" />
+              <mxPoint x="300" y="690" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e6" edge="1" parent="1" source="decoy" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;fontColor=#248814;strokeColor=#248814;dashed=0;endArrow=block;endFill=1;jettySize=auto;exitX=0;exitY=0.5;exitDx=0;exitDy=0;entryX=1;entryY=0.5;entryDx=0;entryDy=0;" target="s3" value="올리기만">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" edge="1" parent="1" source="s3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;fontColor=#248814;strokeColor=#248814;dashed=1;endArrow=block;endFill=1;jettySize=auto;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="datanode" value="가져오기 — 연결을 시작하는 쪽은 항상 내부">
+          <mxGeometry relative="1" x="-0.1823" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="530" y="750" />
+              <mxPoint x="530" y="680" />
+              <mxPoint x="970.05" y="680" />
+              <mxPoint x="970.05" y="580" />
+            </Array>
+            <mxPoint x="380" y="750" as="sourcePoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e8" edge="1" parent="1" source="ssm" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;fontColor=#BC1356;strokeColor=#BC1356;dashed=1;endArrow=block;endFill=1;jettySize=auto;exitX=0.5;exitY=0;exitDx=0;exitDy=0;" target="sub_pub" value="관리">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="817" y="620" />
+              <mxPoint x="560.03" y="620" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e9" edge="1" parent="1" source="intfw" target="con_a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;fontColor=#147EBA;strokeColor=#147EBA;dashed=0;endArrow=block;endFill=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;" value="분배">
+          <mxGeometry relative="1" x="-0.2305" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="1235.03" y="280" />
+              <mxPoint x="1170" y="280" />
+              <mxPoint x="1170" y="334.97" />
+            </Array>
+            <mxPoint x="1170" y="335" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e10" edge="1" parent="1" source="intfw" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;fontColor=#147EBA;strokeColor=#147EBA;dashed=0;endArrow=block;endFill=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;entryPerimeter=0;" target="con_b" value="분배">
+          <mxGeometry relative="1" x="-0.1283" as="geometry">
+            <mxPoint as="offset" />
+            <Array as="points">
+              <mxPoint x="1235.03" y="280" />
+              <mxPoint x="1367.5" y="280" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e11" edge="1" parent="1" source="con_a" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;fontColor=#147EBA;strokeColor=#147EBA;dashed=0;endArrow=block;endFill=1;jettySize=auto;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.07;entryY=0;entryDx=0;entryDy=0;" target="datanode" value="5432">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e12" edge="1" parent="1" source="user" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;fontColor=#7A7F87;strokeColor=#7A7F87;dashed=1;endArrow=block;endFill=1;jettySize=auto;exitX=0.5;exitY=0;exitDx=0;exitDy=0;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" target="datanode" value="판정 · 자산 조사 적재">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e13" edge="1" parent="1" source="con_b" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;fontColor=#7A7F87;strokeColor=#7A7F87;dashed=1;endArrow=block;endFill=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" target="3d_dfEGzUpJGTInkwF6W-4" value="통보 443">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="1520" y="368" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="3d_dfEGzUpJGTInkwF6W-4" parent="1" style="shape=image;html=1;verticalAlign=top;verticalLabelPosition=bottom;labelBackgroundColor=#ffffff;imageAspect=0;aspect=fixed;image=https://icons.diagrams.net/icon-cache1/Ecommerce_Online_Shop-2673/Mobile_Phone-735.svg" value="" vertex="1">
+          <mxGeometry height="78" width="78" x="1514" y="320" as="geometry" />
+        </mxCell>
+        <mxCell id="3d_dfEGzUpJGTInkwF6W-13" parent="1" style="shape=mxgraph.networks2.icon;aspect=fixed;fillColor=#EDEDED;strokeColor=#000000;gradientColor=#5B6163;network2IconShadow=1;network2bgFillColor=none;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;network2Icon=mxgraph.networks2.cloud;network2IconYOffset=-0.08;network2IconW=1.0004;network2IconH=0.7222;" value="" vertex="1">
+          <mxGeometry height="56.31" width="78" x="60" y="278.69" as="geometry" />
+        </mxCell>
+      <mxCell id="lg4" parent="1" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;fontSize=10;fontStyle=0;fontColor=#7A7F87;" value="④ CVE · KEV 연계 — 2026-09-25 가동" vertex="1">
+          <mxGeometry height="18" width="300" x="1180" y="76" as="geometry" />
+        </mxCell>
+        <mxCell id="cti_src" parent="1" style="shape=mxgraph.networks2.icon;aspect=fixed;fillColor=#EDEDED;strokeColor=#000000;gradientColor=#5B6163;network2IconShadow=1;network2bgFillColor=none;labelPosition=center;verticalLabelPosition=bottom;align=center;verticalAlign=top;network2Icon=mxgraph.networks2.cloud;network2IconYOffset=-0.08;network2IconW=1.0004;network2IconH=0.7222;html=1;fontSize=11;fontColor=#232F3E;" value="공개 취약점 정보&lt;br&gt;CISA KEV · EPSS&lt;br&gt;OSV · NVD" vertex="1">
+          <mxGeometry height="56.31" width="78" x="1515" y="552" as="geometry" />
+        </mxCell>
+        <mxCell id="e_cti_src" edge="1" parent="1" source="datanode" target="cti_src" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;fontColor=#7A7F87;strokeColor=#7A7F87;dashed=1;endArrow=block;endFill=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" value="받기 443 · 하루 1회"><mxGeometry relative="1" as="geometry" /></mxCell><mxCell id="e_cti_s3" edge="1" parent="1" source="datanode" target="s3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;fontSize=10;fontColor=#248814;strokeColor=#248814;dashed=1;endArrow=block;endFill=1;jettySize=auto;exitX=0;exitY=0.8;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;" value="cti/ 원본 올리기 · 한 번 쓰기"><mxGeometry relative="1" x="0.3" as="geometry"><Array as="points"><mxPoint x="1005" y="607" /><mxPoint x="1005" y="850" /><mxPoint x="195" y="850" /><mxPoint x="195" y="729" /></Array></mxGeometry></mxCell></root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
