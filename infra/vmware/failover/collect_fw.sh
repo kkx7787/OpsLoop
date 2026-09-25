@@ -8,7 +8,8 @@
 #    (통계를 읽지 못한 회차는 svname '-' · status stats_error 한 줄)
 #  summarize.py 는 min(t_local − t_fw) 로 방화벽 시계를 Mac 시계에 맞춘다(fw-meta.json 의 clock_offset_ms).
 #  끝나면(--duration · Ctrl-C) /var/log/haproxy.log 에서 시험 동안 붙은 부분만 fw-haproxy.log 로 가져온다(읽기).
-#  시작 때 로그 크기를 적어 두고 그 뒤를 읽는다. 그 사이 로그가 돌려졌으면 새 파일 처음부터 가져온다.
+#  시작 때 로그 크기를 적어 두고 그 뒤를 읽는다. 그 사이 로그가 돌려졌으면(자정 logrotate) 옛 파일 <로그>.1 의 그 뒤와
+#  새 파일 전부를 이어 가져온다(.1 이 없거나 압축됐으면 새 파일만, 경고 줄을 남긴다).
 #  원격 루프는 ssh 가 끊기면 멈추고, 끊김을 놓쳐도 --duration + 120초(0 이면 6시간) 뒤 스스로 끝난다.
 #
 #  사용 (저장소 루트)
@@ -57,14 +58,15 @@ META="$DIR/fw-meta.json"
 MAXS=$(awk -v d="$DURATION" 'BEGIN { if (d > 0) printf "%d", d + 120; else print 21600 }')
 
 # 원격(방화벽) 루프. 함수 하나로 감싸 bash 가 다 읽은 뒤 돌게 한다(표준 입력으로 받는다)
-#   S <방화벽 시각> <로그 크기>          첫 줄
+#   S <방화벽 시각> <로그 크기> <로그 inode>   첫 줄 (inode 로 시험 중 로그가 돌려졌는지 안다)
 #   D,<방화벽 시각>,<consoles 행 9칸>    회차마다 서버 행
 #   E <방화벽 시각>                      통계를 읽지 못한 회차
 IFS= read -r -d '' REMOTE <<'EOF_REMOTE' || true
 main() {
-  local F=$1 P=$2 MAXS=$3 start next t csv size
+  local F=$1 P=$2 MAXS=$3 start next t csv size ino
   size=$(stat -c %s "$F" 2>/dev/null || sudo -n stat -c %s "$F" 2>/dev/null || echo -1)
-  printf 'S %s %s\n' "$(date +%s.%N)" "$size" || exit 0
+  ino=$(stat -c %i "$F" 2>/dev/null || sudo -n stat -c %i "$F" 2>/dev/null || echo -1)
+  printf 'S %s %s %s\n' "$(date +%s.%N)" "$size" "$ino" || exit 0
   start=$(date +%s)
   next=$(date +%s.%N)
   while :; do
@@ -108,7 +110,7 @@ w = csv.writer(f)
 if new:
     w.writerow(FIELDS)
 meta = {"host": host, "log": log, "period": float(period), "t_local_start": None, "t_fw_start": None,
-        "log_offset": None, "samples": 0, "stats_errors": 0, "t_local_end": None, "clock_offset_ms": None}
+        "log_offset": None, "log_inode": None, "samples": 0, "stats_errors": 0, "t_local_end": None, "clock_offset_ms": None}
 best = [None]
 last = {}
 
@@ -123,9 +125,10 @@ def save_meta():
 def handle(line, t_local):
     if line.startswith("S "):
         parts = line.split()
-        if len(parts) == 3 and TS.match(parts[1]):
+        if len(parts) in (3, 4) and TS.match(parts[1]):
             meta["t_fw_start"], meta["t_local_start"] = parts[1], "%.6f" % t_local
             meta["log_offset"] = int(parts[2]) if re.match(r"^-?\d+$", parts[2]) else -1
+            meta["log_inode"] = int(parts[3]) if len(parts) == 4 and re.match(r"^\d+$", parts[3]) else -1
             save_meta()
         return
     if line.startswith("E "):
@@ -221,16 +224,25 @@ trap - INT
 [ "$FETCH_LOG" = 1 ] || exit 0
 
 OFF=$(sed -n 's/.*"log_offset": *\(-\{0,1\}[0-9][0-9]*\).*/\1/p' "$META" | head -1)
+INO=$(sed -n 's/.*"log_inode": *\(-\{0,1\}[0-9][0-9]*\).*/\1/p' "$META" | head -1)
+INO=${INO:--1}
 if [ -z "$OFF" ] || [ "$OFF" -lt 0 ]; then
   echo "경고: 시작 때 $LOG 크기를 읽지 못해 발췌하지 않는다" >&2
   exit 1
 fi
 # 시험 동안 붙은 부분만 읽는다. 읽기 권한이 없으면 sudo -n 으로 읽는다(읽기뿐). 둘 다 안 되면 원격 종료 3.
 # 원격은 tail 의 종료 코드를 그대로 돌려주고(exec), 크기 상한은 Mac 쪽 head 가 건다(pipefail 로 ssh 실패를 본다)
-EXCERPT="f='$LOG'; o=$OFF
+EXCERPT="f='$LOG'; o=$OFF; i0=$INO
 if [ -r \"\$f\" ]; then R=; elif sudo -n test -r \"\$f\" 2>/dev/null; then R='sudo -n'; else echo \"읽을 수 없다: \$f\" >&2; exit 3; fi
 n=\$(\$R stat -c %s \"\$f\") || exit 3
-if [ \"\$n\" -lt \"\$o\" ]; then echo '# 시험 중 로그가 돌려졌다. 새 파일 처음부터'; o=0; fi
+i=\$(\$R stat -c %i \"\$f\") || exit 3
+# 돌려졌는가: inode 가 바뀌었거나(시작 때 inode 를 알 때) 크기가 줄었다
+if { [ \"\$i0\" -ge 0 ] && [ \"\$i\" != \"\$i0\" ]; } || [ \"\$n\" -lt \"\$o\" ]; then
+  if \$R test -r \"\$f.1\" && { [ \"\$i0\" -lt 0 ] || [ \"\$(\$R stat -c %i \"\$f.1\")\" = \"\$i0\" ]; }; then
+    echo '# 시험 중 로그가 돌려졌다. 옛 파일(.1)의 뒷부분과 새 파일 전부'; \$R tail -c +\$((o + 1)) \"\$f.1\" || exit 3
+  else echo '# 시험 중 로그가 돌려졌다. 옛 파일(.1)을 읽지 못해 새 파일 처음부터'; fi
+  o=0
+fi
 exec \$R tail -c +\$((o + 1)) \"\$f\""
 PART="$DIR/fw-haproxy.log.part"
 if "${SSH[@]}" "$HOST" "$EXCERPT" < /dev/null | head -c "$MAXLOG" > "$PART" \

@@ -5,7 +5,7 @@
 (127.0.0.1)에서만 열고, 방화벽 input 체인의 관리망 · VPN 허용 포트에서도 뺀다. 보려면 SSH 터널을 쓴다.
 원격 없이 저장소 파일만 읽는다. haproxy · nft 가 이 기계에 있으면 문법 검사도 한다(없으면 건너뛴다).
   - HAProxy     통계 bind 는 127.0.0.1:8404 하나 · 콘솔 진입점 8443 · 헬스체크 GET /health 200 은 그대로
-                · 전환 관련 줄(balance · default-server · httpchk · timeout · server)은 그대로 (이슈 #43, 기준선 측정 전)
+                · 전환 관련 줄: 기준선 측정 뒤 보강 3가지(검사 실패 기록 · 재시도마다 다른 서버 · DOWN 때 연결 끊기), 나머지는 그대로 (이슈 #43)
                 · 작업 프로세스는 haproxy 사용자 · chroot /var/lib/haproxy (로그 소켓은 rsyslog 가 chroot 안에 만든다)
                 · 진입점은 클라이언트가 보낸 X-Forwarded-For 를 지우고 HAProxy 가 본 주소 하나만 싣는다
   - 콘솔 compose FORWARDED_ALLOW_IPS 기본값 = 방화벽 서비스망 주소 = 호스트 가드가 8000 에 들이는 유일한 주소
@@ -91,15 +91,17 @@ class HAProxy(unittest.TestCase):
         # 콘솔 /health 는 세션 없이 200 을 준다(이슈 #41 에서 본문만 줄였다). 검사는 상태 코드만 본다
         self.assertIn("option httpchk GET /health", backend)
         self.assertIn("http-check expect status 200", backend)
-        self.assertIn("default-server inter 2s fall 3 rise 3 slowstart 30s", backend)
+        self.assertIn("default-server inter 2s fall 3 rise 3 slowstart 30s on-marked-down shutdown-sessions", backend)
 
-    def test_전환_관련_줄은_그대로(self):
-        # 이슈 #43: 장애 주입 기준선을 재기 전까지 분배 · 검사 · 시간 제한은 바꾸지 않는다
+    def test_전환_관련_줄(self):
+        # 이슈 #43: 기준선을 잰 뒤 보강한 세 가지만 더한다. 분배 방식 · 검사 주기 · 시간 제한은 그대로
         self.assertEqual(self.sec["backend consoles"], [
             "balance roundrobin",
             "option httpchk GET /health",
             "http-check expect status 200",
-            "default-server inter 2s fall 3 rise 3 slowstart 30s",
+            "option log-health-checks",
+            "option redispatch 1",
+            "default-server inter 2s fall 3 rise 3 slowstart 30s on-marked-down shutdown-sessions",
             "server console-a 192.168.50.11:8000 check",
             "server console-b 192.168.50.12:8000 check",
         ])
