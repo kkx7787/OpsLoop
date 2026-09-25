@@ -108,6 +108,16 @@ export function IconNodes(props: IconProps) {
   )
 }
 
+/** 자산 · 취약점(꾸러미) */
+export function IconAssets(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M12 3.5l7.5 4v9L12 20.5l-7.5-4v-9z" />
+      <path d="M4.5 7.5L12 11.5l7.5-4M12 11.5v9" />
+    </Svg>
+  )
+}
+
 export function IconNotify(props: IconProps) {
   return (
     <Svg {...props}>

@@ -1,8 +1,10 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import type { RouteObject } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { ctiKeys, incidentCtiPath } from '@/api/cti'
 import { incidentPath, type AbsorbedInfo, type IncidentDetail } from '@/api/incidents'
 import { ACTION_STATUS } from '@/lib/domain'
+import { cve, freshness, incidentCti, signature } from '@/test/cti-fixtures'
 import { noRetryClient, renderRoutes } from '@/test/render'
 import { IncidentDetailPage } from './IncidentDetailPage'
 
@@ -72,6 +74,14 @@ interface StubOptions {
   role?: string
   body?: unknown
   status?: number
+  /** GET …/cti 응답. 기본은 서명 규칙 사건이 아님(applicable=false) */
+  cti?: unknown
+  ctiStatus?: number
+}
+
+/** 이 표본 사건의 취약점 연계(서명 규칙 사건) */
+function ctiFor(extra: Parameters<typeof incidentCti>[0] = {}) {
+  return incidentCti({ incident_key: KEY, ...extra })
 }
 
 function isDetail(body: unknown): body is IncidentDetail {
@@ -82,12 +92,13 @@ function isDetail(body: unknown): body is IncidentDetail {
  * /api/me · 상세 GET · 판정 · 조치 POST 를 답하는 fetch. 서버처럼 POST 가 상세를 바꾼다
  * (판정 → 이력 추가 · resolved, 조치 → 이력 추가 · ACTION_STATUS). 그래야 조치 뒤 다시 받는 상세가 옛 상태로 되돌리지 않는다.
  */
-function stubApi({ role = 'operator', body = detail(), status = 200 }: StubOptions = {}) {
+function stubApi({ role = 'operator', body = detail(), status = 200, cti = { as_of: '2026-09-18T08:00:00Z', incident_key: KEY, applicable: false }, ctiStatus = 200 }: StubOptions = {}) {
   let state = body
   const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
     const method = init?.method ?? 'GET'
     if (url.startsWith('/api/me')) return json({ username: 'han', role }, 200)
+    if (url === incidentCtiPath(KEY) && method === 'GET') return json(cti, ctiStatus)
     if (url === incidentPath(KEY) && method === 'GET') return json(state, status)
     if (url === `${incidentPath(KEY)}/verdict` && method === 'POST') {
       const sent = JSON.parse(String(init?.body)) as Record<string, unknown>
@@ -491,5 +502,131 @@ describe('IncidentDetailPage', () => {
     expect(screen.queryByText('순환 규칙')).toBeNull()
     const block = await within(screen.getByRole('region', { name: '조치와 판정' })).findByRole('button', { name: '차단' })
     expect(block).toHaveAttribute('title', '출발지가 없는 사건은 차단할 수 없습니다')
+  })
+})
+
+describe('IncidentDetailPage · ⑥ 취약점 연계', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('서명 규칙 사건이면 제품 · 대응 방식 · 자산 적용 판정 · KEV · CVSS · EPSS · 신선도를 보인다', async () => {
+    stubApi({ cti: ctiFor() })
+    renderRoutes(routes(), PATH)
+    const region = await screen.findByRole('region', { name: '취약점 연계' })
+    const panel = within(region)
+    expect(panel.getByText('CVE 정보는 조사 우선순위 참고용입니다. 판정은 행위 증거로 합니다.')).toBeInTheDocument()
+    expect(panel.getByText('규칙 R105 c1 · 서명 1개 · CVE 1건')).toBeInTheDocument()
+    expect(panel.queryByText(/공개 정보가 오래됐습니다/)).toBeNull()
+
+    // 서명: 제품 · 공급사 · 대응 방식 · 적용 요약
+    const block = region.querySelector('[data-signature="geoserver"]') as HTMLElement
+    expect(within(block).getByText('GeoServer')).toBeInTheDocument()
+    expect(within(block).getByText('OSGeo')).toBeInTheDocument()
+    expect(within(block).getByText('분석가 대응')).toBeInTheDocument()
+    expect(within(block).getByText('KEV 에 이 제품 항목 1건 · 아래 CVE 표에 함께 보입니다')).toBeInTheDocument()
+
+    // 자산 적용: 디코이 → 비해당(모의 서비스), 오래된 자산 → 미확인
+    const rows = within(panel.getByRole('table', { name: 'GeoServer 자산 적용' })).getAllByRole('row').slice(1)
+    expect(rows).toHaveLength(3)
+    expect(within(rows[0]).getByText('web-decoy')).toBeInTheDocument()
+    expect(within(rows[0]).getByText('받음')).toBeInTheDocument()
+    expect(within(rows[0]).getByText('비해당')).toBeInTheDocument()
+    expect(within(rows[0]).getByText(/모의 서비스다/)).toBeInTheDocument()
+    expect(within(rows[2]).getByText('미확인')).toBeInTheDocument()
+    expect(within(rows[2]).getByText(/비해당으로 보지 않는다/)).toBeInTheDocument()
+
+    // CVE 표
+    const cveRow = within(panel.getByRole('table', { name: '이어진 CVE' })).getAllByRole('row')[1]
+    expect(within(cveRow).getByText('CVE-2024-36401')).toBeInTheDocument()
+    expect(within(cveRow).getByText('KEV')).toBeInTheDocument()
+    expect(within(cveRow).getByText('2024-07-15')).toBeInTheDocument()
+    expect(within(cveRow).getByText('사용 확인')).toBeInTheDocument()
+    expect(within(cveRow).getByText('9.8 CRITICAL')).toBeInTheDocument()
+    expect(within(cveRow).getByText(/94\.4%/)).toBeInTheDocument()
+    expect(within(cveRow).getByText('(백분위 99.9)')).toBeInTheDocument()
+
+    // 신선도(KST)
+    expect(panel.getByText('KEV 수집')).toBeInTheDocument()
+    expect(panel.getByText('2026-09-25 11:00')).toBeInTheDocument()
+    expect(panel.getByText('배포판 대조')).toBeInTheDocument()
+    expect(panel.getByRole('link', { name: '자산 · 취약점' })).toHaveAttribute('href', '/inventory')
+
+    // 머리글의 심각도 표기(소문자)는 여전히 하나뿐이다
+    expect(screen.getByText('critical')).toHaveAttribute('data-severity', 'critical')
+  })
+
+  it('R106 처럼 서명이 여럿이고 KEV 가 아닌 CVE 는 등재일 · 랜섬웨어 칸을 비우고 부른 서명을 적는다', async () => {
+    const cti = ctiFor({
+      rule_id: 'R106',
+      signatures: [
+        signature({ id: 'apache-path-traversal', product: 'Apache HTTP Server', vendor: 'Apache', cves: ['CVE-2021-41773'], kev_products: null, summary: 'affected', applicability: [] }),
+        signature({ id: 'hikvision-weblanguage', product: 'Hikvision 카메라 웹 서버', vendor: 'Hikvision', mapping: 'explicit', methods: ['PUT'], cves: ['CVE-2021-36260'], kev_products: null }),
+      ],
+      cves: [cve({ cve_id: 'CVE-2021-41773', signature_ids: ['apache-path-traversal'], kev: null, cvss: null, epss: null, description: null })],
+    })
+    stubApi({ cti })
+    renderRoutes(routes(), PATH)
+    const panel = within(await screen.findByRole('region', { name: '취약점 연계' }))
+    expect(panel.getByText('명시 대응')).toBeInTheDocument()
+    expect(panel.getByText('hikvision-weblanguage · PUT 만')).toBeInTheDocument()
+    expect(panel.getByText('해당')).toBeInTheDocument()
+    expect(panel.getByText(/자산 표가 비어 있어 적용 여부를 판정하지 못했습니다/)).toBeInTheDocument()
+    const row = within(panel.getByRole('table', { name: '이어진 CVE' })).getAllByRole('row')[1]
+    expect(within(row).getByText('apache-path-traversal')).toBeInTheDocument()
+    expect(within(row).queryByText('KEV')).toBeNull()
+    expect(within(row).getAllByText('—').length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('서명 규칙 사건이 아니면(applicable=false) 구역을 그리지 않는다', async () => {
+    stubApi()
+    const client = noRetryClient()
+    renderRoutes(routes(), PATH, client)
+    expect(await screen.findByRole('heading', { level: 1, name: 'R003 악성코드 투하' })).toBeInTheDocument()
+    await waitFor(() => expect(client.getQueryState(ctiKeys.incident(KEY))?.status).toBe('success'))
+    expect(screen.queryByRole('region', { name: '취약점 연계' })).toBeNull()
+  })
+
+  it('/cti 가 404 면 구역 안에 안내 한 줄만 보이고 나머지 구역은 그대로다', async () => {
+    stubApi({ cti: { detail: '인시던트를 찾을 수 없습니다' }, ctiStatus: 404 })
+    renderRoutes(routes(), PATH, noRetryClient())
+    const region = await screen.findByRole('region', { name: '취약점 연계' })
+    expect(within(region).getByText(/취약점 연계 정보가 없습니다/)).toBeInTheDocument()
+    expect(within(region).queryByRole('alert')).toBeNull()
+    expect(screen.getByRole('heading', { level: 1, name: 'R003 악성코드 투하' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: '조치와 판정' })).toBeInTheDocument()
+  })
+
+  it('/cti 가 503 이면 구역 안에서 오류와 다시 시도를 보이고, 상세는 그대로다', async () => {
+    const fetch = stubApi({ cti: { detail: 'CTI 조회 실패' }, ctiStatus: 503 })
+    renderRoutes(routes(), PATH, noRetryClient())
+    const region = await screen.findByRole('region', { name: '취약점 연계' })
+    const panel = within(region)
+    expect(panel.getByRole('alert')).toHaveTextContent('데이터를 불러오지 못했습니다')
+    expect(panel.getByText('CTI 조회 실패 (HTTP 503)')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'R003 악성코드 투하' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: '규칙이 본 것' })).toBeInTheDocument()
+
+    const ctiCalls = () => fetch.mock.calls.filter(([input]) => input === incidentCtiPath(KEY)).length
+    const before = ctiCalls()
+    fireEvent.click(panel.getByRole('button', { name: '다시 시도' }))
+    await waitFor(() => expect(ctiCalls()).toBeGreaterThan(before))
+  })
+
+  it('공개 정보가 오래되면 비해당으로 읽지 말라는 띠와 오래됨 표지를 보인다', async () => {
+    const f = freshness()
+    stubApi({ cti: ctiFor({ stale: true, freshness: { ...f, kev: { ...f.kev, stale: true }, assets: { ...f.assets, stale_assets: ['fw'] } } }) })
+    renderRoutes(routes(), PATH)
+    const panel = within(await screen.findByRole('region', { name: '취약점 연계' }))
+    expect(panel.getByText(/공개 정보가 오래됐습니다\. 비해당으로 읽지 않습니다\./)).toHaveTextContent('오래된 출처: KEV')
+    expect(panel.getAllByText('오래됨')).toHaveLength(2)
+    expect(panel.getByText('오래됨 · fw')).toBeInTheDocument()
+  })
+
+  it('서명 규칙 사건인데 CTI 표가 없으면(available=false) 적용 안내를 보인다', async () => {
+    stubApi({ cti: { as_of: '2026-09-18T08:00:00Z', incident_key: KEY, applicable: true, available: false } })
+    renderRoutes(routes(), PATH)
+    const region = await screen.findByRole('region', { name: '취약점 연계' })
+    expect(within(region).getByText(/공개 취약점 정보 표가 아직 없습니다/)).toBeInTheDocument()
   })
 })

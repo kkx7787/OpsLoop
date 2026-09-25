@@ -3,6 +3,7 @@ import { act, renderHook } from '@testing-library/react'
 import { createElement, type ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { noRetryClient } from '@/test/render'
+import { ctiKeys } from './cti'
 import { incidentKeys, ruleKeys } from './incidents'
 import { nodeKey, auditKey } from './operations'
 import { monitoringKeys } from './monitoring-keys'
@@ -175,7 +176,7 @@ describe('connectLive', () => {
     stop()
   })
 
-  it('재접속하면 끊긴 동안의 사건·판정·차단을 다시 조회한다', () => {
+  it('재접속하면 끊긴 동안의 사건·판정·차단 · CVE 연계를 다시 조회한다', () => {
     const client = noRetryClient()
     const invalidate = vi.spyOn(client, 'invalidateQueries')
     const stop = connectLive(client, { url: 'ws://t/ws', socket: factory })
@@ -184,7 +185,7 @@ describe('connectLive', () => {
     FakeSocket.last().drop()
     vi.advanceTimersByTime(1_000)
     FakeSocket.last().open()
-    for (const queryKey of [incidentKeys.all, ruleKeys.all, monitoringKeys.summary, monitoringKeys.blocklist, nodeKey, auditKey]) {
+    for (const queryKey of [incidentKeys.all, ruleKeys.all, monitoringKeys.summary, monitoringKeys.blocklist, nodeKey, auditKey, ctiKeys.all]) {
       expect(invalidate).toHaveBeenCalledWith({ queryKey })
     }
     stop()

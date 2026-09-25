@@ -129,7 +129,7 @@ data "aws_iam_policy_document" "archive_bucket" {
     }
   }
 
-  # 알려진 인스턴스의 경로 밖에는 아무도 쓰지 못한다(원장 밖 접두사 포함. 이 버킷은 원장만 담는다).
+  # 알려진 인스턴스의 경로와 공개 정보 원본(cti/) 밖에는 아무도 쓰지 못한다. 이 버킷은 원장과 cti/ 만 담는다.
   # 새 노드는 여기(ledger_writers)에 더해야 원장에 쓴다. 쓰는 인스턴스가 하나도 없으면 문을 내지 않는다
   dynamic "statement" {
     for_each = length(local.ledger_writer_paths) > 0 ? [1] : []
@@ -137,11 +137,45 @@ data "aws_iam_policy_document" "archive_bucket" {
       sid           = "LedgerKnownHostsOnly"
       effect        = "Deny"
       actions       = ["s3:PutObject"]
-      not_resources = flatten(values(local.ledger_writer_paths))
+      not_resources = concat(flatten(values(local.ledger_writer_paths)), ["${aws_s3_bucket.archive.arn}/cti/*"])
       principals {
         type        = "*"
         identifiers = ["*"]
       }
+    }
+  }
+
+  # 공개 정보 원본(cti/)은 전용 쓰기 사용자만 쓴다 (이슈 #39). 센서 · 관문 · 읽기 사용자 · 루트 모두 거부된다.
+  # 원본은 그날 무엇을 보고 판단했는지 재현하는 근거라서 원장처럼 한 번만 쓰고 지우지 않는다(아래 문들).
+  statement {
+    sid       = "OnlyCtiWriterWritesCti"
+    effect    = "Deny"
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.archive.arn}/cti/*"]
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    condition {
+      test     = "ArnNotEquals"
+      variable = "aws:PrincipalArn"
+      values   = [aws_iam_user.cti_writer.arn]
+    }
+  }
+
+  statement {
+    sid       = "CtiWriteOnce"
+    effect    = "Deny"
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.archive.arn}/cti/*"]
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    condition {
+      test     = "Null"
+      variable = "s3:if-none-match"
+      values   = ["true"]
     }
   }
 
@@ -164,13 +198,13 @@ data "aws_iam_policy_document" "archive_bucket" {
     }
   }
 
-  # 원장 · 생존 신호는 기본 저장 등급으로만 쓴다. 센서가 GLACIER 같은 등급으로 올리면
+  # 원장 · 생존 신호 · 공개 정보 원본은 기본 저장 등급으로만 쓴다. 센서가 GLACIER 같은 등급으로 올리면
   # 안쪽에서 바로 읽을 수 없어 가져오기가 막힌다. 헤더가 없으면(기본값 STANDARD) 허용한다.
   statement {
     sid       = "LedgerStandardStorageOnly"
     effect    = "Deny"
     actions   = ["s3:PutObject"]
-    resources = ["${aws_s3_bucket.archive.arn}/raw/*", "${aws_s3_bucket.archive.arn}/hb/*"]
+    resources = ["${aws_s3_bucket.archive.arn}/raw/*", "${aws_s3_bucket.archive.arn}/hb/*", "${aws_s3_bucket.archive.arn}/cti/*"]
     principals {
       type        = "*"
       identifiers = ["*"]
@@ -187,13 +221,13 @@ data "aws_iam_policy_document" "archive_bucket" {
     }
   }
 
-  # 버킷 기본 암호화(SSE-S3)만 쓴다. 센서가 다른 계정의 KMS 키나 자기 키(SSE-C)로
+  # 버킷 기본 암호화(SSE-S3)만 쓴다(cti/ 포함). 센서가 다른 계정의 KMS 키나 자기 키(SSE-C)로
   # 암호화해 올리면 안쪽에서 읽을 수 없어 가져오기가 막힌다. 헤더가 없으면 기본 암호화가 적용된다.
   statement {
     sid       = "LedgerDefaultEncryptionOnly"
     effect    = "Deny"
     actions   = ["s3:PutObject"]
-    resources = ["${aws_s3_bucket.archive.arn}/raw/*", "${aws_s3_bucket.archive.arn}/hb/*"]
+    resources = ["${aws_s3_bucket.archive.arn}/raw/*", "${aws_s3_bucket.archive.arn}/hb/*", "${aws_s3_bucket.archive.arn}/cti/*"]
     principals {
       type        = "*"
       identifiers = ["*"]
@@ -214,7 +248,7 @@ data "aws_iam_policy_document" "archive_bucket" {
     sid       = "LedgerNoCustomerKey"
     effect    = "Deny"
     actions   = ["s3:PutObject"]
-    resources = ["${aws_s3_bucket.archive.arn}/raw/*", "${aws_s3_bucket.archive.arn}/hb/*"]
+    resources = ["${aws_s3_bucket.archive.arn}/raw/*", "${aws_s3_bucket.archive.arn}/hb/*", "${aws_s3_bucket.archive.arn}/cti/*"]
     principals {
       type        = "*"
       identifiers = ["*"]
@@ -226,12 +260,12 @@ data "aws_iam_policy_document" "archive_bucket" {
     }
   }
 
-  # 원장은 지우지 않는다
+  # 원장과 공개 정보 원본은 지우지 않는다
   statement {
     sid       = "DenyLedgerDelete"
     effect    = "Deny"
     actions   = ["s3:DeleteObject", "s3:DeleteObjectVersion"]
-    resources = ["${aws_s3_bucket.archive.arn}/raw/*"]
+    resources = ["${aws_s3_bucket.archive.arn}/raw/*", "${aws_s3_bucket.archive.arn}/cti/*"]
     principals {
       type        = "*"
       identifiers = ["*"]

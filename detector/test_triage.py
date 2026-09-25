@@ -5,6 +5,9 @@
 심각도가 더 높다고 대표가 되면, 새 버전 인시던트가 까닭 없이 '무시 가능(중복)'으로 제안된다.
 같은 페이로드 흡수(규칙 v3): 첫 사건의 흡수 기록을 보이고, 차단할 때 흡수 출발지를 함께 올리는 선택을 본다.
 R006(키 심기)은 순환 규칙이다.
+SSH 허니팟 규칙(R001~R006, app/proposals.py SSH_RULES) 밖에는 판정을 제안하지 않는다(판정 기준 §8).
+웹 · 감사 · 인프라 · 요청 경로 서명(R105 · R106) 사건에 같은 출발지의 cowrie 기록이 있어도 제안이 없고, 일괄 수락에서도
+남는다.
 
   - 가짜 커서: DB 없이 조회 문장과 인자에 규칙 버전이 들어가는지 본다
   - 임시 테이블: OPSLOOP_TEST_DATABASE_URL 이 있으면 연결 전용 임시 테이블(search_path=pg_temp)에서
@@ -64,6 +67,44 @@ class CircularTests(unittest.TestCase):
         suggestion, basis = triage.propose("R006", ev)
         self.assertEqual(suggestion, "threat")
         self.assertIn("authorized_keys", " ".join(basis))
+
+
+class NonSshRuleTests(unittest.TestCase):
+    """SSH 판정 기준(로그인 · 명령 · 파일 · 경유)은 cowrie 기록이라 다른 규칙의 판정 근거가 아니다. 콘솔과 같은 경계다."""
+
+    # 저장소 규칙 파일의 SSH 밖 규칙 전부. R105 · R106 은 CVE · KEV 연계(c1)다
+    OTHERS = ("R101", "R102", "R103", "R104", "R105", "R106", "R201", "R202", "R301")
+
+    def test_SSH_규칙_목록이_콘솔과_같다(self):
+        sys.path.insert(0, os.path.join(HERE, "..", "app"))
+        try:
+            import proposals
+        finally:
+            sys.path.pop(0)
+        self.assertEqual(triage.SSH_RULES, proposals.SSH_RULES)
+        self.assertLessEqual(set(triage.CIRCULAR), triage.SSH_RULES)
+
+    def test_SSH_밖_규칙에는_제안하지_않는다(self):
+        # 같은 출발지가 SSH 허니팟에서 명령 · 파일 · 로그인까지 했고, 더 높은 심각도 사건에 덮여도 제안이 없다
+        for counts in ({"cowrie.command.input": 3, "cowrie.session.file_download": 1},
+                       {"cowrie.login.success": 1}, {"cowrie.login.failed": 9}, {}):
+            for covered_by in (None, "R106"):
+                for rid in self.OTHERS:
+                    with self.subTest(rule=rid, counts=counts, covered_by=covered_by):
+                        suggestion, basis = triage.propose(rid, {"counts": counts, "covered_by": covered_by})
+                        self.assertIsNone(suggestion)
+                        self.assertIn("자동 제안 기준이 없다", basis[0])
+                        # 중복 정보는 참고 줄로만 남는다
+                        self.assertEqual(any("R106 가 더 높은 심각도" in line for line in basis), bool(covered_by))
+
+    def test_SSH_규칙은_전과_같다(self):
+        ev = {"counts": {"cowrie.command.input": 1}, "covered_by": None}
+        for rid in sorted(triage.SSH_RULES):
+            with self.subTest(rule=rid):
+                self.assertEqual(triage.propose(rid, ev)[0], "threat")
+        self.assertEqual(triage.propose("R001", {"counts": {"cowrie.login.failed": 5}, "covered_by": None})[0],
+                         "non_actionable")
+        self.assertEqual(triage.propose("R001", {"counts": {}, "covered_by": "R002"})[0], "non_actionable")
 
 
 class AbsorbedSqlSameAsConsoleTests(unittest.TestCase):
@@ -160,6 +201,57 @@ class OverlapDatabaseTests(unittest.TestCase):
         ev = self.gather("R003|v2", "v2", first)
         self.assertEqual(ev["covered_by"], "R004")
         self.assertEqual(triage.propose("R003", ev)[0], "non_actionable")
+
+
+@unittest.skipUnless(REAL_PG and os.environ.get("OPSLOOP_TEST_DATABASE_URL"), "PostgreSQL 시험 연결 미지정")
+class NonSshBulkAcceptDatabaseTests(unittest.TestCase):
+    """일괄 수락([a])은 제안이 있는 사건만 기록한다. 같은 출발지가 SSH 허니팟에서 명령을 친 기록이 있어도 R106(c1) 사건은
+    제안이 없어 미판정으로 남는다."""
+
+    def setUp(self):
+        self.conn = psycopg2.connect(os.environ["OPSLOOP_TEST_DATABASE_URL"])
+        self.cur = self.conn.cursor()
+        self.cur.execute("SET search_path TO pg_temp")
+        self.cur.execute("""
+            CREATE TEMP TABLE incidents (incident_key text PRIMARY KEY, rule_id text, rule_name text,
+                rule_version text NOT NULL, severity text, actor_ip inet, first_ts timestamptz,
+                last_ts timestamptz, signal_count integer DEFAULT 1, session_count integer DEFAULT 1,
+                evidence jsonb, status text DEFAULT 'open', target text);
+            CREATE TEMP TABLE events (ts timestamptz, src_ip inet, session text, eventid text,
+                username text, password text, input text, shasum text, url text);
+            CREATE TEMP TABLE verdicts (id bigint GENERATED ALWAYS AS IDENTITY, incident_key text, verdict text,
+                reason text, observed_value double precision, operator text, proposed text, decision_seconds integer);
+            CREATE TEMP TABLE actions (id bigint GENERATED ALWAYS AS IDENTITY, incident_key text, action text,
+                operator text, note text);
+            CREATE TEMP TABLE blocklist (actor_ip inet PRIMARY KEY, released_at timestamptz);
+            CREATE TEMP TABLE incident_absorbed (first_key text, member_key text, kind text, via_key text,
+                rule_id text, rule_version text, actor_ip inet, first_ts timestamptz, last_ts timestamptz,
+                signal_count integer, sessions text[] DEFAULT '{}', payloads text[] DEFAULT '{}');
+        """)
+        for key, rid, name, ver, sev in (("R002|v3|k", "R002", "로그인 후 명령", "v3", "high"),
+                                         ("R106|c1|k", "R106", "알려진 취약점 공격 시도", "c1", "medium"),
+                                         ("R105|c1|k", "R105", "제품 식별 탐색", "c1", "low")):
+            self.cur.execute("""INSERT INTO incidents (incident_key, rule_id, rule_name, rule_version, severity,
+                actor_ip, first_ts, last_ts, evidence) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, '{"sessions": ["c1"]}')""",
+                             (key, rid, name, ver, sev, ACTOR, T0, T0 + timedelta(minutes=1)))
+        # 같은 출발지 · 같은 구간의 cowrie 로그인 · 명령과 웹 요청
+        for eid, inp in (("cowrie.login.success", None), ("cowrie.command.input", "uname -a"),
+                         ("decoy.request", None), ("nginx.request", None)):
+            self.cur.execute("INSERT INTO events (ts, src_ip, session, eventid, input) VALUES (%s, %s, 'c1', %s, %s)",
+                             (T0, ACTOR, eid, inp))
+
+    def tearDown(self):
+        self.conn.rollback()
+        self.conn.close()
+
+    def test_일괄_수락은_R105_R106_을_남긴다(self):
+        answers = iter(["a", "y"])
+        with mock.patch("builtins.input", lambda prompt="": next(answers)), \
+                mock.patch("sys.stdout", io.StringIO()) as out:
+            triage.triage(self.conn, None, 10, "han")
+        self.cur.execute("SELECT incident_key, verdict, proposed FROM verdicts ORDER BY incident_key")
+        self.assertEqual(self.cur.fetchall(), [("R002|v3|k", "threat", "threat")])
+        self.assertIn("판정 1건 · 건너뜀 2건", out.getvalue())
 
 
 FIRST = "R006|v3|192.0.2.1|2026-09-20T00:00:00+00:00"

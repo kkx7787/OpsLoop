@@ -1,5 +1,6 @@
 import {
   IconAccounts,
+  IconAssets,
   IconAudit,
   IconBlock,
   IconDashboard,
@@ -31,7 +32,13 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { to: '/reports', label: '보고서', icon: IconReport },
     ],
   },
-  { label: '수집', items: [{ to: '/nodes', label: '수집 노드', icon: IconNodes }] },
+  {
+    label: '수집',
+    items: [
+      { to: '/nodes', label: '수집 노드', icon: IconNodes },
+      { to: '/inventory', label: '자산 · 취약점', icon: IconAssets },
+    ],
+  },
   {
     label: '관리',
     items: [

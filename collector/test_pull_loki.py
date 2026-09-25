@@ -10,8 +10,8 @@
   - 선언하지 않은 job 은 적재하지 않고 undeclared 로만 센다
   - 수신 기록(receipt): 사유별 수 · seq 공백 · first_loaded_at 은 한 번만
   - 원장 (inode, 오프셋) 이어 읽기: 쓰는 중인 줄 · 파일 교체 · 위조 줄 · 관리 원장 주인 · 너무 긴 줄
-  - Loki 가 죽어도 원장 적재와 탐지(s1 · w2 · a1 · i2)는 한다
-  - 탐지 순서는 s1 · w2 · a1 · i2 이고 n1 은 돌리지 않는다. 저장소 규칙 파일의 rule_version 과 맞는다
+  - Loki 가 죽어도 원장 적재와 탐지(s1 · w2 · a1 · i2 · c1)는 한다
+  - 탐지 순서는 s1 · w2 · a1 · i2 · c1 이고 n1 은 돌리지 않는다. 저장소 규칙 파일의 rule_version 과 맞는다
   - --node --since 재생성: 두 번째 실행 신규 0, DB 를 비운 뒤에는 빠진 만큼만 다시 들어간다
 """
 import copy
@@ -56,7 +56,8 @@ MIN = 60 * NS
 T0_DT = datetime(2026, 9, 21, 7, 0, 0, tzinfo=timezone.utc)
 T0 = int(T0_DT.timestamp()) * NS
 HOST = "opsloop-web-01"
-RULESETS = ("rules_self.json", "rules_w1.json", "rules_audit.json", "rules_infra.json")   # s1 · w2 · a1 · i2
+# s1 · w2 · a1 · i2 · c1
+RULESETS = ("rules_self.json", "rules_w1.json", "rules_audit.json", "rules_infra.json", "rules_cve.json")
 
 STUB_AGENT = r'''
 """시험용 parse_agent. 계약 7장의 모양만 따른다."""
@@ -624,7 +625,8 @@ class BridgeTest(unittest.TestCase):
         self.assertEqual(self.detects(), ["--rules rules_self.json --run --quiet db",
                                           "--rules rules_w1.json --run --quiet db",
                                           "--rules rules_audit.json --run --quiet db",
-                                          "--rules rules_infra.json --run --quiet db"])
+                                          "--rules rules_infra.json --run --quiet db",
+                                          "--rules rules_cve.json --run --quiet db"])
         self.assertNotIn("watermark", self.state()["nodes"].get("web-01", {}))
         self.assertTrue(any("Loki 조회 실패" in msg for _lv, msg in self.logs))
 
@@ -725,14 +727,34 @@ class RealAgentTest(BridgeTest):
 class RulesetTest(unittest.TestCase):
     """다리가 돌리는 규칙 파일. 시험 안의 가짜 파일이 아니라 저장소의 진짜 파일을 본다."""
 
-    def test_탐지_순서는_s1_w2_a1_i2(self):
+    def test_탐지_순서는_s1_w2_a1_i2_c1(self):
         m = load_bridge()
         self.assertEqual(m.RULESETS, RULESETS)
         versions = []
         for name in m.RULESETS:
             with open(os.path.join(REPO, "detector", name), encoding="utf-8") as f:
                 versions.append(json.load(f)["rule_version"])
-        self.assertEqual(versions, ["s1", "w2", "a1", "i2"])
+        self.assertEqual(versions, ["s1", "w2", "a1", "i2", "c1"])
+
+    def test_c1_은_웹_요청_두_발생원을_본다(self):
+        # 다리가 전 기간을 매분 다시 보므로 5분 적재기가 넣은 디코이 요청도 여기서 잡힌다. 풀러에는 넣지 않는다
+        with open(os.path.join(REPO, "detector", "rules_cve.json"), encoding="utf-8") as f:
+            doc = json.load(f)
+        self.assertEqual([(r["id"], r["type"]) for r in doc["rules"]],
+                         [("R105", "url_signature"), ("R106", "url_signature")])
+        for rule in doc["rules"]:
+            self.assertEqual(rule["params"]["eventids"], ["nginx.request", "decoy.request"])
+            self.assertNotIn("sensors", rule["params"])
+
+    def test_늦게_들어온_이른_디코이_요청의_한계가_적혀_있다(self):
+        # 더 이른 디코이 요청이 늦게 들어오면 새 키 사건이 생기고 먼저 뜬 사건이 남는다(w2 R102 와 같은 구조적 한계).
+        # 코드로 막지 않고 두 곳에 적는다. 동작은 detector/test_detect_sensors.py 의 DB 시험이 고정한다
+        with open(os.path.join(REPO, "detector", "rules_cve.json"), encoding="utf-8") as f:
+            note = json.load(f)["note"]
+        doc = " ".join(load_bridge().__doc__.split())
+        for text in (note, doc):
+            for word in ("새 키", "미판정", "R102", "억제가 없어"):
+                self.assertIn(word, text)
 
     def test_n1_은_돌리지_않는다(self):
         # 파일은 남긴다 (기존 시험 · rule_versions 이력). w1 R101 이 흡수했다

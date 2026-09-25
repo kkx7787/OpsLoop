@@ -25,7 +25,7 @@ export function NodesPage() {
   const filtered = rows.filter(r => `${r.node_id} ${r.hostname ?? ''} ${r.addr ?? ''}`.toLowerCase().includes(search.toLowerCase()))
   const currentPage = Math.min(page,Math.max(1,Math.ceil(filtered.length/pageSize)))
   return <div className="flex min-w-0 flex-col gap-4">
-    <PageHeader title="수집 노드" description="등록된 에이전트의 마지막 수신과 침묵 상태를 확인합니다." aside={permission.allowed && <Link className={buttonClasses({variant:'primary'})} to="/nodes/new">노드 추가</Link>} />
+    <PageHeader title="수집 노드" description="등록된 에이전트의 마지막 수신과 침묵 상태를 확인합니다." aside={<><Link className={buttonClasses({})} to="/inventory">자산 · 취약점</Link>{permission.allowed && <Link className={buttonClasses({variant:'primary'})} to="/nodes/new">노드 추가</Link>}</>} />
     <MonitoringStatus updatedAt={query.dataUpdatedAt} error={query.data ? query.error : null} onRetry={() => void query.refetch()} busy={query.isFetching} />
     {query.isPending ? <LoadingState /> : !query.data ? <ApiErrorState error={query.error} onRetry={() => void query.refetch()} /> : <>
       <Card className="grid grid-cols-2 gap-4 sm:grid-cols-4">{Object.entries(RECEPTION).map(([state,label]) => <div key={state}><div className="text-xs text-ink-muted">{label}</div><div className="mt-1 text-xl font-semibold tabular-nums">{rows.filter(r => r.reception===state).length}개</div></div>)}</Card>

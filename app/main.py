@@ -34,6 +34,7 @@ from dashboard import dashboard_metrics
 from access import require_role
 from operations import router as operations_router
 from notify import router as notify_router
+from cti import router as cti_router
 from notifier import Notifier
 from absorbed import (ABSORBED_STATE_SQL, FOLLOW_RELEASE_SQL, FOLLOW_STATE_SQL, FOLLOW_UPSERT_SQL, NO_BLOCK_NETS,
                       RELEASE_ABSORBED_SQL, UNBLOCKED_AFTER_VERDICT_SQL, AbsorbedFollower, absorbed_note,
@@ -129,6 +130,8 @@ app = FastAPI(title="OpsLoop API", version="0.1.0", lifespan=lifespan)
 web.serve(app)
 app.include_router(operations_router)
 app.include_router(notify_router)
+# CVE · KEV 연계 (cti.py). 상세 조회 /api/incidents/{incident_key:path} 보다 먼저 붙어야 …/cti 가 상세로 빠지지 않는다
+app.include_router(cti_router)
 
 
 OPEN_PATHS = ("/health", "/login", "/logout", "/docs", "/openapi.json")

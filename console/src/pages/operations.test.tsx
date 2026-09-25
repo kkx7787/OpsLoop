@@ -75,6 +75,10 @@ describe('노드와 토큰',()=>{
     expect(screen.queryByText('web-01')).toBeNull()
     expect(screen.getByText('quiet-01')).toBeInTheDocument()
   })
+  it('머리에 자산 · 취약점 화면 링크를 둔다(역할과 무관)',async()=>{
+    setup('/nodes','viewer');await screen.findByText('web-01')
+    expect(screen.getByRole('link',{name:'자산 · 취약점'})).toHaveAttribute('href','/inventory')
+  })
   it.each(['viewer','operator'])('%s는 노드 추가와 발급을 할 수 없다',async role=>{
     const {router}=setup('/nodes',role);await screen.findByText('web-01')
     expect(screen.queryByRole('link',{name:'노드 추가'})).toBeNull()

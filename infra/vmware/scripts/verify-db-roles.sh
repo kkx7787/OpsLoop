@@ -3,6 +3,8 @@
 #   데이터 노드 컨테이너 안(로컬 trust)에서 역할마다 범위 밖 문장이 거부되고 범위 안 문장은 되는지,
 #   실제 접속이 어느 역할로 붙어 있는지, 관제 대상 노드에서 5432 가 막히는지 본다.
 #   데이터를 바꾸지 않는다 (WHERE false · 읽기 · 권한 조회만).
+#   CVE · KEV 연계(이슈 #39)의 수집기 역할(opsloop_cti)과 CTI 표 권한도 본다. infra/migrations/20260925_cti.sql 을
+#   적용하고 cti/install-cti.sh 로 역할을 만든 뒤에 돌린다.
 # 사용 (Mac, 저장소 루트): infra/vmware/scripts/verify-db-roles.sh     종료 코드 0 = 전부 기대대로
 set -uo pipefail
 SSH=(ssh -F "$HOME/.ssh/config.opsloop" -o BatchMode=yes -o ConnectTimeout=10)
@@ -56,6 +58,40 @@ q opsloop_console  "SELECT count(*) FROM incident_absorbed" 허용
 q opsloop_console  "INSERT INTO incident_absorbed SELECT * FROM incident_absorbed WHERE false" 거부
 q opsloop_console  "UPDATE absorbed_blocks SET released_at = now() WHERE false" 허용
 q opsloop_console  "DELETE FROM absorbed_blocks WHERE false" 거부
+# CVE · KEV 연계 (이슈 #39). 수집기는 원본 기록을 추가만 하고 CTI 표 밖은 규칙 정의 읽기뿐이다. 콘솔은 읽기만, 탐지 · 적재는 보지 못한다
+#   수집기 줄은 권한 블록의 쓰기 권한을 표마다 빠짐없이 본다(받은 것은 허용, 받지 않은 것은 거부 · cti/test_cti_schema.py 가 대조한다).
+#   적재 문장 INSERT … ON CONFLICT DO UPDATE 는 행이 없어도 INSERT · UPDATE 권한을 함께 본다
+q opsloop_cti      "INSERT INTO cti_snapshots SELECT * FROM cti_snapshots WHERE false" 허용
+q opsloop_cti      "UPDATE cti_snapshots SET error = error WHERE false" 거부
+q opsloop_cti      "DELETE FROM cti_snapshots WHERE false" 거부
+p opsloop_cti      "has_sequence_privilege('opsloop_cti','cti_snapshots_id_seq','USAGE')" t
+q opsloop_cti      "INSERT INTO cti_kev SELECT * FROM cti_kev WHERE false ON CONFLICT (cve_id) DO UPDATE SET name = EXCLUDED.name" 허용
+q opsloop_cti      "DELETE FROM cti_kev WHERE false" 허용
+p opsloop_cti      "has_table_privilege('opsloop_cti','cti_kev','TRUNCATE')" f
+q opsloop_cti      "INSERT INTO cti_cve SELECT * FROM cti_cve WHERE false ON CONFLICT (cve_id) DO UPDATE SET epss = EXCLUDED.epss" 허용
+q opsloop_cti      "DELETE FROM cti_cve WHERE false" 거부
+q opsloop_cti      "INSERT INTO cti_osv SELECT * FROM cti_osv WHERE false ON CONFLICT (osv_id) DO UPDATE SET affected = EXCLUDED.affected" 허용
+q opsloop_cti      "DELETE FROM cti_osv WHERE false" 거부
+q opsloop_cti      "INSERT INTO cti_watch SELECT * FROM cti_watch WHERE false ON CONFLICT (cve_id) DO UPDATE SET record_found = EXCLUDED.record_found" 허용
+q opsloop_cti      "DELETE FROM cti_watch WHERE false" 허용
+q opsloop_cti      "INSERT INTO asset_inventory SELECT * FROM asset_inventory WHERE false ON CONFLICT (asset_id) DO UPDATE SET last_error = EXCLUDED.last_error" 허용
+q opsloop_cti      "DELETE FROM asset_inventory WHERE false" 거부
+q opsloop_cti      "INSERT INTO asset_vulnerabilities SELECT * FROM asset_vulnerabilities WHERE false" 허용
+q opsloop_cti      "DELETE FROM asset_vulnerabilities WHERE false" 허용
+q opsloop_cti      "UPDATE asset_vulnerabilities SET fix_state = fix_state WHERE false" 거부
+q opsloop_cti      "SELECT rule_version, definition FROM rule_versions LIMIT 0" 허용
+q opsloop_cti      "UPDATE rule_versions SET reason = reason WHERE false" 거부
+q opsloop_cti      "SELECT node_id FROM nodes LIMIT 0" 거부
+q opsloop_cti      "SELECT count(*) FROM events" 거부
+q opsloop_cti      "SELECT count(*) FROM incidents" 거부
+q opsloop_console  "SELECT 1 FROM cti_snapshots, cti_kev, cti_cve, cti_osv, cti_watch, asset_inventory, asset_vulnerabilities LIMIT 0" 허용
+q opsloop_console  "INSERT INTO cti_kev SELECT * FROM cti_kev WHERE false" 거부
+q opsloop_console  "UPDATE asset_inventory SET last_error = last_error WHERE false" 거부
+q opsloop_console  "DELETE FROM cti_watch WHERE false" 거부
+q opsloop_detector "SELECT count(*) FROM cti_kev" 거부
+q opsloop_detector "SELECT count(*) FROM asset_vulnerabilities" 거부
+q opsloop_ingest   "SELECT count(*) FROM cti_kev" 거부
+q opsloop_backup   "SELECT 1 FROM cti_snapshots, cti_kev, cti_cve, cti_osv, cti_watch, asset_inventory, asset_vulnerabilities LIMIT 0" 허용
 q opsloop_backup   "INSERT INTO events SELECT * FROM events WHERE false" 거부
 q opsloop_backup   "SELECT count(*) FROM events" 허용
 q opsloop_gate     "SELECT count(*) FROM events" 거부

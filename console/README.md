@@ -25,8 +25,9 @@ src/api/queryClient.ts 재시도 규칙: 5xx · 네트워크만 2회
 src/api/incidents.ts   인시던트 목록(useIncidentsPage · 페이지별 limit/offset) · 상세(useIncident) · 판정 · 조치(useVerdictMutation · useActionMutation) · 규칙 품질. 쿼리 키는 incidentKeys · ruleKeys
 src/api/monitoring.ts  대시보드(useSummary) · 차단 목록(useBlocklist). 기존 API 조회 · 30초 재조회 · 서버 시각으로 만료 계산
 src/api/notify.ts      알림 채널(useChannels · createChannel · updateChannel · testChannel) · 발송 이력(useDeliveries). 채널 주소는 함수로만 보내고 캐시에 두지 않는다. 쿼리 키는 notifyKeys
+src/api/cti.ts         CVE · KEV 연계(#39): 사건 연계(useIncidentCti) · 주목 CVE(useWatch) · 자산 목록(useAssets) · 자산 상세(useAsset · 거르기 · 쪽). 쿼리 키는 ctiKeys(사건 상세 키 밑에 두지 않는다)
 src/api/live-context.ts 공통 연결 상태. S-10에서 웹소켓 끊김과 REST 조회 실패를 구별
-src/api/live.ts        실시간 통보(WS /ws). useLiveUpdates 가 한 번 잇고 통보마다 해당 쿼리를 무효화한다. 끊기면 1초 → 30초 지수 백오프. 재접속하면 놓친 통보를 보완하도록 목록·상세·지표를 재조회
+src/api/live.ts        실시간 통보(WS /ws). useLiveUpdates 가 한 번 잇고 통보마다 해당 쿼리를 무효화한다. 끊기면 1초 → 30초 지수 백오프. 재접속하면 놓친 통보를 보완하도록 목록·상세·지표 · CVE 연계를 재조회
 src/auth/roles.ts      권한표(화면 설계 15장). can(role, action) · permission(role, action)
 src/auth/useMe.ts      GET /api/me · usePermission(action)
 src/lib/useNow.ts      상단바 시계용 지금 시각
@@ -34,11 +35,12 @@ src/components/        atoms · molecules · organisms · templates. index.ts �
   organisms/states/    상태 화면(불러오는 중 · 0건 · 403 · 세션 만료 · 오류 · 404 · ApiErrorState)
   organisms/nav/       메뉴 조각: nav-items(자료형 · findNavItem) · NavMenu · Brand · UserPanel(로그아웃 폼) · SensorSummary
   organisms/incidents/       인시던트 목록(S-03) 조각: 조건(filters · 주소 왕복) · 표 행 · 모바일 카드 · 높이 제한 목록 · 페이지 탐색 · 조건 막대 · 경과 시간
-  organisms/incident-detail/ 인시던트 상세(S-04) · 판정 패널(S-05) 조각: 머리글 · 구역 ①~⑤ · 조치 막대 · 판정 패널 · 이력 · format(서버 행 → 글)
+  organisms/incident-detail/ 인시던트 상세(S-04) · 판정 패널(S-05) 조각: 머리글 · 구역 ①~⑤ · ⑥ 취약점 연계(VulnLinkPanel) · 조치 막대 · 판정 패널 · 이력 · format(서버 행 → 글)
+  organisms/assets/          자산 · 취약점(#39) 조각: 주목 CVE(WatchCard) · 자산 표(AssetTable) · 자산 상세(AssetDetailSection) · 공개 정보 신선도(CtiFreshnessFacts) · cti-format(적용 판정 · CVSS · EPSS 표기). ⑥ 도 이 신선도 · 표기를 쓴다
   organisms/notify/          알림 설정(S-12) 조각: 채널 양식(ChannelForm · 주소 password 형 · 틀 미리보기) · 채널 표(ChannelTable) · 발송 이력(DeliveryTable) · template(자리표시자 치환)
   organisms/           TopBar(경로 표시 · 실시간 연결 표시 · KST 시계 · 새로고침 · 모바일 메뉴 단추) · LiveIndicator · SideNav(208px) · MobileNav(서랍)
   templates/           AppLayout(사이드바 + 상단바 + 본문 · /api/me 확인 · 401 → 로그인 · 실시간 통보 연결) · breadcrumbs
-src/app/router.tsx     경로표(react-router 7). / · /incidents · /incidents/:key · /blocklist · /rules · /sources · /reports · /nodes · /alerts · /audit · /accounts · *
+src/app/router.tsx     경로표(react-router 7). / · /incidents · /incidents/:key · /blocklist · /rules · /sources · /reports · /nodes · /inventory · /alerts · /audit · /accounts · *
 src/app/nav.ts         메뉴 묶음(관제 · 대응 · 분석 · 수집 · 관리). 관리 묶음은 admin 이 아니면 흐리게
 src/app/screens.ts     화면 자리 정보(설계 번호 · 제목 · 한 줄 설명 · WBS)
 src/app/ComponentCatalog.tsx  공통 컴포넌트 모음. 개발 서버에서만 /dev/components
@@ -48,6 +50,7 @@ src/pages/             구현 화면 및 나머지 화면 자리(PlaceholderPage
   pages/incidents/       인시던트 목록 화면(IncidentsPage). 조건·page·page_size를 주소에 두어 새로고침·뒤로 가기·공유에도 남는다
   pages/incident-detail/ 인시던트 상세 · 판정 화면(IncidentDetailPage). 사건 키가 바뀌면 판정 소요 시계를 다시 시작한다
   pages/alerts/          알림 설정(S-12): 채널 표 · 추가/수정 양식 · 사용/중지 · 시험 발송 · 발송 이력. admin 이 아니면 403
+  pages/assets/          자산 · 취약점(#39, 경로 /inventory): 주목 CVE · 신선도 요약 · 자산 표 · 고른 자산의 주요 패키지 · 이미지 · 배포판 취약점(?asset= 로 주소에 남는다)
 src/test/              vitest setup(WebSocket 은 아무 일도 하지 않는 소켓) · render(메모리 라우터 · /api/me 스텁)
 ```
 
@@ -117,3 +120,18 @@ src/test/              vitest setup(WebSocket 은 아무 일도 하지 않는 �
 - 채널 주소는 비밀값이다. 서버는 https 만 받고, 일반 웹훅은 사설 · 링크로컬 · localhost 주소(`ipaddress` 로 판정, 이름은 해석하지 않음)와 `user:pass@` 를 거부한다. 응답과 화면에는 호스트와 끝 4자만 보이고, 발송 이력·감사 기록·서버 로그에는 주소와 응답 본문을 넣지 않는다. 채널 목록 응답은 `no-store` 다.
 - 배포 전 `infra/migrations/20260924_notify.sql` 을 적용한다(`notify_channels` · `notify_deliveries` 표, 감사 조회 뷰 · 변경 방지 트리거 갱신). 이력의 `payload` 에는 요약만 넣고 원문 로그를 넣지 않는다.
 - 화면(`/alerts`): 채널 표(사용/중지 토글 · 시험 발송 · 수정) · 추가/수정 양식 · 발송 이력(채널 · 상태 필터, 서버 페이지 탐색)이며 30초마다 재조회한다. 주소 입력은 password 형이고 수정 때 비우면 서버가 기존 주소를 유지한다. 양식의 '예시 미리보기'는 자리표시자를 예시 값으로 바꿔 화면에서만 그리며(`organisms/notify/template.ts`), 저장 전 시뮬레이션이 아니다. 시험 발송 결과는 띠(Banner)로 보이고 이력에 `test` 로 남는다.
+
+## CVE · KEV 연계 (#39)
+
+- 요청 경로 서명 규칙(`detector/rules_cve.json` c1: R105 제품 식별 탐색 · R106 알려진 취약점 공격 시도)이 만든 사건에 제품 · CVE · 공개 정보(KEV 등재 · CVSS · EPSS)와 자산 적용 판정을 붙여 보인다. **CVE 정보는 조사 우선순위 참고용이고 판정은 행위 증거로 한다.** 판정값 · 심각도를 CVE 로 정하지 않는다.
+- API(`app/cti.py`): `GET /api/incidents/{key}/cti`, `GET /api/cti/watch`, `GET /api/assets`, `GET /api/assets/{asset_id}?filter=all|kev|fix&limit&offset`. 사건 키 경로는 `incidentPath` 와 같은 방식으로 부호화한다. `…/cti` 라우터는 상세 조회(`/api/incidents/{incident_key:path}`)보다 먼저 붙어야 한다(뒤에 붙으면 상세가 `KEY/cti` 를 삼켜 404).
+- 사건 상세 ⑥ 취약점 연계: 왼쪽 열 끝(④ 다음)에 둔다. 판정 근거인 ① ~ ④ 보다 앞에 두지 않는다. 서명 규칙 사건이 아니면(`applicable: false`) 구역을 그리지 않고, 첫 조회 중에도 그리지 않는다(대부분의 사건은 대상이 아니라 빈 구역이 잠깐 보였다 사라지지 않게). 404 는 이 기능 이전 서버로 보고 안내 한 줄, 그 밖의 오류는 구역 안 오류 · 다시 시도, CTI 표가 없으면(`available: false`) 마이그레이션 안내다.
+- 구역 내용: 원칙 한 줄, 오래됨 띠, 서명마다 제품 · 공급사 · 대응 방식(명시 대응 · 분석가 대응) · 적용 요약 · 근거 문장 · 자산 적용 표(자산 · 요청 받음 · 판정 · 이유), CVE 표(KEV 등재일 · 랜섬웨어 · CVSS · EPSS(백분위) · 요약), 신선도(KEV · EPSS · 배포판 대조 · NVD · 가장 오래된 자산 수집).
+- 적용 판정은 서버가 정한다: 해당 · 비해당 · 미확인. 자산 정보가 없거나 48시간(서버 `STALE_HOURS`)을 넘었으면 미확인이다. 공개 정보(KEV · EPSS · 배포판 대조)가 오래되면 '비해당으로 읽지 않습니다' 띠를 보인다. NVD 는 초점 CVE 만 받으므로 오래됨으로 보지 않는다.
+- `/inventory`(메뉴 수집 › 자산 · 취약점, 노드 화면 머리에도 링크): 맨 위 주목 CVE, 신선도 요약, 자산 표(역할 · 방법 · 수집 · 커널과 재부팅 대기 · 취약점 · KEV · 수정판 있음 · 최고 EPSS · 오류), 자산을 고르면 주요 패키지 · 도는 컨테이너 이미지 · 배포판 취약점 표(전체 · KEV · 수정 가능, 50건씩 쪽 넘김). 대조 전 자산은 0건이 아니라 '대조 전'으로 적는다. 컨테이너 이미지 안의 패키지는 조사하지 않아 미확인이다. (`/assets` 는 빌드 결과의 번들 폴더라 화면 경로로 쓰지 않는다.)
+- 쪽 넘김: 뒤쪽을 보는 동안 대조가 다시 돌아 총수가 줄면(패치 뒤 재조회) 빈 쪽을 '알려진 취약점이 없습니다'로 적지 않고 유효한 마지막 쪽으로 돌아간다(인시던트 목록과 같은 방식). 총수가 있는데 행이 비어 오면 '이 쪽에는 행이 없습니다'로 적는다.
+- 주목 CVE(`GET /api/cti/watch`, 목록은 수집기의 `cti/watchlist.json`): 자산 취약점 표는 걸린 것만 담으므로, 널리 알려진 CVE 몇 개(예: CVE-2024-6387 regreSSHion)를 정해 두고 자산마다 설치 버전을 배포판(Ubuntu) 수정판과 견준 결과를 보인다. 이미 고쳐진 CVE 도 '비해당'이라는 대조 결과로 남는다. 표는 CVE · 주목 이유 · KEV · EPSS(백분위) · 판정 요약 · 자산별 판정 배지이고, 행을 펼치면 설명 · 배포판 기록(조회 전 · 기록 없음) · 영향 패키지와 수정판(없으면 '배포판 수정판 없음') · 자산별 패키지 · 설치 · 수정판 · 이유를 보인다. 판정과 이유는 서버(judge_watch)가 정하고 화면은 옮겨 적는다. 자산 정보가 없거나 오래됐거나 배포판 기록이 없으면 미확인이다. 자산 목록과 따로 받아 한쪽이 실패해도 다른 쪽은 보이고, 404(이 기능 이전 서버)는 카드 안 안내 한 줄이다.
+- 캐시: `ctiKeys` 는 사건 상세 키(`incidentKeys`) 밑에 두지 않는다(판정 · 조치 통보마다 다시 받을 까닭이 없다). 주목 CVE 는 `ctiKeys.watch()` 로 자산 키 밑에 두지 않는다. 사건 연계 5분 · 자산 · 주목 CVE 60초 동안 다시 묻지 않고 주기 재조회는 없다. 웹소켓 재접속 때는 다시 조회한다. 자산 상세는 같은 자산 안에서만 이전 결과를 유지한다(다른 자산의 취약점을 잠깐이라도 새 자산 것처럼 보이지 않는다).
+- CVSS 등급은 NVD 대문자(`9.8 CRITICAL`)로, Ubuntu 우선순위는 한국어(긴급 · 높음 · 중간 · 낮음 · 무시 가능)로 적는다. 사건 심각도 배지(소문자 critical 등)와 섞이지 않게 하려는 것이다.
+- 배포: API 와 화면 빌드를 함께 배포한다. DB 에 `infra/migrations/20260925_cti.sql` 을 적용하기 전에는 두 화면 모두 표가 없다는 안내를 보인다.
+

@@ -2,7 +2,7 @@
 """관제 대상 로그 다리 (WBS 3.4.2 · 3.4.4 / 이슈 #11).
 
 opsloop-agents.service 가 opsloop-pull 사용자로 1분마다 돌린다. 등록 노드(web-01 등)의 Loki 테넌트와
-수집 관문 원장을 events · node_metrics 로 옮기고, 자기 탐지(R202)와 관제 대상 규칙(w2 · a1 · i2)을 돌린다.
+수집 관문 원장을 events · node_metrics 로 옮기고, 자기 탐지(R202)와 관제 대상 규칙(w2 · a1 · i2 · c1)을 돌린다.
 5분 적재기(opsloop-ingest)와 허니팟 경로는 건드리지 않는다. S3 가 막혀도 이 경로의 탐지는 계속된다.
 
 한 회차
@@ -19,9 +19,14 @@ opsloop-agents.service 가 opsloop-pull 사용자로 1분마다 돌린다. 등�
   4. 관문 원장($GATE_DIR/collector-*.jsonl)과 관리 원장($OPSLOOP_ADMIN_DIR/admin-*.jsonl)을 파일마다
      (inode, 오프셋) 으로 이어 읽어 events 에 넣는다. 관리 원장은 관문이 쓸 수 없는 root 전용 폴더에서만 읽는다.
      쓰는 중인 마지막 줄(줄바꿈 없음)은 다음 회차에 읽는다.
-  5. detect.py 를 rules_self.json(s1) · rules_w1.json(w2) · rules_audit.json(a1) · rules_infra.json(i2) 로
-     차례로 돈다. 규칙 파일마다 따로 돌리므로 하나가 실패해도 나머지는 돈다. rules_node.json(n1)은 w1 R101 이
-     흡수해 돌리지 않는다 (파일과 rule_versions 이력은 남긴다).
+  5. detect.py 를 rules_self.json(s1) · rules_w1.json(w2) · rules_audit.json(a1) · rules_infra.json(i2) ·
+     rules_cve.json(c1) 로 차례로 돈다. 규칙 파일마다 따로 돌리므로 하나가 실패해도 나머지는 돈다.
+     rules_node.json(n1)은 w1 R101 이 흡수해 돌리지 않는다 (파일과 rule_versions 이력은 남긴다).
+     c1(요청 경로 서명)은 web-01 의 nginx.request 와 5분 적재기가 넣은 디코이 decoy.request 를 함께 본다.
+     탐지는 기간 없이 전 기간을 다시 보므로 늦게 들어온 디코이 요청도 다음 회차에 잡힌다. 다만 사건 키가 묶음의
+     첫 신호 시각이라, 같은 출발지의 web-01 요청보다 이른 디코이 요청이 늦게 들어오면 첫 시각이 앞당겨진 새 키
+     사건이 생기고(알림도 한 번 더) 먼저 뜬 사건은 미판정으로 남는다. c1 에는 억제가 없어 옛 키를 지우지 않는다.
+     w2 R102 와 같은 구조적 한계로 두고 rules_cve.json note 에 적었다 (요청 하나가 곧 신호라 R102 보다 쉽게 생긴다).
   Loki 가 응답하지 않아도 4 · 5 는 한다.
 
 관제 대상이 장악된 경우를 가정한다. 관문은 본문을 그대로 넘기므로 web-01 은 라벨 · 줄 내용을 마음대로 정한다.
@@ -76,9 +81,11 @@ ADMIN_DIR = os.environ.get("OPSLOOP_ADMIN_DIR", "/var/lib/opsloop/admin")
 DB_ENV = os.environ.get("OPSLOOP_DB_ENV", "/etc/opsloop/collector.env")
 # 탐지기 하위 프로세스는 자기 역할(opsloop_detector)로 붙는다. 파일이 없으면 다리와 같은 접속 정보로 돈다 (이슈 #31)
 DETECT_ENV = os.environ.get("OPSLOOP_DETECTOR_ENV", "/etc/opsloop/detector.env")
-# s1 (R202 미등록 에이전트) · w2 (R101~R104 웹 · 인증) · a1 (R201 차단 대량 해제) · i2 (R301 노드 수신 끊김)
-# w2 는 rules_w1.json 안에서 버전만 올린 것이라 파일 이름은 그대로다
-RULESETS = ("rules_self.json", "rules_w1.json", "rules_audit.json", "rules_infra.json")
+# s1 (R202 미등록 에이전트) · w2 (R101~R104 웹 · 인증) · a1 (R201 차단 대량 해제) · i2 (R301 노드 수신 끊김) ·
+# c1 (R105 · R106 요청 경로 서명, 이슈 #39)
+# w2 는 rules_w1.json 안에서 버전만 올린 것이라 파일 이름은 그대로다. c1 을 w2 에 넣지 않고 파일을 나눈 것은
+# w2 의 버전을 올리면 기존 웹 사건 키가 모두 바뀌어 다시 뜨기 때문이다
+RULESETS = ("rules_self.json", "rules_w1.json", "rules_audit.json", "rules_infra.json", "rules_cve.json")
 
 NS = 10 ** 9
 LAG = 10 * NS                  # 지금-10초까지만 본다 (Loki 가 막 받은 묶음이 조회에 덜 잡힐 수 있다)

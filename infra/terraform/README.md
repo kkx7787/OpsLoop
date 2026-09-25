@@ -10,8 +10,8 @@
 | `gateway.tf` | 관문 방화벽 인스턴스 · ENI · EIP · 보안그룹 |
 | `honeypot_dmz.tf` | DMZ 허니팟(허니팟 · 웹 디코이 한 대) · 보안그룹 |
 | `ssm_endpoints.tf` | SSM 전용 인터페이스 엔드포인트 3개 |
-| `iam.tf` | 센서 역할 · 관문 역할 · 원장 읽기 사용자 |
-| `s3.tf` | 원장 버킷 · 버킷 정책(인스턴스별 쓰기 경계) |
+| `iam.tf` | 센서 역할 · 관문 역할 · 원장 읽기 사용자 · CTI 쓰기 사용자(`cti/` 올리기만, 이슈 #39) |
+| `s3.tf` | 원장 버킷 · 버킷 정책(인스턴스별 쓰기 경계 · `cti/` 쓰기 경계) |
 
 처음에는 콘솔에서 손으로 만든 수집 노드(허니팟)와 앱 노드를 `import` 로 가져와 관리했다.
 2026-09-25 두 노드를 종료하며 정의(`instances.tf` · `security_groups.tf` · 앱 노드 전용 SSM 역할)를
@@ -85,7 +85,7 @@ SSM 은 VPC 엔드포인트로 가서 방화벽을 지나지 않는다. 규칙�
 ```bash
 aws s3api get-bucket-policy --bucket opsloop-archive-739272173045 --query Policy --output text \
   | python3 -c 'import json,sys; d=json.load(sys.stdin)["Statement"]; print(len(d)); [print(s["Sid"], s["Condition"]) for s in d if s["Sid"].startswith("OnlyOwnHost")]'
-                                          # 문 10개(DMZ 허니팟이 생기면 11개). OnlyOwnHost* 의 ARN 이 terraform state show 의 인스턴스 ARN 과 같다
+                                          # 문 10개(DMZ 허니팟이 생기면 11개. CTI 문 두 개를 더한 지금은 12개 — 아래 'CTI 원본 보관'). OnlyOwnHost* 의 ARN 이 terraform state show 의 인스턴스 ARN 과 같다
 aws s3api head-object --bucket opsloop-archive-739272173045 \
   --key hb/v1/host=i-058726c1a0671fe1d/latest.json --query LastModified   # 한 회차(6분) 뒤, 적용 완료보다 늦은 시각
 aws ssm send-command --instance-ids i-058726c1a0671fe1d --document-name AWS-RunShellScript \
@@ -101,9 +101,10 @@ aws ssm send-command --instance-ids i-058726c1a0671fe1d --document-name AWS-RunS
 방화벽(관문: gateway · hb)이 다르고, 버킷 정책은 인스턴스마다 자기 host 경로
 (`raw/v1/sensor=<발생원>/host=<자기 ID>/*` · `hb/v1/host=<자기 ID>/latest.json`)에만 PutObject 를
 허용하며 그 밖의 경로는 누구도 쓰지 못한다(`ec2:SourceInstanceARN` 조건. `migration/` 같은 원장 밖
-접두사도 닫힌다 — 이 버킷은 원장만 담고, DB 를 다시 넘길 일이 있으면 다른 버킷을 쓴다). 새 노드는
-`s3.tf` 의 `ledger_writers` 에 더해야 원장에 쓴다. 풀러의 발생원 · 호스트 짝 확인(`OPSLOOP_GATEWAY_HOSTS`,
-아래 2단계)은 그 뒤의 둘째 벽이다. DNS(VPC 리졸버)는 남는 유출 통로다(DNS 방화벽은 범위 밖).
+접두사도 닫힌다 — 이 버킷은 원장과 공개 정보 원본(`cti/`. CTI 쓰기 사용자만 쓴다, 아래 'CTI 원본 보관')만
+담고, DB 를 다시 넘길 일이 있으면 다른 버킷을 쓴다). 새 노드는 `s3.tf` 의 `ledger_writers` 에 더해야 원장에
+쓴다. 풀러의 발생원 · 호스트 짝 확인(`OPSLOOP_GATEWAY_HOSTS`, 아래 2단계)은 그 뒤의 둘째 벽이다.
+DNS(VPC 리졸버)는 남는 유출 통로다(DNS 방화벽은 범위 밖).
 
 ### 2. 방화벽 확인 · 업로더 설치
 
@@ -225,6 +226,177 @@ DMZ 허니팟이 9/23 14시부터 관문 EIP 로 유입을 받았고, 내부망 
 
 DMZ 허니팟 이미지(`honeypot_dmz_ami`)는 재구축용으로 남긴다. 이미지 전 비밀 검사로 원문 로그 · 옛 접속
 정보가 없음을 확인한 이미지다.
+
+## CTI 원본 보관 (이슈 #39)
+
+데이터 노드의 CTI 수집기(`opsloop-cti`)가 받은 공개 취약점 정보 원본(KEV · EPSS · OSV · NVD)과 자산 조사
+묶음을 같은 버킷의 `cti/` 에 한 번만 쓴다. DB 에는 정규화한 행과 원본 위치(`cti_snapshots` 의 S3 키 · sha256)만
+두고, 원본을 남기지 못한 회차는 DB 도 갱신하지 않는다. 그날 무엇을 보고 판단했는지 원본으로 다시 만들기
+위해서다(`docs/2026-09-08-판정-기준.md` §8). 수집기 설치는 `infra/vmware/README.md` 'CVE · KEV 연계'.
+
+키는 `cti/v1/source=<kev|epss|osv|nvd|assets>/date=<UTC 날짜>/<sha256 앞 16자>.<json|csv.gz>` 다. 키에 내용
+해시가 들어가므로 같은 날 같은 내용을 다시 받으면 412(이미 있음)로 끝나고, 한 번 쓰기와 매일 재실행이
+부딪치지 않는다.
+
+별도 버킷 대신 같은 버킷을 쓰므로 주체와 경로를 정책으로 나누고 실제 주체로 검증한다.
+센서 권한으로는 CTI 원본을 쓰거나 덮어쓸 수 없어야 한다.
+
+| 주체 | `cti/` | 원장(`raw/` · `hb/`) |
+|---|---|---|
+| CTI 쓰기 사용자 `opsloop-cti-writer` | `If-None-Match: *` 쓰기만. 읽기 · 목록 · 삭제 없음 | 쓰기 거부 |
+| 센서 · 관문 역할 | 쓰기 거부 | 자기 host 경로에만 |
+| 원장 읽기 사용자 `opsloop-archive-reader` | 목록 · 읽기 없음 | 목록 · 읽기 |
+| 그 밖 (루트 · 관리자 포함) | 쓰기 · 삭제 거부. 읽기는 관리자 자격으로만(재현 작업) | 쓰기 · `raw/` 삭제 거부 |
+
+`s3.tf` 에서 바뀐 곳:
+
+- `OnlyCtiWriterWritesCti` (새 문): CTI 쓰기 사용자가 아닌 모든 주체의 `cti/` 쓰기를 거부한다(`aws:PrincipalArn`).
+  장악된 센서가 신뢰 정보(KEV · 취약점 기록)를 심거나 바꾸지 못한다
+- `CtiWriteOnce` (새 문): `If-None-Match` 없는 `cti/` 쓰기를 거부한다. 올린 원본을 조작본으로 바꿔치기할 수 없다
+- `LedgerKnownHostsOnly` 의 예외(`not_resources`)에 `cti/*` 를 더했다. 빠지면 IAM 허용이 있어도 이 거부가 이긴다
+- 저장 등급 · 기본 암호화 · 고객 키 · 삭제 거부 문의 대상에 `cti/*` 를 더했다
+
+정책 문은 12개다(관문 · DMZ 허니팟 두 대 기준. DMZ 허니팟이 없으면 11개): `DenyInsecureTransport` ·
+`OnlySensorWritesLedger` · `OnlyOwnHostGateway` · `OnlyOwnHostHoneypotDmz0` · `LedgerKnownHostsOnly` ·
+`OnlyCtiWriterWritesCti` · `CtiWriteOnce` · `LedgerWriteOnce` · `LedgerStandardStorageOnly` ·
+`LedgerDefaultEncryptionOnly` · `LedgerNoCustomerKey` · `DenyLedgerDelete`.
+
+### 1. 정책 · 쓰기 사용자 적용
+
+```bash
+aws s3api get-bucket-policy --bucket opsloop-archive-739272173045 --query Policy --output text \
+  > bucket-policy.before.json   # 되돌릴 때 put-bucket-policy 로 다시 넣는다 (저장소에 넣지 않는다)
+terraform plan      # 추가 2(aws_iam_user.cti_writer · aws_iam_user_policy.cti_put) · 변경 1(aws_s3_bucket_policy.archive) · 삭제 0.
+                    # 그 밖이 보이면 적용하지 않는다
+terraform apply
+aws s3api get-bucket-policy --bucket opsloop-archive-739272173045 --query Policy --output text \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin)["Statement"]; print(len(d)); [print(s["Sid"], s.get("Condition") or s.get("NotResource")) for s in d if "Cti" in s["Sid"] or s["Sid"] == "LedgerKnownHostsOnly"]'
+                    # 문 12개. OnlyCtiWriterWritesCti 의 ARN 이 …:user/opsloop-cti-writer, CtiWriteOnce 가 s3:if-none-match,
+                    # LedgerKnownHostsOnly 의 NotResource 에 …/cti/* 가 있다
+```
+
+원장 쪽 문은 대상에 `cti/*` 가 더해질 뿐이지만 정책 전체가 바뀌므로, 한 회차 뒤 두 인스턴스의 업로드가
+이어지는지 본다(끊겼으면 보관한 정책을 `put-bucket-policy` 로 다시 넣는다).
+
+```bash
+for r in aws_instance.gateway 'aws_instance.honeypot_dmz[0]'; do
+  id=$(terraform state show "$r" | awk -F'"' '/^ *id /{print $2; exit}')
+  aws s3api head-object --bucket opsloop-archive-739272173045 --key "hb/v1/host=$id/latest.json" --query LastModified
+done                # 둘 다 적용 완료보다 늦은 시각
+```
+
+### 2. 쓰기 키 넣기
+
+데이터 노드 설치기(`cti/install-cti.sh`)를 먼저 돌려 `opsloop-cti` 그룹과 `/etc/opsloop` 통과 권한이 있어야
+한다. 키는 Terraform 으로 만들지 않는다(`aws_iam_access_key` 를 두면 비밀값이 상태 파일에 평문으로 남는다).
+CLI 로 발급한 출력을 ssh 파이프로 바로 넘겨 데이터 노드에서 파일로 쓴다(`infra/vmware/scripts/db-console-role.sh`
+와 같은 방식). 비밀값은 파이프로만 지나간다. Mac 디스크 · 셸 이력 · 화면 · 명령행 인자 · tfstate 에 남지 않고,
+원격의 `read` · `printf` 는 bash 내장이라 ps 에도 보이지 않는다. 발급 출력이 비면(`aws` 실패) 파일을 쓰지 않는다.
+
+```bash
+# Mac, aws login 뒤, 저장소 루트. 먼저 닿는지 · 그룹이 있는지 본다 (아니면 키를 발급하지 않는다)
+ssh -F ~/.ssh/config.opsloop data01 'getent group opsloop-cti >/dev/null && test -d /etc/opsloop && echo "  준비됨"'
+aws iam create-access-key --user-name opsloop-cti-writer \
+    --query 'AccessKey.[AccessKeyId,SecretAccessKey]' --output text \
+  | ssh -F ~/.ssh/config.opsloop data01 'read -r id secret && test -n "$secret" && printf "AWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\n" "$id" "$secret" | sudo -n install -m 640 -o root -g opsloop-cti /dev/stdin /etc/opsloop/s3-cti.env && echo "  썼다"'
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n ls -l /etc/opsloop/s3-cti.env'   # -rw-r----- root opsloop-cti. 내용은 보지 않는다
+```
+
+- ssh 가 실패하면 발급된 비밀값은 다시 볼 수 없다. `aws iam list-access-keys --user-name opsloop-cti-writer` 로
+  키 ID 를 보고 `aws iam delete-access-key` 로 지운 뒤 다시 발급한다(사용자 키는 최대 2개)
+- 교체: 같은 명령으로 새 키를 넣고(파일을 덮어쓴다) 수집기 한 회차가 성공한 것을 본 뒤, 옛 키를
+  `aws iam update-access-key --status Inactive` 로 끄고 며칠 뒤 지운다
+
+### 3. 검증 (실제 주체로)
+
+관리자 자격으로 대신 시험하지 않는다. 주체마다 그 주체의 자격으로 요청한다(`docs/2026-09-22-격리시험-결과.md` 2장과
+같은 방식). 시험 객체는 지울 수 없으므로(삭제 거부) 수집기 원본(`cti/v1/`)과 섞이지 않게 `cti/_probe/` 아래에 둔다.
+
+| 주체 | 시험 | 기대 |
+|---|---|---|
+| CTI 쓰기 사용자 | `cti/_probe/<시각>.json` 에 `If-None-Match: *` 로 쓰기 | 200 |
+| CTI 쓰기 사용자 | 같은 키에 다시 (`If-None-Match: *`) | 412 PreconditionFailed |
+| CTI 쓰기 사용자 | 새 키에 조건 없이 쓰기 | 403 AccessDenied (`CtiWriteOnce`) |
+| CTI 쓰기 사용자 | `raw/` 에 쓰기 (`If-None-Match: *`) | 403 |
+| CTI 쓰기 사용자 | `cti/` 목록 · 읽기 · 삭제 | 403 |
+| 센서 · 관문 역할 | `cti/` 에 쓰기 (`If-None-Match: *`) | 403 (역할 권한 밖이고 `OnlyCtiWriterWritesCti` 도 막는다) |
+| 원장 읽기 사용자 | `cti/` 목록 | 403 |
+
+데이터 노드의 boto3(Ubuntu `python3-boto3`)는 `IfNoneMatch` 인자를 모르므로 업로더(`sensor/upload.py`)처럼
+서명 직전에 헤더를 넣는다. 키 파일은 셸이 아니라 파이썬이 읽는다.
+
+```bash
+# CTI 쓰기 사용자 (데이터 노드, opsloop-cti 사용자로)
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n -u opsloop-cti python3 -' <<'EOF'
+import time, boto3, botocore
+env = dict(l.split("=", 1) for l in open("/etc/opsloop/s3-cti.env").read().splitlines() if "=" in l)
+s = boto3.session.Session(aws_access_key_id=env["AWS_ACCESS_KEY_ID"],
+                          aws_secret_access_key=env["AWS_SECRET_ACCESS_KEY"], region_name="ap-northeast-2")
+arn = s.client("sts").get_caller_identity()["Arn"]
+print(arn); assert arn.endswith(":user/opsloop-cti-writer"), "다른 주체다"
+B, K = "opsloop-archive-739272173045", "cti/_probe/%d.json" % time.time()
+
+def once(request, **_):
+    request.headers["If-None-Match"] = "*"
+
+def code(name, cond=False, **kw):
+    c = s.client("s3")
+    if cond:
+        c.meta.events.register("before-sign.s3.PutObject", once)
+    try:
+        getattr(c, name)(Bucket=B, **kw)
+        return 200
+    except botocore.exceptions.ClientError as e:
+        return e.response["ResponseMetadata"]["HTTPStatusCode"]
+
+print("조건부 쓰기 ", code("put_object", True, Key=K, Body=b"{}"))                   # 200
+print("같은 키 다시", code("put_object", True, Key=K, Body=b"{}"))                   # 412
+print("조건 없이   ", code("put_object", Key=K + ".x", Body=b"{}"))                  # 403
+print("raw/ 쓰기   ", code("put_object", True, Key="raw/_probe.json", Body=b"{}"))   # 403
+print("목록 · 읽기 · 삭제", code("list_objects_v2", Prefix="cti/"), code("get_object", Key=K),
+      code("delete_object", Key=K))                                                # 403 403 403
+EOF
+```
+
+센서 · 관문 역할은 인스턴스마다 SSM 세션(`aws ssm start-session --target <인스턴스 ID>`) 안에서 인스턴스
+역할로 돌린다(관문 · DMZ 허니팟 둘 다).
+
+```bash
+python3 - <<'EOF'
+import boto3, botocore
+c = boto3.client("s3", region_name="ap-northeast-2")
+
+def once(request, **_):
+    request.headers["If-None-Match"] = "*"
+
+c.meta.events.register("before-sign.s3.PutObject", once)
+try:
+    c.put_object(Bucket="opsloop-archive-739272173045", Key="cti/_probe/instance.json", Body=b"{}")
+    print(200)
+except botocore.exceptions.ClientError as e:
+    print(e.response["ResponseMetadata"]["HTTPStatusCode"])                        # 403
+EOF
+```
+
+원장 읽기 사용자는 데이터 노드에서 `opsloop-pull` 사용자로(키 파일 `/etc/opsloop/s3-pull.env`) `cti/` 목록을
+부른다.
+
+```bash
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n -u opsloop-pull python3 -' <<'EOF'
+import boto3, botocore
+env = dict(l.split("=", 1) for l in open("/etc/opsloop/s3-pull.env").read().splitlines() if "=" in l)
+c = boto3.client("s3", aws_access_key_id=env["AWS_ACCESS_KEY_ID"],
+                 aws_secret_access_key=env["AWS_SECRET_ACCESS_KEY"], region_name="ap-northeast-2")
+try:
+    c.list_objects_v2(Bucket="opsloop-archive-739272173045", Prefix="cti/")
+    print(200)
+except botocore.exceptions.ClientError as e:
+    print(e.response["ResponseMetadata"]["HTTPStatusCode"])                        # 403
+EOF
+```
+
+결과는 수집기 타이머를 켜기 전에 이슈 #39 에 남긴다. 이 결과가 격리 시험 문서 2장의 유보('아직 만들지 않은
+CTI 서비스 전체가 격리됐다는 뜻은 아니다')를 푸는 근거가 된다.
 
 ## 남은 과제
 
