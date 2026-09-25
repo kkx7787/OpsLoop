@@ -33,6 +33,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.websockets import WebSocketClose
 
+import live
 from untrusted import reveal
 
 # 화면 빌드 결과. Mac 에서 console/ 의 npm run build 가 만든다. git 에는 넣지 않는다.
@@ -345,11 +346,15 @@ router = APIRouter()
 
 @router.get("/api/me")
 async def me(request: Request):
-    """화면이 처음 부르는 곳. 누가 어떤 역할로 들어왔는지 돌려준다. 세션은 인증 미들웨어가 채운다."""
+    """화면이 처음 부르는 곳. 누가 어떤 역할로 들어왔는지 돌려준다. 세션은 인증 미들웨어가 채운다.
+
+    console 은 이 요청을 받은 콘솔 이름(live.CONSOLE_NAME)이다. 전환 시험 · 화면 연결 표시가 어느 콘솔이 답했는지 본다.
+    세션 뒤에서만 나가고 응답 헤더로는 내지 않는다. 밖에서 콘솔을 가려내는 단서가 되지 않게 한다(이슈 #41).
+    """
     user = getattr(request.state, "user", None)
     if user is None:
         raise HTTPException(status_code=401, detail="인증이 필요합니다")
-    return {"username": user["u"], "role": user["r"]}
+    return {"username": user["u"], "role": user["r"], "console": live.CONSOLE_NAME}
 
 
 # ──────────────────────────────────────────────────────────────

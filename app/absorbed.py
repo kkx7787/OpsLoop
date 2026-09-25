@@ -134,6 +134,10 @@ FOLLOW_STATE_SQL = """
 
 # 후속 차단할 것이 있는 약속. 새로 흡수된 출발지 가운데 아직 살아 있는 차단도, 사람이 푼 기록도 없고 차단 금지 대역이
 # 아닌 것이 하나라도 있는 첫 사건만 고른다. 없으면 아무것도 쓰지 않는다(감사 · 조치 기록이 매분 쌓이지 않는다).
+# 고른 첫 사건 행은 키 순으로 KEY SHARE 로 잡는다(이슈 #43). 콘솔 판정 · 조치는 사건 행을 FOR UPDATE 로 먼저 잡고 차단 목록으로
+# 가므로(main.LOCK_INCIDENT), 여기서도 사건 행을 차단 목록보다 먼저 잡아야 순서가 같다. 잡지 않으면 차단 목록 행을 쥔 채
+# 조치 행의 외래 키 확인(KEY SHARE)에서 기다려, 같은 첫 사건의 함께 차단과 교착한다. KEY SHARE 는 상태 갱신
+# (FOR NO KEY UPDATE)과는 충돌하지 않아 triage 의 상태 쓰기를 막지 않는다.
 FOLLOW_DUE_SQL = """
     SELECT f.first_key, f.expires_at, f.requested_by, host(i.actor_ip) AS own
     FROM absorbed_blocks f JOIN incidents i ON i.incident_key = f.first_key
@@ -146,7 +150,8 @@ FOLLOW_DUE_SQL = """
             AND NOT EXISTS (SELECT 1 FROM blocklist b WHERE b.actor_ip = a.actor_ip
                             AND ((b.released_at IS NULL AND (b.expires_at IS NULL OR b.expires_at > now()))
                                  OR (b.released_at IS NOT NULL AND b.released_by IS NOT NULL))))
-    ORDER BY f.first_key"""
+    ORDER BY f.first_key
+    FOR KEY SHARE OF i"""
 
 # 판정 뒤에 흡수됐는데 차단이 없는 출발지(대시보드). 첫 사건의 마지막 판정이 위협이고, 첫 판정보다 뒤에 흡수됐고,
 # 살아 있는 차단이 없고, 차단 금지 대역이 아닌 것. 함께 차단을 고르지 않았으면(후속 차단 약속이 없으면) 여기 남는다

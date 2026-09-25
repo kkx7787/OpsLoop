@@ -13,12 +13,15 @@ main.app 을 FastAPI TestClient 로 그대로 부른다. lifespan 은 돌리지 
   2. 출처 확인: 같은 출처 통과 · 다른 출처 · 출처 없음 · null 은 403. Referer 대체. 포트까지 비교.
      /login · /logout · /api POST 포함. GET 은 보지 않는다. TRUSTED_ORIGINS. /ws 핸드셰이크
   3. CORS: CORS_ORIGINS 가 있을 때만 건다. 기본값(localhost:5173)은 없다
-  4. /api/me: 세션이 있으면 아이디 · 역할, 없거나 위조면 401
+  4. /api/me: 세션이 있으면 아이디 · 역할 · 콘솔 이름(헤더로는 안 냄), 없거나 위조면 401
+     /ws: 세션이 없으면 수락한 뒤 1008 로 닫는다(브라우저가 1008 을 받는다). hello 에 콘솔 이름(이슈 #43)
   5. 화면 서빙: 빌드가 없으면 자리표시 그대로. 있으면 화면 경로는 index.html(no-cache), /assets 는 파일,
      폴더 밖은 막고 제외 경로(/api · /health · /login · /docs …)는 그대로. 로그인 전에는 /login(next 포함)
   6. 로그인: 새 화면(스크립트 없음) · next 는 같은 출처 상대 경로만 · 기록(console.login.*) 형식 그대로.
      아이디 · UA 의 NUL 은 지우고 파서와 같은 길이로 자른다(기록이 빠지지 않는다)
   7. CSP 위반 보고(POST /api/csp-report): 세션 · 출처 없이 받음(이 경로만) · 형식 · 8 KiB · 분당 60건 · 한 줄 로그 정리
+  8. 로그인 기록의 출발지(이슈 #43): uvicorn 은 FORWARDED_ALLOW_IPS 에 든 곳(HAProxy)에서 온 X-Forwarded-For 만 믿는다.
+     믿는 프록시 → 실제 주소 · 다른 곳 → 무시 · "위조, 실제" → 오른쪽 실제 값
 
 실행: python -m unittest discover -s app
 """
@@ -68,6 +71,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from starlette.websockets import WebSocketDisconnect  # noqa: E402
 
 import auth  # noqa: E402
+import live  # noqa: E402
 import main  # noqa: E402
 import web  # noqa: E402
 
@@ -533,9 +537,21 @@ class CorsTest(unittest.TestCase):
 class MeTest(Base):
     def test_me(self):
         self.login_as("kim", "admin")
-        r = self.client.get("/api/me")
+        with mock.patch.object(live, "CONSOLE_NAME", "opsloop-console-b"):
+            r = self.client.get("/api/me")
         self.assertEqual(r.status_code, 200)
-        self.assertEqual(r.json(), {"username": "kim", "role": "admin"})
+        self.assertEqual(r.json(), {"username": "kim", "role": "admin", "console": "opsloop-console-b"})
+        # 콘솔 이름은 본문으로만 나간다. 응답 헤더로 내면 밖에서 콘솔을 가려내는 단서가 된다(이슈 #41)
+        for name, value in r.headers.items():
+            self.assertNotIn("console-b", value, name)
+
+    def test_console_name_needs_session(self):
+        with mock.patch.object(live, "CONSOLE_NAME", "opsloop-console-b"):
+            for path in ("/api/me", "/health", "/login"):
+                r = self.client.get(path)
+                self.assertNotIn("opsloop-console-b", r.text, path)
+                for name, value in r.headers.items():
+                    self.assertNotIn("console-b", value, (path, name))
 
     def test_me_without_session(self):
         r = self.client.get("/api/me")
@@ -547,6 +563,40 @@ class MeTest(Base):
         payload, _, sig = token.rpartition(".")
         self.client.cookies.set(auth.COOKIE, payload + "." + ("0" * len(sig)))
         self.assertEqual(self.client.get("/api/me").status_code, 401)
+
+
+class WebSocketSessionTest(Base):
+    """세션이 없는 웹소켓은 수락한 뒤 1008 로 닫는다. 수락 전에 닫으면 브라우저는 403 · 1006 만 받아 화면(live.ts)의
+    1008 분기(로그인으로)가 돌지 않고 다시 잇기만 되풀이한다(2026-09-25 74분 · 403 292번)."""
+    WS = {"origin": "http://testserver"}
+
+    def assert_closed_1008_after_accept(self):
+        # 수락 전에 닫히면 websocket_connect 가 들어가면서 끊김을 던진다. 수락 뒤라면 첫 수신에서 1008 을 받는다
+        with self.client.websocket_connect("/ws", headers=self.WS) as ws:
+            with self.assertRaises(WebSocketDisconnect) as caught:
+                ws.receive_json()
+        self.assertEqual(caught.exception.code, 1008)
+        self.assertEqual(main.hub.clients, set(), "화면 목록에 넣지 않는다")
+
+    def test_no_session(self):
+        self.assert_closed_1008_after_accept()
+
+    def test_forged_and_expired_session(self):
+        token = auth.issue("han", "viewer")
+        payload, _, sig = token.rpartition(".")
+        self.client.cookies.set(auth.COOKIE, payload + "." + ("0" * len(sig)))
+        self.assert_closed_1008_after_accept()
+        with mock.patch.object(auth.time, "time", return_value=0):
+            expired = auth.issue("han", "viewer")
+        self.client.cookies.set(auth.COOKIE, expired)
+        self.assert_closed_1008_after_accept()
+
+    def test_hello_names_the_console(self):
+        self.login_as()
+        with mock.patch.object(live, "CONSOLE_NAME", "opsloop-console-a"):
+            with self.client.websocket_connect("/ws", headers=self.WS) as ws:
+                self.assertEqual(ws.receive_json(), {"type": "hello", "data": {"channel": "opsloop_incident",
+                                                                             "console": "opsloop-console-a"}})
 
 
 # ──────────────────────────────────────────────────────────────
@@ -921,6 +971,80 @@ class CspReportTest(Base):
                 r = self.client.request(method, path, json=body, headers=EVIL)
             self.assertEqual(r.status_code, 403, (method, path))
         self.assertEqual(self.pool.executed, [], "보고는 DB 에 넣지 않는다")
+
+
+# ──────────────────────────────────────────────────────────────
+#  8. 로그인 기록의 출발지 (X-Forwarded-For)
+# ──────────────────────────────────────────────────────────────
+class ForwardedForTest(Base):
+    """콘솔 컨테이너는 코드 변경 없이 uvicorn 의 ProxyHeadersMiddleware 로 X-Forwarded-For 를 읽는다(이슈 #43).
+    compose 가 FORWARDED_ALLOW_IPS 로 HAProxy 주소(192.168.50.1)를 주고, HAProxy 는 받은 X-Forwarded-For 를 지우고
+    제 것을 붙인다(option forwardfor). auth.log_event 는 request.client.host 를 쓰므로 기록의 src_ip 가 실제 주소가 된다.
+    uvicorn 0.34 의 Config 가 환경변수를 읽어 앱을 감싸는 길을 그대로 쓴다(Dockerfile CMD 에 --forwarded-allow-ips 없음)."""
+    PROXY = "192.168.50.1"
+
+    def setUp(self):
+        super().setUp()
+        import uvicorn
+        with mock.patch.dict(os.environ, {"FORWARDED_ALLOW_IPS": self.PROXY}):
+            config = uvicorn.Config("main:app", proxy_headers=True)
+            config.load()
+        self.config = config
+
+    def post_login(self, peer, headers, password="wrong"):
+        import httpx
+        transport = httpx.ASGITransport(app=self.config.loaded_app, client=(peer, 40000))
+
+        async def go():
+            async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+                return await client.post("/login", data={"username": "han", "password": password},
+                                         headers=SAME | headers)
+        return asyncio.run(go())
+
+    def login_from(self, peer, xff=None):
+        r = self.post_login(peer, {"X-Forwarded-For": xff} if xff is not None else {})
+        self.assertEqual(r.status_code, 401)
+        (event,) = self.pool.events()
+        self.pool.executed.clear()
+        return event["src_ip"]
+
+    def test_env_configures_trusted_proxy(self):
+        from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
+        self.assertEqual(self.config.forwarded_allow_ips, self.PROXY)
+        self.assertIsInstance(self.config.loaded_app, ProxyHeadersMiddleware)
+        self.assertIn(self.PROXY, self.config.loaded_app.trusted_hosts)
+        self.assertNotIn("127.0.0.1", self.config.loaded_app.trusted_hosts)
+        # 환경변수가 없으면 기본은 127.0.0.1 뿐이다(지금 운영: 기록이 모두 192.168.50.1)
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("FORWARDED_ALLOW_IPS", None)
+            import uvicorn
+            self.assertEqual(uvicorn.Config("main:app").forwarded_allow_ips, "127.0.0.1")
+
+    def test_trusted_proxy_forwards_real_address(self):
+        self.assertEqual(self.login_from(self.PROXY, "203.0.113.7"), "203.0.113.7")
+
+    def test_untrusted_peer_header_is_ignored(self):
+        self.assertEqual(self.login_from("198.51.100.9", "203.0.113.7"), "198.51.100.9")
+        self.assertEqual(self.login_from("192.168.50.12", "203.0.113.7"), "192.168.50.12")
+
+    def test_forged_left_value_is_ignored(self):
+        # HAProxy 가 지우지 못한 위조 값이 앞에 남아도 오른쪽 끝(HAProxy 가 붙인 실제 값)을 쓴다
+        self.assertEqual(self.login_from(self.PROXY, "10.9.9.9, 203.0.113.7"), "203.0.113.7")
+        self.assertEqual(self.login_from(self.PROXY, "192.168.50.1, 203.0.113.7"), "203.0.113.7")
+
+    def test_without_header_proxy_address_stays(self):
+        self.assertEqual(self.login_from(self.PROXY), self.PROXY)
+
+    def test_forwarded_proto_changes_nothing_visible(self):
+        """믿는 프록시를 거친 X-Forwarded-Proto 도 uvicorn 이 믿는다(HAProxy 가 지우지 않으면 클라이언트 값). 앱은 요청의
+        scheme 으로 주소 · 쿠키를 만들지 않으므로 로그인 동작이 그대로다. 이 가정이 깨지면 여기서 드러난다."""
+        r = self.post_login(self.PROXY, {"X-Forwarded-Proto": "https", "X-Forwarded-For": "203.0.113.7"},
+                            password=PASSWORD)
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(r.headers["location"], "/")
+        self.assertNotIn("secure", r.headers["set-cookie"].lower())
+        (event,) = self.pool.events()
+        self.assertEqual((event["eventid"], event["src_ip"]), ("console.login.success", "203.0.113.7"))
 
 
 if __name__ == "__main__":

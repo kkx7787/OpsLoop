@@ -316,9 +316,13 @@ class NotifyDatabaseTests(unittest.IsolatedAsyncioTestCase):
 
         async def idle(self_, interval, step):
             return None
-        with patch.object(notifier.Notifier, "loop", idle):
+        # 방금 이 이름으로 집은 행(mine)이 있다. 같은 이름의 다른 발송기가 살아 있을 수 있다고 경고하고 되돌리기는 그대로
+        with patch.object(notifier.Notifier, "loop", idle), self.assertLogs("opsloop.notify", "WARNING") as logs:
             await self.notifier.start()
             await self.notifier.stop()
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn("같은 이름('test-a')의 다른 발송기가 살아 있을 수 있습니다", logs.output[0])
+        self.assertIn("1건", logs.output[0])
         self.assertEqual({r["subject_key"]: r["status"] for r in await self.deliveries()},
                          {"mine": "queued", "peer-live": "sending", "peer-dead": "sending"})
         http = FakeHttp(202)
@@ -326,6 +330,22 @@ class NotifyDatabaseTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await self.notifier.send(self.conn), 1)
         rows = {r["subject_key"]: (r["status"], r["claimed_by"]) for r in await self.deliveries()}
         self.assertEqual(rows, {"mine": ("sent", "test-a"), "peer-live": ("sending", "test-b"), "peer-dead": ("sent", "test-a")})
+
+    async def test_same_name_warning_only_for_recent_sending_rows(self):
+        """같은 이름으로 2분보다 오래전에 집은 행 · 다른 이름의 행 · 보낸 행은 경고하지 않는다(재기동 전 제 행)."""
+        channel = await self.channel()
+        await self.conn.execute("""INSERT INTO notify_deliveries(channel_id, event, subject_key, payload, status, claimed_at, claimed_by) VALUES
+            ($1, 'incident.created', 'mine-old', '{}', 'sending', now() - interval '3 minutes', 'test-a'),
+            ($1, 'incident.created', 'mine-sent', '{}', 'sent', now(), 'test-a'),
+            ($1, 'incident.created', 'peer-live', '{}', 'sending', now(), 'test-b')""", channel)
+
+        async def idle(self_, interval, step):
+            return None
+        with patch.object(notifier.Notifier, "loop", idle), self.assertNoLogs("opsloop.notify", "WARNING"):
+            await self.notifier.start()
+            await self.notifier.stop()
+        self.assertEqual({r["subject_key"]: r["status"] for r in await self.deliveries()},
+                         {"mine-old": "queued", "mine-sent": "sent", "peer-live": "sending"})
 
     async def test_api_masks_url_audits_names_only_and_tests_channel(self):
         body = notify.ChannelIn(name="운영 웹훅", kind="webhook", url="https://hooks.example.com/opsloop/SECRETPATH", grade="immediate",

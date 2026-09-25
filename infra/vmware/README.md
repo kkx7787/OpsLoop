@@ -9,7 +9,7 @@ WBS 3.3 · 이슈 #8. 보호 자산을 인터넷에서 닿지 않는 내부망�
 |---|---|---|---|
 | opsloop-fw | 1GB · 2 | NAT(uplink) · 서비스망 192.168.50.1 · 데이터망 192.168.60.1 · 관리망 192.168.70.254 | 내부 방화벽(nftables) 겸 부하분산(HAProxy) |
 | opsloop-console-a | 1GB · 1 | 서비스망 192.168.50.11 | 관제 콘솔 |
-| opsloop-console-b | 1GB · 1 | 서비스망 192.168.50.12 | 관제 콘솔 예비 (평소 꺼 둠) |
+| opsloop-console-b | 1GB · 1 | 서비스망 192.168.50.12 | 관제 콘솔 예비 (평소 꺼 둠 · 시험 · 시연 때 켬, 아래 '콘솔 B 운용') |
 | opsloop-data-01 | 2GB · 2 | 데이터망 192.168.60.11 | PostgreSQL · Loki · 수집 · 탐지 |
 | opsloop-web-01 | 768MB · 1 | 서비스망 192.168.50.21 | 관제 대상 서버 (nginx · sshd · 에이전트). DB 에는 닿지 않는다 |
 
@@ -133,7 +133,8 @@ C=$(git rev-parse --short HEAD)
 ssh -F ~/.ssh/config.opsloop fw 'pgrep -a haproxy'      # -f /etc/haproxy/haproxy.cfg
 ssh -F ~/.ssh/config.opsloop fw 'cat /etc/haproxy/haproxy.cfg' | diff - <(git show "$C:infra/vmware/haproxy/haproxy.cfg")
 ssh -F ~/.ssh/config.opsloop fw 'cat /etc/nftables.conf' | diff - <(git show "$C:infra/vmware/fw/nftables.conf")
-#    다른 곳은 이번 변경(통계 bind 한 줄 · 8404 두 줄과 그 주석)뿐이어야 한다. 주석만 다른 줄은 괜찮다.
+#    다른 곳은 이번에 올리는 변경뿐이어야 한다. 주석만 다른 줄은 괜찮다.
+#      #41: 통계 bind 한 줄 · 8404 두 줄   #43: global 의 user · group · chroot 세 줄 · frontend 의 X-Forwarded-For 두 줄
 #    그 밖의 설정 줄이 다르면 배포본이 저장소 밖에서 바뀐 것이다. 덮어쓰지 말고 멈춰 어느 쪽이 맞는지 먼저 정한다.
 #    web01.yml 의 구성 창(provision 집합)이 열려 있으면 끝난 뒤에 한다. nftables.conf 첫 줄 flush ruleset 이 집합을 비운다
 #    flush ruleset 은 Tailscale 이 iptables-nft 로 넣은 규칙(ts-input · ts-forward · ts-postrouting)도 지운다.
@@ -187,6 +188,134 @@ ssh -F ~/.ssh/config.opsloop fw 'set -e
 - `.prev` 는 1 · 2번이 실제로 파일을 바꿀 때만 만든다. 없는 쪽은 검사에서 멈추므로 건너뛴다.
 - 그 뒤 다른 판을 또 올려 `.prev` 가 바뀌었으면 `.prev` 대신 1 · 2번을 `C` 를 되돌릴 커밋으로 두고 다시 돌린다.
 
+### 출발지 주소 · 작업 프로세스 권한 (이슈 #43)
+
+로그인 기록의 출발지가 모두 192.168.50.1(HAProxy)로 남던 것을 실제 주소로 바꾸고, HAProxy 작업 프로세스를 root 에서 내린다.
+
+- HAProxy 진입점(`frontend console`)이 클라이언트가 보낸 `X-Forwarded-For` 를 지우고(`http-request del-header`) 자기가 본 주소 하나를 싣는다(`option forwardfor`).
+- 콘솔 uvicorn 은 `FORWARDED_ALLOW_IPS`(`compose/console.yml`, 기본 `${OPSLOOP_TRUSTED_PROXY:-192.168.50.1}`)에서 온 요청의 이 헤더만 믿는다. 서비스망에서 콘솔 8000 에 닿는 곳은 호스트 가드가 이 주소 하나로 막아 두었다(`infra/ansible/files/console-guard.nft`). `*` 나 대역으로 넓히지 않는다.
+- 작업 프로세스는 `haproxy` 사용자로 `/var/lib/haproxy` chroot 안에서 돈다. master 는 root 로 남아 reload 를 받는다. 로그는 chroot 안의 `/var/lib/haproxy/dev/log` 로 나간다. haproxy.service 의 `BindReadOnlyPaths=/dev/log:/var/lib/haproxy/dev/log` 가 그 자리에 journald 소켓을 붙여 두므로 지금처럼 journald → rsyslog `49-haproxy.conf` → `/var/log/haproxy.log` 로 간다(패키지 기본. 2026-09-25 방화벽에서 사용자 · 폴더 · 소켓 · haproxy 프로세스의 바인드를 읽어 확인했다).
+- 순서: HAProxy 먼저(위 1번), 콘솔 compose 는 나중. 거꾸로 하면 그 사이에 클라이언트가 보낸 `X-Forwarded-For` 를 콘솔이 믿는다. HAProxy 만 먼저 올린 동안은 콘솔이 헤더를 무시해 지금처럼 192.168.50.1 로 남는다.
+
+```bash
+# HAProxy 를 올린 뒤 (위 1번). 작업 프로세스 사용자 · 로그가 이어지는지
+ssh -F ~/.ssh/config.opsloop fw 'ps -o user=,args= -C haproxy'            # master 는 root, 작업 프로세스는 haproxy
+ssh -F ~/.ssh/config.opsloop fw 'sudo -n tail -n 3 /var/log/haproxy.log'  # reload 뒤 요청 줄이 계속 쌓인다
+# 콘솔마다 compose 를 옮기고 다시 띄운다 (이미지는 그대로. 컨테이너를 다시 만들므로 B 가 꺼져 있으면 몇 초 끊긴다)
+ssh -F ~/.ssh/config.opsloop console-a 'cp -p ~/opsloop/console.yml ~/opsloop/console.yml.prev && cat > ~/opsloop/console.yml' \
+  < infra/vmware/compose/console.yml
+ssh -F ~/.ssh/config.opsloop console-a 'cd ~/opsloop && docker compose -f console.yml up -d'
+ssh -F ~/.ssh/config.opsloop console-a 'docker exec opsloop-api printenv FORWARDED_ALLOW_IPS'   # 192.168.50.1
+#    확인: 로그인한 뒤 감사 화면의 로그인 기록 출발지가 Mac 은 192.168.70.1, VPN 단말은 100.x 로 남는다
+```
+
+되돌리기: HAProxy 는 위 되돌리기 절차(`.prev`), 콘솔은 `console.yml.prev` 를 다시 넣고 `up -d`. 콘솔을 먼저 되돌린다.
+
+## 콘솔 B 운용 (이슈 #43)
+
+콘솔 B(`opsloop-console-b`, 192.168.50.12)는 평소 꺼 둔다. 이중화 시험 · 시연 때만 켜서 HAProxy 분배에 넣고, 끝나면 뺀 뒤 끈다.
+켜 두면 A 와 함께 요청을 받는다(roundrobin). 두 대는 상태를 갖지 않고 같은 DB · 같은 `SESSION_SECRET` 을 쓴다.
+
+- 단계는 `scripts/console-join.sh` 가 함수로 갖고 있다. 기본은 드라이런(명령만 찍고 원격 · VM 에 아무것도 하지 않는다)이고 `--apply` 로 돌린다. `--step <이름>` 은 한 단계만, `--from <이름>` 은 그 단계부터 끝까지. 실패한 단계에서 멈춘다.
+- HAProxy 상태는 방화벽의 master 소켓(`/run/haproxy-master.sock`, systemd 단위의 `-S`)으로 바꾼다. `@1` 은 지금 작업 프로세스다.
+- **reload 하면 maint · drain 이 풀린다.** 런타임 상태를 파일로 남기지 않으므로 reload 뒤 console-b 는 헬스체크만 보고 다시 들어온다. 합류 · 떼기 중에는 `systemctl reload haproxy` 를 하지 않는다. 했으면 상태를 다시 읽고 maint 를 다시 건다.
+- 떼기에서 컨테이너를 `restart=no` 로 멈춰 두므로, VM 만 켜져도 콘솔이 뜨지 않아 헬스체크에서 빠진다. 합류의 `stop-old` 는 그렇지 않은 옛 컨테이너(restart: always 라 부팅과 함께 뜬다)를 멈춘다.
+- B 가 켜져 서비스 중일 때 `db-console-role.sh` 를 돌리면 비밀번호가 바뀐다. 그때는 `console-a console-b` 둘 다 적는다.
+
+master 소켓 명령 (방화벽. 읽기는 언제든, 상태 바꾸기는 아래 절차 안에서만):
+
+```bash
+ssh -F ~/.ssh/config.opsloop fw 'echo "@1 show servers state consoles" | sudo -n nc -N -U /run/haproxy-master.sock'
+#   서버 줄 6번째 열 = 운영 상태(0 멈춤 · 1 slowstart 30초 동안 · 2 동작), 7번째 열 = 관리 상태(0 정상 · 1 maint · 8 drain)
+#   maint 와 drain 은 서로를 푼다(HAProxy 2.8 srv_adm_set_maint · srv_adm_set_drain). drain 을 걸면 maint 가 풀리고 헬스체크가 다시 돈다
+ssh -F ~/.ssh/config.opsloop fw 'echo "@1 set server consoles/console-b state maint" | sudo -n nc -N -U /run/haproxy-master.sock'
+#   state ready · state drain 도 같은 꼴. 성공하면 빈 줄만 돌아온다
+```
+
+켜는 절차 (Mac, 저장소 루트. 첫 열은 `console-join.sh` 단계 이름):
+
+| 단계 | 하는 일 |
+|---|---|
+| `precheck` | A /health 200 · `opsloop_console` 접속 한도 30 이상(`infra/migrations/20260926_console_connlimit.sql` 을 먼저 적용한다. 두 대 22 + triage.py) · HAProxy 상태 · VM 상태 |
+| `maint` | HAProxy console-b → maint. VM 이 켜지는 동안 요청이 가지 않게 |
+| `vm-start` | `vmrun start <vmx> nogui` · SSH 응답 대기. console-b 가 maint 가 아니면 멈춘다 |
+| `stop-old` | 옛 컨테이너를 `docker update --restart=no` 로 바꾸고 멈춘다. 옛 이미지 · 옛 `.env` 의 발송기가 돌지 않게 |
+| `chrony` | `netplan/chrony-client.conf.template`(add-node.sh 와 같은 설정: 시간원 192.168.50.1 · `makestep 1 -1`, pool 줄 주석) · `chronyc waitsync`. 시계가 틀리면 다음 단계의 HTTPS 가 실패한다 |
+| `upgrade` | `apt-get full-upgrade` · 재부팅 · 부팅 id 가 바뀐 뒤 SSH 응답 · 옛 컨테이너가 멈춘 채인지 |
+| `guard` | 호스트 가드 `ansible-playbook consoles.yml --limit console-b` 두 번. 두 번째가 changed=0 |
+| `image` | A 의 `docker save opsloop-api:latest \| gzip -1` → B 의 `docker load`. 이미지 ID 가 같은지 |
+| `env` | `.env` 동기화. `SESSION_SECRET` · `OPSLOOP_CONSOLE_DB_PASSWORD` 두 줄만 A → B ssh 파이프로 옮긴다(Mac 화면 · 파일 · 명령행에 남지 않는다). POSTGRES_PASSWORD 는 옮기지 않는다. `OPSLOOP_WORKER=opsloop-console-b` · 0600. 두 줄을 받지 못하면 파일을 바꾸지 않는다 |
+| `up` | A 의 `console.yml` 을 옮기고(`console.yml.prev` 남김) `docker compose up -d --no-build --force-recreate` · B /health 200 |
+| `verify` | 이미지 ID · `console.yml` 해시 · 비밀값 두 줄의 해시가 A 와 같은지(해시도 찍지 않는다) · 재시작 정책 always · 발송기 이름 · DB 역할 `opsloop_console` · 방화벽에서 B /health · 역할 접속 수 / 한도 |
+| `ready` | HAProxy console-b → ready. UP(운영 2 · 관리 0)이 될 때까지(rise 3 × 2초, 그 뒤 slowstart 30초 동안 가중치가 오른다) |
+| `assets` | `scripts/collect-assets.sh --only console-b` (자산 · 취약점 화면의 B 정보를 새로) |
+
+```bash
+infra/vmware/scripts/console-join.sh                        # 드라이런: 단계별 명령을 본다
+infra/vmware/scripts/console-join.sh --apply                # 실패하면 고친 뒤 --from <그 단계> --apply
+```
+
+끄는 절차:
+
+| 단계 | 하는 일 |
+|---|---|
+| `drain` | console-b → drain. 새 요청은 A 로만. B 의 연결 수가 0 이 되거나 60초(30번 × 2초)까지 기다린다. 웹소켓은 남을 수 있다. `stop` 에서 끊기면 화면이 A 로 다시 붙는다 |
+| `maint` | console-b → maint |
+| `stop` | 컨테이너 `restart=no` · 멈춤. console-b 가 maint 가 아니면 멈춘다 |
+| `vm-stop` | `vmrun stop <vmx> soft` · 꺼질 때까지. console-b 가 maint 가 아니면 멈춘다 |
+| `state` | HAProxy 상태 (console-b 운영 0 · 관리 1. 앞의 maint 가 drain 을 풀었다) |
+
+```bash
+infra/vmware/scripts/console-join.sh --leave                # 드라이런
+infra/vmware/scripts/console-join.sh --leave --apply
+```
+
+### 실시간 통보 점검 (이슈 #43)
+
+콘솔마다 LISTEN 연결 하나로 `opsloop_incident`(사건) · `opsloop_event`(판정 · 조치)를 듣는다. 그래서 콘솔 A 에서 한 판정도 콘솔 B 화면에 간다.
+서버가 연결을 끊으면 곧바로, 망이 조용히 끊기면 15초마다 보내는 `SELECT 1`(5초 한도)로 끊김을 안다. 그 뒤 1초 → 2배 → 최대 30초 간격으로 다시 붙고,
+붙으면 화면에 `resync` 를 보내 목록을 전부 다시 받게 한다. 이 상태는 `/health` 에 넣지 않았다(DB 가 잠깐 흔들려도 두 콘솔이 함께 빠지지 않게). 로그로 본다.
+
+```bash
+ssh -F ~/.ssh/config.opsloop console-a "docker logs opsloop-api 2>&1 | grep '실시간 통보: LISTEN'"   # 끊김 · N회째 실패 · 다시 붙음
+```
+
+- 발송기 경고 'OPSLOOP_WORKER 가 비어…' · '같은 이름(…)의 다른 발송기가 살아 있을 수 있습니다' 가 보이면 `.env` 의 `OPSLOOP_WORKER` 를 콘솔마다 다르게 준다.
+- 어느 콘솔이 답했는지는 로그인한 뒤 `/api/me` 의 `console` 값, 화면 상단 연결 표시(웹소켓이 붙은 콘솔)로 본다. 응답 헤더에는 내지 않는다(이슈 #41).
+
+## 콘솔 장애 주입 시험 (이슈 #43)
+
+콘솔 한 대가 죽었을 때 다른 콘솔로 넘어가는 시간과 세션이 유지되는지를 잰다. 도구는 `infra/vmware/failover/` 에 있고 표준 라이브러리만 쓴다. 사용법은 각 파일 머리 주석에 있다.
+도구가 운영에서 하는 일은 읽기뿐이다(HTTP · 웹소켓 요청, 방화벽 통계 · 로그 읽기). 주입 명령은 도구가 돌리지 않는다. 사람이 승인한 뒤 `mark.py` 바로 다음에 돌린다.
+
+| 파일 | 하는 일 | 쓰는 파일(회차 폴더) |
+|---|---|---|
+| `probe_http.py` | 100ms 열린 루프로 `/health?p=<회차>-<번호>` · `/api/me`(쿠키 · 응답 콘솔 이름 기록)를 보낸다. 한도 70초 | `http.jsonl` |
+| `probe_ws.py` | 최소 웹소켓 클라이언트. browser(live.ts 와 같은 백오프, 핑 없음) · net(1초 핑, 2초 안에 퐁이 없으면 끊김) | `ws.jsonl` |
+| `collect_fw.sh` | 방화벽 통계(127.0.0.1:8404 CSV)의 consoles 행을 0.5초마다 읽는다. 끝나면 haproxy.log 에서 시험 동안의 부분을 발췌한다 | `fw.csv` · `fw-meta.json` · `fw-haproxy.log` |
+| `mark.py` | 주입 · 복귀 직전의 T0 를 원격 시각과 Mac 시각으로 남긴다. `--list` 는 시나리오별 명령 | `marks.jsonl` |
+| `summarize.py` | 감지 · 실패 구간 · 지연 · 전환 완료 · 좀비 · 재연결 · 401 · 복귀를 계산한다. 여러 회차는 중앙값 · 최댓값으로 묶는다 | `results.json` · `sha256.json` |
+
+프로브 쿠키: `python3 infra/vmware/failover/probe_http.py --mint-cookie console-a` 를 돌리면 콘솔 A 컨테이너 안에서 `auth.issue("failover-probe", "viewer")` 를 부른다. 비밀번호 없이 서버 비밀로 발급한 viewer 12시간 쿠키다. 이 쿠키는 `~/.config/opsloop/probe-cookie`(0600)에만 두고 화면 · 로그에는 찍지 않는다. 시험 뒤 `--drop-cookie` 로 지운다.
+
+회차 하나 (콘솔 B 를 켠 뒤. 터미널 넷, 저장소 루트, `R=~/opsloop-failover/r01-stop-a`):
+
+```bash
+infra/vmware/failover/collect_fw.sh $R --duration 300
+python3 infra/vmware/failover/probe_http.py --run-dir $R --duration 300
+python3 infra/vmware/failover/probe_ws.py --run-dir $R --mode browser --conns 4 --duration 300
+python3 infra/vmware/failover/probe_ws.py --run-dir $R --mode net --conns 4 --duration 300
+# 기준선 30초 뒤 (주입은 승인 뒤 사람이)
+python3 infra/vmware/failover/mark.py $R inject --scenario stop --target console-a && ssh -F ~/.ssh/config.opsloop console-a 'docker stop opsloop-api'
+# 150초 뒤 (좀비 감지 창 120초를 넘긴 뒤)
+python3 infra/vmware/failover/mark.py $R recover --scenario stop --target console-a && ssh -F ~/.ssh/config.opsloop console-a 'docker start opsloop-api'
+# 모든 회차가 끝나면
+python3 infra/vmware/failover/summarize.py ~/opsloop-failover --out docs/evidence/<날짜>-failover
+python3 infra/vmware/failover/probe_http.py --drop-cookie
+```
+
+합격선: 전환 ≤ 30초이고 401 = 0 이어야 한다. 전환은 감지와 실패 구간 끝 가운데 늦은 쪽이다. 대상 시나리오는 stop · kill · vm-off 이다. 마지막 실패 뒤 성공이 20번 넘게 이어지지 않으면 전환을 확인하지 못한 것으로 보고 불합격이다. net-cut · db-cut · drain 은 관찰 시나리오라 같은 표에 참고로만 남긴다.
+
 ## 데이터베이스 역할 (이슈 #31)
 
 구성요소마다 최소 권한 역할로 붙는다. 소유자 `opsloop` 는 스키마 적용 · `nodes.py` · `auth.py add` 에만 쓴다.
@@ -221,6 +350,10 @@ infra/vmware/scripts/verify-db-roles.sh
 - 흡수 기록(`incident_absorbed`, 규칙 v3)을 읽는 콘솔 · triage 를 올리기 전에 `infra/migrations/20260925_round2.sql` 다음 `20260925_v3_absorbed.sql` 을 먼저 적용한다(흡수 기록 · 후속 차단 약속 `absorbed_blocks` 표). 표가 없으면 사건 상세와 triage 가 오류로 멈춘다. 알림 트리거 `infra/notify.sql` 도 다시 적용한다(`psql -1`).
 - 적재기는 규칙 파일을 `OPSLOOP_RULES`(기본 `rules_v3.json`, `/etc/default/opsloop-ingest` 로 바꾼다)로 탐지에 넘긴다. `puller/install-ingest.sh` 는 흡수 기록 표 · 탐지 역할 쓰기 권한이 없으면 코드를 바꾸지 않고 멈춘다. 전환은 다음 회차 뒤 `detector_runs` 의 최근 버전으로 확인한다.
 - 소유자로 붙는 서비스가 남아 있는지는 `verify-db-roles.sh` 의 pg_stat_activity 항목이 알려 준다.
+- 콘솔 역할의 접속 한도는 30 이다(이슈 #43. 콘솔 한 대 = 풀 10 + LISTEN 1, 두 대 22 + triage.py 가 같은 역할).
+  `db-console-role.sh` · `install-collector.sh` 는 30 으로 만들고, 이미 있는 역할은 마이그레이션으로 올린다(역할이 있을 때만 바꾸고
+  여러 번 적용해도 같다. 붙어 있는 접속은 끊기지 않는다). `verify-db-roles.sh` 가 30 이상인지 본다. 콘솔 B 를 켜기 전에 한다.
+  `ssh -F ~/.ssh/config.opsloop data01 'sudo -n docker exec -i opsloop-db psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -q' < infra/migrations/20260926_console_connlimit.sql`
 
 ## 알림 발송 경로
 
@@ -231,6 +364,30 @@ Teams 쪽 준비: Power Automate 에서 "Teams 웹훅 요청을 받으면 채널
 알림 본문의 콘솔 링크 기준 주소는 콘솔 서비스의 환경변수 `OPSLOOP_CONSOLE_URL` 로 정한다(기본 `http://192.168.70.254:8443`).
 배포 순서: 새 콘솔 이미지를 올리기 전에 `infra/migrations/20260924_notify.sql` 을 먼저 적용한다. 표가 없으면 알림만 멈추고 콘솔의 다른 기능은 뜬다.
 콘솔 VM 마다 compose `.env` 에 `OPSLOOP_WORKER=opsloop-console-a`(B 는 `-b`)를 둔다. 발송기가 집은 알림을 이 이름으로 표시하므로, 재기동 때 자기가 보내던 알림을 바로 되찾는다.
+
+### 콘솔 진입점 감시 (Mac, 이슈 #43)
+
+알림 발송기는 콘솔 안에서 돈다. 그래서 콘솔 두 대가 다 죽거나 DB 가 멈춰 `/health` 가 실패하면 알릴 경로가 없다.
+Mac 의 launchd(`local.opsloop.console-watch`)가 60초마다 진입점 `http://192.168.70.254:8443/health` 를 5초 간격으로 최대 3번 본다(curl -m 3).
+3번 모두 실패하면 DOWN 이다. UP→DOWN 에 한 번, DOWN 이 이어지면 30분마다 다시, DOWN→UP 에 복구를 한 번 알린다.
+알림은 macOS 알림과 기록 `~/Library/Logs/opsloop/console-watch.log` 에 남는다.
+
+```bash
+infra/vmware/scripts/install-console-watch.sh            # 설치 · 갱신 (다시 실행해도 된다). --uninstall 로 내린다
+S="$HOME/Library/Application Support/OpsLoop/bin/console-watch.sh"
+"$S" --status                                             # 마지막 상태 · 점검 창 · 웹훅 설정 여부 (주소는 내지 않는다)
+"$S" --test-alert                                         # 알림 경로 시험
+"$S" --pause 120                                          # 점검 창 2시간. --resume 로 없앤다
+```
+
+- 웹훅(선택): `~/.config/opsloop/console-watch.env` 에 `WEBHOOK_URL=https://...` 한 줄을 둔다. 권한이 0600 이 아니거나 본인 소유가 아니면 쓰지 않는다.
+  주소를 복사한 뒤 화면에 찍지 않고 넣는다: `( umask 077; mkdir -p ~/.config/opsloop; printf 'WEBHOOK_URL=%s\n' "$(pbpaste)" > ~/.config/opsloop/console-watch.env )`
+  본문은 `{"text": "..."}` 하나다. Teams Workflows 는 이 `text` 를 게시하는 흐름을 따로 만든다. 콘솔 알림 채널과 따로 두는 경로다(콘솔이 죽었을 때 쓴다).
+  주소는 기록 · 화면 · 명령줄에 남지 않고, 본문에는 내부 주소를 넣지 않는다.
+- 점검 창(`--pause`)에는 알리지 않고 상태만 적는다. 창 안에서 시작된 DOWN 이 창이 끝난 뒤에도 이어지면 그때 알린다.
+  VM 을 일부러 끄거나 장애 주입 시험을 할 때 둔다.
+- Mac 이 잠든 동안은 돌지 않는다(VM 도 함께 멈춘다). 깨어나면 다음 간격에 다시 본다.
+- 시험: `python3 infra/vmware/scripts/test_console_watch.py` (임시 HOME · 가짜 curl · osascript · launchctl, 진짜 curl 은 127.0.0.1 에만)
 
 ## CVE · KEV 연계 (이슈 #39)
 
@@ -343,8 +500,12 @@ ssh -F ~/.ssh/config.opsloop data01 'sudo -n -u opsloop-cti /usr/local/bin/opslo
 | `seed/user-data.template` | 무인 설치 정의. 비밀번호 해시와 공개 키는 만들 때 채운다 |
 | `netplan/*.yaml` | 노드별 고정 주소 |
 | `fw/nftables.conf` | 내부 방화벽 규칙 (설계 3.2 규칙표) |
-| `haproxy/haproxy.cfg` | 콘솔 분배 · 헬스체크 2초 × 3회 · 통계 페이지 `127.0.0.1:8404` |
-| `test_fw_haproxy.py` | 위 두 설정 시험 (통계 페이지 노출 · 허용 포트 · `verify.sh` · 이 문서). `python3 infra/vmware/test_fw_haproxy.py` |
+| `haproxy/haproxy.cfg` | 콘솔 분배 · 헬스체크 2초 × 3회 · 통계 페이지 `127.0.0.1:8404` · 작업 프로세스 haproxy 사용자 · chroot · 출발지 헤더 |
+| `test_fw_haproxy.py` | 위 두 설정 시험 (통계 페이지 노출 · 허용 포트 · 전환 관련 줄 · 권한 · 출발지 헤더 · `verify.sh` · 이 문서). `python3 infra/vmware/test_fw_haproxy.py` |
+| `compose/console.yml` | 콘솔 API 컨테이너 (DB 역할 · 세션 비밀 · 발송기 이름 · 믿는 프록시 주소) |
+| `scripts/console-join.sh` | 콘솔 B 합류 · 떼기 단계 (기본 드라이런). 시험 `python3 infra/vmware/scripts/test_console_join.py` (가짜 ssh · 접속 한도 30) |
+| `scripts/console-watch.sh` · `scripts/install-console-watch.sh` | Mac 에서 콘솔 진입점 감시(두 대 모두 죽으면 알림). 시험 `python3 infra/vmware/scripts/test_console_watch.py` |
+| `failover/` | 장애 주입 시험 도구(요청 · 웹소켓 프로브, 방화벽 통계 수집, T0 기록, 지표 요약). 시험 `python3 infra/vmware/failover/test_failover_tools.py` |
 | `scripts/*.sh` | 네트워크 생성 · seed · 복제 · 구성 · 검증 · DB 백업 · 자산 수집 |
 
 비밀번호와 개인 키는 저장소에 넣지 않는다. seed 이미지도 저장소 밖(`~/Virtual Machines.localized`)에 만든다.

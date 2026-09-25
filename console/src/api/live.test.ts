@@ -7,7 +7,22 @@ import { ctiKeys } from './cti'
 import { incidentKeys, ruleKeys } from './incidents'
 import { nodeKey, auditKey } from './operations'
 import { monitoringKeys } from './monitoring-keys'
-import { applyLiveMessage, backoffMs, connectLive, parseLiveMessage, useLiveUpdates, wsUrl, type LiveSocket, type LiveState } from './live'
+import {
+  applyLiveMessage,
+  backoffMs,
+  connectLive,
+  consoleLabel,
+  helloConsole,
+  parseLiveMessage,
+  RESYNC_KEYS,
+  useLiveUpdates,
+  wsUrl,
+  type LiveSocket,
+  type LiveState,
+} from './live'
+
+/** 재접속 · resync 때 다시 받는 쿼리 전부. /api/me 는 세션이 끝났으면 로그인으로 보내려고 넣는다 */
+const ALL_KEYS = [incidentKeys.all, ruleKeys.all, monitoringKeys.summary, monitoringKeys.blocklist, nodeKey, auditKey, ctiKeys.all, ['me']]
 
 /** 서버 없이 여닫을 수 있는 가짜 WebSocket. 만들어진 순서대로 instances 에 남는다 */
 class FakeSocket extends EventTarget implements LiveSocket {
@@ -101,9 +116,47 @@ describe('applyLiveMessage', () => {
   it('hello 와 모르는 종류는 아무것도 하지 않는다', () => {
     const client = noRetryClient()
     const invalidate = vi.spyOn(client, 'invalidateQueries')
-    applyLiveMessage(client, { type: 'hello', data: { channel: 'opsloop_incident' } })
+    applyLiveMessage(client, { type: 'hello', data: { channel: 'opsloop_incident', console: 'opsloop-console-a' } })
     applyLiveMessage(client, { type: 'whatever' })
     expect(invalidate).not.toHaveBeenCalled()
+  })
+
+  it('resync 는 재접속 때와 같이 사건 · 규칙 · 지표 · 차단 · 노드 · 감사 · CVE 연계 · /api/me 를 전부 다시 조회한다', () => {
+    const client = noRetryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    applyLiveMessage(client, { type: 'resync' })
+    expect(RESYNC_KEYS).toEqual(ALL_KEYS)
+    expect(invalidate).toHaveBeenCalledTimes(ALL_KEYS.length)
+    for (const queryKey of ALL_KEYS) expect(invalidate).toHaveBeenCalledWith({ queryKey })
+  })
+
+  it('키가 빠진 판정 통보(서버가 8000 바이트를 넘겨 뺐다)는 목록만 다시 받는다', () => {
+    const client = noRetryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    applyLiveMessage(client, { type: 'verdict.created', data: { id: 7 } })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: incidentKeys.lists() })
+    const keys = invalidate.mock.calls.map(([arg]) => arg?.queryKey)
+    expect(keys.some((k) => Array.isArray(k) && k[1] === incidentKeys.details()[1])).toBe(false)
+  })
+})
+
+describe('consoleLabel · helloConsole', () => {
+  it('opsloop-console-a · b 만 콘솔 A · B 로 바꾸고 그 밖은 null(원문을 그린다)', () => {
+    expect(consoleLabel('opsloop-console-a')).toBe('콘솔 A')
+    expect(consoleLabel('opsloop-console-b')).toBe('콘솔 B')
+    for (const other of ['opsloop-console-c', 'OPSLOOP-CONSOLE-A', 'console-a', ' opsloop-console-a', 'opsloop-console-a\u202e', '3f2a9c1b7d4e', '']) {
+      expect(consoleLabel(other)).toBeNull()
+    }
+  })
+
+  it('hello 의 data.console 이 비지 않은 문자열일 때만 이름으로 본다', () => {
+    expect(helloConsole({ type: 'hello', data: { channel: 'c', console: 'opsloop-console-b' } })).toBe('opsloop-console-b')
+    expect(helloConsole({ type: 'hello', data: { channel: 'c' } })).toBeUndefined()
+    expect(helloConsole({ type: 'hello', data: { console: '' } })).toBeUndefined()
+    expect(helloConsole({ type: 'hello', data: { console: 42 } })).toBeUndefined()
+    expect(helloConsole({ type: 'hello', data: { console: { name: 'a' } } })).toBeUndefined()
+    expect(helloConsole({ type: 'hello' })).toBeUndefined()
+    expect(helloConsole({ type: 'incident.created', data: { console: 'opsloop-console-a' } })).toBeUndefined()
   })
 })
 
@@ -176,7 +229,7 @@ describe('connectLive', () => {
     stop()
   })
 
-  it('재접속하면 끊긴 동안의 사건·판정·차단 · CVE 연계를 다시 조회한다', () => {
+  it('재접속하면 끊긴 동안의 사건·판정·차단 · CVE 연계와 /api/me 를 다시 조회한다', () => {
     const client = noRetryClient()
     const invalidate = vi.spyOn(client, 'invalidateQueries')
     const stop = connectLive(client, { url: 'ws://t/ws', socket: factory })
@@ -185,9 +238,69 @@ describe('connectLive', () => {
     FakeSocket.last().drop()
     vi.advanceTimersByTime(1_000)
     FakeSocket.last().open()
-    for (const queryKey of [incidentKeys.all, ruleKeys.all, monitoringKeys.summary, monitoringKeys.blocklist, nodeKey, auditKey, ctiKeys.all]) {
-      expect(invalidate).toHaveBeenCalledWith({ queryKey })
-    }
+    expect(invalidate).toHaveBeenCalledTimes(ALL_KEYS.length)
+    for (const queryKey of ALL_KEYS) expect(invalidate).toHaveBeenCalledWith({ queryKey })
+    stop()
+  })
+
+  it('서버가 resync 를 보내면(DB 통보 연결이 다시 붙음) 연결은 그대로 두고 전부 다시 조회한다', () => {
+    const client = noRetryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const states: LiveState[] = []
+    const stop = connectLive(client, { url: 'ws://t/ws', socket: factory, onState: (s) => states.push(s) })
+    FakeSocket.last().open()
+    FakeSocket.last().message({ type: 'hello', data: { channel: 'opsloop_incident', console: 'opsloop-console-a' } })
+    const count = states.length
+    FakeSocket.last().message({ type: 'resync' })
+    expect(invalidate).toHaveBeenCalledTimes(ALL_KEYS.length)
+    for (const queryKey of ALL_KEYS) expect(invalidate).toHaveBeenCalledWith({ queryKey })
+    expect(states).toHaveLength(count)
+    expect(FakeSocket.instances).toHaveLength(1)
+    expect(FakeSocket.last().closed).toEqual([])
+    stop()
+  })
+
+  it('hello 의 콘솔 이름을 상태에 싣고, 끊기면 남겨 두며, 다시 열리면 지웠다가 새 hello 로 바꾼다', () => {
+    const client = noRetryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const states: LiveState[] = []
+    const stop = connectLive(client, { url: 'ws://t/ws', socket: factory, onState: (s) => states.push(s) })
+    FakeSocket.last().open()
+    expect(states.at(-1)).toStrictEqual({ status: 'connected', retries: 0 })
+
+    FakeSocket.last().message({ type: 'hello', data: { channel: 'opsloop_incident', console: 'opsloop-console-a' } })
+    expect(states.at(-1)).toStrictEqual({ status: 'connected', retries: 0, console: 'opsloop-console-a' })
+    expect(invalidate).not.toHaveBeenCalled()
+
+    // 콘솔 A 가 죽었다: 다시 연결하는 동안 마지막 이름을 남긴다(화면은 흐리게)
+    FakeSocket.last().drop()
+    expect(states.at(-1)).toStrictEqual({ status: 'reconnecting', retries: 0, console: 'opsloop-console-a' })
+
+    // 콘솔 B 로 이어졌다: 열리면 이름을 비우고, hello 로 채운다
+    vi.advanceTimersByTime(1_000)
+    FakeSocket.last().open()
+    expect(states.at(-1)).toStrictEqual({ status: 'connected', retries: 0 })
+    FakeSocket.last().message({ type: 'hello', data: { channel: 'opsloop_incident', console: 'opsloop-console-b' } })
+    expect(states.at(-1)).toStrictEqual({ status: 'connected', retries: 0, console: 'opsloop-console-b' })
+
+    // 이름이 문자열이 아니면 없는 것으로 본다(옛 서버 · 틀린 값)
+    FakeSocket.last().message({ type: 'hello', data: { channel: 'opsloop_incident', console: 7 } })
+    expect(states.at(-1)).toStrictEqual({ status: 'connected', retries: 0 })
+    stop()
+  })
+
+  it('옛 소켓이 늦게 보낸 hello 는 새 연결의 콘솔 이름을 덮지 않는다', () => {
+    const client = noRetryClient()
+    const states: LiveState[] = []
+    const stop = connectLive(client, { url: 'ws://t/ws', socket: factory, onState: (s) => states.push(s) })
+    const first = FakeSocket.last()
+    first.open()
+    first.drop()
+    vi.advanceTimersByTime(1_000)
+    FakeSocket.last().open()
+    FakeSocket.last().message({ type: 'hello', data: { console: 'opsloop-console-b' } })
+    first.message({ type: 'hello', data: { console: 'opsloop-console-a' } })
+    expect(states.at(-1)).toStrictEqual({ status: 'connected', retries: 0, console: 'opsloop-console-b' })
     stop()
   })
 
@@ -207,14 +320,54 @@ describe('connectLive', () => {
     stop()
   })
 
-  it('서버가 세션 없음(1008)으로 닫으면 다시 잇지 않는다', () => {
+  it('서버가 세션 없음(1008)으로 닫으면 다시 잇지 않고 /api/me 를 다시 묻는다', () => {
     const client = noRetryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
     const states: LiveState[] = []
     const stop = connectLive(client, { url: 'ws://t/ws', socket: factory, onState: (s) => states.push(s) })
     FakeSocket.last().drop(1008)
     expect(states.at(-1)).toEqual({ status: 'closed', retries: 0 })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['me'] })
     vi.advanceTimersByTime(60_000)
     expect(FakeSocket.instances).toHaveLength(1)
+    stop()
+  })
+
+  it('서버가 연결을 받은 뒤 1008 로 닫아도(#43 이후의 서버) 다시 잇지 않고 /api/me 를 다시 묻는다', () => {
+    const client = noRetryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const states: LiveState[] = []
+    const stop = connectLive(client, { url: 'ws://t/ws', socket: factory, onState: (s) => states.push(s) })
+    FakeSocket.last().open()
+    expect(states.at(-1)).toEqual({ status: 'connected', retries: 0 })
+    FakeSocket.last().drop(1008)
+    expect(states.map((s) => s.status)).toEqual(['connecting', 'connected', 'closed'])
+    expect(invalidate).toHaveBeenCalledTimes(1)
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['me'] })
+    vi.advanceTimersByTime(60_000)
+    expect(FakeSocket.instances).toHaveLength(1)
+    stop()
+  })
+
+  it('세션이 끝난 탭: 끊겼다 다시 이으려는데 받아 준 뒤 1008 이 오면 거기서 멈춘다(재연결을 되풀이하지 않는다)', () => {
+    const client = noRetryClient()
+    const invalidate = vi.spyOn(client, 'invalidateQueries')
+    const states: LiveState[] = []
+    const stop = connectLive(client, { url: 'ws://t/ws', socket: factory, onState: (s) => states.push(s) })
+    FakeSocket.last().open()
+    FakeSocket.last().message({ type: 'hello', data: { console: 'opsloop-console-a' } })
+    FakeSocket.last().drop()
+    vi.advanceTimersByTime(1_000)
+    FakeSocket.last().open()
+    // 다시 열리면 전부 다시 조회한다. RESYNC_KEYS 의 끝이 ['me'] 라 마지막 호출만 보면 1008 의 다시 묻기와 가려지지 않는다
+    expect(invalidate).toHaveBeenCalledTimes(ALL_KEYS.length)
+    FakeSocket.last().drop(1008)
+    expect(states.at(-1)).toStrictEqual({ status: 'closed', retries: 0 })
+    // 1008 이 /api/me 를 한 번 더 묻는다
+    expect(invalidate).toHaveBeenCalledTimes(ALL_KEYS.length + 1)
+    expect(invalidate).toHaveBeenLastCalledWith({ queryKey: ['me'] })
+    vi.advanceTimersByTime(120_000)
+    expect(FakeSocket.instances).toHaveLength(2)
     stop()
   })
 

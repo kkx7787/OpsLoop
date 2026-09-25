@@ -91,6 +91,19 @@ describe('AppLayout', () => {
     expect(screen.queryByText('인시던트 본문')).toBeNull()
   })
 
+  it('/api/me 의 console(#43)은 선택이다: 있어도 · 없어도 · 문자열이 아니어도 사용자와 본문을 그린다', async () => {
+    for (const name of ['opsloop-console-a', undefined, 42, null, { name: 'b' }]) {
+      stubMe({ username: 'han', role: 'operator', console: name })
+      const { unmount } = renderRoutes(layoutRoutes(), '/')
+      expect(await screen.findByText('대시보드 본문')).toBeInTheDocument()
+      const sidebar = screen.getByRole('complementary', { name: '사이드바' })
+      expect(within(sidebar).getByText('han')).toBeInTheDocument()
+      expect(within(sidebar).getByText('operator')).toBeInTheDocument()
+      unmount()
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('/api/me 가 사용자 정보를 주지 않으면(빈 응답) 세션 만료 화면으로 로그인을 안내한다', async () => {
     stubMe({})
     renderRoutes(layoutRoutes(), '/')

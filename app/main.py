@@ -11,10 +11,10 @@ OpsLoop API (WBS 3.1)
 
 실시간 통보에 별도 메시지 브로커를 두지 않고 PostgreSQL LISTEN/NOTIFY 를 쓴다.
 운영할 구성요소가 하나 줄고, 알림이 데이터와 같은 트랜잭션에서 발생해
-"저장은 됐는데 알림은 안 갔다"는 구간이 생기지 않는다.
+"저장은 됐는데 알림은 안 갔다"는 구간이 생기지 않는다. 판정 · 조치 통보도 같은 길로 보내
+두 콘솔의 화면이 모두 받는다. 듣기 · 다시 붙기 · 화면 목록은 live.py 에 있다(이슈 #43).
 """
 
-import asyncio
 import html
 import ipaddress
 import json
@@ -37,12 +37,14 @@ from operations import router as operations_router
 from notify import router as notify_router
 from cti import router as cti_router
 from notifier import Notifier
+import live
+from live import EVENT_CHANNEL, INCIDENT_CHANNEL, Listener, event_payload, hub
 from absorbed import (ABSORBED_STATE_SQL, FOLLOW_RELEASE_SQL, FOLLOW_STATE_SQL, FOLLOW_UPSERT_SQL, NO_BLOCK_NETS,
                       RELEASE_ABSORBED_SQL, UNBLOCKED_AFTER_VERDICT_SQL, AbsorbedFollower, absorbed_note,
                       absorbed_reason_tag, block_absorbed)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
-NOTIFY_CHANNEL = "opsloop_incident"
+NOTIFY_CHANNEL = INCIDENT_CHANNEL
 
 ACTIONS = Literal["block_ip", "unblock_ip", "acknowledge", "suppress_rule", "escalate", "note"]
 # 판정값 다섯 개. 정확히 탐지했으나 악의가 없는 경우(양성 정탐)와 근거가
@@ -53,38 +55,7 @@ SEVERITIES = Literal["critical", "high", "medium", "low"]
 STATUSES = Literal["open", "acknowledged", "in_progress", "resolved", "suppressed"]
 
 
-class Hub:
-    """접속한 콘솔들에게 인시던트를 밀어준다."""
-
-    def __init__(self):
-        self.clients: set[WebSocket] = set()
-        self.lock = asyncio.Lock()
-
-    async def join(self, ws: WebSocket):
-        await ws.accept()
-        async with self.lock:
-            self.clients.add(ws)
-
-    async def leave(self, ws: WebSocket):
-        async with self.lock:
-            self.clients.discard(ws)
-
-    async def broadcast(self, payload: dict):
-        async with self.lock:
-            targets = list(self.clients)
-        dead = []
-        for ws in targets:
-            try:
-                await ws.send_json(payload)
-            except Exception:
-                dead.append(ws)
-        if dead:
-            async with self.lock:
-                for ws in dead:
-                    self.clients.discard(ws)
-
-
-hub = Hub()
+# 화면 목록(Hub)은 live.py 에 있다. main.hub 는 live.hub 와 같은 것이다(시험이 main.hub.broadcast 를 바꿔 끼운다).
 
 
 @asynccontextmanager
@@ -94,18 +65,14 @@ async def lifespan(app: FastAPI):
 
     app.state.pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
 
-    # LISTEN 전용 연결. 풀에서 빌린 연결로 LISTEN 하면 반납될 때 끊긴다.
-    listener = await asyncpg.connect(DATABASE_URL)
-
-    def on_notify(_conn, _pid, _channel, payload):
-        try:
-            data = json.loads(payload)
-        except json.JSONDecodeError:
-            return
-        asyncio.create_task(hub.broadcast({"type": "incident.created", "data": data}))
-
-    await listener.add_listener(NOTIFY_CHANNEL, on_notify)
-    app.state.listener = listener
+    # LISTEN 전용 연결(live.Listener). 사건 · 판정 · 조치 두 채널을 듣고, 끊기면 다시 붙어 화면에 resync 를 보낸다.
+    # 첫 연결이 안 되면 풀과 같이 기동을 실패시킨다. 헬스체크가 빠져 HAProxy 가 다른 콘솔로 보낸다.
+    app.state.listener = Listener(DATABASE_URL, hub)
+    try:
+        await app.state.listener.start()
+    except BaseException:
+        await app.state.pool.close()
+        raise
 
     # 알림 발송기 (이슈 #33). 큐 채우기 · 보내기 두 루프를 여기서 띄우고 종료 때 취소한다.
     app.state.notifier = Notifier(app.state.pool)
@@ -119,8 +86,7 @@ async def lifespan(app: FastAPI):
     finally:
         await app.state.follower.stop()
         await app.state.notifier.stop()
-        await listener.remove_listener(NOTIFY_CHANNEL, on_notify)
-        await listener.close()
+        await app.state.listener.stop()
         await app.state.pool.close()
 
 
@@ -604,6 +570,23 @@ ACTION_STATUS = {
 # 되돌리는 행위와 기준을 바꾸는 행위는 admin 만 한다.
 ADMIN_ACTIONS = {"unblock_ip", "suppress_rule"}
 
+# 판정 · 조치는 트랜잭션 첫머리에서 사건 행을 잠근다(이슈 #43). 같은 사건의 판정 · 조치가 겹치면 차례로 처리해
+# 뒤에 온 것이 앞의 결과(상태 · 차단)를 보고 쓴다. 잠그지 않으면 두 트랜잭션이 서로의 상태를 덮는다.
+# 잠금 순서는 incidents → blocklist 하나다. 거꾸로 잡는 곳이 없어 교착이 없다.
+#   FOR UPDATE 는 외래 키 확인의 KEY SHARE(verdicts · actions 행을 넣을 때 incidents 행에 건다)와도 충돌한다.
+#   그래서 판정 · 조치 행을 넣는 다른 쪽도 사건 행을 먼저 잡은 뒤 차단 목록으로 간다.
+#   - detector/triage.py record: 판정 행을 먼저 넣어(외래 키 KEY SHARE) 사건 행을 잡고 차단 목록 · 상태를 쓴다
+#   - absorbed.AbsorbedFollower: 후속 차단할 첫 사건 행을 FOLLOW_DUE_SQL 에서 KEY SHARE 로 먼저 잡고 차단 목록으로 간다.
+#     잡지 않으면 차단 목록 → 조치 행(외래 키) 순서가 되어 같은 첫 사건의 함께 차단과 교착한다
+#   absorbed.py 의 나머지 문장은 incidents 를 읽기만 하고 잠그지 않는다.
+LOCK_INCIDENT = "SELECT host(actor_ip) actor_ip, rule_id, rule_version FROM incidents WHERE incident_key = $1 FOR UPDATE"
+
+
+async def notify_event(c, kind: str, incident_key: str, row_id) -> None:
+    """판정 · 조치 통보를 같은 트랜잭션에서 보낸다(live.EVENT_CHANNEL). 커밋 때 나가고 되돌리면 나가지 않는다.
+    이 콘솔 화면도 제 LISTEN 으로 받는다. 요청을 받은 콘솔의 화면에만 가던 것을 두 콘솔 모두로 넓힌다."""
+    await c.execute("SELECT pg_notify($1, $2)", EVENT_CHANNEL, event_payload(kind, incident_key, row_id))
+
 
 @app.post("/api/incidents/{incident_key:path}/actions", status_code=201)
 async def add_action(incident_key: str, body: ActionIn, request: Request):
@@ -615,9 +598,7 @@ async def add_action(incident_key: str, body: ActionIn, request: Request):
             # 차단 목록 감사 트리거(sensor=audit)가 행위자를 여기서 읽는다. 트랜잭션이 끝나면 풀린다.
             # 넘기지 않으면 감사 행의 행위자가 'db:<DB 역할>' 로 남아 R201 이 사람별로 세지 못한다.
             await c.execute("SELECT set_config('opsloop.actor', $1, true)", user["u"])
-            inc = await c.fetchrow(
-                "SELECT host(actor_ip) actor_ip, rule_id, rule_version FROM incidents WHERE incident_key = $1",
-                incident_key)
+            inc = await c.fetchrow(LOCK_INCIDENT, incident_key)
             if inc is None:
                 raise HTTPException(404, "인시던트를 찾을 수 없습니다")
             inc_rule, inc_version = inc["rule_id"], inc["rule_version"]
@@ -748,11 +729,11 @@ async def add_action(incident_key: str, body: ActionIn, request: Request):
             if new_status:
                 await c.execute("UPDATE incidents SET status = $1 WHERE incident_key = $2",
                                 new_status, incident_key)
+            await notify_event(c, "action.created", incident_key, rec["id"])
 
     payload = row_to_dict(rec) | {"incident_key": incident_key}
     if absorbed is not None:
         payload["absorbed"] = absorbed
-    await hub.broadcast({"type": "action.created", "data": payload})
     return payload
 
 
@@ -761,8 +742,8 @@ async def add_verdict(incident_key: str, body: VerdictIn, request: Request):
     user = require_role(request, "operator", "admin")
     async with app.state.pool.acquire() as c:
         async with c.transaction():
-            exists = await c.fetchval(
-                "SELECT 1 FROM incidents WHERE incident_key = $1", incident_key)
+            # 사건 행을 먼저 잠근다(LOCK_INCIDENT). 겹친 판정 · 조치는 이 판정이 커밋될 때까지 기다린다.
+            exists = await c.fetchrow(LOCK_INCIDENT, incident_key)
             if not exists:
                 raise HTTPException(404, "인시던트를 찾을 수 없습니다")
             rec = await c.fetchrow("""
@@ -776,10 +757,9 @@ async def add_verdict(incident_key: str, body: VerdictIn, request: Request):
             # 판정이 곧 종결이다. 판정 없이 종결되는 경로를 두지 않는다.
             await c.execute("UPDATE incidents SET status = 'resolved' WHERE incident_key = $1",
                             incident_key)
+            await notify_event(c, "verdict.created", incident_key, rec["id"])
 
-    payload = row_to_dict(rec) | {"incident_key": incident_key}
-    await hub.broadcast({"type": "verdict.created", "data": payload})
-    return payload
+    return row_to_dict(rec) | {"incident_key": incident_key}
 
 
 @app.get("/api/blocklist")
@@ -802,12 +782,17 @@ async def blocklist(active_only: bool = True):
 async def ws_endpoint(ws: WebSocket):
     # 실시간 보드도 인증 대상이다. 미들웨어는 웹소켓 연결을 거치지 않으므로
     # 여기서 직접 본다.
+    # 세션이 없으면 수락한 뒤 1008 로 닫는다(이슈 #43). 수락 전에 닫으면 핸드셰이크가 403 으로 끝나 브라우저는 1006 만
+    # 받고, 화면(live.ts)의 1008 분기가 돌지 않아 로그인으로 가지 않고 다시 잇기만 되풀이한다(2026-09-25 74분 · 403 292번).
+    # 출처가 다른 핸드셰이크는 그대로 수락 전에 막는다(web.OriginCheck). 같은 출처 화면에는 생기지 않는 일이다.
     if auth.read(ws.cookies.get(auth.COOKIE, "")) is None:
+        await ws.accept()
         await ws.close(code=1008)
         return
     await hub.join(ws)
     try:
-        await ws.send_json({"type": "hello", "data": {"channel": NOTIFY_CHANNEL}})
+        # 어느 콘솔에 붙었는지 화면 연결 표시에 보인다(live.CONSOLE_NAME, 세션 뒤에서만 나간다).
+        await ws.send_json({"type": "hello", "data": {"channel": NOTIFY_CHANNEL, "console": live.CONSOLE_NAME}})
         while True:
             # 클라이언트가 보내는 것은 없다. 끊김 감지를 위해 수신만 대기한다.
             await ws.receive_text()

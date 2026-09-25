@@ -5,7 +5,8 @@
 #   - compose 파일(infra/vmware/compose/console.yml)도 함께 옮기고 API 컨테이너를 다시 띄운다.
 #   - 역할 권한은 스키마 블록이 준다 (collector/install-collector.sh 가 적용). 이 스크립트는 비밀번호만 다룬다.
 # 사용 (Mac, 저장소 루트): infra/vmware/scripts/db-console-role.sh [콘솔 별칭 …]   기본 console-a. 켜 둔 콘솔만 적는다.
-#   꺼 둔 콘솔 B 는 켠 뒤 같은 명령으로 다시 돌린다 (비밀번호가 바뀌므로 A 도 함께 적는다).
+#   꺼 둔 콘솔 B 는 합류할 때 console-join.sh 의 env 단계가 A 의 값을 옮긴다 (비밀번호를 바꾸지 않는다).
+#   B 가 켜져 서비스 중일 때 이 스크립트를 돌리면 비밀번호가 바뀌므로 두 대를 함께 적는다: console-a console-b
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd)"
 SSH=(ssh -F "$HOME/.ssh/config.opsloop" -o BatchMode=yes -o ConnectTimeout=10)
@@ -23,7 +24,8 @@ client = hmac.new(salted, b"Client Key", "sha256").digest()
 server = hmac.new(salted, b"Server Key", "sha256").digest()
 b64 = lambda x: base64.b64encode(x).decode()
 v = f"SCRAM-SHA-256${it}:{b64(salt)}${b64(hashlib.sha256(client).digest())}:{b64(server)}"
-attrs = "LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT CONNECTION LIMIT 20"
+# 접속 한도 30 (이슈 #43): 콘솔 한 대 = 풀 최대 10 + LISTEN 1. 두 대 22 + triage.py · 재연결이 겹치는 여유
+attrs = "LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS NOINHERIT CONNECTION LIMIT 30"
 print(f"""DO $ol$ BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'opsloop_console') THEN
     ALTER ROLE opsloop_console WITH {attrs} PASSWORD '{v}';

@@ -5,9 +5,13 @@
 (127.0.0.1)에서만 열고, 방화벽 input 체인의 관리망 · VPN 허용 포트에서도 뺀다. 보려면 SSH 터널을 쓴다.
 원격 없이 저장소 파일만 읽는다. haproxy · nft 가 이 기계에 있으면 문법 검사도 한다(없으면 건너뛴다).
   - HAProxy     통계 bind 는 127.0.0.1:8404 하나 · 콘솔 진입점 8443 · 헬스체크 GET /health 200 은 그대로
+                · 전환 관련 줄(balance · default-server · httpchk · timeout · server)은 그대로 (이슈 #43, 기준선 측정 전)
+                · 작업 프로세스는 haproxy 사용자 · chroot /var/lib/haproxy (로그 소켓은 rsyslog 가 chroot 안에 만든다)
+                · 진입점은 클라이언트가 보낸 X-Forwarded-For 를 지우고 HAProxy 가 본 주소 하나만 싣는다
+  - 콘솔 compose FORWARDED_ALLOW_IPS 기본값 = 방화벽 서비스망 주소 = 호스트 가드가 8000 에 들이는 유일한 주소
   - nftables    mgmt · tailscale0 허용 포트는 22 · 8443 뿐 · 8404 는 어디에도 없음 · input 정책 drop
   - 검증 스크립트 verify.sh 는 방화벽 안 통계 페이지를 통과로, 관리망 직접 접근을 실패로 기대 · bash -n
-  - README      SSH 터널 안내가 있고 관리망에서 바로 연다는 문구가 없음
+  - README      SSH 터널 안내가 있고 관리망에서 바로 연다는 문구가 없음 · '콘솔 B 운용' 절(켜는 · 끄는 절차 · reload 주의)
 """
 import os
 import re
@@ -21,6 +25,9 @@ NFT = os.path.join(HERE, "fw", "nftables.conf")
 VERIFY = os.path.join(HERE, "scripts", "verify.sh")
 CONFIGURE = os.path.join(HERE, "scripts", "configure.sh")
 README = os.path.join(HERE, "README.md")
+COMPOSE = os.path.join(HERE, "compose", "console.yml")
+GUARD = os.path.join(HERE, "..", "ansible", "files", "console-guard.nft")
+FW_NETPLAN = os.path.join(HERE, "netplan", "fw.yaml.template")
 TUNNEL = "ssh -F ~/.ssh/config.opsloop -L 8404:127.0.0.1:8404 fw"
 
 
@@ -86,10 +93,57 @@ class HAProxy(unittest.TestCase):
         self.assertIn("http-check expect status 200", backend)
         self.assertIn("default-server inter 2s fall 3 rise 3 slowstart 30s", backend)
 
+    def test_전환_관련_줄은_그대로(self):
+        # 이슈 #43: 장애 주입 기준선을 재기 전까지 분배 · 검사 · 시간 제한은 바꾸지 않는다
+        self.assertEqual(self.sec["backend consoles"], [
+            "balance roundrobin",
+            "option httpchk GET /health",
+            "http-check expect status 200",
+            "default-server inter 2s fall 3 rise 3 slowstart 30s",
+            "server console-a 192.168.50.11:8000 check",
+            "server console-b 192.168.50.12:8000 check",
+        ])
+        timeouts = [d for d in self.sec["defaults"] if d.startswith("timeout ")]
+        self.assertEqual(timeouts, ["timeout connect 5s", "timeout client 60s", "timeout server 60s", "timeout tunnel 1h"])
+
+    def test_작업_프로세스는_root_가_아니고_chroot_안에서_돈다(self):
+        g = self.sec["global"]
+        for d in ("user haproxy", "group haproxy", "chroot /var/lib/haproxy", "log /dev/log local0"):
+            self.assertIn(d, g)
+        # uid · gid 숫자나 root 로 되돌리지 않는다
+        self.assertFalse([d for d in g if re.match(r"(uid|gid) ", d) or d in ("user root", "group root")], g)
+
+    def test_출발지_헤더는_HAProxy_가_본_주소_하나만(self):
+        fe = self.sec["frontend console"]
+        self.assertIn("http-request del-header X-Forwarded-For", fe)
+        self.assertIn("http-request del-header X-Forwarded-Proto", fe)
+        self.assertIn("option forwardfor", fe)
+        # if-none 이면 클라이언트가 보낸 값을 그대로 두고, except 는 지울 곳을 좁힌다
+        self.assertFalse([d for d in fe if d.startswith("option forwardfor") and d != "option forwardfor"], fe)
+        self.assertLess(fe.index("http-request del-header X-Forwarded-For"), fe.index("default_backend consoles"))
+        for head, directives in self.sec.items():
+            if head != "frontend console":
+                self.assertFalse([d for d in directives if "forwardfor" in d or "X-Forwarded-For" in d], head)
+
     @unittest.skipUnless(shutil.which("haproxy"), "haproxy 가 이 기계에 없다 (방화벽 VM 에서 haproxy -c 로 본다)")
     def test_haproxy_문법(self):
         r = subprocess.run(["haproxy", "-c", "-f", HAPROXY], capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+
+class TrustedProxy(unittest.TestCase):
+    """콘솔 uvicorn 이 믿는 프록시 주소가 HAProxy 가 서비스망에서 쓰는 주소와 같은지 (이슈 #43)."""
+
+    def test_compose_기본값은_방화벽_서비스망_주소(self):
+        lines = [ln.strip() for ln in read(COMPOSE).splitlines() if ln.strip().startswith("FORWARDED_ALLOW_IPS:")]
+        self.assertEqual(lines, ["FORWARDED_ALLOW_IPS: ${OPSLOOP_TRUSTED_PROXY:-192.168.50.1}"])
+        m = re.search(r"addresses: \[(192\.168\.50\.\d+)/24\]", read(FW_NETPLAN))
+        self.assertEqual(m.group(1), "192.168.50.1")
+
+    def test_호스트_가드가_들이는_주소와_같다(self):
+        # 서비스망에서 8000 에 닿는 곳이 이 주소 하나여야 믿는 주소에서 온 X-Forwarded-For 가 HAProxy 것뿐이다
+        accepts = re.findall(r"^\s*ip saddr (\S+) accept", read(GUARD), re.M)
+        self.assertEqual(accepts, ["192.168.50.1"])
 
 
 class Nftables(unittest.TestCase):
@@ -163,6 +217,22 @@ class Readme(unittest.TestCase):
         for s in ("haproxy -c -f", "nft -c -f", "systemctl reload haproxy",
                   "/etc/haproxy/haproxy.cfg.prev", "/etc/nftables.conf.prev"):
             self.assertTrue(s in self.text, f"없음: {s}")
+
+    def test_콘솔_B_운용_절(self):
+        self.assertTrue("## 콘솔 B 운용" in self.text)
+        sec = self.text.split("## 콘솔 B 운용", 1)[1].split("\n## ", 1)[0]
+        for s in ('echo "@1 show servers state consoles" | sudo -n nc -N -U /run/haproxy-master.sock',
+                  "set server consoles/console-b state maint", "state ready", "state drain",
+                  "reload 하면 maint", "restart=no", "chrony-client.conf.template", "full-upgrade",
+                  "consoles.yml --limit console-b", "docker save", "docker load",
+                  "SESSION_SECRET", "OPSLOOP_CONSOLE_DB_PASSWORD", "POSTGRES_PASSWORD 는 옮기지 않는다",
+                  "OPSLOOP_WORKER=opsloop-console-b", "collect-assets.sh --only console-b",
+                  "scripts/console-join.sh", "--apply", "--leave", "20260926_console_connlimit.sql"):
+            self.assertTrue(s in sec, f"없음: {s}")
+        # HAProxy 2.8 은 maint 가 drain 을, drain 이 maint 를 푼다. 떼기 끝의 관리 상태는 9 가 아니라 1 이다
+        self.assertTrue("maint 와 drain 은 서로를 푼다" in sec)
+        self.assertTrue("| `state` | HAProxy 상태 (console-b 운영 0 · 관리 1" in sec)
+        self.assertFalse(re.search(r"관리 9|합쳐 9", sec))
 
     def test_nft_적용_뒤_tailscale_규칙을_되살린다(self):
         # flush ruleset 이 Tailscale 의 iptables-nft 규칙까지 지운다. 올리기 · 되돌리기 모두 tailscaled 를 다시 띄워야 한다

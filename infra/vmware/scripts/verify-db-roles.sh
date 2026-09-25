@@ -5,6 +5,7 @@
 #   데이터를 바꾸지 않는다 (WHERE false · 읽기 · 권한 조회만).
 #   CVE · KEV 연계(이슈 #39)의 수집기 역할(opsloop_cti)과 CTI 표 권한도 본다. infra/migrations/20260925_cti.sql 을
 #   적용하고 cti/install-cti.sh 로 역할을 만든 뒤에 돌린다.
+#   콘솔 역할의 접속 한도(이슈 #43, 30 이상)도 본다. infra/migrations/20260926_console_connlimit.sql 을 적용한 뒤에 돌린다.
 # 사용 (Mac, 저장소 루트): infra/vmware/scripts/verify-db-roles.sh     종료 코드 0 = 전부 기대대로
 set -uo pipefail
 SSH=(ssh -F "$HOME/.ssh/config.opsloop" -o BatchMode=yes -o ConnectTimeout=10)
@@ -96,6 +97,15 @@ q opsloop_backup   "INSERT INTO events SELECT * FROM events WHERE false" 거부
 q opsloop_backup   "SELECT count(*) FROM events" 허용
 q opsloop_gate     "SELECT count(*) FROM events" 거부
 q opsloop_gate     "SELECT count(*) FROM nodes WHERE token_hash IS NOT NULL" 허용
+
+echo "== 접속 한도 (이슈 #43. 콘솔 한 대 = 풀 10 + LISTEN 1 → 두 대 22 + triage.py)"
+#   20 이면 콘솔 B 를 켤 때 한도에 닿는다. 무제한(-1)도 기대와 다르다고 본다 (콘솔이 DB 접속을 다 써 버리지 않게 하는 울타리다)
+#   올리는 곳: infra/migrations/20260926_console_connlimit.sql · db-console-role.sh · install-collector.sh (모두 30)
+lim=$(psql_as opsloop "SELECT rolconnlimit FROM pg_roles WHERE rolname = 'opsloop_console'" | head -1)
+cur=$(psql_as opsloop "SELECT count(*) FROM pg_stat_activity WHERE usename = 'opsloop_console'" | head -1)
+[[ "$cur" =~ ^[0-9]+$ ]] || cur="?"
+if [[ "$lim" =~ ^[0-9]+$ ]] && [ "$lim" -ge 30 ]; then row opsloop_console "CONNECTION LIMIT (지금 접속 $cur)" "≥30" "✔ $lim"
+else row opsloop_console "CONNECTION LIMIT (지금 접속 $cur)" "≥30" "✘ ${lim:-없음}"; fail=1; fi
 
 echo "== 지금 붙어 있는 접속 (역할 · application_name · 수)"
 psql_as opsloop "SELECT usename || '  ' || app || '  ' || n FROM (SELECT usename, coalesce(nullif(application_name,''),'-') AS app, count(*) AS n FROM pg_stat_activity WHERE datname='opsloop' AND usename IS NOT NULL GROUP BY 1,2) t ORDER BY 1" 2>/dev/null | sed 's/^/  /'

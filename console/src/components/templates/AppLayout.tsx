@@ -5,7 +5,7 @@ import { loginHref } from '@/api/client'
 import { isApiError } from '@/api/errors'
 import { useLiveUpdates } from '@/api/live'
 import { LiveContext } from '@/api/live-context'
-import { useMe, type Me } from '@/auth/useMe'
+import { parseMe, useMe } from '@/auth/useMe'
 import { Button } from '../atoms/Button'
 import { buttonClasses } from '../atoms/button-styles'
 import { LiveIndicator } from '../organisms/LiveIndicator'
@@ -27,18 +27,12 @@ export interface AppLayoutProps {
   sensor?: Pick<SensorSummaryProps, 'received' | 'total'>
 }
 
-/** /api/me 응답이 쓸 만한지. 비어 있으면 로그인 안 된 것으로 본다. */
-function isMe(data: unknown): data is Me {
-  if (!data || typeof data !== 'object') return false
-  const { username, role } = data as Partial<Me>
-  return typeof username === 'string' && username !== '' && typeof role === 'string'
-}
-
 /**
  * 화면 틀: 사이드바(데스크톱) + 상단바 + 본문, 모바일은 서랍(Main · Mobile.dc.html).
  * 처음에 GET /api/me 로 사용자와 역할을 받는다. 401 이면 API 클라이언트가 /login?next= 로 보내고,
  * 이동이 막힌 경우 본문에 세션 만료 화면이 남는다. 받는 동안 관리 묶음은 막아 둔다.
- * 실시간 통보(WS /ws)는 여기서 한 번 잇고, 연결 상태는 상단바의 점(LiveIndicator)으로 보인다.
+ * 실시간 통보(WS /ws)는 여기서 한 번 잇고, 연결 상태와 붙은 콘솔은 상단바의 점(LiveIndicator)으로 보인다.
+ * 세션이 끝나 웹소켓이 1008 로 닫히면 /api/me 를 다시 물어 401 → 로그인으로 간다.
  */
 export function AppLayout({ groups, children, sensor }: AppLayoutProps) {
   const me = useMe()
@@ -53,7 +47,8 @@ export function AppLayout({ groups, children, sensor }: AppLayoutProps) {
   const menuButtonRef = useRef<HTMLButtonElement>(null)
 
   const menuOpen = menuOpenKey === location.key
-  const user = isMe(me.data) ? me.data : null
+  // 비어 있거나 모양이 틀리면 로그인 안 된 것으로 본다. console(#43)은 선택이라 없거나 틀려도 견딘다
+  const user = parseMe(me.data)
   const crumbs = breadcrumbsFor(groups, location.pathname, matches)
 
   function closeMenu() {
@@ -70,10 +65,13 @@ export function AppLayout({ groups, children, sensor }: AppLayoutProps) {
     }
   }
 
+  // 실시간 재접속 · resync 때 /api/me 를 다시 묻는다. 콘솔 전환 중이라 다시 묻기가 5xx · 네트워크로 실패해도
+  // 이미 받은 사용자가 있으면 본문을 지우지 않는다. 401(세션 끝)만 곧바로 로그인 안내로 바꾼다.
+  const unauthorized = isApiError(me.error) && me.error.status === 401
   let body: ReactNode
   if (me.isPending) {
     body = <LoadingState size="page" titleAs="h1" title="로그인 정보를 확인하는 중입니다" lines={2} />
-  } else if (me.isError) {
+  } else if (me.isError && (unauthorized || !user)) {
     body = <MeError error={me.error} onRetry={() => void me.refetch()} retrying={me.isFetching} />
   } else if (!user) {
     body = (
