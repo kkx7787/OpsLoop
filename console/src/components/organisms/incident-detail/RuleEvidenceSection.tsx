@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import type { IncidentDetail } from '@/api/incidents'
 import { Banner } from '../../molecules/Banner'
 import { Time } from '../../atoms/Time'
+import { UntrustedText } from '../../atoms/UntrustedText'
 import { DetailSection } from './DetailSection'
 import { formatValue, isSampleObject, sampleColumns } from './format'
 import { TABLE } from './table-styles'
@@ -13,6 +14,9 @@ export interface RuleEvidenceSectionProps {
 
 /** 표본 목록에서 한 번에 보이는 세션 수. 그 뒤는 개수만 보인다 */
 const SESSIONS_SHOWN = 20
+
+/** 표 머리글이 되는 표본 키 · 세션 값의 글자 상한. 키도 공격자가 정할 수 있어 머리글 · 칸이 한없이 넓어지지 않게 한다 */
+const KEY_MAX = 64
 
 /**
  * ① 규칙이 본 것: 관측값 · 임계치와 비교된 값 · 신호 수 · 세션 수 · 규칙이 남긴 표본.
@@ -68,7 +72,7 @@ export function RuleEvidenceSection({ detail, className }: RuleEvidenceSectionPr
                   <tr>
                     {columns.map((col) => (
                       <th key={col} scope="col" className={TABLE.th}>
-                        {col}
+                        <UntrustedText value={col} max={KEY_MAX} />
                       </th>
                     ))}
                   </tr>
@@ -77,8 +81,8 @@ export function RuleEvidenceSection({ detail, className }: RuleEvidenceSectionPr
                   {objectSamples.map((sample, i) => (
                     <tr key={i}>
                       {columns.map((col) => (
-                        <td key={col} className={`${TABLE.td} font-mono ${col === 'ts' || col === 'session' ? 'whitespace-nowrap' : 'min-w-[180px] break-all'}`}>
-                          {formatValue(sample[col], col)}
+                        <td key={col} className={`${TABLE.td} font-mono ${col === 'ts' ? 'whitespace-nowrap' : col === 'session' ? 'min-w-[7rem] break-all' : 'min-w-[180px] break-all'}`}>
+                          <UntrustedText value={formatValue(cellOf(sample, col), col)} max={col === 'session' ? KEY_MAX : undefined} />
                         </td>
                       ))}
                     </tr>
@@ -91,7 +95,7 @@ export function RuleEvidenceSection({ detail, className }: RuleEvidenceSectionPr
             <ul className="m-0 flex list-none flex-col gap-1 p-0 font-mono text-xs">
               {otherSamples.map((sample, i) => (
                 <li key={i} className="break-all">
-                  {formatValue(sample)}
+                  <UntrustedText value={formatValue(sample)} />
                 </li>
               ))}
             </ul>
@@ -100,9 +104,9 @@ export function RuleEvidenceSection({ detail, className }: RuleEvidenceSectionPr
             <div className="flex flex-col gap-1.5">
               <span className="text-xs text-ink-muted">세션 {sessions.length}개</span>
               <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0">
-                {sessions.slice(0, SESSIONS_SHOWN).map((session) => (
-                  <li key={session} className="rounded-md bg-muted-soft px-2 py-0.5 font-mono text-2xs text-muted">
-                    {session}
+                {sessions.slice(0, SESSIONS_SHOWN).map((session, i) => (
+                  <li key={`${i}-${session}`} className="max-w-full min-w-0 rounded-md bg-muted-soft px-2 py-0.5 font-mono text-2xs break-all text-muted">
+                    <UntrustedText value={session} max={64} />
                   </li>
                 ))}
                 {sessions.length > SESSIONS_SHOWN && (
@@ -115,6 +119,11 @@ export function RuleEvidenceSection({ detail, className }: RuleEvidenceSectionPr
       )}
     </DetailSection>
   )
+}
+
+/** 표본 한 칸. 제 키만 읽는다(키 이름이 '__proto__' · 'constructor' 여도 물려받은 값이 새지 않고 빈 칸 표시가 된다) */
+function cellOf(sample: Record<string, unknown>, col: string): unknown {
+  return Object.hasOwn(sample, col) ? sample[col] : undefined
 }
 
 interface FactProps {

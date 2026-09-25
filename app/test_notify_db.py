@@ -31,6 +31,11 @@ TABLES = """
 """
 
 
+def card_texts(body):
+    """Teams 카드(RichTextBlock · TextRun) 본문의 글을 덩이 순서대로 꺼낸다. 첫째가 머리말, 나머지가 항목 줄이다."""
+    return ["".join(run["text"] for run in block["inlines"]) for block in body["attachments"][0]["content"]["body"]]
+
+
 class FakeHttp:
     """post_json 대역. 받은 주소 · 본문을 기록하고 정해진 결과를 돌려준다."""
 
@@ -160,8 +165,8 @@ class NotifyDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(groups, 4)
         urls = sorted(url for url, _ in http.calls)
         self.assertEqual(urls, sorted([TEAMS_URL, TEAMS_URL, "https://hooks.example.com/opsloop/ABCD", "https://hooks.example.com/opsloop/ABCD"]))
-        card = next(body for url, body in http.calls if url == TEAMS_URL and "새 인시던트 4건" in body["attachments"][0]["content"]["body"][0]["text"])
-        self.assertEqual(len(card["attachments"][0]["content"]["body"][1]["text"].split("\n")), 4)
+        card = next(body for url, body in http.calls if url == TEAMS_URL and "새 인시던트 4건" in card_texts(body)[0])
+        self.assertEqual(len(card_texts(card)) - 1, 4)
         plain = next(body for url, body in http.calls if url != TEAMS_URL and body["event"] == "pending.overdue")
         self.assertEqual([item["incident_key"] for item in plain["items"]], ["late"])
         rows = await self.deliveries()
@@ -225,9 +230,9 @@ class NotifyDatabaseTests(unittest.IsolatedAsyncioTestCase):
             await self.notifier.fill(self.conn)
             # a(301초) 가 창을 넘겼으므로 b(201초) · c(방금) 까지 한 메시지다
             self.assertEqual(await self.notifier.send(self.conn), 1)
-        card = http.calls[-1][1]["attachments"][0]["content"]
-        self.assertEqual(card["body"][0]["text"], "[OpsLoop] 새 인시던트 3건")
-        self.assertEqual(len(card["body"][1]["text"].split("\n")), 3)
+        texts = card_texts(http.calls[-1][1])
+        self.assertEqual(texts[0], "[OpsLoop] 새 인시던트 3건")
+        self.assertEqual(len(texts) - 1, 3)
         self.assertEqual({r["status"] for r in await self.deliveries()}, {"sent"})
         self.assertEqual(len(http.calls), 2)
         # 보낸 뒤 들어온 사건은 새 창을 연다

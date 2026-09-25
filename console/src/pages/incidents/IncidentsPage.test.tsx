@@ -1,7 +1,10 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
-import type { RouteObject } from 'react-router'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { MemoryRouter, type RouteObject } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type Incident, type IncidentPage } from '@/api/incidents'
+import { IncidentList } from '@/components/organisms/incidents/IncidentList'
+import { revealHidden } from '@/lib/untrusted'
+import { expectInertDom, expectMixedRevealed, HOSTILE, LONG, MIXED } from '@/test/hostile-fixtures'
 import { noRetryClient, renderRoutes, stubHanging } from '@/test/render'
 import { IncidentsPage } from './IncidentsPage'
 import { applyLiveMessage } from '@/api/live'
@@ -333,5 +336,79 @@ describe('IncidentsPage', () => {
     expect(cards[0]).toHaveTextContent('미판정')
     expect(cards[1]).toHaveTextContent('종결')
     expect(cards[1]).toHaveTextContent('실제 위협')
+  })
+})
+
+// ---------------------------------------------------------------- #41 비신뢰 문자열 표시
+
+describe('IncidentsPage · 비신뢰 문자열(#41)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('scrollTo', vi.fn())
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const HOSTILE_ROWS = [
+    incident(84, { target: `user:${MIXED}` }),
+    incident(85, { actor_ip: null, target: `user:${HOSTILE.rlo}` }),
+    incident(86, { actor_ip: null, target: `user:${LONG}` }),
+  ]
+
+  it('행은 출발지 · 대상을 표식으로 바꾼 뒤 한 줄로 자르고 말풍선도 표식이다', async () => {
+    stubApi(() => json(page(0, HOSTILE_ROWS, 3)))
+    const { container } = renderRoutes(routes(), '/incidents', noRetryClient())
+    const table = await screen.findByRole('table', { name: '인시던트 목록' })
+    expectInertDom(container)
+    expectMixedRevealed(table)
+
+    // 출발지 + 대상: 대상 줄은 말줄임 · 말풍선 표식
+    const mixed = container.querySelector('[data-incident-key="R003|v2|4.4.66.84|2026-09-18T06:00:00+00:00"]') as HTMLElement
+    const targetLine = within(mixed).getByTitle(revealHidden(`user:${MIXED}`))
+    expect(targetLine).toHaveClass('truncate')
+    expect(targetLine.textContent).toBe(`대상 user:${revealHidden(MIXED)}`)
+
+    // 출발지가 없으면 대상을 출발지 칸에 보인다
+    const rlo = container.querySelector('[data-incident-key="R003|v2|4.4.66.85|2026-09-18T06:00:00+00:00"]') as HTMLElement
+    expect(within(rlo).getByTitle('user:admin⟨U+202E⟩gnp.exe')).toHaveTextContent('user:admin⟨U+202E⟩gnp.exe')
+
+    // 2만 자 대상: 행 안에는 펼치기 단추를 두지 않고(행을 누르면 상세로 간다) 앞 500자에서 자른다
+    const long = container.querySelector('[data-incident-key="R003|v2|4.4.66.86|2026-09-18T06:00:00+00:00"]') as HTMLElement
+    expect(within(long).queryByRole('button')).toBeNull()
+    expect(within(long).getByTitle(`user:${LONG}`).textContent).toBe(`user:${'L'.repeat(495)}…`)
+  })
+
+  it('모바일 카드도 같은 규칙으로 그린다', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <IncidentList items={HOSTILE_ROWS} total={3} now={Date.now()} dataUpdatedAt={0} layout="cards" />
+      </MemoryRouter>,
+    )
+    expectInertDom(container)
+    expectMixedRevealed(container)
+    expect(screen.getByTitle(revealHidden(`user:${MIXED}`))).toHaveClass('truncate')
+    expect(screen.getByTitle('user:admin⟨U+202E⟩gnp.exe')).toHaveTextContent('user:admin⟨U+202E⟩gnp.exe')
+    expect(screen.queryByRole('button')).toBeNull()
+    expect(container.textContent).not.toContain(LONG)
+  })
+
+  it('규칙 이름도 행 · 카드에서 표식으로 보인다', () => {
+    const rows = [incident(87, { rule_name: `이름${HOSTILE.rlo}` })]
+    for (const layout of ['table', 'cards'] as const) {
+      const { container, unmount } = render(
+        <MemoryRouter>
+          <IncidentList items={rows} total={1} now={Date.now()} dataUpdatedAt={0} layout={layout} />
+        </MemoryRouter>,
+      )
+      expect(container.textContent).not.toContain('\u202e')
+      expect(screen.getByTitle('이름admin⟨U+202E⟩gnp.exe')).toHaveTextContent('이름admin⟨U+202E⟩gnp.exe')
+      unmount()
+    }
+  })
+
+  it('주소의 규칙 값(rule_id)도 선택지에 표식으로 보인다', async () => {
+    stubApi(() => json(page(0, [incident(84)], 1)))
+    renderRoutes(routes(), `/incidents?rule_id=${encodeURIComponent(HOSTILE.rlo)}`, noRetryClient())
+    expect(await screen.findByRole('option', { name: 'admin⟨U+202E⟩gnp.exe' })).toBeInTheDocument()
   })
 })

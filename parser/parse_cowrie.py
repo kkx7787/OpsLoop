@@ -24,7 +24,9 @@ import hashlib
 import ipaddress
 import json
 import os
+import re
 import sys
+import unicodedata
 from datetime import datetime, timezone
 
 try:
@@ -223,6 +225,36 @@ def load(conn, files, exclusions):
     return inserted, total - inserted, stats["malformed"], n_sessions
 
 
+# 기본 무시 문자(Default_Ignorable) 가운데 Cf 가 아닌 것과 점자 빈칸. 아무것도 그리지 않는다 (detector/triage.py 와 같다)
+IGNORABLE = re.compile("[\u034f\u115f\u1160\u17b4\u17b5\u180b-\u180f\u2800\u3164\ufe00-\ufe0f\uffa0\ufff0-\ufff8"
+                       "\U000e0000-\U000e0fff]")
+
+
+def shown(v, n):
+    """공격자가 정한 값(아이디 · 비밀번호 · 명령)을 요약 보고에 찍을 모습 (이슈 #41). 원문은 DB 에 그대로 둔다.
+    ESC · 방향 제어 · 제로폭 같은 숨은 문자는 ⟨U+XXXX⟩, 줄바꿈은 ↵, 탭은 빈칸. 표식을 가르지 않고 n 자 안으로 자르고
+    잘렸으면 끝을 '…' 로 둔다. 판정 도구(triage.shown)와 같은 규칙이다."""
+    pieces = []
+    for c in str(v)[:n + 1]:
+        if c == "\n":
+            pieces.append("↵")
+        elif c == "\t":
+            pieces.append(" ")
+        elif unicodedata.category(c) in ("Cf", "Cc", "Zl", "Zp") or IGNORABLE.match(c):
+            pieces.append(f"⟨U+{ord(c):04X}⟩")
+        else:
+            pieces.append(c)
+    if sum(map(len, pieces)) <= n:
+        return "".join(pieces)
+    out, size = [], 0
+    for piece in pieces:
+        if size + len(piece) > n - 1:
+            break
+        out.append(piece)
+        size += len(piece)
+    return "".join(out) + "…"
+
+
 def where_range(since, until, col):
     clauses, params = ["provenance = 'real'"], []
     if since:
@@ -263,9 +295,7 @@ def report(conn, since, until):
             print("   (없음)")
             return
         for name, cnt in rows:
-            label = str(name) if name is not None else "(null)"
-            if len(label) > width:
-                label = label[: width - 1] + "…"
+            label = shown(name, width) if name is not None else "(null)"
             print(f"   {cnt:>6,}  {label}")
 
     section("이벤트 유형",

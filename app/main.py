@@ -15,6 +15,7 @@ OpsLoop API (WBS 3.1)
 """
 
 import asyncio
+import html
 import ipaddress
 import json
 import os
@@ -123,7 +124,13 @@ async def lifespan(app: FastAPI):
         await app.state.pool.close()
 
 
-app = FastAPI(title="OpsLoop API", version="0.1.0", lifespan=lifespan)
+# API 문서 화면(/docs · /openapi.json)은 기본으로 끈다(이슈 #41). 경로 전체 구조와 'OpsLoop API' 이름으로 콘솔이
+# 드러나고, Swagger UI 는 CSP 없이 외부 CDN 스크립트를 콘솔 출처에서 돌린다. 개발에서만 OPSLOOP_API_DOCS=1 로 켠다.
+# 켜도 세션 뒤에 있다(OPEN_PATHS 에 없다). ReDoc 은 켜지 않는다.
+API_DOCS = os.environ.get("OPSLOOP_API_DOCS") == "1"
+app = FastAPI(title="OpsLoop API", version="0.1.0", lifespan=lifespan,
+              docs_url="/docs" if API_DOCS else None, redoc_url=None,
+              openapi_url="/openapi.json" if API_DOCS else None)
 
 # 화면 번들 · /api/me (web.py). 미들웨어는 나중에 붙인 것이 바깥이므로 세션 검사보다 먼저 붙여
 # 세션 검사 안쪽에 둔다. 화면 번들도 로그인 뒤에만 나간다.
@@ -134,7 +141,9 @@ app.include_router(notify_router)
 app.include_router(cti_router)
 
 
-OPEN_PATHS = ("/health", "/login", "/logout", "/docs", "/openapi.json")
+# 세션 없이 여는 경로. /health 는 HAProxy 헬스체크가 부르므로 상태 말고는 아무것도 내지 않는다.
+# /api/csp-report 는 브라우저의 CSP 위반 보고다(쿠키가 없을 수 있다. web.csp_report).
+OPEN_PATHS = ("/health", "/login", "/logout", web.CSP_REPORT_PATH)
 
 # 규칙 조건과 판정 근거가 겹치는 규칙. 여기서 나오는 위협 판정은 규칙의
 # 정확성을 증명하지 않는다. 같은 것을 두 번 센 것이다. detector/triage.py 와
@@ -198,7 +207,7 @@ async def require_session(request: Request, call_next):
     로그인 HTML 을 받으면 파싱에서 엉뚱한 곳이 깨진다.
     """
     path = request.url.path
-    if path in OPEN_PATHS or path.startswith("/ws"):
+    if path in OPEN_PATHS or path == "/ws" or path.startswith("/ws/"):
         return await call_next(request)
 
     session = auth.read(request.cookies.get(auth.COOKIE, ""))
@@ -256,16 +265,13 @@ async def logout(request: Request):
 
 @app.get("/", response_class=HTMLResponse)
 async def shell(request: Request):
+    """화면 빌드(app/static)가 없을 때만 나오는 자리표시. CSP 가 인라인 스타일을 막으므로 스타일 없이 그린다."""
     user = request.state.user
+    who = html.escape(f"{user['u']} · {user['r']}")
     return f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>OpsLoop</title>
-<style>body{{font-family:system-ui,sans-serif;margin:0;background:#f4f5f7;color:#232f3e}}
- header{{background:#232f3e;color:#fff;padding:12px 20px;display:flex;justify-content:space-between}}
- main{{padding:24px}}</style></head><body>
-<header><strong>OpsLoop</strong><span>{user['u']} · {user['r']}
- <form method="post" action="/logout" style="display:inline">
- <button style="background:none;border:0;color:#9dc3e6;cursor:pointer">로그아웃</button></form>
-</span></header>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>OpsLoop</title></head><body>
+<header><strong>OpsLoop</strong> <span>{who}</span>
+ <form method="post" action="/logout"><button>로그아웃</button></form></header>
 <main><p>화면 구현 예정 (WBS 3.6.2~3.6.4)</p></main></body></html>"""
 
 
@@ -285,9 +291,11 @@ def row_to_dict(r: asyncpg.Record) -> dict:
 
 @app.get("/health")
 async def health():
+    """HAProxy 헬스체크(GET /health → 200). 세션 없이 열리므로 DB 가 닿는지만 보고 상태 말고는 내지 않는다.
+    실시간 접속 수는 담당자가 지금 보고 있는지를 드러내므로 넣지 않는다(이슈 #41)."""
     async with app.state.pool.acquire() as c:
         await c.fetchval("SELECT 1")
-    return {"status": "ok", "clients": len(hub.clients)}
+    return {"status": "ok"}
 
 
 @app.get("/api/incidents")

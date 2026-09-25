@@ -31,11 +31,12 @@ export {
   MAX_DECISION_SECONDS,
   MAX_ROWS,
   mergeHistory,
+  rawLineFields,
   sampleColumns,
   STATUS_TONE,
   summarizeBehavior,
 } from './format'
-export type { BlockState, HistoryEntry } from './format'
+export type { BlockState, HistoryEntry, RawField } from './format'
 export { HistoryList } from './HistoryList'
 export type { HistoryListProps } from './HistoryList'
 export { IncidentHeader } from './IncidentHeader'

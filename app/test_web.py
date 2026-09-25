@@ -6,22 +6,38 @@ main.app 을 FastAPI TestClient 로 그대로 부른다. lifespan 은 돌리지 
 진짜를 돌려 가짜 풀에 들어온 값으로 형식을 본다. asyncpg 가 없는 곳에서는 가짜 모듈을 넣는다.
 
 보는 것
-  1. 보안 헤더: CSP · nosniff · 틀 금지 · 참조 정책. /docs · /openapi.json 은 CSP 없음. /api 는 no-store
+  1. 보안 헤더: CSP · nosniff · 틀 금지 · 참조 정책 · DNS 프리페치 끔 · COOP · CORP · 권한 정책.
+     화면 · 번들 · 로그인 · 302 · /api 200/401/403/404/422 · 500 · csp-report 행렬. /api 는 no-store.
+     CSP 는 'unsafe-inline' · data: · 외부 호스트 없음 · 보고는 같은 출처 report-uri 만. 로그인 화면만 <style> 해시.
+     API 문서(/docs · /openapi.json)는 기본으로 없음(404). OPSLOOP_API_DOCS=1 이면 켜지되 세션 뒤. /health 는 상태만
   2. 출처 확인: 같은 출처 통과 · 다른 출처 · 출처 없음 · null 은 403. Referer 대체. 포트까지 비교.
      /login · /logout · /api POST 포함. GET 은 보지 않는다. TRUSTED_ORIGINS. /ws 핸드셰이크
   3. CORS: CORS_ORIGINS 가 있을 때만 건다. 기본값(localhost:5173)은 없다
   4. /api/me: 세션이 있으면 아이디 · 역할, 없거나 위조면 401
   5. 화면 서빙: 빌드가 없으면 자리표시 그대로. 있으면 화면 경로는 index.html(no-cache), /assets 는 파일,
      폴더 밖은 막고 제외 경로(/api · /health · /login · /docs …)는 그대로. 로그인 전에는 /login(next 포함)
-  6. 로그인: 새 화면(스크립트 없음) · next 는 같은 출처 상대 경로만 · 기록(console.login.*) 형식 그대로
+  6. 로그인: 새 화면(스크립트 없음) · next 는 같은 출처 상대 경로만 · 기록(console.login.*) 형식 그대로.
+     아이디 · UA 의 NUL 은 지우고 파서와 같은 길이로 자른다(기록이 빠지지 않는다)
+  7. CSP 위반 보고(POST /api/csp-report): 세션 · 출처 없이 받음(이 경로만) · 형식 · 8 KiB · 분당 60건 · 한 줄 로그 정리
+
+실행: python -m unittest discover -s app
 """
+import asyncio
+import base64
+import hashlib
+import importlib
+import io
+import json
 import os
+import re
 import shutil
 import sys
 import tempfile
 import types
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -44,7 +60,7 @@ except ImportError:
     sys.modules["asyncpg"] = _fake
 
 # 개발자 환경의 값이 main 의 미들웨어 구성에 새지 않게 한다.
-for _k in ("CORS_ORIGINS", "TRUSTED_ORIGINS"):
+for _k in ("CORS_ORIGINS", "TRUSTED_ORIGINS", "OPSLOOP_API_DOCS"):
     os.environ.pop(_k, None)
 
 from fastapi import FastAPI  # noqa: E402
@@ -55,6 +71,8 @@ import auth  # noqa: E402
 import main  # noqa: E402
 import web  # noqa: E402
 
+# 시험마다 가짜로 바꾸기 전의 진짜 계정 확인
+REAL_AUTHENTICATE = auth.authenticate
 SAME = {"Origin": "http://testserver"}
 EVIL = {"Origin": "http://evil.example"}
 PASSWORD = "correct-horse-battery"
@@ -151,26 +169,107 @@ class Base(unittest.TestCase):
 # ──────────────────────────────────────────────────────────────
 #  1. 보안 헤더
 # ──────────────────────────────────────────────────────────────
-class SecurityHeadersTest(Base):
-    def test_login_page_headers(self):
-        r = self.client.get("/login")
-        self.assertEqual(r.status_code, 200)
-        self.assertEqual(r.headers["content-security-policy"], web.CSP)
-        for part in ("default-src 'self'", "script-src 'self'", "style-src 'self' 'unsafe-inline'",
-                     "img-src 'self' data:", "connect-src 'self'", "font-src 'self'",
-                     "object-src 'none'", "base-uri 'self'", "form-action 'self'",
-                     "frame-ancestors 'none'"):
-            self.assertIn(part, r.headers["content-security-policy"])
-        self.assertEqual(r.headers["x-content-type-options"], "nosniff")
-        self.assertEqual(r.headers["x-frame-options"], "DENY")
-        self.assertEqual(r.headers["referrer-policy"], "same-origin")
+EXPECTED_BASE = {
+    "x-content-type-options": "nosniff",
+    "x-frame-options": "DENY",
+    "referrer-policy": "same-origin",
+    "x-dns-prefetch-control": "off",
+    "cross-origin-opener-policy": "same-origin",
+    "cross-origin-resource-policy": "same-origin",
+    "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()",
+}
+# 브라우저가 밖으로 요청할 수 있는 지시어. 값은 'self' 나 'none'(로그인 style-src 는 해시 하나 더)뿐이어야 한다.
+FETCH_DIRECTIVES = ("default-src", "script-src", "style-src", "img-src", "connect-src", "font-src",
+                    "object-src", "base-uri", "form-action", "frame-ancestors")
 
-    def test_docs_without_csp(self):
-        for path in ("/docs", "/openapi.json"):
-            r = self.client.get(path)
-            self.assertEqual(r.status_code, 200, path)
-            self.assertNotIn("content-security-policy", r.headers, path)
-            self.assertEqual(r.headers["x-content-type-options"], "nosniff")
+
+def directives(csp: str) -> dict:
+    return {name: rest for name, _, rest in (part.partition(" ") for part in csp.split("; "))}
+
+
+class SecurityHeadersTest(Base):
+    def assert_headers(self, r, label, csp=web.CSP, api=False):
+        for name, value in EXPECTED_BASE.items():
+            self.assertEqual(r.headers.get(name), value, f"{label}: {name}")
+        self.assertEqual(r.headers.get("content-security-policy"), csp, label)
+        if api:
+            self.assertEqual(r.headers.get("cache-control"), "no-store", label)
+
+    def test_csp_directives(self):
+        """'unsafe-inline' · data: · 외부 호스트가 없다. 위반은 같은 출처로만 보고한다."""
+        for csp in (web.CSP, web.LOGIN_CSP):
+            found = directives(csp)
+            self.assertNotIn("unsafe-inline", csp)
+            self.assertNotIn("unsafe-eval", csp)
+            self.assertNotIn("data:", csp)
+            self.assertNotIn("http", csp)
+            self.assertEqual(found["img-src"], "'self'")
+            self.assertEqual(found["report-uri"], "/api/csp-report")
+            # report-to 가 있으면 Chrome 이 report-uri 를 버리고, 평문 HTTP 에서는 report-to 도 못 쓴다
+            self.assertNotIn("report-to", found)
+            for name in FETCH_DIRECTIVES:
+                for source in found[name].split():
+                    self.assertTrue(source in ("'self'", "'none'") or source.startswith("'sha256-"), (name, source))
+        self.assertEqual(directives(web.CSP)["style-src"], "'self'")
+        self.assertEqual(directives(web.LOGIN_CSP)["style-src"], f"'self' 'sha256-{web.LOGIN_STYLE_HASH}'")
+        # 로그인 CSP 는 style-src 만 다르다
+        self.assertEqual({k: v for k, v in directives(web.LOGIN_CSP).items() if k != "style-src"},
+                         {k: v for k, v in directives(web.CSP).items() if k != "style-src"})
+
+    def test_login_style_hash_matches_page(self):
+        """로그인 응답의 CSP 해시가 실제로 나간 <style> 본문의 SHA-256 과 같다. 스타일을 고쳐도 모양이 깨지지 않는다."""
+        for r in (self.client.get("/login"),
+                  self.client.post("/login", data={"username": "han", "password": "x"}, headers=SAME)):
+            styles = re.findall(r"<style>(.*?)</style>", r.text, re.S)
+            self.assertEqual(len(styles), 1)
+            digest = base64.b64encode(hashlib.sha256(styles[0].encode("utf-8")).digest()).decode()
+            self.assertEqual(digest, web.LOGIN_STYLE_HASH)
+            self.assertIn(f"style-src 'self' 'sha256-{digest}';", r.headers["content-security-policy"])
+            self.assertNotIn("style=", r.text, "style 속성은 해시로 열리지 않는다")
+
+    def test_header_matrix(self):
+        """콘솔이 내는 응답 종류마다 헤더가 모두 붙는다."""
+        self.build_console()
+        # 세션 없음: 로그인 화면 · 302 · 401 · 위반 보고
+        self.assert_headers(self.client.get("/login"), "로그인 화면", csp=web.LOGIN_CSP)
+        r = self.client.post("/login", data={"username": "han", "password": "x"}, headers=SAME)
+        self.assertEqual(r.status_code, 401)
+        self.assert_headers(r, "로그인 실패", csp=web.LOGIN_CSP)
+        r = self.client.get("/incidents")
+        self.assertEqual(r.status_code, 302)
+        self.assert_headers(r, "302 로그인으로")
+        r = self.client.get("/api/me")
+        self.assertEqual(r.status_code, 401)
+        self.assert_headers(r, "/api 401", api=True)
+        with redirect_stdout(io.StringIO()):
+            r = self.client.post("/api/csp-report", json={"csp-report": {"blocked-uri": "inline"}})
+        self.assertEqual(r.status_code, 204)
+        self.assert_headers(r, "csp-report 204", api=True)
+        # 세션 있음
+        self.login_as()
+        r = self.client.get("/incidents/k1")
+        self.assertEqual((r.status_code, r.headers["content-type"].split(";")[0]), (200, "text/html"))
+        self.assert_headers(r, "화면")
+        r = self.client.get("/assets/index-abc123.js")
+        self.assertEqual(r.status_code, 200)
+        self.assert_headers(r, "번들")
+        r = self.client.post("/login", data={"username": "han", "password": PASSWORD}, headers=SAME)
+        self.assertEqual(r.status_code, 302)
+        self.assert_headers(r, "로그인 성공 302")
+        r = self.client.get("/api/me")
+        self.assertEqual(r.status_code, 200)
+        self.assert_headers(r, "/api 200", api=True)
+        r = self.client.post("/api/incidents/k1/verdict", json={"verdict": "threat"}, headers=EVIL)
+        self.assertEqual(r.status_code, 403)
+        self.assert_headers(r, "/api 403", api=True)
+        r = self.client.get("/api/nope")
+        self.assertEqual(r.status_code, 404)
+        self.assert_headers(r, "/api 404", api=True)
+        r = self.client.get("/api/incidents", params={"limit": 0})
+        self.assertEqual(r.status_code, 422)
+        self.assert_headers(r, "/api 422", api=True)
+        r = self.client.get("/health")
+        self.assert_headers(r, "/health")
 
     def test_api_no_store(self):
         r = self.client.get("/api/me")          # 세션 없음 → 인증 미들웨어의 401 에도 붙는다
@@ -181,10 +280,71 @@ class SecurityHeadersTest(Base):
         self.assertEqual(r.headers["cache-control"], "no-store")
         self.assertIn("content-security-policy", r.headers)
 
+    def test_no_server_header_in_container(self):
+        """uvicorn 의 server: uvicorn 을 빼고 띄운다(콘솔 구성이 드러나지 않게)."""
+        cmd = [line for line in (Path(HERE) / "Dockerfile").read_text(encoding="utf-8").splitlines()
+               if line.startswith("CMD")]
+        self.assertEqual(len(cmd), 1)
+        self.assertIn('"--no-server-header"', cmd[0])
+
     def test_redirect_has_headers(self):
         r = self.client.get("/incidents")
         self.assertEqual(r.status_code, 302)
         self.assertEqual(r.headers["x-frame-options"], "DENY")
+
+
+class ApiDocsTest(Base):
+    DOCS = ("/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect")
+
+    def test_off_by_default(self):
+        self.assertEqual((main.app.docs_url, main.app.redoc_url, main.app.openapi_url), (None, None, None))
+        self.assertFalse(any(web._under(p, main.OPEN_PATHS) for p in self.DOCS))
+        for path in self.DOCS:
+            r = self.client.get(path)
+            self.assertEqual((r.status_code, r.headers["location"]), (302, "/login"), path)
+        self.login_as()
+        for path in self.DOCS:
+            r = self.client.get(path)
+            self.assertEqual(r.status_code, 404, path)
+            self.assertNotIn("swagger", r.text.lower(), path)
+            self.assertEqual(r.headers.get("content-security-policy"), web.CSP, path)
+
+    def test_on_only_behind_session(self):
+        with mock.patch.dict(os.environ, {"OPSLOOP_API_DOCS": "1"}):
+            docs_main = importlib.reload(main)
+        # 다음 시험은 기본(끔) 앱으로 돈다
+        self.addCleanup(importlib.reload, main)
+        client = TestClient(docs_main.app, follow_redirects=False)
+        self.addCleanup(client.close)
+        for path in ("/docs", "/openapi.json"):
+            r = client.get(path)
+            self.assertEqual((r.status_code, r.headers["location"]), (302, "/login"), path)
+        client.cookies.set(auth.COOKIE, auth.issue("han", "viewer"))
+        r = client.get("/docs")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("swagger", r.text.lower())
+        # 문서 화면은 CDN 스크립트를 쓰므로 켜졌을 때만 이 경로의 CSP 를 뺀다. 다른 헤더는 그대로다
+        self.assertNotIn("content-security-policy", r.headers)
+        self.assertEqual(r.headers["x-dns-prefetch-control"], "off")
+        self.assertEqual(client.get("/openapi.json").json()["info"]["title"], "OpsLoop API")
+        self.assertEqual(client.get("/redoc").status_code, 404)
+        self.assertEqual(client.get("/login").headers["content-security-policy"], web.LOGIN_CSP)
+
+
+class HealthTest(Base):
+    def test_ws_prefix_paths_need_a_session(self):
+        # /ws 만 세션 검사를 건너뛴다(웹소켓이 스스로 본다). /wsx · /ws-x/… 는 다른 화면 경로와 같다
+        client = TestClient(main.app, follow_redirects=False)
+        self.addCleanup(client.close)
+        for path in ("/wsx", "/ws-anything/incidents", "/wss"):
+            with self.subTest(path=path):
+                self.assertEqual(client.get(path).status_code, 302)
+        self.assertEqual(client.get("/api/wsx").status_code, 401)
+
+    def test_health_shows_status_only_without_session(self):
+        r = self.client.get("/health")
+        self.assertEqual(r.status_code, 200, "HAProxy option httpchk GET /health · expect status 200")
+        self.assertEqual(r.json(), {"status": "ok"}, "실시간 접속 수 등 다른 값은 내지 않는다")
 
 
 # ──────────────────────────────────────────────────────────────
@@ -212,6 +372,10 @@ class ServerErrorTest(Base):
                 self.assertEqual(r.headers.get("x-frame-options"), "DENY")
                 self.assertIn("default-src 'self'", r.headers.get("content-security-policy", ""))
                 self.assertEqual(r.headers.get("cache-control") == "no-store", no_store)
+                self.assertEqual(r.headers.get("x-dns-prefetch-control"), "off")
+                self.assertEqual(r.headers.get("cross-origin-opener-policy"), "same-origin")
+                self.assertEqual(r.headers.get("cross-origin-resource-policy"), "same-origin")
+                self.assertIn("camera=()", r.headers.get("permissions-policy", ""))
 
 
 class OriginCheckTest(Base):
@@ -394,6 +558,9 @@ class ConsoleFilesTest(Base):
         r = self.client.get("/")
         self.assertEqual(r.status_code, 200)
         self.assertIn("화면 구현 예정", r.text)
+        # 인라인 스타일은 CSP 가 막으므로 쓰지 않는다
+        self.assertNotIn("<style", r.text)
+        self.assertNotIn("style=", r.text)
         self.assertEqual(self.client.get("/incidents").status_code, 404)
         self.assertEqual(self.client.get("/assets/index-abc123.js").status_code, 404)
 
@@ -460,12 +627,14 @@ class ConsoleFilesTest(Base):
         self.assertEqual(r.status_code, 404)
         self.assertEqual(r.json(), {"detail": "Not Found"})
         r = self.client.get("/health")
-        self.assertEqual(r.json()["status"], "ok")
+        self.assertEqual(r.json(), {"status": "ok"})
         r = self.client.get("/login")
         self.assertIn('action="/login"', r.text)
-        r = self.client.get("/docs")
-        self.assertIn("swagger", r.text.lower())
-        self.assertEqual(self.client.get("/openapi.json").json()["info"]["title"], "OpsLoop API")
+        # 문서 경로는 꺼져 있어도 화면(index.html)으로 빠지지 않는다
+        for path in ("/docs", "/openapi.json"):
+            r = self.client.get(path)
+            self.assertEqual(r.status_code, 404, path)
+            self.assertNotIn('<div id="root">', r.text, path)
         # 화면 경로라도 GET · HEAD 가 아니면 index.html 을 주지 않는다
         r = self.client.post("/incidents", headers=SAME)
         self.assertNotEqual(r.status_code, 200)
@@ -567,11 +736,191 @@ class LoginTest(Base):
         r = self.post(username='a"><script>alert(1)</script>', password="x")
         self.assertNotIn("<script>", r.text)
 
+    def test_nul_username_is_still_logged(self):
+        """아이디의 NUL(%00)은 지우고 기록한다. 그대로 넣으면 INSERT 가 실패해 실패 기록이 빠진다."""
+        r = self.post(username="ad\x00min", password="wrong")
+        self.assertEqual(r.status_code, 401)
+        (event,) = self.pool.events()
+        self.assertEqual(event["eventid"], "console.login.failed")
+        self.assertEqual(event["username"], "admin")
+        # 화면 재표시는 이스케이프한다
+        r = self.post(username='a\x00"><img src=//a.attacker.test/p.png>', password="wrong")
+        self.assertNotIn("<img", r.text)
+        self.assertIn("&quot;&gt;&lt;img", r.text)
+
+    def test_log_event_clips_like_parser(self):
+        request = SimpleNamespace(client=SimpleNamespace(host="192.0.2.8", port=50000), method="POST",
+                                  url=SimpleNamespace(path="/login" + "x" * 3000),
+                                  headers={"user-agent": "Mozilla\x00" + "U" * 1000})
+        asyncio.run(auth.log_event(self.pool, request, "console.login.failed",
+                                   username="u\x00" + "n" * 400, status=401, session="s" * 300,
+                                   message="m\x00" * 600))
+        ((sql, args),) = self.pool.executed
+        (line_hash, _ts, eventid, session, src_ip, _src_port, _dst_port, username,
+         method, status, ua, url, message) = args
+        self.assertEqual(eventid, "console.login.failed")
+        self.assertEqual(username, "u" + "n" * 255)
+        self.assertEqual(ua, "Mozilla" + "U" * 505)
+        self.assertEqual((len(session), len(url), len(message)), (128, 2048, 512))
+        for value in (session, username, method, ua, url, message):
+            self.assertNotIn("\x00", value)
+        self.assertEqual(auth.clip("a\ud800b", 10), "a?b")
+        self.assertIsNone(auth.clip(None, 10))
+
+    def test_authenticate_skips_db_for_nul(self):
+        """계정 이름에 NUL 이 있으면 DB 에 묻지 않고 실패로 돌려준다(DB 오류로 500 · 기록 누락이 나지 않는다)."""
+        class NulPool:
+            def acquire(self):
+                raise AssertionError("NUL 아이디로 DB 에 붙으면 안 된다")
+        self.assertIsNone(asyncio.run(REAL_AUTHENTICATE(NulPool(), "ad\x00min", "pw")))
+
     def test_safe_next_unit(self):
         for good in ("/", "/incidents", "/incidents/a%2Fb?x=1#y", "/rules?v=2"):
             self.assertEqual(web.safe_next(good), good)
         for bad in (None, 3, "", "x", "//a", "/\\a", "http://a", "/login", "/logout/", "/\x7f"):
             self.assertEqual(web.safe_next(bad), "/", repr(bad))
+
+
+# ──────────────────────────────────────────────────────────────
+#  7. CSP 위반 보고
+# ──────────────────────────────────────────────────────────────
+class CspReportTest(Base):
+    def setUp(self):
+        super().setUp()
+        web._csp_seen.clear()
+        self.addCleanup(web._csp_seen.clear)
+
+    def report(self, body, kind="application/csp-report", headers=None):
+        out = io.StringIO()
+        data = body if isinstance(body, (bytes, str)) else json.dumps(body)
+        with redirect_stdout(out):
+            r = self.client.post("/api/csp-report", content=data,
+                                 headers={"Content-Type": kind} | (headers or {}))
+        return r, [line for line in out.getvalue().splitlines() if line.startswith("[csp]")]
+
+    def test_formats(self):
+        legacy = {"csp-report": {"document-uri": "http://192.168.70.254:8443/incidents/k1",
+                                 "violated-directive": "img-src", "blocked-uri": "http://a.attacker.test/p.png",
+                                 "source-file": "http://192.168.70.254:8443/assets/index.js", "line-number": 12,
+                                 "original-policy": "x" * 100}}
+        r, lines = self.report(legacy)
+        self.assertEqual(r.status_code, 204)
+        self.assertEqual(r.content, b"")
+        self.assertEqual(lines, ['[csp] 위반 보고 document-uri="http://192.168.70.254:8443/incidents/k1" '
+                                 'violated-directive="img-src" blocked-uri="http://a.attacker.test/p.png" '
+                                 'source-file="http://192.168.70.254:8443/assets/index.js" line=12'])
+        reports = [{"type": "csp-violation", "url": "http://c/x", "body": {
+            "documentURL": "http://c/incidents/k2", "effectiveDirective": "style-src-elem", "blockedURL": "inline",
+            "lineNumber": 3}}, {"type": "csp-violation", "body": {"blockedURL": "eval"}}]
+        r, lines = self.report(reports, "application/reports+json")
+        self.assertEqual(r.status_code, 204)
+        self.assertEqual(len(lines), 2)
+        self.assertIn('violated-directive="style-src-elem" blocked-uri="inline" source-file=- line=3', lines[0])
+        self.assertIn("document-uri=- violated-directive=- blocked-uri=\"eval\"", lines[1])
+        r, lines = self.report(legacy, "application/json; charset=utf-8")
+        self.assertEqual((r.status_code, len(lines)), (204, 1))
+        # 모르는 모양은 204 로 받고 남기지 않는다
+        r, lines = self.report({"hello": "world"}, "application/json")
+        self.assertEqual((r.status_code, lines), (204, []))
+
+    def test_rejects_other_types_and_bad_bodies(self):
+        for kind in ("text/plain", "application/x-www-form-urlencoded", "multipart/form-data", ""):
+            r, lines = self.report({"csp-report": {}}, kind)
+            self.assertEqual((r.status_code, lines), (415, []), kind)
+        r, lines = self.report("{not json", "application/json")
+        self.assertEqual((r.status_code, lines), (400, []))
+        r, lines = self.report(b"\xff\xfe", "application/json")
+        self.assertEqual((r.status_code, lines), (400, []))
+        # 8 KiB 안의 깊은 중첩. 파이썬 판에 따라 모르는 모양(204)이거나 거절(400)이다. 500 이 아니고 남기지 않는다
+        r, lines = self.report("[" * 4000 + "]" * 4000, "application/json")
+        self.assertIn(r.status_code, (204, 400))
+        self.assertEqual(lines, [])
+
+    def test_size_limit(self):
+        body = json.dumps({"csp-report": {"blocked-uri": "x" * (8 * 1024)}})
+        r, lines = self.report(body)
+        self.assertEqual((r.status_code, lines), (413, []))
+        # Content-Length 가 없어도(나눠 보내기) 읽는 중에 끊는다
+        def chunks():
+            for _ in range(20):
+                yield b"x" * 1024
+        with redirect_stdout(io.StringIO()):
+            r = self.client.post("/api/csp-report", content=chunks(),
+                                 headers={"Content-Type": "application/csp-report"})
+        self.assertEqual(r.status_code, 413)
+        ok = json.dumps({"csp-report": {"blocked-uri": "x" * 7000}})
+        self.assertEqual(self.report(ok)[0].status_code, 204)
+
+    def test_rate_limit(self):
+        body = {"csp-report": {"blocked-uri": "inline"}}
+        for n in range(60):
+            self.assertEqual(self.report(body)[0].status_code, 204, n)
+        r, lines = self.report(body)
+        self.assertEqual((r.status_code, lines), (429, []))
+        # 1분이 지나면 다시 받는다
+        with mock.patch.object(web.time, "monotonic", return_value=web._csp_seen[-1] + 61):
+            self.assertEqual(self.report(body)[0].status_code, 204)
+
+    def test_rejected_reports_do_not_use_the_quota(self):
+        # 형식 · 크기 · JSON 이 틀린 요청은 한도를 쓰지 않는다. 쓰레기 요청으로 진짜 보고를 밀어내지 못한다
+        for _ in range(100):
+            self.assertEqual(self.report("x", kind="text/plain")[0].status_code, 415)
+            self.assertEqual(self.report("{", kind="application/json")[0].status_code, 400)
+        self.assertEqual(len(web._csp_seen), 0)
+        self.assertEqual(self.report({"csp-report": {"blocked-uri": "inline"}})[0].status_code, 204)
+
+    def test_quota_counts_log_lines(self):
+        # reports+json 한 요청이 여러 줄을 남기면 그 줄 수만큼 센다. 남은 한도만큼만 남기고, 다 쓰면 429
+        many = [{"type": "csp-violation", "body": {"blockedURL": f"http://a.attacker.test/{i}"}} for i in range(10)]
+        for n in range(6):
+            r, lines = self.report(many, kind="application/reports+json")
+            self.assertEqual((r.status_code, len(lines)), (204, 10), n)
+        r, lines = self.report(many, kind="application/reports+json")
+        self.assertEqual((r.status_code, lines), (429, []))
+
+    def test_integer_line_is_bounded(self):
+        r, (line,) = self.report({"csp-report": {"blocked-uri": "inline", "line-number": 10 ** 4000}})
+        self.assertEqual(r.status_code, 204)
+        self.assertLess(len(line), 600)
+        self.assertEqual(self.report({"csp-report": {"line-number": 42}})[1], [
+            "[csp] 위반 보고 document-uri=- violated-directive=- blocked-uri=- source-file=- line=42"])
+
+    def test_log_line_is_one_clean_line(self):
+        hostile = {"csp-report": {
+            "document-uri": "http://c/incidents/admin\u202egnp.exe",
+            "violated-directive": "img-src\n2026-09-18 15:00:00 decoy login.success",
+            "blocked-uri": "http://a.attacker.test/\u200b\u2066x\u2069\ufeff\x1b[31m\x9b2K\U000E0041\r\n" + "y" * 5000,
+            "source-file": "<svg onload=alert(1)>", "line-number": "12\n가짜"}}
+        r, lines = self.report(hostile)
+        self.assertEqual(r.status_code, 204)
+        (line,) = lines
+        for ch in ("\u202e", "\u200b", "\u2066", "\u2069", "\ufeff", "\x1b", "\x9b", "\U000E0041", "\r", "\n"):
+            self.assertNotIn(ch, line, repr(ch))
+        for mark in ("⟨U+202E⟩", "⟨U+200B⟩", "⟨U+2066⟩", "⟨U+2069⟩", "⟨U+FEFF⟩", "⟨U+001B⟩", "⟨U+009B⟩",
+                     "⟨U+E0041⟩", "⟨U+000D⟩", "img-src↵2026-09-18"):
+            self.assertIn(mark, line)
+        self.assertIn('line="12↵가짜"', line)
+        blocked = json.loads(re.search(r'blocked-uri=("(?:[^"\\]|\\.)*")', line).group(1))
+        self.assertEqual(len(blocked), web.CSP_FIELD_MAX)
+        self.assertTrue(blocked.endswith("…"))
+
+    def test_entries_capped_per_request(self):
+        reports = [{"type": "csp-violation", "body": {"blockedURL": f"inline-{n}"}} for n in range(50)]
+        r, lines = self.report(reports, "application/reports+json")
+        self.assertEqual((r.status_code, len(lines)), (204, web.CSP_REPORT_ENTRIES))
+
+    def test_open_without_session_or_origin_only_here(self):
+        """보고는 쿠키 · Origin 없이 온다. 출처 확인 예외는 POST /api/csp-report 하나뿐이다."""
+        body = {"csp-report": {"blocked-uri": "inline"}}
+        for headers in ({}, EVIL, {"Origin": "null"}):
+            self.assertEqual(self.report(body, headers=headers)[0].status_code, 204, headers)
+        self.login_as()
+        for method, path in (("POST", "/api/csp-report/x"), ("POST", "/api/csp-reportx"), ("PUT", "/api/csp-report"),
+                             ("DELETE", "/api/csp-report"), ("POST", "/api/incidents/k1/verdict")):
+            with redirect_stdout(io.StringIO()):
+                r = self.client.request(method, path, json=body, headers=EVIL)
+            self.assertEqual(r.status_code, 403, (method, path))
+        self.assertEqual(self.pool.executed, [], "보고는 DB 에 넣지 않는다")
 
 
 if __name__ == "__main__":

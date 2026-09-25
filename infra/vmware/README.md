@@ -91,7 +91,101 @@ Mac(관리망 192.168.70.1)
        └─ ssh -J ops@192.168.70.254 ops@192.168.60.11   # 데이터 노드
 ```
 
-콘솔 화면은 `http://192.168.70.254:8443`, HAProxy 상태는 `:8404` 로 본다.
+콘솔 화면은 `http://192.168.70.254:8443` 로 본다 (관리망 · VPN).
+
+### HAProxy 통계 페이지 (이슈 #41)
+
+통계 페이지(`8404`)는 방화벽 VM 안(`127.0.0.1:8404`)에서만 연다. 관리망 · VPN 에서 바로 열지 않는다
+(`haproxy/haproxy.cfg` 의 `listen stats` · `fw/nftables.conf` input 체인의 mgmt · tailscale0 허용 포트).
+
+- 통계 페이지는 인증이 없고 콘솔 노드 주소 · 상태를 보인다.
+- 방화벽 주소(192.168.70.254)에 두면 콘솔(`:8443`)과 같은 사이트가 된다. 콘솔 쿠키(SameSite=Lax)가 딸려 가는 요청을 보낼 수 있는 출처가 하나 더 생긴다.
+- 터널로 여는 `127.0.0.1` 은 콘솔과 다른 사이트다.
+
+보는 법 (Mac. 이중화 시연 때 이렇게 연다):
+
+```bash
+ssh -F ~/.ssh/config.opsloop -L 8404:127.0.0.1:8404 fw      # 셸이 필요 없으면 -N. 보는 동안 열어 둔다
+# 브라우저로 http://127.0.0.1:8404 를 연다 (5초마다 새로 고침)
+#   시연: 콘솔 A 컨테이너를 멈추면 console-a 가 6초 안에 DOWN, 다시 띄우면 연속 정상 3회 뒤 UP
+# 브라우저 없이 상태만 보기 (프록시 · 서버 · 상태)
+ssh -F ~/.ssh/config.opsloop fw 'curl -fsS "http://127.0.0.1:8404/;csv"' | cut -d, -f1,2,18
+```
+
+휴대폰처럼 SSH 를 쓰지 못하는 VPN 단말에서는 통계 페이지를 보지 않는다. 콘솔 화면(`:8443`)은 그대로 열린다.
+
+같은 이슈에서 콘솔 쪽도 바뀐다. 방화벽 설정은 바꾸지 않아도 된다.
+
+- `/health` 는 세션 없이 `{"status": "ok"}` 만 준다(접속 수는 빠진다).
+  HAProxy 헬스체크(`option httpchk GET /health` · `expect status 200`)는 상태 코드만 보므로 그대로 둔다.
+- API 문서 화면(`/docs` · `/openapi.json`)은 기본으로 꺼진다.
+  `compose/console.yml` 은 `OPSLOOP_API_DOCS` 를 넘기지 않으므로 운영 콘솔은 끈 채로 뜬다.
+
+### 방화벽 설정 올리기 · 되돌리기
+
+처음 구축 때 `fw/nftables.conf` 는 `scripts/configure.sh` 가 VMware Tools 로 넣는다(`/etc/nftables.conf`).
+`haproxy/haproxy.cfg` 를 올리는 스크립트는 없다(패키지 기본 경로 `/etc/haproxy/haproxy.cfg`).
+네트워크가 선 뒤 두 파일을 바꿀 때는 아래처럼 SSH 로 올린다. 커밋된 판만 올린다.
+
+```bash
+# 0. 배포본 확인 (Mac, 저장소 루트). 실행 중인 HAProxy 의 설정 경로(-f)와, 배포본 · 저장소 판의 차이를 본다
+C=$(git rev-parse --short HEAD)
+ssh -F ~/.ssh/config.opsloop fw 'pgrep -a haproxy'      # -f /etc/haproxy/haproxy.cfg
+ssh -F ~/.ssh/config.opsloop fw 'cat /etc/haproxy/haproxy.cfg' | diff - <(git show "$C:infra/vmware/haproxy/haproxy.cfg")
+ssh -F ~/.ssh/config.opsloop fw 'cat /etc/nftables.conf' | diff - <(git show "$C:infra/vmware/fw/nftables.conf")
+#    다른 곳은 이번 변경(통계 bind 한 줄 · 8404 두 줄과 그 주석)뿐이어야 한다. 주석만 다른 줄은 괜찮다.
+#    그 밖의 설정 줄이 다르면 배포본이 저장소 밖에서 바뀐 것이다. 덮어쓰지 말고 멈춰 어느 쪽이 맞는지 먼저 정한다.
+#    web01.yml 의 구성 창(provision 집합)이 열려 있으면 끝난 뒤에 한다. nftables.conf 첫 줄 flush ruleset 이 집합을 비운다
+#    flush ruleset 은 Tailscale 이 iptables-nft 로 넣은 규칙(ts-input · ts-forward · ts-postrouting)도 지운다.
+#    방화벽은 50 · 60 · 70 대역을 VPN 에 광고하므로, 2번 뒤 tailscaled 를 다시 띄워 그 규칙을 되살린다
+
+# 1. HAProxy: 문법 검사 → 이전 판을 .prev 로 → 교체 → reload (reload 는 맺은 연결을 끊지 않는다)
+git show "$C:infra/vmware/haproxy/haproxy.cfg" | ssh -F ~/.ssh/config.opsloop fw 'set -e
+  cat > /tmp/opsloop-haproxy.cfg
+  sudo -n haproxy -c -f /tmp/opsloop-haproxy.cfg
+  if sudo -n cmp -s /tmp/opsloop-haproxy.cfg /etc/haproxy/haproxy.cfg; then echo "이미 같은 판이다"; exit 0; fi
+  sudo -n cp -p /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.prev
+  sudo -n install -m 644 /tmp/opsloop-haproxy.cfg /etc/haproxy/haproxy.cfg
+  sudo -n systemctl reload haproxy
+  sleep 2; sudo -n ss -ltnp | grep haproxy'
+#    기대: 127.0.0.1:8404 · 0.0.0.0:8443. 관리망 주소(192.168.70.254)의 8404 는 없어야 한다
+
+# 2. nftables: 문법 검사 → 이전 판을 .prev 로 → 교체 → 적용 (파일 전체가 한 번에 바뀐다. 맺은 SSH 연결은 이어진다)
+git show "$C:infra/vmware/fw/nftables.conf" | ssh -F ~/.ssh/config.opsloop fw 'set -e
+  cat > /tmp/opsloop-nftables.conf
+  sudo -n nft -c -f /tmp/opsloop-nftables.conf
+  if sudo -n cmp -s /tmp/opsloop-nftables.conf /etc/nftables.conf; then echo "이미 같은 판이다"; exit 0; fi
+  sudo -n cp -p /etc/nftables.conf /etc/nftables.conf.prev
+  sudo -n install -m 644 /tmp/opsloop-nftables.conf /etc/nftables.conf
+  sudo -n nft -f /etc/nftables.conf
+  sudo -n systemctl restart tailscaled
+  sleep 5; sudo -n nft list chain inet filter input | grep "tcp dport"
+  sudo -n nft list ruleset 2>/dev/null | grep -c "chain ts-"; tailscale status --self --peers=false'
+#    기대: mgmt · tailscale0 줄이 { 22, 8443 }, ts- 체인이 다시 있다(0 이 아니다). VPN 은 몇 초 끊겼다 이어진다
+#    부팅 때는 nftables.service 가 같은 /etc/nftables.conf 를 먼저 읽고 tailscaled 가 뒤에 규칙을 더한다
+
+# 3. 확인 (Mac). 5번 항목: 통계 페이지 방화벽 안 통과 · 관리망 직접 실패 · 콘솔 진입점 응답
+infra/vmware/scripts/verify.sh
+#    VPN 단말에서도 콘솔(:8443)은 열리고 :8404 는 닿지 않는지 본다
+```
+
+되돌리기는 올린 반대 순서다. `.prev` 를 다시 넣으면 통계 페이지가 관리망 · VPN 에 다시 열린다.
+
+```bash
+ssh -F ~/.ssh/config.opsloop fw 'set -e
+  sudo -n nft -c -f /etc/nftables.conf.prev
+  sudo -n install -m 644 /etc/nftables.conf.prev /etc/nftables.conf
+  sudo -n nft -f /etc/nftables.conf
+  sudo -n systemctl restart tailscaled'
+ssh -F ~/.ssh/config.opsloop fw 'set -e
+  sudo -n haproxy -c -f /etc/haproxy/haproxy.cfg.prev
+  sudo -n install -m 644 /etc/haproxy/haproxy.cfg.prev /etc/haproxy/haproxy.cfg
+  sudo -n systemctl reload haproxy
+  sleep 2; sudo -n ss -ltnp | grep haproxy'
+```
+
+- `.prev` 는 1 · 2번이 실제로 파일을 바꿀 때만 만든다. 없는 쪽은 검사에서 멈추므로 건너뛴다.
+- 그 뒤 다른 판을 또 올려 `.prev` 가 바뀌었으면 `.prev` 대신 1 · 2번을 `C` 를 되돌릴 커밋으로 두고 다시 돌린다.
 
 ## 데이터베이스 역할 (이슈 #31)
 
@@ -249,7 +343,8 @@ ssh -F ~/.ssh/config.opsloop data01 'sudo -n -u opsloop-cti /usr/local/bin/opslo
 | `seed/user-data.template` | 무인 설치 정의. 비밀번호 해시와 공개 키는 만들 때 채운다 |
 | `netplan/*.yaml` | 노드별 고정 주소 |
 | `fw/nftables.conf` | 내부 방화벽 규칙 (설계 3.2 규칙표) |
-| `haproxy/haproxy.cfg` | 콘솔 분배 · 헬스체크 2초 × 3회 |
+| `haproxy/haproxy.cfg` | 콘솔 분배 · 헬스체크 2초 × 3회 · 통계 페이지 `127.0.0.1:8404` |
+| `test_fw_haproxy.py` | 위 두 설정 시험 (통계 페이지 노출 · 허용 포트 · `verify.sh` · 이 문서). `python3 infra/vmware/test_fw_haproxy.py` |
 | `scripts/*.sh` | 네트워크 생성 · seed · 복제 · 구성 · 검증 · DB 백업 · 자산 수집 |
 
 비밀번호와 개인 키는 저장소에 넣지 않는다. seed 이미지도 저장소 밖(`~/Virtual Machines.localized`)에 만든다.

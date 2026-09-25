@@ -2,6 +2,7 @@ import { useId, type ReactNode } from 'react'
 import type { IncidentSort } from '@/api/incidents'
 import { cn } from '@/lib/cn'
 import { INCIDENT_STATUS_LABEL, INCIDENT_STATUSES, isSeverity, SEVERITIES } from '@/lib/domain'
+import { revealHidden } from '@/lib/untrusted'
 import { Button } from '../../atoms/Button'
 import { Label } from '../../atoms/Label'
 import { Select } from '../../atoms/Select'
@@ -95,7 +96,8 @@ export function IncidentFilterBar({ value, onChange, rules = [], className }: In
           <option value="">전체</option>
           {ruleOptions.map((rule) => (
             <option key={rule.id} value={rule.id}>
-              {rule.name ? `${rule.id} ${rule.name}` : rule.id}
+              {/* 규칙 값은 주소(?rule_id=)에서 올 수 있다. <option> 은 글자만 받으므로 문자열로 바꿔 넣는다 */}
+              {revealHidden(rule.name ? `${rule.id} ${rule.name}` : rule.id)}
             </option>
           ))}
         </Select>

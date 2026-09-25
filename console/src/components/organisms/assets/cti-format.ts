@@ -1,9 +1,11 @@
 import type { ApplicabilityStatus, CtiFreshness, FixState } from '@/api/cti'
+import { codePointLength, revealHidden, sliceCodePoints } from '@/lib/untrusted'
 import type { Tone } from '../../atoms/tones'
 
 /**
  * CVE · KEV 연계(#39) 값을 글로 바꾸는 규칙. 사건 상세의 취약점 연계 구역과 자산 · 취약점 화면이 같이 쓴다.
  * 화면 컴포넌트는 여기 함수만 부르고 판단을 품지 않는다. 오래됨 · 적용 판정은 서버가 정하고 화면은 옮겨 적기만 한다.
+ * 모르는 원문(등급 · 표기)을 그대로 돌려줄 때는 revealHidden 을 거친다(수집 원본도 비신뢰다, #41).
  */
 
 /** 적용 판정 배지 색. 미확인은 비해당과 구별되게 경고색이다 */
@@ -30,7 +32,7 @@ export function cvssTone(severity: string | null | undefined): Tone {
 export function formatCvss(score: number | string | null | undefined, severity?: string | null): string {
   const n = Number(score)
   if (score === null || score === undefined || score === '' || !Number.isFinite(n)) return '—'
-  const grade = severity ? ` ${severity.toUpperCase()}` : ''
+  const grade = severity ? ` ${revealHidden(severity.toUpperCase())}` : ''
   return `${n.toFixed(1)}${grade}`
 }
 
@@ -56,14 +58,14 @@ export function ransomwareLabel(value: string | null | undefined): string {
   if (!value) return '—'
   if (value.toLowerCase() === 'known') return '사용 확인'
   if (value.toLowerCase() === 'unknown') return '알려지지 않음'
-  return value
+  return revealHidden(value)
 }
 
 /** Ubuntu 우선순위(OSV severity type 'Ubuntu'). 소문자 원문을 그대로 보이지 않고 한국어로 옮긴다 */
 const UBUNTU_PRIORITY_LABEL: Record<string, string> = { negligible: '무시 가능', low: '낮음', medium: '중간', high: '높음', critical: '긴급' }
 export function ubuntuPriorityLabel(value: string | null | undefined): string {
   if (!value) return '—'
-  return UBUNTU_PRIORITY_LABEL[value.toLowerCase()] ?? value
+  return UBUNTU_PRIORITY_LABEL[value.toLowerCase()] ?? revealHidden(value)
 }
 
 export function ubuntuPriorityTone(value: string | null | undefined): Tone {
@@ -89,8 +91,11 @@ export function staleSources(freshness: CtiFreshness | null | undefined): string
   return names
 }
 
-/** 긴 글의 앞부분. 전체는 title 로 본다 */
+/**
+ * 긴 글의 앞부분(원문 글자 수 기준, 두 칸짜리 글자를 가르지 않는다). 전체는 title 로 본다.
+ * 결과도 원문이므로 화면은 UntrustedText 로, title 은 revealHidden 으로 그린다
+ */
 export function truncate(text: string | null | undefined, max = 140): string {
   if (!text) return '—'
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text
+  return text.length > max && codePointLength(text) > max ? `${sliceCodePoints(text, max - 1)}…` : text
 }

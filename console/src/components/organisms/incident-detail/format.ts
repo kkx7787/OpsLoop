@@ -53,18 +53,34 @@ export function summarizeBehavior(row: BehaviorRow): string {
   return '—'
 }
 
-/** 원문 한 줄. 비밀번호 원문은 서버가 주지 않으므로 있었다는 표시만 남긴다 */
+/** 원문 한 줄의 필드 하나. label 은 고정 글자(session= 등), value 는 원문 값(비신뢰)이다 */
+export interface RawField {
+  label?: string
+  value?: string
+}
+
+/**
+ * 원문 한 줄을 필드로. 화면은 필드마다 따로 격리해 그린다(한 필드의 방향 제어 · 줄바꿈이 뒤 필드를 건드리지 않게).
+ * 비밀번호 원문은 서버가 주지 않으므로 있었다는 표시만 남긴다
+ */
+export function rawLineFields(row: RawLine): RawField[] {
+  const fields: RawField[] = [{ value: formatKst(row.ts, 'datetime') }, { value: row.sensor }, { value: row.eventid }]
+  if (row.session) fields.push({ label: 'session=', value: row.session })
+  if (row.username) fields.push({ label: 'user=', value: row.username })
+  if (row.has_password) fields.push({ label: 'password=[있음]' })
+  if (row.input) fields.push({ label: 'input=', value: row.input })
+  if (row.url) fields.push({ value: `${row.http_method ?? ''} ${row.url}${row.http_status !== null && row.http_status !== undefined ? ` ${row.http_status}` : ''}`.trim() })
+  if (row.shasum) fields.push({ label: 'shasum=', value: row.shasum })
+  if (row.user_agent) fields.push({ label: 'ua=', value: row.user_agent })
+  if (row.message) fields.push({ value: row.message })
+  return fields
+}
+
+/** 원문 한 줄을 글 하나로(필드 사이 공백 두 칸). 화면은 rawLineFields 로 필드마다 그린다 */
 export function formatRawLine(row: RawLine): string {
-  const parts: string[] = [formatKst(row.ts, 'datetime'), row.sensor, row.eventid]
-  if (row.session) parts.push(`session=${row.session}`)
-  if (row.username) parts.push(`user=${row.username}`)
-  if (row.has_password) parts.push('password=[있음]')
-  if (row.input) parts.push(`input=${row.input}`)
-  if (row.url) parts.push(`${row.http_method ?? ''} ${row.url}${row.http_status !== null && row.http_status !== undefined ? ` ${row.http_status}` : ''}`.trim())
-  if (row.shasum) parts.push(`shasum=${row.shasum}`)
-  if (row.user_agent) parts.push(`ua=${row.user_agent}`)
-  if (row.message) parts.push(row.message)
-  return parts.join('  ')
+  return rawLineFields(row)
+    .map((field) => `${field.label ?? ''}${field.value ?? ''}`)
+    .join('  ')
 }
 
 /** 시각으로 보이는 열 이름(ts · first_ts · created_at · last_seen …). 값이 시각이면 KST 로 바꾼다 */

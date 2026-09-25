@@ -3,6 +3,7 @@ import { useSummary } from '@/api/monitoring'
 import { Card, CardHeader } from '@/components/atoms/Card'
 import { SeverityBadge } from '@/components/atoms/SeverityBadge'
 import { Time } from '@/components/atoms/Time'
+import { UntrustedText } from '@/components/atoms/UntrustedText'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { MonitoringStatus } from '@/components/organisms/MonitoringStatus'
 import { ApiErrorState } from '@/components/organisms/states/ApiErrorState'
@@ -10,6 +11,7 @@ import { LoadingState } from '@/components/organisms/states/LoadingState'
 import { formatDuration } from '@/lib/time'
 import { sensorOf } from '@/lib/domain'
 import { cn } from '@/lib/cn'
+import { revealHidden } from '@/lib/untrusted'
 
 const AGE_LABELS = ['1시간 미만', '1–4시간', '4–12시간', '12–24시간', '24시간 이상']
 
@@ -39,8 +41,11 @@ export function DashboardPage() {
                   <div className="text-xs font-normal">{item.overdue ? '목표 초과' : `목표 ${formatDuration(item.target_seconds * 1000)}`}</div>
                 </div>
                 <div className="col-span-2 row-start-2 min-w-0 sm:col-span-1 sm:row-auto">
-                  <div className="break-words text-sm text-ink"><span className="mr-2 font-mono text-primary">{item.rule_id}</span>{item.rule_name}</div>
-                  <div className="mt-0.5 break-all text-xs text-ink-muted"><span className="font-mono">{item.actor_ip ?? item.target ?? '대상 없음'}</span> · {sensorOf(item.rule_id)}</div>
+                  <div className="break-words text-sm text-ink" title={revealHidden(item.rule_name)}><span className="mr-2 font-mono text-primary">{item.rule_id}</span><UntrustedText value={item.rule_name} clip /></div>
+                  <div className="mt-0.5 flex min-w-0 gap-1 text-xs text-ink-muted">
+                    <span className="truncate font-mono" title={revealHidden(item.actor_ip ?? item.target ?? '') || undefined}><UntrustedText value={item.actor_ip ?? item.target} fallback="대상 없음" clip /></span>
+                    <span className="shrink-0">· {sensorOf(item.rule_id)}</span>
+                  </div>
                 </div>
                 <SeverityBadge severity={item.severity} className="col-start-2 row-start-1 justify-self-end sm:col-start-3" />
               </Link>

@@ -95,6 +95,10 @@ def read(token: str):
 #  디코이와 같은 표, 같은 필드에 남긴다. 다른 점은 sensor 뿐이다.
 #  규칙은 발생원이 아니라 범주와 동작(%.login.failed)으로 매칭하므로
 #  같은 규칙이 양쪽에서 돈다.
+#
+#  글자 값은 파서(parser/parse_decoy.clip)와 같은 규칙으로 정리한다(이슈 #41).
+#  폼 아이디의 NUL(%00)은 PostgreSQL 글자 열에 들어가지 못해 INSERT 가 실패하고 기록이 빠진다.
+#  그러면 콘솔 로그인 반복 실패(R101) 집계를 피할 수 있다. 그래서 지우고, 길이도 파서와 같게 자른다.
 # ──────────────────────────────────────────────────────────────
 INSERT_EVENT = """
 INSERT INTO events (line_hash, ts, eventid, session, src_ip, src_port, dst_port,
@@ -105,15 +109,37 @@ ON CONFLICT (line_hash) DO NOTHING
 """
 
 
+def clip(v, n):
+    """DB 에 넣을 글자 값. parser/parse_decoy.clip 과 같은 규칙이다.
+
+    - NUL(\\x00)은 지운다. 글자 열에 들어가지 못해 INSERT 가 실패한다.
+    - 짝 없는 서로게이트("\\ud800")는 UTF-8 로 바꿀 수 없다. 대체 문자로 바꾼다.
+    - n 글자에서 자른다.
+    """
+    if v is None:
+        return None
+    v = str(v).replace("\x00", "").encode("utf-8", "replace").decode("utf-8")
+    return v if len(v) <= n else v[:n]
+
+
+# 필드별 글자 수 상한. parser/parse_decoy.py 가 디코이 로그를 넣을 때와 같다.
+LIMITS = {"session": 128, "username": 256, "http_method": 16, "user_agent": 512, "url": 2048, "message": 512}
+
+
 async def log_event(pool, request, eventid: str, *, username=None, status=None,
                     session=None, message=None):
     client = request.client
     ts = datetime.now(timezone.utc)
+    session = clip(session, LIMITS["session"])
+    username = clip(username, LIMITS["username"])
+    method = clip(request.method, LIMITS["http_method"])
+    ua = clip(request.headers.get("user-agent"), LIMITS["user_agent"])
+    url = clip(request.url.path, LIMITS["url"])
+    message = clip(message, LIMITS["message"])
     record = {
         "ts": ts.isoformat(), "eventid": eventid, "session": session,
         "src_ip": client.host if client else None, "username": username,
-        "url": request.url.path, "status": status,
-        "ua": request.headers.get("user-agent"),
+        "url": url, "status": status, "ua": ua,
     }
     line_hash = hashlib.sha1(
         json.dumps(record, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
@@ -124,8 +150,7 @@ async def log_event(pool, request, eventid: str, *, username=None, status=None,
                 client.host if client else None,
                 client.port if client else None,
                 int(os.environ.get("CONSOLE_PORT", 8000)),
-                username, request.method, status,
-                request.headers.get("user-agent"), request.url.path, message)
+                username, method, status, ua, url, message)
     except Exception as exc:  # 기록 실패가 로그인 자체를 막지는 않는다
         print(f"[auth] 인증 로그 기록 실패: {exc}", flush=True)
 
@@ -157,6 +182,11 @@ async def form_fields(request) -> dict:
 #  사용자 조회
 # ──────────────────────────────────────────────────────────────
 async def authenticate(pool, username: str, password: str):
+    if "\x00" in username:
+        # 계정 이름에는 NUL 이 없다(글자 열에 들어가지 못한다). 질의하면 DB 오류로 500 이 나고
+        # 실패 기록(console.login.failed)도 빠진다. 없는 계정과 같은 시간을 쓰고 실패로 돌려준다.
+        hash_password(password)
+        return None
     async with pool.acquire() as c:
         row = await c.fetchrow(
             "SELECT username, password_hash, role FROM console_users WHERE username = $1",

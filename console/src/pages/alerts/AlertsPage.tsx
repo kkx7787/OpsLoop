@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { createChannel, notifyKeys, testChannel, updateChannel, useChannels, useDeliveries, type ChannelInput, type DeliveryFilters, type NotifyChannel } from '@/api/notify'
 import { describeError } from '@/api/errors'
 import { useMe } from '@/auth/useMe'
 import { Button } from '@/components/atoms/Button'
+import { UntrustedText } from '@/components/atoms/UntrustedText'
 import { Banner, type BannerTone } from '@/components/molecules/Banner'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { MonitoringStatus } from '@/components/organisms/MonitoringStatus'
@@ -14,8 +15,9 @@ import { deliveryProblem } from '@/components/organisms/notify/problem'
 import { ApiErrorState } from '@/components/organisms/states/ApiErrorState'
 import { ForbiddenState } from '@/components/organisms/states/ForbiddenState'
 import { LoadingState } from '@/components/organisms/states/LoadingState'
+import { revealHidden } from '@/lib/untrusted'
 
-interface Notice { tone: BannerTone; title: string; body?: string }
+interface Notice { tone: BannerTone; title: string; body?: ReactNode }
 type Editing = 'new' | NotifyChannel | null
 const DELIVERY_DEFAULTS: DeliveryFilters = { limit: 25, offset: 0 }
 
@@ -51,7 +53,7 @@ export function AlertsPage() {
     pending.current = true; setSaving(true); setNotice(null)
     try {
       const saved = editing === 'new' ? await createChannel(input) : await updateChannel(editing.id, input)
-      setNotice({ tone: 'info', title: editing === 'new' ? `채널 ${saved.name} 을(를) 추가했습니다.` : `채널 ${saved.name} 을(를) 바꿨습니다.` })
+      setNotice({ tone: 'info', title: editing === 'new' ? `채널 ${revealHidden(saved.name)} 을(를) 추가했습니다.` : `채널 ${revealHidden(saved.name)} 을(를) 바꿨습니다.` })
       setEditing(null)
       await refresh()
     } catch (e) { setNotice({ tone: 'danger', title: describeError(e) }) }
@@ -60,7 +62,7 @@ export function AlertsPage() {
   async function toggle(c: NotifyChannel) {
     if (busyId !== null) return
     setBusyId(c.id); setNotice(null)
-    try { await updateChannel(c.id, inputOf(c, !c.enabled)); setNotice({ tone: 'info', title: `채널 ${c.name} 을(를) ${c.enabled ? '중지' : '사용'}했습니다.` }) }
+    try { await updateChannel(c.id, inputOf(c, !c.enabled)); setNotice({ tone: 'info', title: `채널 ${revealHidden(c.name)} 을(를) ${c.enabled ? '중지' : '사용'}했습니다.` }) }
     catch (e) { setNotice({ tone: 'danger', title: describeError(e) }) }
     finally { setBusyId(null); await refresh() }
   }
@@ -70,9 +72,10 @@ export function AlertsPage() {
     try {
       const result = await testChannel(c.id)
       setNotice(result.status === 'sent'
-        ? { tone: 'success', title: `시험 발송 성공 · ${c.name}`, body: `응답 ${result.response_code ?? '-'} · 이력에 시험 발송으로 남았습니다.` }
-        : { tone: 'danger', title: `시험 발송 실패 · ${c.name}`, body: deliveryProblem(result.error, result.response_code) || '응답 없음' })
-    } catch (e) { setNotice({ tone: 'danger', title: `시험 발송 실패 · ${c.name}`, body: describeError(e) }) }
+        ? { tone: 'success', title: `시험 발송 성공 · ${revealHidden(c.name)}`, body: `응답 ${result.response_code ?? '-'} · 이력에 시험 발송으로 남았습니다.` }
+        // 실패 원인은 받는 쪽(웹훅)이 준 글이라 비신뢰 원문으로 그린다
+        : { tone: 'danger', title: `시험 발송 실패 · ${revealHidden(c.name)}`, body: <UntrustedText value={deliveryProblem(result.error, result.response_code)} fallback="응답 없음" /> })
+    } catch (e) { setNotice({ tone: 'danger', title: `시험 발송 실패 · ${revealHidden(c.name)}`, body: describeError(e) }) }
     finally { setBusyId(null); await refresh() }
   }
 

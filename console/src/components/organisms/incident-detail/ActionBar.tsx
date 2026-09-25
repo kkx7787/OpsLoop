@@ -7,6 +7,7 @@ import { ACTION_LABEL, actionLabel, INCIDENT_STATUS_LABEL, type IncidentAction }
 import { Button } from '../../atoms/Button'
 import { Input } from '../../atoms/Input'
 import { Select } from '../../atoms/Select'
+import { UntrustedText } from '../../atoms/UntrustedText'
 import { Banner } from '../../molecules/Banner'
 import { FormField } from '../../molecules/FormField'
 import { BLOCK_HOURS, DEFAULT_BLOCK_HOURS, hoursLabel, isActiveBlock } from './format'
@@ -231,7 +232,7 @@ export function ActionBar({ detail, className }: ActionBarProps) {
 
       {mutation.isSuccess && (
         <Banner tone="success" title={`${actionLabel(mutation.data.action)} 조치를 기록했습니다`}>
-          {mutation.data.operator} · 상태 {INCIDENT_STATUS_LABEL[detail.status] ?? detail.status}
+          <UntrustedText value={mutation.data.operator} max={64} /> · 상태 {INCIDENT_STATUS_LABEL[detail.status] ?? detail.status}
           {absorbedResult(mutation.data.absorbed)}
         </Banner>
       )}

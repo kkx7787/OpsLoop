@@ -6,6 +6,7 @@ import { json } from '@/test/monitoring-fixtures'
 import { DEFAULT_TEMPLATE_HEADER, DEFAULT_TEMPLATE_ITEM, NOTIFY_EVENTS, notifyKeys, type Delivery, type NotifyChannel } from '@/api/notify'
 import { deliveryProblem } from '@/components/organisms/notify/problem'
 import { renderTemplate } from '@/components/organisms/notify/template'
+import { expectInertDom, expectLongFolds, expectMixedRevealed, HOSTILE, LONG, MIXED } from '@/test/hostile-fixtures'
 
 const TEAMS_HOST = 'default0123456789abcdef.cd.environment.api.powerplatform.com'
 const URL_TEAMS = `https://${TEAMS_HOST}:443/powerautomate/automations/direct/workflows/abc/triggers/manual/paths/invoke?api-version=1&sig=zzzz9999`
@@ -282,5 +283,41 @@ describe('알림 설정', () => {
     setup('admin', { failure: true })
     expect(await screen.findByText('일시 오류 (HTTP 503)')).toBeInTheDocument()
     expect(screen.queryByText('등록된 채널이 없습니다.')).toBeNull()
+  })
+})
+
+describe('알림 설정 · 비신뢰 문자열(#41)', () => {
+  it('발송 이력의 대상(사건 키) · 원인 · 채널 이름 · 마지막 오류를 글자로만 그리고 숨은 문자는 표식 · 2만 자는 접는다', async () => {
+    const channels = [channel({ name: MIXED, updated_by: HOSTILE.rlo, last_delivery: { status: 'failed', sent_at: null, response_code: null, error: MIXED, at: '2026-09-24T00:20:00Z' } })]
+    const rows = [
+      delivery(1, { subject_key: `R201|v2|user:${MIXED}|2026-09-24T00:00:00+00:00`, status: 'failed', response_code: null, error: LONG, channel_name: HOSTILE.rlo }),
+      delivery(2, { subject_key: `R201|v2|user:${LONG}|x` }),
+    ]
+    vi.stubGlobal('fetch', vi.fn<typeof globalThis.fetch>(async (input) => {
+      const url = new URL(String(input), 'http://localhost')
+      if (url.pathname === '/api/me') return json({ username: 'tester', role: 'admin' })
+      if (url.pathname === '/api/notify/channels') return json(channels)
+      if (url.pathname === '/api/notify/deliveries') return json({ rows, total: 2, limit: 25, offset: 0 })
+      return json({ detail: '없는 경로' }, 404)
+    }))
+    const { container } = renderRoutes([{ path: '/alerts', element: <AlertsPage /> }], '/alerts', noRetryClient())
+    const history = await screen.findByRole('region', { name: '발송 이력 표' })
+    expectInertDom(container)
+    expectMixedRevealed(history)
+    expectMixedRevealed(screen.getByRole('region', { name: '알림 채널 표' }))
+    const first = within(history).getAllByRole('row')[1]
+    expect(within(first).getAllByRole('cell')[1].textContent).toBe('admin⟨U+202E⟩gnp.exe')
+    expectLongFolds(history)
+  })
+
+  it('시험 발송 실패 띠의 원인(받는 쪽 오류 글)도 글자로만 그리고 숨은 문자는 표식으로 보인다', async () => {
+    setup('admin', { test: { status: 'failed', response_code: null, error: MIXED } })
+    const region = await screen.findByRole('region', { name: '알림 채널 표' })
+    fireEvent.click(within(region).getByRole('button', { name: 'SOC Teams 시험 발송' }))
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('시험 발송 실패 · SOC Teams')
+    expectInertDom(alert)
+    expectMixedRevealed(alert)
+    expect(alert.querySelector('bdi')).toHaveAttribute('dir', 'ltr')
   })
 })

@@ -1,5 +1,5 @@
 """알림 채널 주소 검증 · 메시지 틀 · Teams 카드 · 재시도 일정 · 마스킹 · 권한 시험. DB · 외부 네트워크 없이 돈다.
-리다이렉트 시험만 127.0.0.1 에 잠깐 HTTP 서버를 띄운다."""
+리다이렉트 시험만 127.0.0.1 에 잠깐 HTTP 서버를 띄운다. 비신뢰 값 정리(이슈 #41)도 여기서 본다."""
 import json
 import socket
 import ssl
@@ -22,6 +22,11 @@ TEAMS_URL = (f"https://{TEAMS_HOST}:443/powerautomate/automations/direct/workflo
              "?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=SECRETSIG")
 CHANNEL = {"kind": "teams", "template_header": "[OpsLoop] {event_label} {count}건",
            "template_item": "{rule_id} {rule_name} · {severity} · {who} · {elapsed}"}
+
+
+def card_texts(body):
+    """Teams 카드 본문의 글을 덩이 순서대로 꺼낸다. 첫째가 머리말, 나머지가 항목 줄이다."""
+    return ["".join(run["text"] for run in block["inlines"]) for block in body["attachments"][0]["content"]["body"]]
 
 
 def incident(n, severity="high"):
@@ -170,8 +175,14 @@ class MessageTests(unittest.TestCase):
         card = attachment["content"]
         self.assertEqual((card["$schema"], card["type"], card["version"]),
                          ("http://adaptivecards.io/schemas/adaptive-card.json", "AdaptiveCard", "1.4"))
-        self.assertEqual(card["body"][0], {"type": "TextBlock", "text": "[OpsLoop] 새 인시던트 2건", "weight": "Bolder", "size": "Medium", "wrap": True})
-        self.assertEqual(card["body"][1]["text"], "R001 규칙 1 · high · 192.0.2.1 · 12분 전\nR002 규칙 2 · high · 192.0.2.2 · 24분 전")
+        # 마크다운을 해석하지 않는 RichTextBlock · TextRun 이다. 항목 줄은 줄마다 한 덩이다
+        self.assertEqual(card["body"][0], {"type": "RichTextBlock", "inlines": [
+            {"type": "TextRun", "text": "[OpsLoop] 새 인시던트 2건", "weight": "Bolder", "size": "Medium"}]})
+        self.assertEqual(card["body"][1:], [
+            {"type": "RichTextBlock", "inlines": [{"type": "TextRun", "text": "R001 규칙 1 · high · 192.0.2.1 · 12분 전"}]},
+            {"type": "RichTextBlock", "inlines": [{"type": "TextRun", "text": "R002 규칙 2 · high · 192.0.2.2 · 24분 전"}]}])
+        self.assertEqual(card_texts(body), ["[OpsLoop] 새 인시던트 2건", "R001 규칙 1 · high · 192.0.2.1 · 12분 전",
+                                            "R002 규칙 2 · high · 192.0.2.2 · 24분 전"])
         self.assertEqual(card["actions"], [{"type": "Action.OpenUrl", "title": "콘솔에서 보기", "url": "http://console.test:8443/incidents"}])
 
     def test_webhook_body_shape(self):
@@ -182,6 +193,108 @@ class MessageTests(unittest.TestCase):
         self.assertEqual(body["lines"], ["R001 규칙 1 · high · 192.0.2.1 · 12분 전"])
         self.assertEqual(body["items"], [incident(1)])
         self.assertEqual(body["console_url"], "http://console.test:8443/incidents/R001%7Cv2%7C192.0.2.1%7C1")
+
+
+# 비신뢰 값 표본(이슈 #41). 지금 알림 값은 공격자가 정하지 못하지만 규칙이 늘어 닿게 되어도 막히는지 본다.
+HOSTILE = {
+    "md_link": "[눌러 확인](https://b.attacker.test/login)",
+    "md_image": "![i](https://c.attacker.test/p.png)",
+    "mention": "<at>admin</at>",
+    "rlo": "admin\u202egnp.exe",
+    "zwsp": "ad\u200bmin",
+    "crlf": "줄1\r\n- 가짜 항목\n**굵게**",
+    "long": "A" * 10000,
+}
+
+
+class HostileValueTests(unittest.TestCase):
+    def setUp(self):
+        self.env = patch.dict("os.environ", {"OPSLOOP_CONSOLE_URL": "http://console.test:8443"})
+        self.env.start()
+        self.addCleanup(self.env.stop)
+        self.channel = CHANNEL | {"template_header": "[OpsLoop] {event_label} {rule_name} {who} {incident_key}",
+                                  "template_item": "{rule_id} {rule_name} · {severity} · {who} · {incident_key} · {elapsed}"}
+
+    def payload(self, value):
+        return {"incident_key": value, "rule_id": "R001", "rule_name": value, "severity": value, "who": value,
+                "first_ts": (NOW - timedelta(minutes=5)).isoformat()}
+
+    def assert_clean(self, text, label):
+        for ch in ("\u202e", "\u200b", "\r", "\n", "\t"):
+            self.assertNotIn(ch, text, f"{label}: {ch!r}")
+        self.assertNotIn("A" * (notifier.VALUE_MAX + 1), text, label)
+
+    def test_clean_value_rules(self):
+        clean = notifier.clean_value
+        self.assertEqual(clean("admin\u202egnp.exe"), "admin⟨U+202E⟩gnp.exe")
+        self.assertEqual(clean("ad\u200bmin"), "ad⟨U+200B⟩min")
+        self.assertEqual(clean("줄1\u2028줄2\u2029"), "줄1⟨U+2028⟩줄2⟨U+2029⟩")
+        # 기본 무시 문자(한글 채움 · 결합 자소 연결 · 이형 선택자)와 점자 빈칸도 아무것도 그리지 않는다
+        self.assertEqual(clean("adm\u3164in\u034f\ufe0f\U000e0100\u2800"),
+                         "adm⟨U+3164⟩in⟨U+034F⟩⟨U+FE0F⟩⟨U+E0100⟩⟨U+2800⟩")
+        self.assertEqual(clean("a\r\nb\tc\nd"), "a⟨U+000D⟩ b c d")
+        self.assertEqual(clean("\x1b[31m빨강\x9b2K"), "⟨U+001B⟩[31m빨강⟨U+009B⟩2K")
+        self.assertEqual(clean("\u2066x\u2069\ufeff\U000E0041"), "⟨U+2066⟩x⟨U+2069⟩⟨U+FEFF⟩⟨U+E0041⟩")
+        self.assertEqual(clean(12), "12")
+        long = clean("A" * 10000)
+        self.assertEqual((len(long), long[-1]), (notifier.VALUE_MAX, "…"))
+        # 상한에 걸려도 표식을 반쯤 자르지 않는다
+        cut = clean("A" * 195 + "\u202e" * 3)
+        self.assertEqual(cut, "A" * 195 + "…")
+        self.assertEqual(notifier.clean_payload({"who": "a\u202eb", "target_seconds": 3600, "x": None}),
+                         {"who": "a⟨U+202E⟩b", "target_seconds": 3600, "x": None})
+
+    def test_teams_card_keeps_values_as_plain_text(self):
+        for name, value in HOSTILE.items():
+            with self.subTest(sample=name):
+                body = notifier.build_body(self.channel, "incident.created", [self.payload(value)], NOW)
+                card = body["attachments"][0]["content"]
+                # 본문은 모두 RichTextBlock · TextRun 이다. TextBlock(마크다운 해석)은 없다
+                self.assertNotIn('"TextBlock"', json.dumps(card))
+                self.assertEqual({block["type"] for block in card["body"]}, {"RichTextBlock"})
+                self.assertEqual({run["type"] for block in card["body"] for run in block["inlines"]}, {"TextRun"})
+                texts = card_texts(body)
+                self.assertEqual(len(texts), 2, "값 안의 줄바꿈이 새 줄을 만들지 않는다")
+                for text in texts:
+                    self.assert_clean(text, name)
+                # 누를 수 있는 링크는 콘솔 주소 하나뿐이다. 사건 키는 한 경로 조각으로 인코딩된다
+                (action,) = card["actions"]
+                prefix = "http://console.test:8443/incidents/"
+                self.assertTrue(action["url"].startswith(prefix), action["url"])
+                self.assertFalse(set(action["url"][len(prefix):]) & set("/:?#[]()<> "), action["url"])
+        texts = card_texts(notifier.build_body(self.channel, "incident.created", [self.payload(HOSTILE["md_link"])], NOW))
+        self.assertIn("[눌러 확인](https://b.attacker.test/login)", texts[1], "마크다운은 해석되지 않고 글자로 보인다")
+        texts = card_texts(notifier.build_body(self.channel, "incident.created", [self.payload(HOSTILE["rlo"])], NOW))
+        self.assertIn("admin⟨U+202E⟩gnp.exe", texts[0])
+        texts = card_texts(notifier.build_body(self.channel, "incident.created", [self.payload(HOSTILE["crlf"])], NOW))
+        self.assertIn("줄1⟨U+000D⟩ - 가짜 항목 **굵게**", texts[1])
+
+    def test_many_items_stay_one_block_per_item(self):
+        payloads = [self.payload(HOSTILE["crlf"]) for _ in range(3)]
+        texts = card_texts(notifier.build_body(self.channel, "pending.overdue", payloads, NOW))
+        self.assertEqual(len(texts), 4)
+
+    def test_webhook_json_is_cleaned_the_same_way(self):
+        for name, value in HOSTILE.items():
+            with self.subTest(sample=name):
+                body = notifier.build_body(self.channel | {"kind": "webhook"}, "incident.created", [self.payload(value)], NOW)
+                self.assert_clean(body["title"], name)
+                for line in body["lines"]:
+                    self.assert_clean(line, name)
+                (item,) = body["items"]
+                for key in ("rule_name", "severity", "who"):
+                    self.assertEqual(item[key], notifier.clean_value(value), key)
+                    self.assert_clean(item[key], name)
+                # 사건 키는 받는 쪽이 DB · 콘솔과 맞춰 보는 식별자라 원문 그대로 JSON 문자열로 나간다
+                self.assertEqual(item["incident_key"], value)
+                self.assertTrue(body["console_url"].startswith("http://console.test:8443/incidents/"))
+                # 보낼 본문은 JSON 으로 온전하다
+                self.assertEqual(json.loads(json.dumps(body, ensure_ascii=False)), body)
+
+    def test_node_hostname_is_cleaned(self):
+        silent = {"node_id": "web-01", "hostname": "web\u202e10-bew\n가짜", "since": NOW.isoformat()}
+        message = notifier.build_message(CHANNEL, "node.silent", [silent], NOW)
+        self.assertEqual(message["lines"], ["- web⟨U+202E⟩10-bew 가짜 · - · node:web-01 · 방금"])
 
 
 class FakeResponse:

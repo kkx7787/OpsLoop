@@ -23,3 +23,9 @@ services:
       resources:
         limits:
           memory: 512M
+    # 콘솔 로그(CSP 위반 보고 줄 포함, 이슈 #41)가 디스크를 채우지 않게 돌려 쓴다. 10 MB × 3개
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

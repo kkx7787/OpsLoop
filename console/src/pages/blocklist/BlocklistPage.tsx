@@ -9,6 +9,7 @@ import { Button } from '@/components/atoms/Button'
 import { Card } from '@/components/atoms/Card'
 import { Input } from '@/components/atoms/Input'
 import { Time } from '@/components/atoms/Time'
+import { UntrustedText } from '@/components/atoms/UntrustedText'
 import { Banner } from '@/components/molecules/Banner'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { MonitoringStatus } from '@/components/organisms/MonitoringStatus'
@@ -101,10 +102,10 @@ function BlockRow({ entry, now, allowed, stale, onNotice, refresh }: { entry: Bl
   }
   return <li className={cn('grid min-w-0 grid-cols-2 items-start gap-3 px-4 py-3 text-sm', COLUMNS)}>
     <div className="col-span-2 font-mono font-semibold break-all xl:col-span-1">{entry.actor_ip}</div>
-    <div className="col-span-2 min-w-0 xl:col-span-1"><div className="break-words">{entry.reason || '사유 미기록'}</div><div className="mt-1 text-xs">{entry.incident_key ? <Link className="break-all" to={`/incidents/${encodeURIComponent(entry.incident_key)}`}>{entry.incident_key.split('|')[0]} · {absorbed ? '첫 사건 보기' : '사건 보기'}</Link> : <span className="text-ink-muted">근거 사건 없음</span>}</div></div>
-    <div><Badge tone={live && !entry.enforced_at ? 'warning' : 'neutral'}>{label}</Badge><div className="mt-1 break-all text-xs text-ink-muted">{entry.method || '집행 정보 없음'}</div>{entry.enforce_note && <p className="m-0 mt-1 break-words text-xs text-ink-muted">{entry.enforce_note}</p>}</div>
-    <div className="text-xs"><span className="block text-ink-muted xl:hidden">만료 시각 (KST)</span>{entry.expires_at ? <Time value={entry.expires_at} format="short" /> : '만료 없음'}{entry.released_at && <div className="mt-1 text-ink-muted">해제 <Time value={entry.released_at} format="short" />{entry.released_by && ` · ${entry.released_by}`}</div>}</div>
-    <div className="break-words text-xs text-ink-muted"><span className="xl:hidden">요청자 </span>{entry.requested_by || '미기록'}</div>
+    <div className="col-span-2 min-w-0 xl:col-span-1"><div className="break-words"><UntrustedText value={entry.reason} fallback="사유 미기록" /></div><div className="mt-1 text-xs">{entry.incident_key ? <Link className="break-all" to={`/incidents/${encodeURIComponent(entry.incident_key)}`}>{entry.incident_key.split('|')[0]} · {absorbed ? '첫 사건 보기' : '사건 보기'}</Link> : <span className="text-ink-muted">근거 사건 없음</span>}</div></div>
+    <div><Badge tone={live && !entry.enforced_at ? 'warning' : 'neutral'}>{label}</Badge><div className="mt-1 break-all text-xs text-ink-muted"><UntrustedText value={entry.method} fallback="집행 정보 없음" /></div>{entry.enforce_note && <p className="m-0 mt-1 break-words text-xs text-ink-muted"><UntrustedText value={entry.enforce_note} /></p>}</div>
+    <div className="text-xs"><span className="block text-ink-muted xl:hidden">만료 시각 (KST)</span>{entry.expires_at ? <Time value={entry.expires_at} format="short" /> : '만료 없음'}{entry.released_at && <div className="mt-1 text-ink-muted">해제 <Time value={entry.released_at} format="short" />{entry.released_by && <> · <UntrustedText value={entry.released_by} max={64} /></>}</div>}</div>
+    <div className="break-words text-xs text-ink-muted"><span className="xl:hidden">요청자 </span><UntrustedText value={entry.requested_by} max={64} fallback="미기록" /></div>
     <div className="justify-self-end xl:justify-self-start">{allowed && live ? <Button size="sm" disabled={!canRelease || mutation.isPending} disabledReason={stale ? '최신 목록을 확인한 뒤 해제해 주세요' : '연결된 근거 사건이 없어 해제할 수 없습니다'} onClick={() => setConfirming(!confirming)} aria-expanded={confirming}>해제</Button> : <span className="text-xs text-ink-muted">{live ? 'admin만' : '—'}</span>}</div>
     {confirming && live && <form className="col-span-2 flex flex-col gap-2 rounded-panel border border-line bg-canvas p-3 xl:col-span-6" aria-label={`${entry.actor_ip} 해제 확인`} onSubmit={release}>
       <p className="m-0 text-sm">{absorbed

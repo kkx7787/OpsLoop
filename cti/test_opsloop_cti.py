@@ -4,7 +4,7 @@
 가짜 HTTP(경로별 응답, 없는 경로는 404) · 가짜 S3(같은 키를 다시 쓰면 412 를 흉내) · 가짜 DB(문장 · 인자를 기록하고
 커밋된 것만 남긴다. psycopg2 처럼 UTF-8 로 못 바꾸는 문자열 인자는 거부한다)로 출처별 파싱 · 원본 키 · 한 번 쓰기 ·
 실패 시 DB 미갱신 · fix_state 계산 · 커널 소스(AWS 커널) · 재부팅 대기 · 주목 CVE · 자산 묶음 검증(나쁜 입력 · 넘치는 시각 ·
-대리 문자) · EPSS 긴 줄 · dpkg 버전 비교 · kev_match(실제 rules_cve.json 서명) · 한국어 도움말을 본다.
+대리 문자 · 숨은 문자) · EPSS 긴 줄 · dpkg 버전 비교 · kev_match(실제 rules_cve.json 서명) · 한국어 도움말을 본다.
 실제 표에서 적재 · upsert 를 돌리는 시험은 test_opsloop_cti_db.py 다 (OPSLOOP_TEST_DATABASE_URL).
 """
 import gzip
@@ -1248,6 +1248,86 @@ class BundleTest(unittest.TestCase):
         self.assertNotIn("extra", p)
         self.assertEqual(set(p["os"]), {"id", "version_id", "codename", "pretty"})
         self.assertEqual(set(p["packages"][0]), {"name", "version", "source", "source_version", "arch"})
+
+
+# 숨은 문자(형식 문자 Cf): 방향 제어 · 격리 · 제로폭 · BOM · 소프트 하이픈 · 아랍 문자 표시 · 태그 문자,
+# 그리고 줄 · 문단 구분자(Zl · Zp) · 기본 무시 문자(한글 채움 · 결합 자소 연결 · 이형 선택자) · 점자 빈칸
+HIDDEN = {"\u202e": "⟨U+202E⟩", "\u2066": "⟨U+2066⟩", "\u2069": "⟨U+2069⟩", "\u200b": "⟨U+200B⟩",
+          "\u200f": "⟨U+200F⟩", "\ufeff": "⟨U+FEFF⟩", "\u00ad": "⟨U+00AD⟩", "\u061c": "⟨U+061C⟩",
+          "\U000e0041": "⟨U+E0041⟩", "\u2028": "⟨U+2028⟩", "\u2029": "⟨U+2029⟩",
+          "\u3164": "⟨U+3164⟩", "\u034f": "⟨U+034F⟩", "\ufe0f": "⟨U+FE0F⟩", "\U000e0100": "⟨U+E0100⟩", "\u2800": "⟨U+2800⟩"}
+
+
+class HiddenCharTest(unittest.TestCase):
+    """장악된 자산이 보낸 숨은 문자(Cf). 짧은 구조 필드는 거부하고(그 자산만 형식 오류), 자유 문장인 오류 문구와
+    로그 · 오류 문구에 쓰는 safe() 는 ⟨U+XXXX⟩ 표식으로 바꾼다. 'nginx⟨U+202E⟩gpj.exe' 처럼 이름이 뒤집혀 보이거나
+    'ad⟨U+200B⟩min' 처럼 같은 이름으로 보이는 값이 판정 근거 문장 · 자산 화면에 들어가지 않게 한다."""
+
+    def asset(self, change, host="i-0f8f7c0f698ca941a"):
+        p = probe([pkg("openssh-server", "1:9.6p1-3ubuntu13.19", "openssh")])
+        p["images"] = [{"container": "web", "image": "nginx:1.27", "image_id": None}]
+        change(p)
+        return {"asset_id": "honeypot-dmz", "role": "sensor", "method": "ssm", "host": host, "probe": p}
+
+    def test_짧은_필드에_숨은_문자가_있으면_거부한다(self):
+        for ch in HIDDEN:
+            with self.subTest(ch=f"U+{ord(ch):04X}"):
+                with self.assertRaises(ValueError) as e:
+                    cti.text(f"nginx{ch}gpj.exe", "images.image")
+                self.assertNotIn(ch, str(e.exception))
+        # 패턴이 있는 필드는 형식 오류 문구에 값이 들어간다. 그 값도 표식으로 보인다
+        with self.assertRaises(ValueError) as e:
+            cti.text("sudo\u202e", "packages.name", pattern=cti.PKG_RE)
+        self.assertNotIn("\u202e", str(e.exception))
+        # 마크업은 글자일 뿐이라 받는다(콘솔이 글자로 보인다). 한글 · 탭 없는 공백도 그대로다
+        self.assertEqual(cti.text("<img src=//a.attacker.test/p.png>", "images.image"),
+                         "<img src=//a.attacker.test/p.png>")
+        self.assertEqual(cti.text("Ubuntu 24.04.5 LTS 한국어", "os.pretty"), "Ubuntu 24.04.5 LTS 한국어")
+
+    def test_구조_필드마다_그_자산만_형식_오류(self):
+        cases = {
+            "images.image": lambda p: p["images"][0].update(image="nginx\u202egpj.exe"),
+            "images.container": lambda p: p["images"][0].update(container="web\u200b"),
+            "images.image_id": lambda p: p["images"][0].update(image_id="sha256:\ufeffab"),
+            "os.pretty": lambda p: p["os"].update(pretty="Ubuntu \u2066x\u2069"),
+            "os.id": lambda p: p["os"].update(id="ubu\u00adntu"),
+            "kernel.running": lambda p: p["kernel"].update(running="6.8.0\u200f-generic"),
+            "packages.arch": lambda p: p["packages"][0].update(arch="amd64\U000e0041"),
+            "packages.name": lambda p: p["packages"][0].update(name="openssh\u202e"),
+            "hostname": lambda p: p.update(hostname="web\u061c01"),
+        }
+        good = BundleTest().good()[0]
+        for why, change in cases.items():
+            with self.subTest(field=why):
+                entries = cti.validate_bundle(bundle([self.asset(change), good]), T0)[1]
+                self.assertEqual([e["kind"] for e in entries], ["invalid", "probe"])
+                err = entries[0]["error"]
+                self.assertTrue(err.startswith("조사 결과 형식 오류: "), err)
+                self.assertFalse(any(ch in err for ch in HIDDEN), err)
+        host = self.asset(lambda p: None, host="i-0f8f\u202e")
+        self.assertEqual([e["kind"] for e in cti.validate_bundle(bundle([host]), T0)[1]], ["invalid"])
+
+    def test_오류_문구는_거부하지_않고_표식으로_바꾼다(self):
+        for ch, mark in HIDDEN.items():
+            with self.subTest(ch=mark):
+                self.assertEqual(cti.error_text(f"dpkg {ch}실패", "errors"), f"dpkg {mark}실패")
+        # 제어 문자는 전처럼 빈칸, 짝 없는 대리 문자는 U+FFFD 다
+        self.assertEqual(cti.error_text("a\x1b[31m\u202eb\r\n\ud800", "error"), "a [31m⟨U+202E⟩b  \ufffd")
+        p = self.asset(lambda p: p.update(errors=["images: docker \u202egpj.exe \u200b실패"]))
+        e = cti.validate_bundle(bundle([p]), T0)[1][0]
+        self.assertEqual((e["kind"], e["probe"]["errors"]), ("probe", ["images: docker ⟨U+202E⟩gpj.exe ⟨U+200B⟩실패"]))
+        e = cti.validate_bundle(bundle([{"asset_id": "gateway", "role": "platform", "method": "ssm", "host": None,
+                                         "error": "SSM 실패 \ufeff\u2066관리자\u2069"}]), T0)[1][0]
+        self.assertEqual((e["kind"], e["error"]), ("error", "SSM 실패 ⟨U+FEFF⟩⟨U+2066⟩관리자⟨U+2069⟩"))
+
+    def test_로그용_값도_숨은_문자를_표식으로(self):
+        self.assertEqual(cti.safe("nginx\u202egpj.exe\nx"), "nginx⟨U+202E⟩gpj.exe?x")
+        self.assertEqual(cti.safe("\U000e0041"), "⟨U+E0041⟩")
+        # 자를 때 표식을 가르지 않는다
+        self.assertEqual(cti.safe("ab\u202ecd", 5), "ab")
+        self.assertEqual(cti.safe("ab\u202ecd", 10), "ab⟨U+202E⟩")
+        self.assertEqual(cti.safe("\u200b" * 1000), "⟨U+200B⟩" * 37)     # 300자 안의 온전한 표식 37개
+        self.assertEqual(cti.why(cti.CtiError("원천 \u202e응답")), "원천 ⟨U+202E⟩응답")
 
 
 class LoadAssetsTest(unittest.TestCase):

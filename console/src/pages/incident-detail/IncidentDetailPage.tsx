@@ -4,6 +4,7 @@ import { isApiError } from '@/api/errors'
 import { useIncident } from '@/api/incidents'
 import { useNow } from '@/lib/useNow'
 import { buttonClasses } from '@/components/atoms/button-styles'
+import { UntrustedText } from '@/components/atoms/UntrustedText'
 import { ApiErrorState } from '@/components/organisms/states/ApiErrorState'
 import { LoadingState } from '@/components/organisms/states/LoadingState'
 import { NotFoundState } from '@/components/organisms/states/NotFoundState'
@@ -43,7 +44,7 @@ function IncidentDetailView({ incidentKey }: IncidentDetailViewProps) {
   const cti = useIncidentCti(incidentKey)
 
   if (query.isPending) {
-    return <LoadingState size="page" titleAs="h1" title="인시던트를 불러오는 중입니다" description={<span className="font-mono">{incidentKey}</span>} lines={4} />
+    return <LoadingState size="page" titleAs="h1" title="인시던트를 불러오는 중입니다" description={<UntrustedText value={incidentKey} className="font-mono" />} lines={4} />
   }
 
   if (query.isError) {
@@ -59,7 +60,9 @@ function IncidentDetailView({ incidentKey }: IncidentDetailViewProps) {
           description={
             <>
               {error.detail}. 키가 바뀌었거나 다른 콘솔의 사건일 수 있습니다.{' '}
-              <code className="font-mono text-xs break-all text-ink">{incidentKey}</code>
+              <code className="font-mono text-xs break-all text-ink">
+                <UntrustedText value={incidentKey} />
+              </code>
             </>
           }
           actions={

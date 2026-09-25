@@ -9,6 +9,7 @@ import { useNow } from '@/lib/useNow'
 import { Button } from '../../atoms/Button'
 import { Textarea } from '../../atoms/Textarea'
 import { Time } from '../../atoms/Time'
+import { UntrustedText } from '../../atoms/UntrustedText'
 import { VerdictBadge } from '../../atoms/VerdictBadge'
 import { Banner } from '../../molecules/Banner'
 import { FormField } from '../../molecules/FormField'
@@ -83,7 +84,7 @@ export function VerdictPanel({ detail, openedAt, className }: VerdictPanelProps)
           </h3>
           {judged && (
             <span className="text-xs text-ink-muted">
-              현재 <VerdictBadge verdict={last.verdict} /> {last.operator} · <Time value={last.created_at} format="short" />
+              현재 <VerdictBadge verdict={last.verdict} /> <UntrustedText value={last.operator} max={64} /> · <Time value={last.created_at} format="short" />
             </span>
           )}
         </div>
@@ -93,7 +94,11 @@ export function VerdictPanel({ detail, openedAt, className }: VerdictPanelProps)
             도구 제안 · {proposal?.verdict ? <VerdictBadge verdict={proposal.verdict} /> : '제안 없음'}
           </p>
           <ul className="mb-0 mt-2 list-disc space-y-1 pl-4 text-xs text-ink-muted">
-            {(proposal?.reasons ?? ['제안 정보가 없습니다. 증거를 보고 직접 판정하세요.']).map((reason) => <li key={reason}>{reason}</li>)}
+            {(proposal?.reasons ?? ['제안 정보가 없습니다. 증거를 보고 직접 판정하세요.']).map((reason, i) => (
+              <li key={`${i}-${reason}`}>
+                <UntrustedText value={reason} />
+              </li>
+            ))}
           </ul>
           {proposal?.verdict && verdict && (
             <p role="status" className="mb-0 mt-2 font-medium">

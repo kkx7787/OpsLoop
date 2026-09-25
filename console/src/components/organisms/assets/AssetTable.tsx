@@ -3,6 +3,8 @@ import { METHOD_LABEL, ROLE_LABEL, type AssetRow } from '@/api/cti'
 import { Badge } from '@/components/atoms/Badge'
 import { Card, CardHeader } from '@/components/atoms/Card'
 import { Time } from '@/components/atoms/Time'
+import { UntrustedText } from '@/components/atoms/UntrustedText'
+import { revealHidden } from '@/lib/untrusted'
 import { formatProbability } from './cti-format'
 
 const HEAD = ['자산', '역할', '방법', '수집 (KST)', '커널', '취약점', 'KEV', '수정판 있음', '최고 EPSS', '오류']
@@ -34,7 +36,7 @@ export function AssetTable({ rows, selected, onSelect }: AssetTableProps) {
             return <tr key={r.asset_id} data-asset={r.asset_id} className={active ? 'bg-primary-soft' : undefined}>
               <th scope="row" className={`${cell} font-normal`}>
                 <button type="button" aria-pressed={active} onClick={() => onSelect(r.asset_id)} className="cursor-pointer font-mono font-semibold text-primary hover:underline">{r.asset_id}</button>
-                <div className="text-xs text-ink-muted">{r.host || '미기록'}</div>
+                <div className="max-w-48 text-xs break-all text-ink-muted"><UntrustedText value={r.host} max={120} fallback="미기록" /></div>
               </th>
               <td className={`${cell} whitespace-nowrap`}>{ROLE_LABEL[r.role] ?? r.role}</td>
               <td className={cell}>{METHOD_LABEL[r.method] ?? r.method}</td>
@@ -43,8 +45,8 @@ export function AssetTable({ rows, selected, onSelect }: AssetTableProps) {
                 {r.stale && <Badge tone="warning" className="ml-1.5">오래됨</Badge>}
               </td>
               <td className={`${cell} text-xs`}>
-                <div className="font-mono whitespace-nowrap" title={r.os_pretty ?? undefined}>{r.kernel_running_version ?? '—'}</div>
-                {r.reboot_pending && <Badge tone="orange" className="mt-1" title={`설치된 최신 커널 ${r.kernel_newest_version ?? '—'}`}>재부팅 대기</Badge>}
+                <div className="font-mono whitespace-nowrap" title={r.os_pretty ? revealHidden(r.os_pretty) : undefined}><UntrustedText value={r.kernel_running_version} max={64} fallback="—" /></div>
+                {r.reboot_pending && <Badge tone="orange" className="mt-1" title={`설치된 최신 커널 ${revealHidden(r.kernel_newest_version ?? '—')}`}>재부팅 대기</Badge>}
               </td>
               <td className={`${cell} tabular-nums whitespace-nowrap`}>{checked ? `${r.vuln_total}건` : <span className="text-ink-muted">대조 전</span>}</td>
               <td className={`${cell} whitespace-nowrap`}>{!checked ? <span className="text-ink-muted">—</span> : r.vuln_kev > 0 ? <Badge tone="danger">{r.vuln_kev}건</Badge> : '0건'}</td>
@@ -54,8 +56,8 @@ export function AssetTable({ rows, selected, onSelect }: AssetTableProps) {
               <td className={`${cell} font-mono text-xs`}>{formatProbability(r.max_epss)}</td>
               <td className={`${cell} max-w-64 text-xs`}>
                 {!r.last_error && !r.check_error && <span className="text-ink-muted">—</span>}
-                {r.last_error && <div className="break-keep text-danger">수집 · {r.last_error}</div>}
-                {r.check_error && <div className="break-keep text-warning">대조 · {r.check_error}</div>}
+                {r.last_error && <div className="break-keep text-danger">수집 · <UntrustedText value={r.last_error} max={200} /></div>}
+                {r.check_error && <div className="break-keep text-warning">대조 · <UntrustedText value={r.check_error} max={200} /></div>}
               </td>
             </tr>
           })}</tbody>

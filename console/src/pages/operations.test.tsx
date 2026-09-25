@@ -8,6 +8,7 @@ import { noRetryClient, renderRoutes } from '@/test/render'
 import { json } from '@/test/monitoring-fixtures'
 import { RULES, nodeEntry, auditEntry } from '@/test/operations-fixtures'
 import { applyLiveMessage } from '@/api/live'
+import { expectInertDom, expectLongFolds, expectMixedRevealed, HOSTILE, LONG, MIXED } from '@/test/hostile-fixtures'
 
 const TOKEN = 'olE_local-test-not-a-real-token'
 function setup(path: string, role='admin', failure=false) {
@@ -135,5 +136,24 @@ describe('감사 기록',()=>{
     setup(path,'admin',true)
     expect(await screen.findByText('일시 오류 (HTTP 503)')).toBeInTheDocument()
     expect(screen.queryByText('조건에 맞는 감사 기록이 없습니다.')).toBeNull()
+  })
+})
+
+describe('감사 기록 · 비신뢰 문자열(#41)', () => {
+  it('행위자 · 대상 · 기록 · DB 주소를 글자로만 그리고 숨은 문자는 표식 · 2만 자는 접는다', async () => {
+    const row = { ...auditEntry(0), actor: HOSTILE.rlo, target: MIXED, detail: LONG, db_client: HOSTILE.zwsp }
+    vi.stubGlobal('fetch', vi.fn<typeof globalThis.fetch>(async (input) => {
+      const url = new URL(String(input), 'http://localhost')
+      if (url.pathname === '/api/me') return json({ username: 'tester', role: 'admin' })
+      if (url.pathname === '/api/audit') return json({ rows: [row], total: 1, limit: 25, offset: 0 })
+      return json({}, 404)
+    }))
+    const { container } = renderRoutes([{ path: '/audit', element: <AuditPage /> }], '/audit', noRetryClient())
+    const table = await screen.findByRole('region', { name: '감사 기록 표' })
+    expectInertDom(container)
+    expectMixedRevealed(table)
+    expect(within(table).getAllByRole('cell')[1].textContent).toBe('admin⟨U+202E⟩gnp.exe')
+    expect(table.textContent).toContain('DB 연결 주소 ad⟨U+200B⟩min')
+    expectLongFolds(table)
   })
 })

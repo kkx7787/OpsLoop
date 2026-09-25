@@ -1,7 +1,9 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ctiKeys, type AssetDetailAvailable, type AssetsResult, type VulnFilter, type WatchResult } from '@/api/cti'
-import { assetDetailResult, assetsResult, freshness, watchResult } from '@/test/cti-fixtures'
+import { revealHidden } from '@/lib/untrusted'
+import { assetDetail, assetDetailResult, assetRow, assetsResult, freshness, vuln, watchAsset, watchResult, watchRow } from '@/test/cti-fixtures'
+import { expectInertDom, expectLongFolds, expectMixedRevealed, HOSTILE, LONG, MIXED } from '@/test/hostile-fixtures'
 import { json } from '@/test/monitoring-fixtures'
 import { noRetryClient, renderRoutes } from '@/test/render'
 import { AssetsPage } from './AssetsPage'
@@ -73,7 +75,8 @@ describe('자산 · 취약점', () => {
     expect(within(row('console-b')).getByText('미수집')).toBeInTheDocument()
     expect(within(row('console-b')).getByText('오래됨')).toBeInTheDocument()
     expect(within(row('console-b')).getByText('대조 전')).toBeInTheDocument()
-    expect(within(row('console-b')).getByText(/수집 · 연결 실패/)).toBeInTheDocument()
+    // 오류 문구는 비신뢰 값이라 UntrustedText(bdi) 로 따로 그린다. 이름표와 한 칸에 있는지를 본다
+    expect(within(row('console-b')).getByText(/^수집 ·/)).toHaveTextContent(/^수집 · 연결 실패/)
 
     expect(screen.getByText('KEV 수집')).toBeInTheDocument()
     expect(screen.queryByText(/공개 정보가 오래됐습니다/)).toBeNull()
@@ -352,5 +355,57 @@ describe('주목 CVE', () => {
     const card = await screen.findByRole('region', { name: '주목 CVE' })
     expect(within(card).getByRole('status')).toBeInTheDocument()
     expect(await screen.findByRole('region', { name: '자산 표' })).toBeInTheDocument()
+  })
+})
+
+describe('자산 · 취약점 · 비신뢰 문자열(#41)', () => {
+  it('자산 조사 결과(호스트 · 오류 · 패키지 · 이미지 · 조사 오류)와 주목 CVE 를 글자로만 그리고 숨은 문자는 표식 · 2만 자는 접는다', async () => {
+    const list = assetsResult({
+      rows: [
+        assetRow({ asset_id: 'fw', host: MIXED, os_pretty: HOSTILE.rlo, kernel_running_version: HOSTILE.zwsp, last_error: LONG, check_error: MIXED }),
+      ],
+    })
+    const detail = assetDetailResult({
+      asset: assetDetail({
+        host: HOSTILE.rlo,
+        last_error: LONG,
+        check_error: MIXED,
+        os: { id: 'ubuntu', version_id: '24.04', codename: 'noble', pretty: HOSTILE.isolate },
+        key_packages: [{ name: MIXED, version: HOSTILE.ansi }],
+        images: [{ container: HOSTILE.rlo, image: MIXED, image_id: 'sha256:abc' }],
+        probe_errors: [MIXED, LONG],
+      }),
+      vulnerabilities: { rows: [vuln({ source_package: MIXED, version: HOSTILE.csi, fixed_version: HOSTILE.zwsp, kev: null, summary: MIXED })], total: 1, limit: 50, offset: 0, filter: 'all' },
+    })
+    const watch = watchResult({
+      rows: [watchRow({
+        reason: MIXED,
+        description: LONG,
+        affected_packages: [{ package: MIXED, fixed: HOSTILE.rlo, ecosystem: HOSTILE.zwsp }],
+        assets: [watchAsset({ reason: MIXED, package: MIXED, installed: HOSTILE.rlo, fixed: null })],
+      })],
+    })
+    const { container } = setup('/inventory?asset=fw', { list, detail, watch })
+    const detailRegion = await screen.findByRole('region', { name: 'fw 자산 상세' })
+    await within(detailRegion).findByRole('region', { name: '배포판 취약점 표' })
+    fireEvent.click(screen.getByRole('button', { name: /CVE-2024-6387/ }))
+
+    expectInertDom(container)
+    expectMixedRevealed(container)
+
+    // 자산 표: 오류는 한 칸 안에서 접고, OS 말풍선도 표식
+    const table = screen.getByRole('region', { name: '자산 표' })
+    expect(within(table).getByTitle('admin⟨U+202E⟩gnp.exe')).toHaveTextContent('ad⟨U+200B⟩min')
+    expect(within(table).getByRole('button', { name: '… 19,800자 더 · 펼치기' })).toBeInTheDocument()
+
+    // 자산 상세: 패키지 이름(dt) · 이미지 · OS
+    expect(within(detailRegion).getByText('OS').nextElementSibling?.textContent).toBe('⟨U+2066⟩x⟨U+2069⟩')
+    expect(within(detailRegion).getByTitle(revealHidden(MIXED))).toBeInTheDocument()
+
+    // 주목 CVE: 자산별 판정 배지의 말풍선 · 펼친 설명(2만 자)
+    const watchRegion = screen.getByRole('region', { name: '주목 CVE 표' })
+    expect(within(watchRegion).getByTitle(revealHidden(MIXED))).toBeInTheDocument()
+
+    expectLongFolds(container)
   })
 })

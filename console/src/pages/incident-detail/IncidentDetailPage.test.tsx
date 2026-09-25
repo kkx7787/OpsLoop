@@ -2,9 +2,11 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import type { RouteObject } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ctiKeys, incidentCtiPath } from '@/api/cti'
-import { incidentPath, type AbsorbedInfo, type IncidentDetail } from '@/api/incidents'
+import { incidentPath, type AbsorbedInfo, type EvidenceSample, type IncidentDetail } from '@/api/incidents'
 import { ACTION_STATUS } from '@/lib/domain'
-import { cve, freshness, incidentCti, signature } from '@/test/cti-fixtures'
+import { revealHidden } from '@/lib/untrusted'
+import { applicability, cve, freshness, incidentCti, signature } from '@/test/cti-fixtures'
+import { expectInertDom, expectLongFolds, expectMixedRevealed, HOSTILE, LONG, MIXED } from '@/test/hostile-fixtures'
 import { noRetryClient, renderRoutes } from '@/test/render'
 import { IncidentDetailPage } from './IncidentDetailPage'
 
@@ -628,5 +630,119 @@ describe('IncidentDetailPage · ⑥ 취약점 연계', () => {
     renderRoutes(routes(), PATH)
     const region = await screen.findByRole('region', { name: '취약점 연계' })
     expect(within(region).getByText(/공개 취약점 정보 표가 아직 없습니다/)).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------- #41 비신뢰 문자열 표시
+
+/** 공격자 값이 닿는 자리마다 악성 표본을 넣은 사건(원문 · 행위 · 표본 키와 값 · 세션 · 대상 · 차단 · 흡수 · 이력 · 제안 근거) */
+function hostileDetail(): IncidentDetail {
+  const line = { ts: '2026-09-18T06:00:30+00:00', sensor: MIXED, eventid: 'cowrie.command.input', session: MIXED, username: HOSTILE.rlo, input: MIXED, url: `/x?q=${HOSTILE.img}`, shasum: HOSTILE.zwsp, http_method: HOSTILE.svg, http_status: 200 }
+  const base = detail()
+  return detail({
+    target: `user:${MIXED}`,
+    evidence: {
+      sample: [{ ts: '2026-09-18T06:00:00+00:00', url: MIXED, [HOSTILE.rlo]: HOSTILE.jsUrl, [HOSTILE.img]: LONG, session: MIXED }, MIXED],
+      sessions: [MIXED, LONG],
+      observed_count_max: 3,
+    },
+    behavior: [line, { ...line, input: LONG }],
+    raw: [
+      { ...line, has_password: true, user_agent: MIXED, message: HOSTILE.decoy },
+      { ...line, input: null, has_password: false, user_agent: null, message: LONG },
+    ],
+    actor: {
+      ...base.actor,
+      history: { first_seen: '2026-09-10T00:00:00+00:00', last_seen: '2026-09-18T06:10:00+00:00', events: 1, sensors: [MIXED], sessions: 1 },
+      blocked: { reason: MIXED, method: HOSTILE.style, created_at: '2026-09-18T07:00:00+00:00', expires_at: '2999-01-01T00:00:00+00:00', released_at: null, enforced_at: null },
+    },
+    absorbed: absorbed({ items: [{ ...absorbed().items[0], reason: MIXED, payload: `${HOSTILE.rlo}${HOSTILE.img}` }], total: 1, sources: 1 }),
+    verdicts: [{ id: 1, verdict: 'threat', reason: MIXED, observed_value: null, operator: HOSTILE.rlo, created_at: '2026-09-18T07:00:00+00:00', proposed: null, decision_seconds: null }],
+    actions: [{ id: 2, action: 'block_ip', operator: HOSTILE.zwsp, note: LONG, created_at: '2026-09-18T07:00:00+00:00' }],
+    proposal: { verdict: 'threat', reasons: [MIXED] },
+  })
+}
+
+function hostileCti() {
+  return ctiFor({
+    signatures: [signature({ product: MIXED, vendor: HOSTILE.rlo, source: LONG, applicability: [applicability({ reason: MIXED })] })],
+    cves: [cve({ kev: null, description: MIXED })],
+  })
+}
+
+describe('IncidentDetailPage · 비신뢰 문자열(#41)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('악성 표본을 글자로만 그리고 숨은 문자는 표식 · 줄바꿈은 ↵ 로 보이며 2만 자는 접는다', async () => {
+    stubApi({ body: hostileDetail(), cti: hostileCti() })
+    const { container } = renderRoutes(routes(), PATH, noRetryClient())
+    await screen.findByRole('region', { name: '취약점 연계' })
+    await readyPanel()
+    const raw = screen.getByRole('region', { name: '원문 로그' })
+    fireEvent.click(within(raw).getByRole('button', { name: '펼치기' }))
+
+    expectInertDom(container)
+    expectMixedRevealed(container)
+
+    // 사건 머리: 대상은 표식으로, 한 칸 안에서 격리된다
+    const target = screen.getByText('대상', { selector: 'dt' }).nextElementSibling as HTMLElement
+    expect(target.textContent).toBe(`user:${revealHidden(MIXED)}`)
+    expect(target.querySelector('bdi')).toHaveAttribute('dir', 'ltr')
+
+    // ④ 원문: 한 사건 줄은 li 하나(가짜 줄 없음) · 필드마다 따로 격리 · 필드 사이 공백 두 칸
+    const lines = within(within(raw).getByRole('list', { name: '원문 로그 줄' })).getAllByRole('listitem')
+    expect(lines).toHaveLength(2)
+    expect(lines[0].querySelectorAll('bdi').length).toBeGreaterThanOrEqual(9)
+    expect(lines[0].textContent).toContain('  user=admin⟨U+202E⟩gnp.exe  password=[있음]  input=')
+    expect(lines[0].textContent).toMatch(/줄1↵2026-09-18 15:00:00 decoy login\.success$/)
+
+    // ① 표본: 공격자 키도 머리글에서 표식 · 글자로 보인다 · 긴 세션 칩은 접힌다
+    const evidence = screen.getByRole('region', { name: '규칙이 본 것' })
+    const heads = within(evidence).getAllByRole('columnheader').map((th) => th.textContent)
+    expect(heads).toContain('admin⟨U+202E⟩gnp.exe')
+    expect(heads).toContain(HOSTILE.img)
+    expect(within(evidence).getByRole('button', { name: '… 19,936자 더 · 펼치기' })).toBeInTheDocument()
+
+    // ③ 흡수 페이로드: 말풍선도 표식으로
+    const actor = screen.getByRole('region', { name: '행위자 이력' })
+    expect(within(actor).getByTitle(revealHidden(`${HOSTILE.rlo}${HOSTILE.img}`))).toBeInTheDocument()
+
+    // ⑤ 이력 · 판정 패널: 행위자 이름 표식
+    const history = screen.getByRole('table', { name: '판정 · 조치 이력' })
+    const actionRow = history.querySelector('[data-history-kind="action"]') as HTMLElement
+    expect(within(actionRow).getAllByRole('cell')[3].textContent).toBe('ad⟨U+200B⟩min')
+    expect(screen.getByLabelText('도구 제안')).toHaveTextContent('⟨U+202E⟩')
+
+    // ⑥ 취약점 연계: 요약 말풍선 · 표 이름도 표식으로
+    const vuln = screen.getByRole('region', { name: '취약점 연계' })
+    expect(within(vuln).getByTitle(revealHidden(MIXED))).toBeInTheDocument()
+    expect(within(vuln).getByRole('table', { name: `${revealHidden(MIXED)} 자산 적용` })).toBeInTheDocument()
+
+    // 2만 자: 원문 · 행위 · 표본 값 · 조치 메모 · 서명 근거가 접혀 있다가 펼치면 전부 보인다
+    expectLongFolds(container)
+  })
+
+  it('주소로 받은 사건 키가 악성이어도 404 화면에 글자로만 보인다', async () => {
+    stubApi()
+    const key = `R201|v2|user:${MIXED}|2026-09-18T06:00:00+00:00`
+    const { container } = renderRoutes(routes(), `/incidents/${encodeURIComponent(key)}`, noRetryClient())
+    expect(await screen.findByText('인시던트를 찾을 수 없습니다')).toBeInTheDocument()
+    expectInertDom(container)
+    expectMixedRevealed(container)
+    expect(container.textContent).toContain(revealHidden(key))
+  })
+
+  it('표본 키가 __proto__ · constructor 여도 없는 칸은 물려받은 값이 아니라 빈 칸 표시(—)다', async () => {
+    // JSON.parse 로 만들어야 __proto__ 가 제 키로 남는다(서버 응답과 같다)
+    const sample = JSON.parse('[{"__proto__": "p", "constructor": "c", "url": "x"}, {"url": "y"}]') as EvidenceSample[]
+    stubApi({ body: detail({ evidence: { sample, sessions: [], observed_count_max: 3 } }) })
+    renderRoutes(routes(), PATH, noRetryClient())
+    const table = await screen.findByRole('table', { name: '규칙이 남긴 표본' })
+    expect(within(table).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['__proto__', 'constructor', 'url'])
+    const [, first, second] = within(table).getAllByRole('row')
+    expect(within(first).getAllByRole('cell').map((td) => td.textContent)).toEqual(['p', 'c', 'x'])
+    expect(within(second).getAllByRole('cell').map((td) => td.textContent)).toEqual(['—', '—', 'y'])
   })
 })

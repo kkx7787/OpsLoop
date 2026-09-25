@@ -1,7 +1,9 @@
 import { isRole, ROLE_LABEL } from '@/auth/roles'
 import type { Me } from '@/auth/useMe'
 import { cn } from '@/lib/cn'
+import { revealHidden } from '@/lib/untrusted'
 import { IconAccounts } from '../../atoms/icons'
+import { UntrustedText } from '../../atoms/UntrustedText'
 
 export interface LogoutFormProps {
   className?: string
@@ -42,7 +44,9 @@ export function UserPanel({ user, className }: UserPanelProps) {
         <IconAccounts size={18} />
       </span>
       <span className="flex min-w-0 flex-col text-sm">
-        <span className="truncate font-medium">{user?.username ?? '확인 중'}</span>
+        <span className="truncate font-medium" title={user ? revealHidden(user.username) : undefined}>
+          <UntrustedText value={user?.username} clip fallback="확인 중" />
+        </span>
         <span className="text-xs text-ink-muted" title={roleTitle}>
           {user?.role ?? '—'}
         </span>

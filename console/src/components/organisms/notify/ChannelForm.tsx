@@ -8,6 +8,7 @@ import { Card, CardHeader } from '@/components/atoms/Card'
 import { Input } from '@/components/atoms/Input'
 import { Select } from '@/components/atoms/Select'
 import { Switch } from '@/components/atoms/Switch'
+import { UntrustedText } from '@/components/atoms/UntrustedText'
 import { Banner } from '@/components/molecules/Banner'
 import { FormField } from '@/components/molecules/FormField'
 import { SEVERITIES, type Severity } from '@/lib/domain'
@@ -92,7 +93,7 @@ export function ChannelForm({ initial, busy, onSubmit, onCancel }: Props) {
 
   return (
     <Card ref={card} padding="none" className="min-w-0 scroll-mt-4">
-      <CardHeader title={editing ? `채널 수정 · ${initial.name}` : '채널 추가'} aside={<Button size="sm" onClick={onCancel} disabled={busy}>닫기</Button>} />
+      <CardHeader title={editing ? <>채널 수정 · <UntrustedText value={initial.name} max={120} /></> : '채널 추가'} aside={<Button size="sm" onClick={onCancel} disabled={busy}>닫기</Button>} />
       <form className="grid gap-4 p-4 xl:grid-cols-2" onSubmit={submit} aria-label={editing ? '채널 수정 양식' : '채널 추가 양식'}>
         <div className="grid content-start gap-4">
           <FormField label="이름" required>{(f) => <Input {...f} ref={nameInput} value={draft.name} maxLength={64} placeholder="SOC Teams" disabled={busy} onChange={(e) => patch({ name: e.target.value })} />}</FormField>
