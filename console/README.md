@@ -28,9 +28,9 @@ src/api/monitoring.ts  대시보드(useSummary) · 차단 목록(useBlocklist). 
 src/api/notify.ts      알림 채널(useChannels · createChannel · updateChannel · testChannel) · 발송 이력(useDeliveries). 채널 주소는 함수로만 보내고 캐시에 두지 않는다. 쿼리 키는 notifyKeys
 src/api/cti.ts         CVE · KEV 연계(#39): 사건 연계(useIncidentCti) · 주목 CVE(useWatch) · 자산 목록(useAssets) · 자산 상세(useAsset · 거르기 · 쪽). 쿼리 키는 ctiKeys(사건 상세 키 밑에 두지 않는다)
 src/api/live-context.ts 공통 연결 상태. S-10에서 웹소켓 끊김과 REST 조회 실패를 구별
-src/api/live.ts        실시간 통보(WS /ws). useLiveUpdates 가 한 번 잇고 통보마다 해당 쿼리를 무효화한다. 끊기면 1초 → 30초 지수 백오프. 재접속하면 놓친 통보를 보완하도록 목록·상세·지표 · CVE 연계를 재조회
+src/api/live.ts        실시간 통보(WS /ws). useLiveUpdates 가 한 번 잇고 통보마다 해당 쿼리를 무효화한다. 끊기면 1초 → 30초 지수 백오프. 재접속 · resync 때 놓친 통보를 보완하도록 목록·상세·지표 · CVE 연계 · /api/me 를 재조회(RESYNC_KEYS). hello 의 콘솔 이름을 상태에 싣는다
 src/auth/roles.ts      권한표(화면 설계 15장). can(role, action) · permission(role, action)
-src/auth/useMe.ts      GET /api/me · usePermission(action)
+src/auth/useMe.ts      GET /api/me · parseMe(응답 검증 · console 은 선택) · usePermission(action)
 src/lib/useNow.ts      상단바 시계용 지금 시각
 src/components/        atoms · molecules · organisms · templates. index.ts 로 내보낸다
   organisms/states/    상태 화면(불러오는 중 · 0건 · 403 · 세션 만료 · 오류 · 404 · ApiErrorState)
@@ -39,7 +39,7 @@ src/components/        atoms · molecules · organisms · templates. index.ts �
   organisms/incident-detail/ 인시던트 상세(S-04) · 판정 패널(S-05) 조각: 머리글 · 구역 ①~⑤ · ⑥ 취약점 연계(VulnLinkPanel) · 조치 막대 · 판정 패널 · 이력 · format(서버 행 → 글)
   organisms/assets/          자산 · 취약점(#39) 조각: 주목 CVE(WatchCard) · 자산 표(AssetTable) · 자산 상세(AssetDetailSection) · 공개 정보 신선도(CtiFreshnessFacts) · cti-format(적용 판정 · CVSS · EPSS 표기). ⑥ 도 이 신선도 · 표기를 쓴다
   organisms/notify/          알림 설정(S-12) 조각: 채널 양식(ChannelForm · 주소 password 형 · 틀 미리보기) · 채널 표(ChannelTable) · 발송 이력(DeliveryTable) · template(자리표시자 치환)
-  organisms/           TopBar(경로 표시 · 실시간 연결 표시 · KST 시계 · 새로고침 · 모바일 메뉴 단추) · LiveIndicator · SideNav(208px) · MobileNav(서랍)
+  organisms/           TopBar(경로 표시 · 실시간 연결 표시 · KST 시계 · 새로고침 · 모바일 메뉴 단추) · LiveIndicator(연결 점 · 붙은 콘솔) · SideNav(208px) · MobileNav(서랍)
   templates/           AppLayout(사이드바 + 상단바 + 본문 · /api/me 확인 · 401 → 로그인 · 실시간 통보 연결) · breadcrumbs
 src/app/router.tsx     경로표(react-router 7). / · /incidents · /incidents/:key · /blocklist · /rules · /sources · /reports · /nodes · /inventory · /alerts · /audit · /accounts · *
 src/app/nav.ts         메뉴 묶음(관제 · 대응 · 분석 · 수집 · 관리). 관리 묶음은 admin 이 아니면 흐리게
@@ -149,3 +149,12 @@ src/test/              vitest setup(WebSocket 은 아무 일도 하지 않는 �
 - `title` · `aria-label` · `<option>` 처럼 문자열만 들어가는 자리는 `lib/untrusted` 의 `revealHidden` 을 거친다.
 - 적용한 자리: 원문 로그 · 행위 · 증거 표본(키와 값 · 세션 칩) · 사건 머리(대상 · 사건 키) · 목록 행/카드 · 대시보드 · 판정/조치 기록(사유 · 메모 · 행위자 · 제안 근거) · 행위자 구역(차단 사유 · 방식 · 센서 · 흡수 사유 · 페이로드) · 차단 목록 · 취약점 연계 · 자산 표 · 자산 상세 · 주목 CVE · 알림 발송 이력(대상 · 원인)과 채널의 마지막 오류 · 감사 기록 · 주소로 받은 사건 키(404 화면)와 규칙 조건.
 - 시험: `src/test/hostile-fixtures.ts` 의 악성 표본(태그 · `javascript:` · 마크다운 링크 · 이미지 · `<at>` 멘션 · CSS · dns-prefetch · U+202E · U+200B · U+2066/2069 · BOM · ESC · CSI · 가짜 줄 · CRLF · 2만 자)을 화면마다 넣고, img · svg(앱 아이콘 제외) · iframe · object · embed · style · link · script 0 · on* 속성 0 · 모든 href 가 같은 출처 경로 · 글자와 글자 속성에 숨은 문자 원문 0 · 표식과 ↵ 표시 · 2만 자 접힘/펼침을 본다(`expectInertDom` · `expectMixedRevealed` · `expectLongFolds`).
+
+## 실시간 통보 · 콘솔 이중화 (#43)
+
+- 판정 · 조치 통보(`verdict.created` · `action.created`)는 서버가 DB(`pg_notify('opsloop_event')`)로 보내 콘솔 두 대가 모두 받는다. 어느 콘솔에 붙어도 같은 통보가 온다. 통보가 8000 바이트를 넘어 `incident_key` 가 빠지면 목록만 다시 받는다.
+- `resync`: 서버의 DB 통보 연결이 끊겼다 다시 붙으면 모든 웹소켓에 보낸다. 화면은 웹소켓 재접속 때와 같이 사건 · 규칙 · 지표 · 차단 · 노드 · 감사 · CVE 연계 · `/api/me` 를 전부 다시 조회한다(`RESYNC_KEYS`). `/api/me` 를 넣어 끊긴 동안 세션이 끝났으면 로그인으로 간다. 다시 묻기가 5xx · 네트워크로 실패해도(콘솔 전환 중) 이미 받은 사용자가 있으면 본문을 지우지 않고, 401 만 로그인 안내로 바꾼다.
+- 1008: 세션이 없거나 끝나면 서버가 연결을 받은 뒤 1008 로 닫는다(전에는 받기 전에 닫아 브라우저가 1006 을 받고 재연결만 되풀이했다). 화면은 다시 잇지 않고 '실시간 끊김 · 다시 로그인 필요'를 보이며 `/api/me` 를 다시 물어 401 이면 `/login?next=` 로 간다.
+- 콘솔 표시: hello 의 `data.console`(서버 `OPSLOOP_WORKER`, 없으면 호스트 이름)을 상단바 연결 표시 옆에 둔다. `opsloop-console-a` · `opsloop-console-b` 는 '콘솔 A' · '콘솔 B', 그 밖은 원문을 `UntrustedText`(64자 자름)로 그린다. 끊기면 마지막 콘솔을 흐리게 남기고(낭독 '마지막 연결'), 새 연결이 열리면 지웠다가 그 연결의 hello 로 채운다. md 미만에서는 낭독 전용이다.
+- `/api/me` 의 `console` 은 선택 필드다(없거나 문자열이 아니면 뺀다). REST 요청은 두 대에 번갈아 가므로 화면 표시에는 쓰지 않는다(전환 시험 프로브가 기록한다).
+- 배포: API 와 화면 빌드를 함께 배포한다. 화면만 먼저 나가도 깨지지 않지만(콘솔 표시 없음 · resync 없음), 세션이 끝난 탭의 재연결 되풀이는 서버의 1008 변경이 있어야 멈춘다.

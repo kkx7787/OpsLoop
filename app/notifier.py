@@ -10,13 +10,13 @@ import json
 import logging
 import os
 import re
-import socket
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote, urlsplit
 
 from dashboard import PENDING
+from live import console_name
 from untrusted import reveal
 
 log = logging.getLogger("opsloop.notify")
@@ -406,6 +406,13 @@ UPDATE notify_deliveries SET status = 'queued', claimed_at = NULL, claimed_by = 
  WHERE status = 'sending' AND claimed_by = $1
 """
 
+# 되돌리기 전에 본다. 같은 이름으로 최근에 집은 행이 있으면 그 이름의 다른 발송기가 지금 보내는 중일 수 있다.
+# 한 번 보내기는 HTTP_DEADLINE(15초) 안에 끝나고 묶음마다 claimed_at 을 다시 찍으므로 2분이면 넉넉하다.
+PEER_ALIVE = """
+SELECT count(*) FROM notify_deliveries
+ WHERE status = 'sending' AND claimed_by = $1 AND claimed_at > now() - interval '2 minutes'
+"""
+
 RELEASE_STALE = f"""
 UPDATE notify_deliveries SET status = 'queued', claimed_at = NULL, claimed_by = NULL
  WHERE status = 'sending' AND claimed_at < now() - interval '{STALE_CLAIM}'
@@ -478,15 +485,26 @@ def load_payload(value):
 class Notifier:
     def __init__(self, pool, worker: str | None = None):
         self.pool = pool
-        # 콘솔마다 다른 고정 이름. 컨테이너 hostname 은 다시 만들 때마다 바뀌어 시작 때 되돌리기가 빗나간다.
-        self.worker = (worker or os.environ.get("OPSLOOP_WORKER") or socket.gethostname())[:64]
+        # 콘솔마다 다른 고정 이름(live.console_name: OPSLOOP_WORKER, 없으면 hostname). 화면에 보이는 콘솔 이름과 같다.
+        # 컨테이너 hostname 은 다시 만들 때마다 바뀌어 시작 때 되돌리기가 빗나간다.
+        self.named = bool(worker or os.environ.get("OPSLOOP_WORKER"))
+        self.worker = (worker or console_name())[:64]
         self.tasks: list[asyncio.Task] = []
 
     async def start(self):
+        if not self.named:
+            log.warning("알림 발송기 이름(OPSLOOP_WORKER)이 비어 hostname %r 을 씁니다. 컨테이너를 다시 만들면 이름이 "
+                        "바뀌어 시작 때 되돌리기가 빗나갑니다(5분 뒤 풀림). 콘솔마다 다른 값을 주세요", self.worker)
         # 재기동 전 이 콘솔이 집었던 행은 다시 queued 다. 다른 콘솔이 집은 행은 건드리지 않는다.
         # 표가 아직 없거나 권한이 빠져도 콘솔의 다른 기능은 떠야 하므로 경고만 남긴다(5분 뒤 RELEASE_STALE 이 푼다).
+        # 같은 이름의 발송기가 둘이면(콘솔 B 에 A 의 .env 를 그대로 옮긴 경우) 서로의 보내는 중 행을 되돌려 두 번 보낼 수
+        # 있다. 되돌리기 전에 최근 2분 안에 이 이름으로 집은 행이 있으면 경고한다. 동작은 그대로 둔다.
         try:
             async with self.pool.acquire() as c:
+                recent = await c.fetchval(PEER_ALIVE, self.worker)
+                if recent:
+                    log.warning("같은 이름(%r)의 다른 발송기가 살아 있을 수 있습니다: 최근 2분 안에 이 이름으로 집은 보내는 중 "
+                                "행 %d건. OPSLOOP_WORKER 를 콘솔마다 다르게 주세요", self.worker, recent)
                 await c.execute(RECOVER_OWN, self.worker)
         except Exception as error:
             log.warning("알림 시작 때 되돌리기 실패: %s", type(error).__name__)

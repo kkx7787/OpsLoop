@@ -55,8 +55,12 @@ export {
   BASE_DELAY_MS,
   CLOSE_UNAUTHORIZED,
   connectLive,
+  consoleLabel,
+  helloConsole,
   MAX_DELAY_MS,
   parseLiveMessage,
+  RESYNC_KEYS,
+  resyncAll,
   useLiveUpdates,
   wsUrl,
 } from './live'

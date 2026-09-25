@@ -1,6 +1,8 @@
 """알림 채널 주소 검증 · 메시지 틀 · Teams 카드 · 재시도 일정 · 마스킹 · 권한 시험. DB · 외부 네트워크 없이 돈다.
-리다이렉트 시험만 127.0.0.1 에 잠깐 HTTP 서버를 띄운다. 비신뢰 값 정리(이슈 #41)도 여기서 본다."""
+리다이렉트 시험만 127.0.0.1 에 잠깐 HTTP 서버를 띄운다. 비신뢰 값 정리(이슈 #41)도 여기서 본다.
+발송기 이름 경고(이슈 #43): OPSLOOP_WORKER 가 비면 기동 때 경고한다. 같은 이름의 최근 행 경고는 test_notify_db.py 에 있다."""
 import json
+import os
 import socket
 import ssl
 import unittest
@@ -490,6 +492,58 @@ class ValidationEchoTests(unittest.TestCase):
         response = self.client.put("/api/notify/channels/1", json=InputTests.base | {"url": "https://x.example/" + secret, "events": []})
         self.assertEqual(response.status_code, 422)
         self.assertNotIn(secret, response.text)
+
+
+class WorkerNameTests(unittest.IsolatedAsyncioTestCase):
+    """발송기 이름은 콘솔마다 달라야 한다. 비면 hostname 을 쓰는데, 컨테이너를 다시 만들면 바뀌어 되돌리기가 빗나간다."""
+
+    def pool(self):
+        executed = []
+
+        class Conn:
+            async def fetchval(self, sql, *args):
+                executed.append((sql, args))
+                return 0
+
+            async def execute(self, sql, *args):
+                executed.append((sql, args))
+
+        class Acquire:
+            async def __aenter__(self):
+                return Conn()
+
+            async def __aexit__(self, *_exc):
+                return False
+
+        return SimpleNamespace(acquire=Acquire), executed
+
+    async def start_stop(self, notifier_):
+        async def idle(self_, interval, step):
+            return None
+        with patch.object(notifier.Notifier, "loop", idle):
+            await notifier_.start()
+            await notifier_.stop()
+
+    async def test_empty_worker_env_warns_at_start(self):
+        pool, executed = self.pool()
+        with patch.dict(os.environ, {"OPSLOOP_WORKER": ""}):
+            quiet = notifier.Notifier(pool)
+        with self.assertLogs("opsloop.notify", "WARNING") as logs:
+            await self.start_stop(quiet)
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn("OPSLOOP_WORKER", logs.output[0])
+        self.assertIn(repr(socket.gethostname()[:64]), logs.output[0])
+        # 동작은 그대로: 제 이름(hostname)으로 되돌린다
+        self.assertEqual(executed[-1], (notifier.RECOVER_OWN, (socket.gethostname()[:64],)))
+
+    async def test_named_worker_does_not_warn(self):
+        for env, worker in (({"OPSLOOP_WORKER": "opsloop-console-a"}, None), ({"OPSLOOP_WORKER": ""}, "test-a")):
+            pool, executed = self.pool()
+            with patch.dict(os.environ, env):
+                named = notifier.Notifier(pool, worker)
+            with self.assertNoLogs("opsloop.notify", "WARNING"):
+                await self.start_stop(named)
+            self.assertEqual(executed, [(notifier.PEER_ALIVE, (named.worker,)), (notifier.RECOVER_OWN, (named.worker,))])
 
 
 class PermissionTests(unittest.IsolatedAsyncioTestCase):
