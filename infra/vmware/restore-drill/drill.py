@@ -1728,20 +1728,32 @@ def wait_health(ctx, tries=45, poll=2.0):
     return code
 
 
+def parse_console_after(text):
+    """'w|id|사건 키|판정|판정자|상태' 줄 → [{id, key, verdict, operator, status}]. 사건 키에 '|' 가 들어 있으므로
+    (R003|v3|<출발지>|<시각>) 앞의 id 와 뒤의 세 칸을 떼고 남는 가운데를 키로 본다."""
+    out = []
+    for f in tagged(text, "w"):
+        if len(f) < 5:
+            continue
+        out.append({"id": f[0], "key": "|".join(f[1:-3]), "verdict": f[-3], "operator": f[-2], "status": f[-1]})
+    return out
+
+
 def step_console_confirm(ctx):
     base = to_int(ctx.state.get("console", "base_max_id"), 0)
     r = ctx.drill("console_after", Q.q_console_after(base))
     if r.dry:
         ctx.mark("S7", "판정 반영")
         return 0
-    rows = tagged(r.out, "w")
-    resolved = [f for f in rows if len(f) >= 5 and f[4] == "resolved"]
+    rows = parse_console_after(r.out)
+    resolved = [f for f in rows if f["status"] == "resolved"]
     ctx.check("콘솔에서 남긴 판정이 훈련 DB 에 있음 (id > %d)" % base, bool(rows), "%d건" % len(rows))
-    ctx.check("그 사건 status = resolved", bool(resolved), " · ".join("%s %s" % (f[1], f[4]) for f in rows[:3]))
-    ctx.state.data["console_confirm"] = {"verdicts": ["|".join(f[:4]) for f in rows], "human_checked": True}
+    ctx.check("그 사건 status = resolved", bool(resolved), " · ".join("%s %s" % (f["key"], f["status"]) for f in rows[:3]))
+    ctx.state.data["console_confirm"] = {"verdicts": ["|".join((f["id"], f["key"], f["verdict"], f["operator"])) for f in rows],
+                                         "human_checked": True}
     if ctx.failed():
         return 1
-    ctx.mark("S7", "판정 반영 · 서비스 재개 · 판정 %d건 · %s" % (len(rows), resolved[0][1]))
+    ctx.mark("S7", "판정 반영 · 서비스 재개 · 판정 %d건 · %s" % (len(rows), resolved[0]["key"]))
     return 0
 
 
