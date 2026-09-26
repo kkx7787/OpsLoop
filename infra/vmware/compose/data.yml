@@ -11,9 +11,14 @@ services:
       POSTGRES_USER: opsloop
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD 를 .env 에 설정하세요}
       TZ: UTC
+    # 스키마를 initdb 로 넣지 않는다 (이슈 #45). 빈 볼륨이면 빈 opsloop DB 와 소유자 opsloop 만 생긴다.
+    #   새로 깔 때: collector/install-collector.sh 가 받은 커밋의 infra/schema.sql 전체를 적용한다(여러 번 적용해도 같다).
+    #   백업에서 되돌릴 때: 빈 DB 에 pg_restore 한다 (infra/vmware/README.md 'DB 복원').
+    #   옛 판은 ./schema.sql(배포할 때의 사본, 09-18 판)을 initdb 에 붙였다. 그래서 빈 볼륨에 옛 스키마의 표가 먼저 생겨
+    #   pg_restore 가 'already exists' 로 멈췄다. initdb 는 볼륨이 빌 때만 돌므로 지금 볼륨에는 영향이 없다.
+    # pgdata(볼륨 opsloop_pgdata)를 지우는 명령(compose down -v · volume prune)은 쓰지 않는다
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./schema.sql:/docker-entrypoint-initdb.d/10-schema.sql:ro
     ports:
       # 데이터망에서만 받는다. 서비스망 콘솔의 5432 접근은 내부 방화벽이 허용한다.
       - "192.168.60.11:5432:5432"
