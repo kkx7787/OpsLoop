@@ -42,7 +42,7 @@ scripts/verify.sh
 scripts/add-node.sh opsloop-web-01 768 1 vmnet2 00:50:56:20:02:21 netplan/web-01.yaml 192.168.50.1 192.168.50.21
 
 # 7. 수집 파이프라인 (데이터 노드). 설치 방법은 puller/install-ingest.sh 머리말
-# 8. 내부 DB 를 Mac 으로 백업 (VERIFY=restore 면 임시 DB 복원 시험까지)
+# 8. 내부 DB 를 Mac 으로 백업 (VERIFY=restore 면 임시 DB 복원 시험까지). 같은 시각의 역할 목록 opsloop-<시각>.globals.sql(비밀번호 없음)도 받는다
 scripts/backup-db.sh
 ```
 
@@ -328,7 +328,7 @@ python3 infra/vmware/failover/probe_http.py --drop-cookie
 | `opsloop_detector` | 탐지기(detect.py) | `/etc/opsloop/detector.env` | 규칙 입력 읽기, incidents 생성 · 억제 · 이어지는 사건 갱신(끝 시각 · 건수 · 근거 네 열), detector_runs |
 | `opsloop_console` | 콘솔 API · triage.py | 콘솔 `~/opsloop/.env` · 데이터 노드 `/etc/opsloop/triage.env` | 판정 · 조치 · 차단 · 등록 토큰 · 감사 · 로그인 기록 · CTI 표 읽기. 토큰 해시 · 계정 역할은 못 본다/못 고친다 |
 | `opsloop_cti` | CTI 수집기(`opsloop-cti`: 공개 정보 갱신 · 자산 적재, 이슈 #39) | `/etc/opsloop/cti.env` | 공개 정보 · 자산 표(`cti_*` · `asset_*`) 쓰기(`cti_snapshots` 는 추가만), `rule_versions` 읽기. 이벤트 · 사건 · 판정은 못 본다 |
-| `opsloop_backup` | `backup-db.sh` 의 pg_dump | 없음 (컨테이너 안 로컬 접속) | 읽기 전부 |
+| `opsloop_backup` | `backup-db.sh` 의 pg_dump · 역할 목록(pg_dumpall --globals-only --no-role-passwords) | 없음 (컨테이너 안 로컬 접속) | 읽기 전부 |
 | `opsloop` (소유자) | 스키마 · `nodes.py` · `auth.py add` | `/etc/opsloop/admin.env` (root 만) · compose `.env` | 전부 |
 
 절차 (Mac, 저장소 루트):
@@ -354,6 +354,322 @@ infra/vmware/scripts/verify-db-roles.sh
   `db-console-role.sh` · `install-collector.sh` 는 30 으로 만들고, 이미 있는 역할은 마이그레이션으로 올린다(역할이 있을 때만 바꾸고
   여러 번 적용해도 같다. 붙어 있는 접속은 끊기지 않는다). `verify-db-roles.sh` 가 30 이상인지 본다. 콘솔 B 를 켜기 전에 한다.
   `ssh -F ~/.ssh/config.opsloop data01 'sudo -n docker exec -i opsloop-db psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -q' < infra/migrations/20260926_console_connlimit.sql`
+
+## DB 복원 (이슈 #45)
+
+운영 DB(`opsloop-db` 컨테이너의 `opsloop`)를 Mac 의 백업으로 되돌린다. 백업은 `scripts/backup-db.sh` 가 받는다(launchd 04:30 · 16:30, 위 '순서' 8번).
+이 절은 **DB 인스턴스만 잃은 경우**다. 데이터 노드 호스트 · `/etc/opsloop` · 원장(S3 · `/var/lib/opsloop` 의 loki · gate · admin)은 살아 있다고 본다.
+데이터 노드 전체를 잃은 경우는 맨 아래 '데이터 노드 전손' 에 따로 적었다(범위 밖).
+목표는 RTO 2시간 · RPO 12시간이다. 단계마다 시작 시각을 적는다. RTO 는 장애 선언(T0)에서 시작해, 8단계 검증을 통과하고 10단계에서 콘솔 판정까지 확인한 때 끝난다.
+
+### 백업에 드는 것 · 안 드는 것
+
+| 구분 | 무엇 | 비고 |
+|---|---|---|
+| 든다 | DB 덤프 `~/opsloop-backup/opsloop-<시각>.dump` | `pg_dump -Fc opsloop`, DB 하나. 표 23 · 데이터 · 시퀀스 값 · 함수 7 · 트리거 4 · 뷰 3 · 참조 키 15 · 표 · 열 · 함수 권한(2026-09-27 기준). 계정 해시 · 노드 토큰 해시 · 알림 채널 주소가 들어 있어 비밀처럼 다룬다(0600 · 폴더 0700 · 14개 보관) |
+| 든다 | 역할 목록 `opsloop-<시각>.globals.sql` | 덤프와 같은 시각. 역할 7개 · 속성(INHERIT · 접속 한도) · `pg_read_all_data` 멤버십. 비밀번호는 없다(`--no-role-passwords`). 2026-09-27 이전 덤프에는 없다 |
+| 든다 | 원장 사본 `~/opsloop-backup/ledger/` (loki · gate · admin) | rsync 로 따라 맞춘 사본 하나다. 쓰는 중에 복사하므로 한 시점으로 맞는다는 보장이 없고, 이 사본으로 되돌려 본 적이 없다 |
+| 안 든다 | 역할 비밀번호 · `/etc/opsloop` 의 파일 9개(`*.env` 8개 · `gap-ack.json`) · compose `.env`(`POSTGRES_PASSWORD`) · 콘솔 `~/opsloop/.env`(`SESSION_SECRET` · 콘솔 DB 비밀번호) | VM 안에만 있다. DB 만 되돌릴 때는 호스트에 남은 파일을 그대로 쓴다 |
+| 안 든다 | S3 읽기 키(`s3-pull.env`) · CTI 쓰기 키(`s3-cti.env`) | Mac 에서 파이프로 넣었고 Terraform 밖이다. 잃으면 다시 발급한다 |
+| 안 든다 | 적재 상태(`pull-state.json` · `agents-state.json`) · S3 미러(`raw/`) | 데이터 노드 `/var/lib/opsloop`. 미러는 S3 에서 다시 받는다 |
+| 안 든다 | 서버 설정(`pg_hba.conf` · `postgresql.conf`) · 이미지 | 이미지 기본값이다. `postgres:16-alpine` 은 태그만 고정하고 digest 는 고정하지 않는다 |
+
+- 덤프 이름의 시각은 Mac 이 잰 시작 시각(UTC)이다. 실제 스냅숏 시각은 덤프 머리의 `Archive created at`(데이터 노드 시계)이고, 이것을 복구 지점 T_b 로 쓴다. Mac 이 잠들었다 깬 직후에는 둘이 최대 49분 어긋났다.
+- T_b 뒤에 DB 에만 생긴 기록(판정 · 조치 · 차단 · 감사 · 로그인 · 알림 이력 · 계정 · 노드 등록)은 되돌린 DB 에 없다. 센서 이벤트 · 세션 · 지표는 원장에서 다시 적재된다(7단계).
+- T_b 뒤에 폐기한 노드 · 해제한 차단 · 바꾼 계정은 되돌리면 되살아난다. 8단계에서 대조해 다시 적용한다.
+
+### 운영 DB 복원 런북
+
+> **운영 DB 덮어쓰기 주의.** `docker exec opsloop-db psql -U opsloop` 은 슈퍼유저 접속이다(컨테이너 안 로컬 trust, ops 는 docker 그룹). 운영 DB 에 바로 쓴다.
+> 복원 훈련 명령(훈련 컨테이너 `opsloop-drill-db`)이나 `backup-db.sh` 의 시험 복원을 베껴 컨테이너 이름이나 `-d` 만 바꾸면 운영 DB 가 덮인다.
+> `--exit-on-error` 를 빼면 고유 키 없는 표에 행이 겹치고, 시퀀스가 백업 값으로 되감겨 운영 쓰기가 키 충돌을 낸다.
+> 이 절의 명령은 운영 DB 를 되돌리기로 정한 뒤에만 친다. `/home/ops/opsloop` 에서 `docker compose down -v` · `docker volume prune` 은 쓰지 않는다(운영 볼륨 `opsloop_pgdata` 가 지워진다).
+
+Mac 저장소 루트에서 한 셸로 끝까지 친다. ops 는 docker 그룹이라 DB 명령에 sudo 를 붙이지 않는다(sudo 는 명령줄을 auth.log 에 남긴다).
+
+```bash
+# 0. 장애 선언. 이 시각이 T0 다
+d1() { ssh -F ~/.ssh/config.opsloop data01 "$@"; }
+date -u +%FT%TZ
+
+# 1. 쓰는 쪽을 모두 멈춘다. 반쯤 되돌린 DB 에 아무도 쓰지 않게 한다
+"$HOME/Library/Application Support/OpsLoop/bin/console-watch.sh" --pause 180    # 진입점 감시 점검 창 3시간
+launchctl bootout gui/$(id -u)/local.opsloop.backup-db     # 백업이 반쯤 되돌린 DB 를 떠서 좋은 덤프를 밀어내지 않게
+launchctl bootout gui/$(id -u)/local.opsloop.assets        # 자산 수집은 asset_* 표에 쓴다
+ssh -F ~/.ssh/config.opsloop console-a 'docker stop opsloop-api'   # 콘솔 B 가 켜져 있으면 console-b 도
+d1 'sudo -n systemctl stop opsloop-ingest.timer opsloop-agents.timer opsloop-cti.timer'
+d1 'systemctl is-active opsloop-ingest.service opsloop-agents.service opsloop-cti.service'   # 셋 다 inactive 가 될 때까지 다시 본다
+d1 'sudo -n systemctl stop opsloop-gate.service'; date -u +%FT%TZ   # 관문을 멈춘 시각. 58분 안에 다시 띄운다 (7단계)
+
+# 2. 백업 고르기 (Mac). .unverified 는 고르지 않는다
+ls -1t ~/opsloop-backup/opsloop-*.dump | head -3
+D=~/opsloop-backup/opsloop-<시각>.dump; G=${D%.dump}.globals.sql
+grep -B2 -A2 "$(basename "$D")" ~/opsloop-backup/backup.log     # 그 회차의 '복원 시험' 건수 · 성공 (판정 · 조치가 늘었으면 '참고' 줄이 사이에 낀다)
+shasum -a 256 "$D" "$G"                                          # 기록에 남긴다
+docker run --rm -i --pull never --network none --entrypoint pg_restore postgres:16-alpine --list < "$D" | grep 'Archive created'   # T_b (UTC)
+docker run --rm -i --pull never --network none --entrypoint pg_restore postgres:16-alpine --list < "$D" | grep -c 'TABLE DATA'      # 23
+grep -c '^CREATE ROLE ' "$G"; grep -ciE "PASSWORD '|SCRAM-SHA-256\\$" "$G"                                                       # 7 · 0
+```
+
+- 목차는 Mac 의 `postgres:16-alpine`(덤프와 같은 16판)으로 읽는다. DB 에 붙지 않는다. 이미지가 없으면 데이터 노드에서 `d1 'docker exec -i opsloop-db pg_restore --list' < "$D"`.
+
+3단계는 상황에 따라 둘 중 하나다.
+
+(가) 컨테이너 · 볼륨이 살아 있고 DB 안 데이터만 잘못됐다: 옛 DB 를 이름만 바꿔 남기고 빈 DB 를 만든다. 역할 · 비밀번호는 클러스터에 그대로 있으므로 4단계는 건너뛴다.
+
+```bash
+# 3가. 날짜는 T0 의 UTC 날짜
+d1 'docker exec -i opsloop-db psql -U opsloop -d postgres -v ON_ERROR_STOP=1' <<'SQL'
+SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = 'opsloop' AND pid <> pg_backend_pid();
+SELECT pg_sleep(2);
+ALTER DATABASE opsloop RENAME TO opsloop_broken_<날짜>;
+CREATE DATABASE opsloop OWNER opsloop;
+SQL
+```
+
+(나) 컨테이너가 뜨지 않거나 볼륨이 깨졌다: 볼륨을 사본으로 남기고 새 볼륨으로 띄운다. 먼저 배포본 `data.yml` 에 initdb 마운트가 없는지 본다(아래 '배포본 data.yml 반영').
+
+```bash
+# 3나. 0 이어야 한다. 1 이면 '배포본 data.yml 반영' 의 파일 교체까지 먼저 한다 (빈 볼륨에 09-18 판 스키마가 깔려 5단계가 멈춘다).
+#     컨테이너는 아래 줄이 다시 만든다
+d1 'grep -c docker-entrypoint-initdb /home/ops/opsloop/data.yml'
+d1 'set -e; cd /home/ops/opsloop
+  docker compose -f data.yml stop postgres && docker compose -f data.yml rm -f postgres
+  docker volume create opsloop_pgdata_broken_<날짜>
+  docker run --rm --pull never -v opsloop_pgdata:/from:ro -v opsloop_pgdata_broken_<날짜>:/to --entrypoint sh postgres:16-alpine -c "cp -a /from/. /to/"
+  docker volume rm opsloop_pgdata
+  docker compose -f data.yml up -d postgres'
+d1 'docker inspect -f "{{.State.Health.Status}}" opsloop-db'      # healthy 가 될 때까지 다시 본다
+d1 'docker exec opsloop-db psql -U opsloop -d opsloop -Atc "SELECT count(*) FROM pg_tables WHERE schemaname = current_schema()"'   # 0 (initdb 함정 없음)
+
+# 4. (나) 만. 역할 목록을 적용한다. 소유자 opsloop 는 initdb 가 만들었으므로 그 CREATE 한 줄만 뺀다
+grep -vx 'CREATE ROLE opsloop;' "$G" | d1 'docker exec -i opsloop-db psql -U opsloop -d postgres -v ON_ERROR_STOP=1 -q'
+d1 'docker exec -i opsloop-db psql -U opsloop -d postgres -At' <<'SQL'
+SELECT rolname, rolinherit, rolconnlimit FROM pg_roles WHERE rolname LIKE 'opsloop%' ORDER BY 1;
+SQL
+#    7줄. INHERIT 는 opsloop · opsloop_backup 뿐, 접속 한도 backup 2 · console 30 · cti 2 · detector 5 · gate 10 · ingest 5 (opsloop 는 -1)
+```
+
+- 볼륨 사본은 약 200MB 다(2026-09-27 pgdata 201M, 디스크 여유 12G). compose 가 다시 만드는 볼륨 이름은 그대로 `opsloop_pgdata` 다(프로젝트 `opsloop`).
+- 새 볼륨의 소유자 `opsloop` 비밀번호는 compose `.env` 의 값이라 `/etc/opsloop/admin.env` 가 그대로 맞는다. 다른 역할은 아직 비밀번호가 없다. 6단계 설치기가 넣는다.
+- 역할 목록이 없는 옛 덤프면 아래를 대신 적용한다. `install-collector.sh` · `install-cti.sh` · `db-console-role.sh` 가 만드는 속성과 같다.
+
+```sql
+CREATE ROLE opsloop_gate     LOGIN NOINHERIT CONNECTION LIMIT 10;
+CREATE ROLE opsloop_ingest   LOGIN NOINHERIT CONNECTION LIMIT 5;
+CREATE ROLE opsloop_detector LOGIN NOINHERIT CONNECTION LIMIT 5;
+CREATE ROLE opsloop_console  LOGIN NOINHERIT CONNECTION LIMIT 30;
+CREATE ROLE opsloop_cti      LOGIN NOINHERIT CONNECTION LIMIT 2;
+CREATE ROLE opsloop_backup   LOGIN INHERIT CONNECTION LIMIT 2;
+GRANT pg_read_all_data TO opsloop_backup WITH INHERIT TRUE;
+```
+
+```bash
+# 5. 복원. 덤프는 표준입력으로 흘려 넣고 데이터 노드에 파일로 남기지 않는다
+d1 'docker exec -i opsloop-db pg_restore -U opsloop -d opsloop --no-owner --exit-on-error' < "$D"; echo "rc=$?"   # 0
+d1 'docker exec -i opsloop-db psql -U opsloop -d opsloop -At' <<'SQL'
+SELECT count(*) FROM pg_tables WHERE schemaname = 'public';
+SELECT (SELECT count(*) FROM events), (SELECT count(*) FROM verdicts), (SELECT count(*) FROM actions), (SELECT count(*) FROM blocklist);
+SQL
+#    표 수 = 2단계 TABLE DATA 수. 네 건수 = backup.log 의 그 회차 '복원 시험' 값
+```
+
+- `--no-owner`: 접속한 `opsloop` 가 모든 객체의 소유자가 된다. 운영과 같다(SECURITY DEFINER 함수 `enroll_node` 가 이를 전제로 한다). 표 · 열 · 함수 권한은 덤프에서 함께 들어온다. 받을 역할이 먼저 있어야 한다.
+- `--exit-on-error`: 첫 오류에서 멈춘다. `already exists` 면 대상 DB 가 비어 있지 않다(3단계). `role ... does not exist` 면 역할이 없다(4단계). 멈춘 DB 는 반쯤 찼으므로 비우고 5단계를 다시 한다: `d1 'docker exec opsloop-db sh -c "dropdb -U opsloop opsloop && createdb -U opsloop opsloop"'`(역할은 클러스터에 있어 그대로다).
+- `--clean --if-exists` 로 기존 DB 위에 덮지 않는다. 덤프에 없는 객체(백업 뒤 마이그레이션이 만든 표 등)가 남아 섞인다.
+
+```bash
+# 6. 비밀번호 · 스키마 · 알림 트리거. 지금 돌고 있는 코드와 같은 커밋으로 설치기를 돌린다 (코드는 바뀌지 않는다)
+C=$(d1 cat /opt/opsloop/app/collector/VERSION); CT=$(d1 cat /opt/opsloop/cti/VERSION); echo "$C $CT"
+for c in "$C" "$CT"; do git cat-file -e "$c^{commit}" 2>/dev/null && echo "$c 있음" || echo "$c 없음: 멈춘다 (아래 '배포 커밋이 없을 때')"; done
+git archive "$C" collector infra/schema.sql | d1 \
+  "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo bash /tmp/ol/collector/install-collector.sh $C"
+git archive "$CT" cti infra/migrations/20260925_cti.sql | d1 \
+  "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo bash /tmp/ol/cti/install-cti.sh $CT"
+git show "$C:infra/notify.sql" | d1 'docker exec -i opsloop-db psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -q -1'
+```
+
+- 순서가 중요하다. `install-collector.sh` 가 관문 · 적재 · 탐지 역할 비밀번호를 `/etc/opsloop` 의 기존 파일 값으로 맞추고 `infra/schema.sql` 전체를 다시 적용한다(권한 블록 · `pg_read_all_data` 포함). 그다음 `install-cti.sh` 가 `opsloop_cti` 비밀번호와 `20260925_cti.sql` 을, 마지막으로 `notify.sql` 을 `psql -1` 로 적용한다. 콘솔 역할 비밀번호는 10단계 `db-console-role.sh` 가 새로 준다.
+- 설치기는 접속 파일이 있으면 비밀번호를 새로 만들지 않는다. 역할에 비밀번호가 없어 파일로 로그인이 안 되면 그 파일의 값으로 SCRAM 검증값을 넣는다. (가) 에서는 '그대로 둔다' 로 끝난다.
+- 코드 내용은 그대로지만 이전 판 사본(`/opt/opsloop/app/collector.old` · `/opt/opsloop/cti.old`)은 지금 판으로 바뀐다. 설치기가 systemd 단위를 다시 넣어도 타이머 · 관문은 켜지 않는다.
+- 배포 커밋이 없을 때: 브랜치를 합칠 때 커밋을 새로 만들면 배포에 쓴 커밋은 어느 브랜치에도 없고 reflog 에만 남는다. 만료(기본 30일) 뒤 `git gc` 가 지우고, 다른 복제본에는 처음부터 없다.
+  2026-09-27 의 7c46485 가 그렇다(내용은 main 의 308434b 와 같다: `git diff --quiet 7c46485 308434b`). 없으면 내용이 같은 브랜치 커밋을 `C` · `CT` 로 쓴다(`install-collector.sh` 가 parser · detector 커밋이 다르다고 경고한다). 같은지 확인하지 못하면 멈추고 정한다.
+- 마이그레이션은 따로 돌리지 않는다. 표 · 함수 · 트리거 · 권한은 `schema.sql` 이 모두 담는다(2026-09-27: 새 DB 에 `schema.sql` · `20260925_cti.sql` · `notify.sql` 만 적용한 구조와 덤프 복원 뒤 구조를 `pg_dump -s` 로 대조해 열 순서 하나 말고 같다).
+  `20260926_console_connlimit.sql` 은 역할 속성(콘솔 접속 한도 30)이라 역할 목록(4단계)과 `db-console-role.sh` 가 맡는다. 따로 돌리면 `20260924_db_roles.sql` 이 콘솔의 CTI 권한을 거둔다(위 'CVE · KEV 연계').
+- 스키마 재적용은 백업 뒤에 올라간 마이그레이션을 따라잡는다. 여러 번 적용해도 같다.
+
+```bash
+# 7. 원장에서 다시 적재. 관문부터 띄운다 (1단계에서 멈춘 뒤 58분 안에)
+d1 'sudo -n systemctl start opsloop-gate.service; systemctl is-active opsloop-gate.service'
+d1 'sudo -n -u opsloop-pull env $(cat /etc/default/opsloop-ingest | xargs) /usr/local/bin/opsloop-ingest --full; echo rc=$?'   # 0 또는 11
+d1 'sudo -n -u opsloop-pull env $(cat /etc/default/opsloop-ingest | xargs) python3 /opt/opsloop/app/collector/pull_loki.py \
+  --node web-01 --since <T_b−1시간, 예 2026-09-27T03:30:00Z> --ledgers-from-start; echo rc=$?'                                   # 0
+```
+
+- 관문을 띄운 채 두면 nodes 를 읽을 수 있는데 비었거나 덜 찬 순간에 에이전트에 401 을 줄 수 있다. Alloy 는 401 을 다시 보내지 않아 그 묶음을 잃고, 거부 줄이 관문 원장에 남아 거짓 사건이 된다. 멈춰 두면 연결 거부라 Alloy 가 약 58분 동안 다시 보낸다(`config.alloy.j2` 재시도 20회). 넘길 것 같으면 6단계가 끝나는 대로 관문부터 띄운다.
+- `--full` 은 S3 미러(`raw/v1`) 전체를 편지함에 다시 걸어 적재하고 탐지까지 돈다. `line_hash` 로 이미 있는 줄은 걸러진다. 적재기에는 동시 실행 잠금이 없으므로 타이머를 멈춘 채 돌린다.
+- `pull_loki.py` 는 web-01 을 T_b 1시간 전부터 다시 읽고(Loki 는 보존 기한이 없다), 관문 · 관리 원장을 처음부터 다시 읽는다. 등록 노드가 늘면 `--node` 마다 돌린다. root 로 돌리지 않는다(상태 파일 소유가 바뀐다).
+
+```bash
+# 8. 검증. 역할별 허용 · 거부 (콘솔 · 다리가 멈춰 '지금 붙어 있는 접속' 은 거의 비어 있다)
+infra/vmware/scripts/verify-db-roles.sh
+# 무결성. 읽기 전용 접속 · 백업 역할로 본다
+d1 'docker exec -i -e PGOPTIONS="-c default_transaction_read_only=on" opsloop-db psql -U opsloop_backup -d opsloop -v ON_ERROR_STOP=1 -At -F " | "' <<'SQL'
+SELECT 'blocklist→incidents 고아', count(*) FROM blocklist b
+ WHERE b.incident_key IS NOT NULL AND NOT EXISTS (SELECT 1 FROM incidents i WHERE i.incident_key = b.incident_key)
+UNION ALL SELECT 'incidents→rule_versions 고아', count(*) FROM incidents i
+ WHERE NOT EXISTS (SELECT 1 FROM rule_versions r WHERE r.rule_version = i.rule_version)
+UNION ALL SELECT 'detector_runs→rule_versions 고아', count(*) FROM detector_runs d
+ WHERE NOT EXISTS (SELECT 1 FROM rule_versions r WHERE r.rule_version = d.rule_version)
+UNION ALL SELECT 'absorbed_blocks→incidents 고아', count(*) FROM absorbed_blocks a
+ WHERE NOT EXISTS (SELECT 1 FROM incidents i WHERE i.incident_key = a.first_key)
+UNION ALL SELECT '검증 안 된 참조 키', count(*) FROM pg_constraint WHERE contype = 'f' AND NOT convalidated
+UNION ALL SELECT '시퀀스 < max(id)', count(*) FROM (
+  SELECT s.last_value,
+         (xpath('/row/m/text()', query_to_xml(format('SELECT max(%I) AS m FROM %I', a.attname, t.relname), false, true, '')))[1]::text::bigint AS m
+    FROM pg_class c
+    JOIN pg_depend d ON d.objid = c.oid AND d.deptype = 'a'
+    JOIN pg_class t ON t.oid = d.refobjid
+    JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = d.refobjsubid
+    JOIN pg_sequences s ON s.schemaname = 'public' AND s.sequencename = c.relname
+   WHERE c.relkind = 'S') q WHERE coalesce(q.last_value, 0) < coalesce(q.m, 0)
+UNION ALL SELECT '폐기 기록이 있는데 폐기되지 않은 노드', count(*) FROM nodes n
+ CROSS JOIN LATERAL (SELECT e.eventid FROM events e
+                      WHERE e.sensor = 'collector' AND e.eventid LIKE 'collector.admin.%'
+                        AND split_part(e.input, ' ', 1) = 'node_id=' || n.node_id
+                      ORDER BY e.ts DESC LIMIT 1) l
+ WHERE l.eventid = 'collector.admin.revoke' AND n.status <> 'revoked';
+SELECT (SELECT count(*) FROM pg_tables WHERE schemaname = 'public') AS 표,
+       (SELECT count(*) FROM pg_constraint c JOIN pg_namespace n ON n.oid = c.connamespace
+         WHERE n.nspname = 'public' AND c.contype = 'f') AS 참조_키,
+       (SELECT count(*) FROM pg_trigger t JOIN pg_class c ON c.oid = t.tgrelid JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE n.nspname = 'public' AND NOT t.tgisinternal AND t.tgenabled = 'O') AS 켜진_트리거,
+       (SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public') AS 함수,
+       (SELECT count(*) FROM pg_views WHERE schemaname = 'public') AS 뷰,
+       (SELECT count(*) FROM pg_sequences WHERE schemaname = 'public') AS 시퀀스;
+SQL
+#    앞의 일곱 줄은 모두 0. 마지막 줄 23 | 15 | 4 | 7 | 3 | 7 (2026-09-27 운영 값. 이 쿼리는 그날 운영에서 읽기 전용으로 돌려 확인했다)
+```
+
+- T_b 뒤에 잃은 것과 되살아난 것을 본다. (가) 는 옛 DB 가 남아 있으므로 거기서 T_b 뒤 판정 · 감사 행을 뽑는다. 잃은 판정은 콘솔에서 다시 남기고, 차단 해제 · 노드 폐기(`nodes.py`) · 계정 변경(`auth.py`)은 다시 한다.
+
+```bash
+d1 'docker exec -i -e PGOPTIONS="-c default_transaction_read_only=on" opsloop-db psql -U opsloop -d opsloop_broken_<날짜> -At -F " | "' <<'SQL'
+SELECT created_at, incident_key, verdict, operator FROM verdicts WHERE created_at > '<T_b>' ORDER BY created_at;
+SELECT ts, eventid, username FROM events WHERE sensor = 'audit' AND ts > '<T_b>' ORDER BY ts;
+SQL
+```
+
+- (나) 의 옛 볼륨 사본은 따로 띄워야 읽을 수 있다. 이 절에서는 다루지 않는다.
+
+```bash
+# 9. 알림 채널. 콘솔을 띄우기 전에 본다(발송기는 콘솔 안에서 돈다). 주소(url)는 찍지 않는다
+d1 'docker exec -i opsloop-db psql -U opsloop -d opsloop -At -F " | "' <<'SQL'
+SELECT id, name, kind, grade, enabled, enabled_at FROM notify_channels ORDER BY id;
+SELECT status, count(*) FROM notify_deliveries GROUP BY 1 ORDER BY 1;
+SQL
+```
+
+- 채널은 T_b 의 상태다. 그 뒤 끄거나 바꾼 채널은 콘솔 알림 화면에서 다시 맞춘다.
+- 재탐지로 T_b 뒤 사건이 새 행으로 다시 생긴다. 새 행의 생성 시각(`created_at`)은 7단계 때라 발송기의 24시간 창에 모두 든다. 켜진 채널은 이 행을 모두 새 사건으로 다시 알린다(장애 전에 이미 알린 것 포함). T_b 에 대기 중이던 발송도 다시 나갈 수 있다.
+  겹친 알림을 막으려면 여기서 끄고(`d1 'docker exec opsloop-db psql -U opsloop -d opsloop -c "UPDATE notify_channels SET enabled = false"'`), 10단계 뒤 콘솔 알림 화면에서 다시 켠다. 다시 켜면 기준 시각이 그때로 옮겨진다. 장애 동안 새로 생긴 사건도 알리지 않으므로 미판정 목록에서 본다.
+
+```bash
+# 10. 되돌리기. 타이머 → 콘솔 → Mac
+d1 'sudo -n systemctl start opsloop-ingest.timer opsloop-agents.timer opsloop-cti.timer; systemctl list-timers "opsloop-*" --no-pager'
+ssh -F ~/.ssh/config.opsloop console-a 'docker start opsloop-api'   # (가) 콘솔 비밀번호가 그대로다
+ssh -F ~/.ssh/config.opsloop console-a 'cat ~/opsloop/console.yml' | diff - infra/vmware/compose/console.yml   # (나) 먼저. 비어야 한다
+#    db-console-role.sh 는 작업 트리의 console.yml 을 콘솔에 덮어쓰고 컨테이너를 다시 만든다. 다르면 배포본과 같은 판에서 돌린다
+infra/vmware/scripts/db-console-role.sh console-a                    # (나) 새 비밀번호 → DB · 콘솔 .env · triage.env, API 다시 띄움 (B 가 켜져 있으면 console-a console-b)
+ssh -F ~/.ssh/config.opsloop fw 'echo "@1 show servers state consoles" | sudo -n nc -N -U /run/haproxy-master.sock'   # console-a 운영 2 · 관리 0
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.opsloop.backup-db.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.opsloop.assets.plist
+"$HOME/Library/Application Support/OpsLoop/bin/console-watch.sh" --resume
+VERIFY=restore infra/vmware/scripts/backup-db.sh                    # 되돌린 DB 의 첫 백업 · 복원 시험
+```
+
+- 로그인해 사건 목록 · 상세의 판정 이력 · 차단 목록 · 감사를 보고, 판정 하나가 들어가는지 확인한다. 계정 · 비밀번호는 T_b 의 것이다.
+
+- 옛 DB(`opsloop_broken_<날짜>`) · 볼륨 사본(`opsloop_pgdata_broken_<날짜>`)은 대조가 끝나고 승인받은 뒤 지운다(`dropdb -U opsloop opsloop_broken_<날짜>` · `docker volume rm opsloop_pgdata_broken_<날짜>`).
+
+### 배포본 data.yml 반영 (initdb 마운트 없애기)
+
+저장소의 `compose/data.yml` 은 initdb 에 스키마를 붙이지 않는다. 데이터 노드 `/home/ops/opsloop/data.yml` 은 아직 옛 판이다(2026-09-27: 이 변경 전 저장소 판과 sha256 `c7002275…` 로 같다. 붙여 둔 `schema.sql` 은 09-18 판 12,332바이트).
+볼륨이 이미 차 있어 initdb 가 돌지 않으므로 지금 당장은 문제가 없다. 빈 볼륨으로 띄울 때(위 3나)만 문제가 된다.
+
+- 반영 시점: 다음에 DB 컨테이너를 어차피 다시 만들 때(3나 복원 직전 · 이미지나 한도 변경). 이것만 위해 운영 컨테이너를 다시 만들지 않는다.
+- 파일만 먼저 바꿔 둘 수는 있다. 파일을 바꿔도 `up` 전에는 컨테이너가 그대로다.
+  다만 그 뒤에는 서비스 이름 없는 `docker compose -f data.yml up -d` 도 postgres 를 다시 만든다(설정이 달라졌다). loki 만 다시 띄울 때는 `up -d loki` 로 한다.
+
+```bash
+C=$(git rev-parse --short HEAD)     # 커밋된 판만 올린다
+ssh -F ~/.ssh/config.opsloop data01 'cat /home/ops/opsloop/data.yml' | diff - <(git show "$C:infra/vmware/compose/data.yml")
+#    다른 곳은 initdb 마운트 한 줄과 주석뿐이어야 한다
+git show "$C:infra/vmware/compose/data.yml" | ssh -F ~/.ssh/config.opsloop data01 \
+  'cd /home/ops/opsloop && cat > data.yml.new && docker compose -f data.yml.new config -q && cp -p data.yml data.yml.prev && mv data.yml.new data.yml'
+ssh -F ~/.ssh/config.opsloop data01 'grep -c docker-entrypoint-initdb /home/ops/opsloop/data.yml'   # 0
+# 컨테이너를 다시 만들 때. postgres 만 다시 만들고(볼륨 그대로) loki 는 그대로 둔다. 몇 초 동안 콘솔 · 적재가 DB 에 붙지 못한다.
+#   04:30 · 16:30 백업 · 5분 적재 회차와 겹치지 않게. 콘솔 실시간 통보 연결은 다시 붙는다
+ssh -F ~/.ssh/config.opsloop data01 'cd /home/ops/opsloop && docker compose -f data.yml up -d postgres && docker inspect -f "{{range .Mounts}}{{.Destination}} {{end}}" opsloop-db'
+#    /var/lib/postgresql/data 하나
+```
+
+- 되돌리기: `data.yml.prev` 를 `data.yml` 로 다시 넣는다. 되돌리면 빈 볼륨에서 09-18 판 스키마가 다시 깔린다.
+- 반영한 뒤 `/home/ops/opsloop/schema.sql` 은 쓰이지 않는다. 남겨 둬도 된다.
+- 새로 까는 노드에서는 initdb 대신 `collector/install-collector.sh` 가 받은 커밋의 `infra/schema.sql` 전체를 적용한다(위 '데이터베이스 역할' 1번).
+
+### 복원 훈련
+
+도구: `infra/vmware/restore-drill/` (`drill.py` 단계 도구 · `queries.py` 훈련 · 운영 SQL · 시험 `test_restore_drill.py`)
+
+DB 인스턴스를 잃었다고 보고, 백업 한 벌(덤프 + 역할 목록)로 새 인스턴스를 세운다. 조회 · 판정과 원장 재생성까지 되는지 잰다. data01 호스트와 원장(S3 · Loki · 관문 · 관리 원장)은 살아 있다고 본다. data01 전손은 범위 밖이다.
+
+- 훈련 DB 는 data01 의 별도 컨테이너다. `opsloop-drill-db` · 볼륨 `opsloop_drill_pgdata` · `127.0.0.1:5433` 에만 게시 · `cluster_name=opsloop-drill` · `--memory 256m` · `shared_buffers=64MB` · `--oom-score-adj 1000`. `docker run --pull never` 로 운영과 같은 이미지를 쓴다. compose · initdb 폴더는 쓰지 않는다.
+- 운영 DB 는 읽기만 한다. `opsloop_backup`(쓰기 권한 없음)에 `PGOPTIONS=--default_transaction_read_only=on` 을 건다. 보내기 전에 SQL 이 SELECT · WITH 뿐인지 본다. 운영 타이머 · 컨테이너 · 방화벽 · HAProxy 는 건드리지 않는다.
+- 훈련 DB 로 가는 SQL 은 모두 `cluster_name` 확인 DO 블록으로 시작하고, 첫 오류에서 멈춘다. 이름을 잘못 적어 운영 DB 에 닿아도 첫 문장에서 멈춘다.
+- 비밀번호는 data01 에서 `openssl rand` 로 새로 만든다. `/var/lib/opsloop-drill/env/*.env`(0600, 적재 · 탐지 몫은 opsloop-pull 소유)에만 둔다. SQL 은 표준 입력으로만 넘기므로 명령행 · `docker inspect` · sudo 기록에 남지 않는다. 운영 비밀번호를 쓰지 않으므로 DSN 착오는 인증 실패로 끝난다. `install-collector.sh` · `db-console-role.sh` 는 운영 `opsloop-db` 가 대상이라 쓰지 않는다.
+- 콘솔은 Mac 에 console-a 와 같은 이미지로 띄운다. `127.0.0.1:18000` 에만 게시하고, DB 는 `ssh -L 15433:127.0.0.1:5433 data01` 터널로 붙는다. `OPSLOOP_WORKER=opsloop-drill` · 새 `SESSION_SECRET` 을 쓴다. HAProxy 에는 넣지 않는다. 로그인은 사람이 복원된 계정으로 한다. 알림 채널은 콘솔을 붙이기 전에 훈련 DB 에서만 끈다(`enabled=false` · url `https://notify.invalid/`).
+- 재적재는 훈련 HOME(`/var/lib/opsloop-drill/home`)과 훈련 env 두 개로 한다. `sudo -u opsloop-pull env $(cat /etc/default/opsloop-ingest | xargs) OPSLOOP_HOME=… OPSLOOP_DB_ENV=… OPSLOOP_DETECTOR_ENV=… HOME=…` 꼴로, 기본 파일 값 뒤에 덮어쓴다. `systemd-run` 은 EnvironmentFile 이 이기므로 쓰지 않는다. 운영 편지함 · 워터마크(`/var/lib/opsloop`)는 쓰지 않는다. 손 실행은 유닛의 MemoryMax 밖이고 data01 은 스왑이 0 이다. 그래서 재적재 직전에 가용 메모리 600MB 이상인지 다시 본다. 적재 · 다리 명령은 `choom -n 1000` 으로 감싸, 메모리가 모자라면 운영보다 먼저 죽게 한다.
+
+| 단계 | 하는 일 |
+|---|---|
+| `precheck` | 읽기만 한다. 시계(data01 · fw chrony) · 메모리 · 디스크 · 5433 비어 있음 · 이미지 · 훈련 이름이 비었는지 · choom · 역할 목록과 짝인 가장 새 덤프 · sha256 · Archive created(T_b) · 백업 간격 · 운영 기준값 · console-a 이미지 ID. T0 뒤에는 다시 돌리지 않는다(백업 선택이 바뀐다) |
+| `t0` | `rto:T0` 장애 선언 · 운영 `now()` = T_f |
+| `up` | `rto:S1` 백업 선택 · 훈련 DB 컨테이너 · 준비 · 게시 주소 · 메모리 · OOM 점수 · 이미지 · 환경에 비밀번호 없음 · `rto:S2` |
+| `roles` | 역할 목록의 CREATE/ALTER ROLE · GRANT 적용(비밀번호 줄 · 모르는 줄이 있으면 멈춘다) · 로그인 역할마다 새 비밀번호 · env 파일 접속 확인 · 속성 · 멤버십 대조 · `rto:S3` |
+| `restore` | 덤프를 ssh 표준 입력으로 `pg_restore --no-owner --exit-on-error`(data01 에 덤프 파일을 남기지 않는다) · 23개 표 건수 · 목차와 카탈로그 대조 · T_b 하한 · `rto:S4` |
+| `verify` | 훈련 쪽 지문(판정 · 조치 · 차단 · 노드 · 등록 · 계정 · 알림 · 감사) → 무결성 19개 0 · 기준값 · 구조 · 시퀀스 · `verify-db-roles.sh` 문장 67줄 허용 · 거부 → 알림 끄기 · `rto:S5`. 다시 돌리면 지문은 그 복원 뒤 처음 뜬 것을 쓴다 |
+| `console` | 이미지 옮기기(ID 대조) · 터널 · 콘솔 · /health · `rto:S6`. 사람이 목록 · 상세 · 차단 · 감사를 보고 시험 사건 1건을 판정한다. 그 뒤 `console --confirm` → `rto:S7`(서비스 재개) |
+| `regen` | 가용 메모리 확인 · `opsloop-ingest --full` · `pull_loki.py --node web-01 --since <T_b−1시간> --ledgers-from-start`(최대 RSS · 시간 기록) · `rto:S8`. console 과는 verify 뒤 어느 쪽이 먼저여도 된다 |
+| `compare` | 따라잡기 한 회차 → T_r. `[T_b−1시간, T_r−30분)` 의 `provenance='real'` events(센서별 건수 · line_hash md5) · sessions · node_metrics 를 운영과 같은 문장으로 대조한다. 창 끝이 T_b 뒤 15분 이상이어야 하므로 T_b + 45분 뒤에 돌린다(이르면 멈추고 다시 돌리라고 알린다). 다르면 차이 줄을 회차 폴더에 남긴다 |
+| `done` | 무결성 재확인 · 지문을 운영과 대조(추가만 되는 판정 · 조치 · 감사는 바뀐 행 0) · RPO · `rto:S9`(RTO 끝) |
+| `cleanup` | Mac 콘솔 · 터널 · 비밀 파일 · 훈련 컨테이너 · 볼륨 · `/var/lib/opsloop-drill` 지우기. 운영 알림 채널이 그대로인지 · 적재 · 다리 마지막 실행이 성공인지 · 건수가 느는지 확인 |
+| `report` | `docs/evidence/<T0 KST 날짜>-restore/results.json` · `sha256.json`. 비밀 문자열 모양이 있으면 쓰지 않는다 |
+
+```bash
+caffeinate -dims &                                              # 훈련 내내 Mac 잠자기를 막는다 (잠들면 VM 시계가 늦어진다)
+R=~/opsloop-drill/r01                                           # 회차 폴더는 저장소 밖 (0700)
+python3 infra/vmware/restore-drill/drill.py $R precheck          # 드라이런: 명령 · SQL 만 찍는다
+python3 infra/vmware/restore-drill/drill.py $R precheck --apply  # 단계마다 --apply. ✘ 면 멈추고 고친 뒤 그 단계를 다시 (… 는 참고)
+```
+
+- 기준: RTO = T0 → S9 ≤ 7200초(Mac 시계)다. 조회 · 판정 재개(S7)는 중간 지표다. 순서는 단계 선행 관계로 본다(S6·S7 과 S8 은 둘 다 S5 뒤, S9 는 둘 다 뒤). RPO 는 DB 시계로만 센다. ① S3 센서와 ② 관제 대상 로그(Loki · 관문 · 관리 원장)는 재생성 대조가 맞으면 0 이다. ③ DB 에만 있는 기록은 설계 RPO = T_f − T_b(목표 43200초)와, (T_b, T_f] 에 생기거나 바뀐 행(지문 차이)으로 적는다. RPO 합격은 설계 RPO 와 재생성 대조로 본다. 보관 덤프 간격 최댓값(실측 최악)은 `backup_gap_ok` 로 따로 적는다. 04:30 · 16:30 두 번이라 몇 초만 밀려도 43200초를 넘는다.
+- `up` · `roles` · `restore` 는 다시 돌릴 수 없다. 실패하면 `cleanup --apply` 뒤 `up` 부터 다시 한다(T0 는 그대로, precheck 는 다시 돌리지 않는다).
+- 04:25~04:40 · 16:25~16:40(백업 · 복원 시험, `opsloop_backup` 접속 한도 2)과 00:05~00:15(CTI 수집)는 피한다. `precheck` · `regen` 이 알린다.
+- 알려진 한계: 옛 허니팟 호스트(`OPSLOOP_HOSTS` 밖)는 빈 훈련 HOME 이 받지 않는다. T_b 전에 끝난 호스트라 대조 구간에는 영향이 없다. `provenance='fixture'` 행은 대조에서 뺀다.
+- 시험: `python3 infra/vmware/restore-drill/test_restore_drill.py` (가짜 ssh · docker 를 쓴다. 운영에 닿지 않는다)
+
+### 데이터 노드 전손 때 더 필요한 것 (범위 밖 · 후속)
+
+이 절과 훈련은 데이터 노드 호스트가 살아 있다고 본다. 호스트까지 잃으면 아래가 더 든다. 시험하지 않았다(기획안 §7.4 의 후속 훈련).
+
+- VM: 기본 VM 복제(`scripts/clone.sh` · `configure.sh`) 또는 새 VM, 주소 192.168.60.11 · chrony(`makestep 1 -1`) · docker. 네 대가 같은 기본 VM 의 연결 복제라 기본 VM 이 깨지면 함께 잃는다.
+- 비밀 다시 만들기: compose `.env`(`POSTGRES_PASSWORD` 새로) → `install-ingest.sh` · `install-collector.sh`(접속 파일이 없으면 새 비밀번호로 만든다. `admin.env` 는 compose `.env` 에서) → `install-cti.sh` → `db-console-role.sh`(`triage.env` · 콘솔 `.env`). 원장 구멍 인정 목록 `gap-ack.json` 은 내용을 잃는다.
+- 새 노드에서는 설치기가 서로를 기다린다. `install-ingest.sh` 의 흡수 기록 확인은 `detector.env` 를, `install-collector.sh` 의 사전 확인은 `collector.env` 를 먼저 요구한다. 전손 훈련 때 순서를 정한다(확인하지 않음).
+- S3 읽기 키 · CTI 쓰기 키: `aws login` 뒤 다시 발급해 Mac 에서 파이프로 넣고 옛 키는 지운다(`infra/terraform/README.md`).
+- 원장: S3 허니팟 원장은 그대로 다시 받는다. Loki · 관문 · 관리 원장은 Mac 사본(`~/opsloop-backup/ledger`)뿐이다. 쓰는 중에 복사한 사본이라 되돌려 본 적이 없고, web-01 이벤트 손실은 사본 시각까지다.
+- 적재 상태가 없으므로 빈 `/var/lib/opsloop` 에서 `opsloop-ingest --full` 이 S3 를 모두 다시 받는다. 옛 허니팟(`i-058726c1a0671fe1d`) 조각은 지금 `OPSLOOP_HOSTS` 에 없어 받지 않는다(그 원문은 덤프 안에 있다).
+- 이미지: `postgres:16-alpine` · `grafana/loki:3.7.8` 은 태그만 고정한다. 새로 받으면 digest 가 다를 수 있다(운영 postgres 는 `sha256:3c5c8892…`).
 
 ## 알림 발송 경로
 
@@ -503,8 +819,11 @@ ssh -F ~/.ssh/config.opsloop data01 'sudo -n -u opsloop-cti /usr/local/bin/opslo
 | `haproxy/haproxy.cfg` | 콘솔 분배 · 헬스체크 2초 × 3회 · 통계 페이지 `127.0.0.1:8404` · 작업 프로세스 haproxy 사용자 · chroot · 출발지 헤더 |
 | `test_fw_haproxy.py` | 위 두 설정 시험 (통계 페이지 노출 · 허용 포트 · 전환 관련 줄 · 권한 · 출발지 헤더 · `verify.sh` · 이 문서). `python3 infra/vmware/test_fw_haproxy.py` |
 | `compose/console.yml` | 콘솔 API 컨테이너 (DB 역할 · 세션 비밀 · 발송기 이름 · 믿는 프록시 주소) |
+| `compose/data.yml` | 데이터 노드 PostgreSQL · Loki. initdb 에 스키마를 붙이지 않는다(스키마는 `install-collector.sh`, 복원은 'DB 복원') |
+| `test_data_compose.py` | 위 파일 시험 (initdb 마운트 없음 · 이미지 · 볼륨 · 바인드 주소 · 'DB 복원' 절). `python3 infra/vmware/test_data_compose.py` |
 | `scripts/console-join.sh` | 콘솔 B 합류 · 떼기 단계 (기본 드라이런). 시험 `python3 infra/vmware/scripts/test_console_join.py` (가짜 ssh · 접속 한도 30) |
 | `scripts/console-watch.sh` · `scripts/install-console-watch.sh` | Mac 에서 콘솔 진입점 감시(두 대 모두 죽으면 알림). 시험 `python3 infra/vmware/scripts/test_console_watch.py` |
+| `restore-drill/` | 복원 훈련 도구(기본 드라이런 · 훈련 DB 확인 블록 · RTO · RPO · 무결성 · 재생성 대조). 시험 `python3 infra/vmware/restore-drill/test_restore_drill.py` |
 | `failover/` | 장애 주입 시험 도구(요청 · 웹소켓 프로브, 방화벽 통계 수집, T0 기록, 지표 요약). 시험 `python3 infra/vmware/failover/test_failover_tools.py` |
 | `scripts/*.sh` | 네트워크 생성 · seed · 복제 · 구성 · 검증 · DB 백업 · 자산 수집 |
 

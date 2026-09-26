@@ -5,6 +5,8 @@
 # 관리망 ssh 로 Mac 이 안쪽에서 끌어온다. 안쪽 노드가 밖으로 쓰는 경로는 만들지 않는다.
 #
 # 관제 대상 로그의 원장(Loki)과 수집 관문 원장도 같은 폴더의 ledger/ 로 받는다 (LEDGER=0 이면 건너뛴다).
+# 역할 · 역할 속성 · 멤버십(클러스터 전역 객체)은 pg_dump 에 들지 않으므로 같은 시각의 opsloop-<시각>.globals.sql 로 함께 받는다
+#   (이슈 #45). 비밀번호는 빼고 받는다(--no-role-passwords). 새 서버에 복원할 때 역할을 이 파일대로 만든 뒤 비밀번호를 새로 준다.
 # 허니팟 원장은 S3(버저닝 · 삭제 금지)에 있으므로 받지 않는다.
 #
 # 사용: infra/vmware/scripts/backup-db.sh [보관 폴더]      기본 ~/opsloop-backup, 최근 14개 보관
@@ -23,11 +25,13 @@ chmod 700 "$DEST"
 ts=$(date -u +%Y%m%d-%H%M)
 part="$DEST/.opsloop-$ts.dump.part"
 out="$DEST/opsloop-$ts.dump"
+gpart="$DEST/.opsloop-$ts.globals.sql.part"
+gout="$DEST/opsloop-$ts.globals.sql"
 drop_testdb() {
   "${SSH[@]}" "sudo -n docker exec opsloop-db dropdb -U opsloop --if-exists $TESTDB" >/dev/null 2>&1
 }
 cleanup() {
-  rm -f "$part"
+  rm -f "$part" "$gpart"
   # 복원 시험 DB 에는 판정 · 계정까지 들어 있다. 실패해도 운영 컨테이너에 남기지 않는다
   if [ "${VERIFY:-}" = restore ] && ! drop_testdb; then
     echo "경고: 시험 DB $TESTDB 가 운영 컨테이너에 남았을 수 있다. 다음 실행 때 다시 지운다" >&2
@@ -42,6 +46,14 @@ drop_testdb || true
 # 받은 파일이 온전한 덤프인지 DB 컨테이너의 pg_restore 로 목차를 읽어 본다
 tables=$("${SSH[@]}" 'sudo -n docker exec -i opsloop-db pg_restore --list' < "$part" | grep -c 'TABLE DATA' || true)
 [ "$tables" -gt 0 ] || { echo "덤프 목차를 읽지 못했습니다" >&2; exit 1; }
+
+# 역할 목록. 백업 역할(pg_read_all_data)로 비밀번호 없이 받는다. 덤프에 GRANT 가 걸린 역할이 모두 있어야 한다
+"${SSH[@]}" 'sudo -n docker exec opsloop-db pg_dumpall -U opsloop_backup --globals-only --no-role-passwords' > "$gpart"
+roles=$(grep -c '^CREATE ROLE ' "$gpart" || true)
+for r in opsloop opsloop_gate opsloop_ingest opsloop_detector opsloop_console opsloop_backup; do
+  grep -qx "CREATE ROLE $r;" "$gpart" || { echo "역할 목록에 $r 이 없습니다" >&2; exit 1; }
+done
+! grep -qiE "PASSWORD '|SCRAM-SHA-256\\$" "$gpart" || { echo "역할 목록에 비밀번호가 들어 있습니다" >&2; exit 1; }
 
 if [ "${VERIFY:-}" = restore ]; then
   q="select (select count(*) from events)||' '||(select count(*) from verdicts)||' '||(select count(*) from actions)||' '||(select count(*) from blocklist)"
@@ -65,10 +77,13 @@ fi
 
 mv "$part" "$out"
 chmod 600 "$out"
-echo "백업 $(du -h "$out" | cut -f1) $out · 표 $tables 개"
+mv "$gpart" "$gout"
+chmod 600 "$gout"
+echo "백업 $(du -h "$out" | cut -f1) $out · 표 $tables 개 · 역할 $roles 개 $(basename "$gout")"
 
-# 오래된 것부터 지워 최근 KEEP 개만 남긴다 (.unverified 는 건드리지 않는다)
+# 오래된 것부터 지워 최근 KEEP 개만 남긴다 (.unverified 는 건드리지 않는다). 역할 목록도 같은 개수
 ls -1t "$DEST"/opsloop-*.dump 2>/dev/null | tail -n +"$((KEEP + 1))" | while read -r f; do rm -f -- "$f"; done
+ls -1t "$DEST"/opsloop-*.globals.sql 2>/dev/null | tail -n +"$((KEEP + 1))" | while read -r f; do rm -f -- "$f"; done
 
 if [ "${LEDGER:-1}" = 1 ]; then
   # 원장은 추가만 되므로 사본 하나를 따라 맞춘다. 쓰는 중에 받은 마지막 파일은 다음 회차가 덮는다.
