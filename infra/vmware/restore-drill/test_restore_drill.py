@@ -1241,5 +1241,20 @@ class Syntax(unittest.TestCase):
             self.assertLessEqual(mods, allowed, f)
 
 
+
+class ConsoleAfterParseTest(unittest.TestCase):
+    """판정 반영 확인: 사건 키 안의 '|' 때문에 상태 칸을 잘못 읽지 않는다 (2026-09-27 첫 훈련에서 드러남)."""
+
+    def test_키에_세로줄이_있어도_상태를_읽는다(self):
+        text = "w|895|R003|v3|4.4.66.84|2026-09-04T16:50:24.170898+00:00|undetermined|restore-drill|resolved\n"
+        (row,) = D.parse_console_after(text)
+        self.assertEqual(row["key"], "R003|v3|4.4.66.84|2026-09-04T16:50:24.170898+00:00")
+        self.assertEqual((row["id"], row["verdict"], row["operator"], row["status"]),
+                         ("895", "undetermined", "restore-drill", "resolved"))
+
+    def test_세로줄_없는_키와_모자란_줄(self):
+        rows = D.parse_console_after("w|1|k1|threat|han|open\nw|2|x\n")
+        self.assertEqual([(r["key"], r["status"]) for r in rows], [("k1", "open")])
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
