@@ -81,6 +81,8 @@ SET standard_conforming_strings = on;
 CREATE ROLE opsloop;
 ALTER ROLE opsloop WITH SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS;
 CREATE ROLE opsloop_backup;
+CREATE ROLE opsloop_enforcer;
+ALTER ROLE opsloop_enforcer WITH NOSUPERUSER NOINHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 2;
 ALTER ROLE opsloop_backup WITH NOSUPERUSER INHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 2;
 CREATE ROLE opsloop_console;
 ALTER ROLE opsloop_console WITH NOSUPERUSER NOINHERIT NOCREATEROLE NOCREATEDB LOGIN NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 30;
@@ -113,10 +115,12 @@ GRANT pg_read_all_data TO opsloop_backup WITH INHERIT TRUE GRANTED BY opsloop;
 ROLES = {"opsloop": ("true", "true", "-1", "true"), "opsloop_backup": ("true", "true", "2", "false"),
          "opsloop_console": ("true", "false", "30", "false"), "opsloop_cti": ("true", "false", "2", "false"),
          "opsloop_detector": ("true", "false", "5", "false"), "opsloop_gate": ("true", "false", "10", "false"),
-         "opsloop_ingest": ("true", "false", "5", "false")}
-FUNCS = "audit_append_only,audit_blocklist,audit_event,enroll_node,incidents_keep_judged,node_first_receipt,notify_incident"
-TRIGS = "trg_audit_append_only=O,trg_audit_blocklist=O,trg_incidents_keep_judged=O,trg_notify_incident=O"
-CATALOG = ("c|tables|23\nc|fk|15\nc|triggers|%s\nc|functions|%s\nc|views|audit_log,rule_quality,unjudged_incidents\n"
+         "opsloop_ingest": ("true", "false", "5", "false"),
+         "opsloop_enforcer": ("true", "false", "2", "false")}
+FUNCS = ("audit_append_only,audit_blocklist,audit_event,blocklist_guard,enroll_node,incidents_keep_judged,"
+         "node_first_receipt,note_block_expired,notify_incident")
+TRIGS = "blocklist_guard=O,trg_audit_append_only=O,trg_audit_blocklist=O,trg_incidents_keep_judged=O,trg_notify_incident=O"
+CATALOG = ("c|tables|24\nc|fk|15\nc|triggers|%s\nc|functions|%s\nc|views|audit_log,rule_quality,unjudged_incidents\n"
            "c|sequences|7\nc|extensions|plpgsql\n" % (TRIGS, FUNCS))
 BASE = "b|judged_not_resolved|15\nb|verdict_operator_missing|810\nb|released_blocks|0\nb|released_audit|2\n"
 
@@ -375,7 +379,8 @@ class Env:
             pgts(now - timedelta(minutes=1)), pgts(now + timedelta(minutes=30)))
         specs = [("opsloop_backup", "backup", "self"), ("opsloop_console", "console", "self"),
                  ("opsloop_cti", "cti", "self"), ("opsloop_detector", "detector", "opsloop-pull"),
-                 ("opsloop_gate", "gate", "self"), ("opsloop_ingest", "ingest", "opsloop-pull")]
+                 ("opsloop_enforcer", "enforcer", "self"), ("opsloop_gate", "gate", "self"),
+                 ("opsloop_ingest", "ingest", "opsloop-pull")]
         checks = D.role_checks()
         up = ("ready 1\ncluster opsloop-drill\nbind 127.0.0.1:5433\nmemory 268435456\noom_adj 1000\nimage %s\n"
               "env_password 0\ninitdb_mounts 0\n" % PG_ID)
@@ -967,7 +972,7 @@ class Metrics(unittest.TestCase):
         self.assertEqual(g["roles"]["opsloop_backup"]["inherit"], True)
         specs = D.login_specs(g["roles"])
         self.assertEqual([s[0] for s in specs], ["opsloop_backup", "opsloop_console", "opsloop_cti", "opsloop_detector",
-                                                 "opsloop_gate", "opsloop_ingest"])
+                                                 "opsloop_enforcer", "opsloop_gate", "opsloop_ingest"])
         self.assertEqual(dict((s[0], s[2]) for s in specs)["opsloop_ingest"], "opsloop-pull")
         self.assertEqual(dict((s[0], s[2]) for s in specs)["opsloop_console"], "self")
         for bad in ("ALTER ROLE opsloop_gate WITH LOGIN PASSWORD 'SCRAM-SHA-256$4096:x';",
@@ -986,7 +991,7 @@ class Metrics(unittest.TestCase):
         self.assertEqual(sorted(toc["tables"]), sorted(Q.TABLES))
         self.assertEqual((toc["counts"]["TABLE"], toc["counts"]["TABLE DATA"], toc["counts"]["FK CONSTRAINT"],
                           toc["counts"]["SEQUENCE"], toc["counts"]["SEQUENCE SET"], toc["counts"]["FUNCTION"],
-                          toc["counts"]["TRIGGER"], toc["counts"]["VIEW"]), (23, 23, 15, 7, 7, 7, 4, 3))
+                          toc["counts"]["TRIGGER"], toc["counts"]["VIEW"]), (24, 24, 15, 7, 7, 9, 5, 3))
         self.assertEqual(toc["archive_created"], {"at": "2026-09-26 07:27:40", "tz": "UTC"})
 
     def test_지문_차이(self):

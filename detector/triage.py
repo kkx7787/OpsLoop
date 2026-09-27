@@ -31,6 +31,7 @@ OpsLoop - 인시던트 검토 도구 (WBS 2.5 / 폐루프 입력부)
   set -a; . /etc/opsloop/triage.env; set +a      # 콘솔 역할(opsloop_console). db-console-role.sh 가 만든다
   python3 detector/triage.py                 미판정 인시던트 순회
   python3 detector/triage.py --rule R001     특정 규칙만
+  python3 detector/triage.py --block-hours 48  위협 차단의 만료(시, 1..720, 기본 24)
   python3 detector/triage.py --summary       진척도·규칙 품질·제안 정확도
   python3 detector/triage.py --thresholds    판정 분포에서 임계치 후보 도출
 """
@@ -80,22 +81,113 @@ CIRCULAR = {
 # (kind = absorbed)도 함께 차단 목록에 올릴 수 있다. app/absorbed.py 와 같은 규칙 · 같은 문장이다(자리표시자만 다르다.
 # test_triage.py 가 둘을 맞춰 본다).
 #   흡수 차단 행은 incident_key = 첫 사건 키 · reason = '흡수: <첫 사건 키>' 다. 콘솔이 함께 · 한 곳 풀 때 이 둘로 고른다.
-#   흡수 차단에는 만료가 있다(기본 24시간, --absorbed-hours 1..720). 이 출발지의 triage 차단(만료 없음)과 달리 사람이
-#   한 곳씩 보지 않고 거는 차단이기 때문이다. 만료 전까지 새로 흡수되는 출발지는 콘솔의 후속 차단이 같은 만료로 올린다
-#   (absorbed_blocks 약속). 다른 사건으로 살아 있는 차단은 만료도 건드리지 않고, 사람이 푼 출발지(released_by)와 차단
-#   금지 대역은 넣지 않는다. 잘못 묶인 한 곳은 콘솔 차단 목록에서 그 행만 풀고, 흡수 전체가 틀렸으면 첫 사건의 차단
-#   해제에서 '흡수 차단도 함께 해제'를 고른다(3곳 이상이면 R201 이 뜨고 의도된 동작이다).
+#   흡수 차단에는 만료가 있다(기본 24시간, --absorbed-hours 1..720). 만료 전까지 새로 흡수되는 출발지는 콘솔의 후속
+#   차단이 같은 만료로 올린다(absorbed_blocks 약속, 첫 사건의 마지막 판정이 위협일 때만). 다른 사건으로 살아 있는 차단은
+#   만료도 건드리지 않고, 사람이 푼 출발지(released_by)와 차단 금지 대역은 넣지 않는다. 잘못 묶인 한 곳은 콘솔 차단
+#   목록에서 그 행만 풀고, 흡수 전체가 틀렸으면 첫 사건의 차단 해제에서 '흡수 차단도 함께 해제'를 고른다(3곳 이상이면
+#   R201 이 뜨고 의도된 동작이다).
+# 이 출발지의 차단(이슈 #47). 차단은 AWS 관문에서 실제로 집행되므로(enforcer · 관문 동기화) 만료 없는 차단을 두지 않는다.
+#   만료는 --block-hours(기본 24시간 · 1..720, 콘솔과 같은 범위)다. 요청자는 'triage:<판정자>' 로 남아 콘솔 요청과 가른다.
+#   사람이 푼 출발지는 되살리지 않고 건너뛰며 그렇게 알린다. 차단 금지 대역 · 대역 주소는 DB 트리거가 거부하고(23514)
+#   판정은 그대로 남긴다(차단만 하지 않는다).
 ABSORBED_SAMPLE = 8   # 화면에 보이는 흡수 기록 행 수. 전체는 콘솔 상세에서 본다
 ABSORBED_HOURS = 24   # 흡수 차단 기본 만료(시). 콘솔 차단 기본값과 같다
+BLOCK_HOURS = 24      # 이 출발지 차단 기본 만료(시). 콘솔 차단 기본값과 같다
+
+# 만료 없는 옛 차단(2026-09-08 v1 triage 13건 꼴)이 살아 있는 출발지. 살아 있는 차단의 만료는 줄이지 않으므로 다시 걸어도
+# 만료가 그대로 없고, 집행기는 만료 없는 행을 관문에 넘기지 않는다(집행 제외). 요청은 남기되 --block-hours 로 막힌다고
+# 알리지 않는다. 사람이 푼 행은 triage 가 되살리지 않으므로 다시 거는 것은 콘솔이다(콘솔은 사람이 푼 행도 새 만료로 건다)
+NO_EXPIRY_TEXT = ("만료 없는 옛 차단이 살아 있어 다시 걸어도 만료가 그대로 없고 관문 집행에서 빠집니다(집행 제외). "
+                  "관문에서 막으려면 콘솔에서 admin 이 해제한 뒤 다시 차단하세요")
+NO_EXPIRY_TAG = "만료 없는 옛 차단 유지 · 관문 집행 제외"
 
 
 def absorbed_reason_tag(first_key):
     return f"흡수: {first_key}"
 
 
+def requested_by(operator):
+    """triage 에서 건 차단의 요청자. 차단 목록 화면이 콘솔 요청과 가른다."""
+    return f"triage:{operator}"
+
+
+# 흡수 차단에서 빼는 대역. app/absorbed.py 와 같다. 최종은 DB 표 block_exempt 이고 block_nets 가 둘을 합친다
 NO_BLOCK_NETS = ["0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12",
                  "192.0.0.0/24", "192.168.0.0/16", "198.18.0.0/15", "224.0.0.0/3",
                  "::/127", "fc00::/7", "fe80::/10", "ff00::/8"]
+
+# 트리거(blocklist_guard)가 차단을 거부할 때의 SQLSTATE 와 제약 이름(app/absorbed.py 와 같다)
+REFUSED_SQLSTATE = "23514"
+REFUSED_CONSTRAINTS = ("blocklist_exempt", "blocklist_host_only")
+
+
+# block_exempt 표가 있고 이 역할이 읽을 수 있는가(app/absorbed.py 와 같다). 표가 없으면 권한 함수가 오류를 내므로 먼저 본다
+EXEMPT_READABLE_SQL = ("SELECT CASE WHEN to_regclass('block_exempt') IS NULL THEN false"
+                       " ELSE has_table_privilege('block_exempt', 'SELECT') END")
+
+
+def has_exempt_table(cur):
+    """block_exempt 표가 있고 읽을 수 있는가. 마이그레이션 전 DB 와, 역할 블록만 다시 적용해 콘솔 역할의 읽기가 빠진 DB 에서도
+    도구가 돈다(그때는 코드 상수만 미리 거르고 거부 사유에 걸린 대역이 빠진다. 검사는 트리거가 그대로 한다)."""
+    cur.execute(EXEMPT_READABLE_SQL)
+    row = cur.fetchone()
+    return bool(row and row[0])
+
+
+def block_nets(cur):
+    """흡수 차단에서 빼는 대역. 코드 상수에 DB 표 block_exempt 를 더한다(app/absorbed.py block_nets 와 같다)."""
+    if not has_exempt_table(cur):
+        return list(NO_BLOCK_NETS)
+    cur.execute("SELECT coalesce(array_agg(text(cidr) ORDER BY cidr), '{}') FROM block_exempt")
+    row = cur.fetchone()
+    return NO_BLOCK_NETS + [n for n in ((row and row[0]) or []) if n not in NO_BLOCK_NETS]
+
+
+def exempt_of(cur, ip):
+    """이 주소가 드는 차단 금지 대역 (cidr, note) 하나(가장 좁은 것). 없거나 표가 없으면 None."""
+    if not ip or not has_exempt_table(cur):
+        return None
+    cur.execute("""SELECT text(cidr), note FROM block_exempt WHERE %s::inet <<= cidr
+                   ORDER BY masklen(cidr) DESC, cidr LIMIT 1""", (ip,))
+    row = cur.fetchone()
+    return (row[0], row[1]) if row else None
+
+
+def refused_text(ip, constraint, exempt):
+    """거부 사유 한 줄(콘솔 400 의 detail 과 같은 문장, app/absorbed.py refused_text)."""
+    if constraint == "blocklist_host_only":
+        return f"{ip} 는 한 주소(/32 · /128)가 아니라 차단하지 않습니다"
+    where = f" {exempt[0]}({exempt[1]})" if exempt else ""
+    return f"{ip} 는 차단 금지 대역{where}에 들어 차단하지 않습니다. 인프라 · 사설 · 예약 주소는 막지 않습니다"
+
+
+def released_text(who, when):
+    """사람이 푼 출발지를 건너뛸 때의 한 줄."""
+    return (f"{shown(who, 64)} 가 {local(when)} 에 푼 출발지라 triage 는 다시 걸지 않습니다. "
+            f"다시 막으려면 콘솔에서 차단하세요")
+
+
+# 이 출발지의 차단. 콘솔 차단(app/main.py BLOCK_SQL)과 같은 규칙에 두 가지가 더 있다.
+#   - 사람이 푼 행(released_by 있음)은 되살리지 않는다. 충돌 절의 WHERE 가 거르고, 돌려받는 행이 없으면 건너뛴 것이다
+#   - 요청자는 'triage:<판정자>', 만료는 --block-hours
+# 살아 있는 차단의 만료는 앞당기지 않고(만료 없는 옛 차단은 그대로 없다) 집행 정보도 그대로 둔다. 새 요청(빈 자리 · 만료된
+# 행 · 누가 풀었는지 없는 해제)이면 집행 정보(method · enforced_at · enforce_note)를 비운다. 집행기가 관문을 확인하고 채운다.
+# 예전에는 재차단이 released_by · 만료를 지워 사람의 해제를 되살리고 옛 집행 정보를 남겼다.
+_LIVE = "(blocklist.released_at IS NULL AND (blocklist.expires_at IS NULL OR blocklist.expires_at > now()))"
+OWN_BLOCK_SQL = f"""
+    INSERT INTO blocklist (actor_ip, reason, incident_key, requested_by, expires_at)
+    VALUES (%(ip)s::inet, %(reason)s, %(key)s, %(who)s, now() + make_interval(hours => %(hours)s::int))
+    ON CONFLICT (actor_ip) DO UPDATE
+    SET reason = EXCLUDED.reason, incident_key = EXCLUDED.incident_key,
+        requested_by = EXCLUDED.requested_by,
+        expires_at = CASE WHEN {_LIVE} AND (blocklist.expires_at IS NULL OR blocklist.expires_at > EXCLUDED.expires_at)
+                          THEN blocklist.expires_at ELSE EXCLUDED.expires_at END,
+        method       = CASE WHEN {_LIVE} THEN blocklist.method END,
+        enforced_at  = CASE WHEN {_LIVE} THEN blocklist.enforced_at END,
+        enforce_note = CASE WHEN {_LIVE} THEN blocklist.enforce_note END,
+        released_at = NULL, released_by = NULL, created_at = now()
+    WHERE blocklist.released_by IS NULL
+    RETURNING expires_at"""
 
 _OWN_LIVE = ("(blocklist.incident_key = EXCLUDED.incident_key AND blocklist.reason = EXCLUDED.reason "
              "AND blocklist.released_at IS NULL AND (blocklist.expires_at IS NULL OR blocklist.expires_at > now()))")
@@ -107,6 +199,7 @@ BLOCK_ABSORBED_SQL = f"""
     WHERE a.first_key = %(key)s AND a.kind = 'absorbed' AND a.actor_ip IS NOT NULL
       AND a.actor_ip IS DISTINCT FROM %(ip)s::inet
       AND NOT (a.actor_ip <<= ANY(%(nets)s::text[]::inet[]))
+      AND masklen(a.actor_ip) = CASE family(a.actor_ip) WHEN 4 THEN 32 ELSE 128 END
       AND NOT EXISTS (SELECT 1 FROM blocklist b WHERE b.actor_ip = a.actor_ip
                       AND b.released_at IS NULL AND (b.expires_at IS NULL OR b.expires_at > now())
                       AND (b.incident_key IS DISTINCT FROM %(key)s OR b.reason IS DISTINCT FROM %(reason)s))
@@ -135,7 +228,8 @@ ABSORBED_STATE_SQL = """
                          AND (b.expires_at IS NULL OR b.expires_at > now())
                     THEN CASE WHEN b.incident_key = %(key)s AND b.reason = %(reason)s THEN 'blocked' ELSE 'kept' END
                     WHEN b.released_at IS NOT NULL AND b.released_by IS NOT NULL THEN 'skipped'
-                    WHEN a.actor_ip <<= ANY(%(nets)s::text[]::inet[]) THEN 'unblockable'
+                    WHEN a.actor_ip <<= ANY(%(nets)s::text[]::inet[])
+                         OR masklen(a.actor_ip) <> CASE family(a.actor_ip) WHEN 4 THEN 32 ELSE 128 END THEN 'unblockable'
                     ELSE 'open' END AS state
         FROM incident_absorbed a LEFT JOIN blocklist b ON b.actor_ip = a.actor_ip
         WHERE a.first_key = %(key)s AND a.kind = 'absorbed' AND a.actor_ip IS NOT NULL
@@ -275,7 +369,7 @@ def gather(cur, inc_key, ip, first_ts, last_ts, sessions, rule_version):
     버전의 인시던트 안으로 한정하는 데 쓴다.
     """
     ev = {"counts": {}, "creds": [], "commands": [], "files": [],
-          "also": [], "blocked": False, "covered_by": None,
+          "also": [], "blocked": False, "no_expiry": False, "released": None, "exempt": None, "covered_by": None,
           "absorbed": {"total": 0, "sources": 0, "sample": []}}
     if not ip:
         return ev
@@ -319,8 +413,17 @@ def gather(cur, inc_key, ip, first_ts, last_ts, sessions, rule_version):
         ORDER BY rule_id""", (ip,))
     ev["also"] = cur.fetchall()
 
-    cur.execute("SELECT 1 FROM blocklist WHERE actor_ip = %s AND released_at IS NULL", (ip,))
-    ev["blocked"] = cur.fetchone() is not None
+    # 이 출발지의 차단: 살아 있는가(만료 전) · 만료 없는 옛 차단인가(집행 제외) · 사람이 풀었는가(triage 는 되살리지 않는다) ·
+    # 차단 금지 대역인가
+    cur.execute("""
+        SELECT released_at IS NULL AND (expires_at IS NULL OR expires_at > now()), released_by, released_at,
+               expires_at IS NULL
+        FROM blocklist WHERE actor_ip = %s""", (ip,))
+    row = cur.fetchone()
+    ev["blocked"] = bool(row and row[0])
+    ev["no_expiry"] = bool(row and row[0] and row[3])
+    ev["released"] = (row[1], row[2]) if row and row[1] and row[2] else None
+    ev["exempt"] = exempt_of(cur, ip)
 
     # 같은 출발지의 겹치는 인시던트들을 하나의 에피소드로 보고, 그중 심각도가
     # 가장 높은 것(동률이면 가장 이른 것)을 대표로 삼는다. 대표가 아닌 것은
@@ -358,7 +461,7 @@ def gather(cur, inc_key, ip, first_ts, last_ts, sessions, rule_version):
         ev["absorbed"] = {"total": row[0], "sources": row[1], "sample": cur.fetchall()}
         # 흡수 출발지의 지금 차단 상태(ABSORBED_STATE_SQL). 함께 차단해도 넣지 않을 곳을 판정 전에 보인다
         cur.execute(ABSORBED_STATE_SQL, {"key": inc_key, "reason": absorbed_reason_tag(inc_key), "ip": ip,
-                                         "nets": NO_BLOCK_NETS, "n": ABSORBED_SAMPLE})
+                                         "nets": block_nets(cur), "n": ABSORBED_SAMPLE})
         got = cur.fetchone()
         if got:
             ev["absorbed"]["state"] = dict(zip(STATE_COLUMNS, got))
@@ -453,7 +556,13 @@ def show(row, idx, total, ev, suggestion, basis, observed, unit):
     print(BAR)
     if ip or not target:
         print(f"  출발지   {ip or '-'}"
-              + ("   [이미 차단됨]" if ev["blocked"] else ""))
+              + (("   [이미 차단됨 · 만료 없음 · 관문 집행 제외]" if ev.get("no_expiry") else "   [이미 차단됨]")
+                 if ev["blocked"] else ""))
+        why = cannot_block(ip, ev)
+        if why:
+            print(f"  차단     {why}")
+        elif ev.get("no_expiry"):
+            print(f"  차단     {NO_EXPIRY_TEXT}")
     else:
         # IP 가 아닌 대상(user:<이름> · node:<id>)이다. 차단 목록에 올릴 출발지가 없다
         print(f"  대상     {shown(target, 80)}")
@@ -517,14 +626,60 @@ def show(row, idx, total, ev, suggestion, basis, observed, unit):
 #  기록
 # ────────────────────────────────────────────────────────────────
 
+def cannot_block(ip, ev):
+    """이 출발지를 triage 가 차단 목록에 올릴 수 없는 까닭(없으면 None). 판정 화면에 미리 보이고 차단을 묻지 않는다."""
+    if not ip:
+        return None
+    if ev.get("exempt"):
+        return refused_text(ip, "blocklist_exempt", ev["exempt"])
+    if ev.get("released"):
+        return released_text(*ev["released"])
+    return None
+
+
+def block_own(cur, key, ip, reason, operator, hours):
+    """이 출발지를 차단 목록에 올린다. (못 올린 까닭 한 줄 또는 None, 올린 뒤 행의 만료)를 돌려준다.
+
+    저장점 안에서 넣는다. 트리거가 거부하면(차단 금지 대역 · 대역 주소, 23514) 이 문장만 되돌려 판정은 그대로 남긴다.
+    사람이 푼 행은 OWN_BLOCK_SQL 이 건드리지 않고(돌려받는 행이 없다) 그 해제를 알린다. 올렸는데 만료가 None 이면 만료 없는
+    옛 차단이 살아 있어 그대로 둔 것이다(집행 제외)."""
+    cur.execute("SAVEPOINT triage_block")
+    try:
+        cur.execute(OWN_BLOCK_SQL, {"ip": ip, "reason": reason, "key": key, "who": requested_by(operator),
+                                    "hours": hours})
+        got = cur.fetchone()
+    except Exception as error:
+        diag = getattr(error, "diag", None)
+        constraint = getattr(diag, "constraint_name", None)
+        if getattr(error, "pgcode", None) != REFUSED_SQLSTATE or constraint not in REFUSED_CONSTRAINTS:
+            raise
+        cur.execute("ROLLBACK TO SAVEPOINT triage_block")
+        return refused_text(ip, constraint, exempt_of(cur, ip)), None
+    cur.execute("RELEASE SAVEPOINT triage_block")
+    if got is not None:
+        return None, got[0]
+    cur.execute("SELECT released_by, released_at FROM blocklist WHERE actor_ip = %s", (ip,))
+    who, when = cur.fetchone()
+    return released_text(who, when), None
+
+
 def record(conn, key, ip, verdict, reason, observed, operator, proposed, block,
-           seconds=None, absorbed=False, absorbed_hours=ABSORBED_HOURS):
+           seconds=None, absorbed=False, absorbed_hours=ABSORBED_HOURS, block_hours=BLOCK_HOURS):
     """판정을 기록하고 차단하면 차단 목록에 올린다.
 
-    absorbed 가 참이면(차단할 때만) 이 사건에 흡수된 출발지도 absorbed_hours 만료로 함께 올리고, 만료 전까지 새로
-    흡수되는 출발지를 콘솔이 같은 만료로 올리도록 후속 차단 약속(absorbed_blocks)을 남긴다(BLOCK_ABSORBED_SQL).
-    돌려주는 값: 흡수 차단을 했으면 흡수 출발지 상태(STATE_COLUMNS 와 follow_expires_at), 아니면 None.
+    이 출발지는 block_hours 만료로 올린다(요청자 'triage:<판정자>'). 사람이 푼 출발지 · 차단 금지 대역 · 대역 주소는
+    올리지 않고 판정만 남긴다. 그때 조치는 확인(acknowledge)이고 메모 끝에 '[차단 안 함 · <까닭>]' 이 붙는다.
+    absorbed 가 참이면(이 출발지를 올렸을 때만) 이 사건에 흡수된 출발지도 absorbed_hours 만료로 함께 올리고, 만료 전까지
+    새로 흡수되는 출발지를 콘솔이 같은 만료로 올리도록 후속 차단 약속(absorbed_blocks)을 남긴다(BLOCK_ABSORBED_SQL).
+    만료 없는 옛 차단이 살아 있으면 요청은 남기되 만료가 그대로 없어 관문 집행에서 빠진다. 메모 끝에 NO_EXPIRY_TAG 를 붙이고
+    돌려주는 값에 no_expiry(까닭)를 싣는다.
+    돌려주는 값: 이 출발지를 올리지 못했으면 {"refused": 까닭}, 흡수 차단을 했으면 흡수 출발지 상태(STATE_COLUMNS 와
+    follow_expires_at, 옛 차단이면 no_expiry), 옛 차단이면 {"no_expiry": 까닭}, 아니면 None.
     """
+    if block and not 1 <= block_hours <= 720:
+        raise ValueError("차단 만료는 1..720시간입니다")
+    if block and absorbed and not 1 <= absorbed_hours <= 720:
+        raise ValueError("흡수 차단 만료는 1..720시간입니다")
     result = None
     cur = conn.cursor()
     # 차단 목록 감사 트리거(schema.sql #14)가 판정자를 행위자로 남기게 한다. 트랜잭션이 끝나면 풀린다
@@ -535,22 +690,20 @@ def record(conn, key, ip, verdict, reason, observed, operator, proposed, block,
         VALUES (%s,%s,%s,%s,%s,%s,%s)""",
         (key, verdict, reason, observed, operator, proposed, seconds))
 
-    if block and ip:
-        cur.execute("""
-            INSERT INTO blocklist (actor_ip, reason, incident_key) VALUES (%s,%s,%s)
-            ON CONFLICT (actor_ip) DO UPDATE
-              SET released_at = NULL, released_by = NULL, expires_at = NULL, reason = EXCLUDED.reason,
-                  incident_key = EXCLUDED.incident_key""", (ip, reason, key))
+    refused, own_expires = block_own(cur, key, ip, reason, operator, block_hours) if block and ip else (None, None)
+    if refused:
+        result = {"refused": refused}
+    if block and ip and not refused:
         note = reason
         if absorbed:
-            if not 1 <= absorbed_hours <= 720:
-                raise ValueError("흡수 차단 만료는 1..720시간입니다")
             tag = absorbed_reason_tag(key)
-            cur.execute(FOLLOW_UPSERT_SQL, {"key": key, "hours": absorbed_hours, "who": operator})
+            who = requested_by(operator)
+            nets = block_nets(cur)
+            cur.execute(FOLLOW_UPSERT_SQL, {"key": key, "hours": absorbed_hours, "who": who})
             expires = cur.fetchone()[0]
-            cur.execute(BLOCK_ABSORBED_SQL, {"key": key, "reason": tag, "ip": ip, "who": operator,
-                                             "expires": expires, "nets": NO_BLOCK_NETS})
-            cur.execute(ABSORBED_STATE_SQL, {"key": key, "reason": tag, "ip": ip, "nets": NO_BLOCK_NETS,
+            cur.execute(BLOCK_ABSORBED_SQL, {"key": key, "reason": tag, "ip": ip, "who": who,
+                                             "expires": expires, "nets": nets})
+            cur.execute(ABSORBED_STATE_SQL, {"key": key, "reason": tag, "ip": ip, "nets": nets,
                                              "n": ABSORBED_SAMPLE})
             result = dict(zip(STATE_COLUMNS, cur.fetchone())) | {"follow_expires_at": expires}
             # 조치 이력에서 흡수 출발지를 함께 다룬 차단임을 알아보게 한다(콘솔 absorbed_note 와 같은 꼴)
@@ -563,12 +716,17 @@ def record(conn, key, ip, verdict, reason, observed, operator, proposed, block,
                 parts.append(f"차단 금지 대역 {result['unblockable']}곳 제외")
             parts.append("만료 전 새 흡수도 차단")
             note = f"{reason} [" + " · ".join(parts) + "]"
+        if own_expires is None:
+            # 만료 없는 옛 차단이 살아 있다(만료를 줄이지 않는다). 막힌다고 알리지 않고 이력에 까닭을 남긴다
+            note = f"{note} [{NO_EXPIRY_TAG}]"
+            result = (result or {}) | {"no_expiry": NO_EXPIRY_TEXT}
         cur.execute("INSERT INTO actions (incident_key, action, operator, note) "
                     "VALUES (%s,'block_ip',%s,%s)", (key, operator, note))
         cur.execute("UPDATE incidents SET status='resolved' WHERE incident_key=%s", (key,))
     else:
+        note = f"{reason} [차단 안 함 · {refused}]" if refused else reason
         cur.execute("INSERT INTO actions (incident_key, action, operator, note) "
-                    "VALUES (%s,'acknowledge',%s,%s)", (key, operator, reason))
+                    "VALUES (%s,'acknowledge',%s,%s)", (key, operator, note))
         cur.execute("UPDATE incidents SET status='acknowledged' WHERE incident_key=%s", (key,))
 
     conn.commit()
@@ -576,7 +734,7 @@ def record(conn, key, ip, verdict, reason, observed, operator, proposed, block,
     return result
 
 
-def triage(conn, rule_id, limit, operator, absorbed_hours=ABSORBED_HOURS):
+def triage(conn, rule_id, limit, operator, absorbed_hours=ABSORBED_HOURS, block_hours=BLOCK_HOURS):
     cur = conn.cursor()
     absorbs = {}   # (규칙 버전, 규칙) → 흡수를 쓰는가
     c, p = ["v.id IS NULL"], []
@@ -667,8 +825,15 @@ def triage(conn, rule_id, limit, operator, absorbed_hours=ABSORBED_HOURS):
                 continue
 
             block = with_absorbed = False
-            if verdict == "threat" and ip:
-                block = keypress(input("  이 출발지를 차단 목록에 올릴까요? [y/N] > ")) == "y"
+            why = cannot_block(ip, ev) if verdict == "threat" else None
+            if why:
+                # 차단 금지 대역 · 사람이 푼 출발지. 묻지 않고 판정만 남긴다. 이력에 까닭을 붙인다
+                print(f"  차단하지 않습니다: {why}")
+                note = f"{note} [차단 안 함 · {why}]"
+            elif verdict == "threat" and ip:
+                hint = ("만료 없는 옛 차단이 그대로 남아 관문 집행에서 빠진다" if ev.get("no_expiry")
+                        else f"만료 {block_hours}시간 · 관문에서 허니팟 유입을 막는다")
+                block = keypress(input(f"  이 출발지를 차단 목록에 올릴까요? ({hint}) [y/N] > ")) == "y"
                 n_abs = ev["absorbed"]["sources"]
                 if (row[2], rid) not in absorbs:
                     absorbs[(row[2], rid)] = rule_absorbs(cur, row[2], rid)
@@ -678,14 +843,21 @@ def triage(conn, rule_id, limit, operator, absorbed_hours=ABSORBED_HOURS):
                         f"만료 전에 새로 흡수되는 출발지도 콘솔이 같은 만료로 차단) [y/N] > ")) == "y"
             done = record(conn, key, ip, verdict, note, observed, operator, suggestion, block,
                           seconds=round(time.monotonic() - shown_at), absorbed=with_absorbed,
-                          absorbed_hours=absorbed_hours)
+                          absorbed_hours=absorbed_hours, block_hours=block_hours)
             judged += 1
-            extra = [f"다른 사건 차단 {done['kept']}곳 유지"] if done and done["kept"] else []
-            if done and done["skipped_total"]:
+            if done and done.get("refused"):
+                # 물은 뒤에 막힌 경우(그 사이 누가 풀었거나 금지 대역이 늘었다). 판정은 남았고 차단만 하지 않았다
+                print(f"  기록됨: {LABEL[verdict]} · 차단 안 함 ({done['refused']})")
+                break
+            extra = [f"다른 사건 차단 {done['kept']}곳 유지"] if done and done.get("kept") else []
+            if done and done.get("skipped_total"):
                 extra.append(f"사람이 푼 {done['skipped_total']}곳 제외")
-            print(f"  기록됨: {LABEL[verdict]}" + ("  · 차단" if block else "")
+            # 만료 없는 옛 차단은 요청만 남고 관문 집행에서 빠진다. '차단 N시간' 이라 하지 않는다
+            own = ((f"  · 차단 요청 유지({done['no_expiry']})" if done and done.get("no_expiry")
+                    else f"  · 차단 {block_hours}시간") if block else "")
+            print(f"  기록됨: {LABEL[verdict]}" + own
                   + (f" · 흡수 {done['blocked']}곳 함께" + (f"({' · '.join(extra)})" if extra else "")
-                     if done else ""))
+                     if done and "blocked" in done else ""))
             break
 
         if ans == "q":
@@ -836,10 +1008,14 @@ def main():
     ap.add_argument("--summary", action="store_true")
     ap.add_argument("--thresholds", action="store_true")
     ap.add_argument("--absorbed-hours", type=int, default=ABSORBED_HOURS,
-                    help="흡수 출발지 함께 차단의 만료(시, 1..720). 이 출발지의 차단은 전처럼 만료가 없다")
+                    help="흡수 출발지 함께 차단의 만료(시, 1..720)")
+    ap.add_argument("--block-hours", type=int, default=BLOCK_HOURS,
+                    help="이 출발지 차단의 만료(시, 1..720). 만료 없는 차단은 두지 않는다")
     a = ap.parse_args()
     if not 1 <= a.absorbed_hours <= 720:
         ap.error("--absorbed-hours 는 1..720 입니다")
+    if not 1 <= a.block_hours <= 720:
+        ap.error("--block-hours 는 1..720 입니다")
 
     conn = psycopg2.connect(db_url(a.url))
     try:
@@ -848,7 +1024,7 @@ def main():
         elif a.thresholds:
             thresholds(conn)
         else:
-            triage(conn, a.rule, a.limit, a.operator, a.absorbed_hours)
+            triage(conn, a.rule, a.limit, a.operator, a.absorbed_hours, a.block_hours)
     finally:
         conn.close()
 

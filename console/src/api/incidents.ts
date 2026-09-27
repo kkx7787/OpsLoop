@@ -161,14 +161,28 @@ export interface ActorRuleHit {
   incidents: number
 }
 
-/** 차단 목록의 행. 요청(created_at)과 집행(enforced_at)은 다르다 */
+/**
+ * 차단 목록의 행. 요청(created_at)과 집행(enforced_at)은 다르다. 집행기가 관문 반영을 확인하면 method · enforced_at ·
+ * enforce_note('관문 반영 · …')를 쓰고, 불일치 · 제외는 enforce_note('관문 불일치 · …' · '집행 제외 · …')로 알린다(이슈 #47)
+ */
 export interface ActorBlock {
   reason: string | null
+  /** 관문이 보고한 집행 방식(fail2ban · nft) */
   method: string | null
   created_at: string
   expires_at: string | null
   released_at: string | null
   enforced_at: string | null
+  /** 집행 결과 메모. 이전 서버의 상세에는 없다 */
+  enforce_note?: string | null
+  /** 요청자(콘솔 사용자 · triage:<판정자>). 이전 서버의 상세에는 없다 */
+  requested_by?: string | null
+}
+
+/** 이 출발지가 드는 차단 금지 대역(block_exempt). 콘솔 · triage · 흡수 어느 경로로도 차단 목록에 들어가지 않는다 */
+export interface BlockExempt {
+  cidr: string
+  note: string
 }
 
 /**
@@ -210,12 +224,15 @@ export interface AbsorbedInfo {
   /** 사람이 풀어 함께 차단 · 후속 차단에서 빼는 출발지(앞 20곳)와 그 전체 수 */
   skipped?: string[]
   skipped_total?: number
-  /** 차단 금지 대역(사설 · 예약 주소)이라 넣지 않는 출발지 수 */
+  /** 차단 금지 대역(사설 · 예약 · 인프라 주소, 한 주소가 아닌 것 포함)이라 넣지 않는 출발지 수 */
   unblockable?: number
   /** 규칙이 같은 페이로드 흡수를 쓰는가. 흡수 기록이 아직 없어도 함께 차단(후속 차단 약속)을 고를 수 있다 */
   absorbs?: boolean
-  /** 살아 있는 후속 차단 약속. 만료 전까지 새로 흡수되는 출발지를 콘솔이 같은 만료로 차단한다 */
-  follow?: { expires_at: string; requested_by: string | null } | null
+  /**
+   * 살아 있는 후속 차단 약속. 만료 전까지 새로 흡수되는 출발지를 콘솔이 같은 만료로 차단한다.
+   * verdict 는 첫 사건의 마지막 판정이다. 위협일 때만 후속 차단이 돈다(없거나 다른 판정이면 멈춤). 이전 서버에는 없다
+   */
+  follow?: { expires_at: string; requested_by: string | null; verdict?: Verdict | null } | null
 }
 
 export interface ActorInfo {
@@ -223,6 +240,8 @@ export interface ActorInfo {
   history: ActorHistory | null
   rules: ActorRuleHit[]
   blocked: ActorBlock | null
+  /** 차단 금지 대역에 들면 그 대역. 차단 단추를 흐리고 까닭을 보인다. 이전 서버에는 없다 */
+  exempt?: BlockExempt | null
 }
 
 export interface IncidentDetail extends IncidentBase {

@@ -7,6 +7,7 @@
 """
 import hashlib
 import os
+import re
 import sys
 import tempfile
 import types
@@ -68,11 +69,33 @@ class GatewayLineTest(unittest.TestCase):
             self.assertIsNone(row[i])
         self.assertEqual(len(row), pg.INSERT_EVENT.count("%s"))        # 열 수와 자리표시자 수가 같다
 
-    def test_세_접두가_각각의_eventid_로(self):
+    def test_네_접두가_각각의_eventid_로(self):
         for prefix, eventid in (("gw-forward-drop", "gateway.forward.drop"), ("gw-input-drop", "gateway.input.drop"),
-                                ("gw-egress", "gateway.egress")):
+                                ("gw-block-drop", "gateway.block.drop"), ("gw-egress", "gateway.egress")):
             self.assertEqual(pg.parse_line(gw(prefix), EX)[EVENTID], eventid, prefix)
         self.assertTrue(all(v.startswith("gateway.") for v in pg.EVENTIDS.values()))   # 허니팟 규칙(cowrie.*)에 걸리지 않는다
+
+    def test_차단_거부_줄은_출발지와_목적지를_그대로(self):
+        # nftables.conf 의 forward 체인 'ip saddr @opsloop_block ... log prefix "gw-block-drop "' 이 남기는 줄
+        fields = FIELDS.replace("SRC=203.0.113.7", "SRC=198.51.100.23").replace("DPT=445", "DPT=22")
+        line = f"{TS} {HOST} kernel: [ 4321.000001] gw-block-drop {fields}"
+        row = pg.parse_line(line, EX)
+        self.assertEqual((row[EVENTID], row[SRC_IP], row[DST_PORT], row[PROTO]),
+                         ("gateway.block.drop", "198.51.100.23", 22, "tcp"))
+        self.assertEqual((row[INPUT], row[PROV], row[SENSOR]), ("in=ens5 out=ens5 dst=10.0.21.10", "real", "gateway"))
+        self.assertEqual(row[LINE_HASH], sha1(line))
+
+    def test_접두는_방화벽_규칙과_같다(self):
+        # 규칙에 있는 log 접두는 모두 파서가 알아야 한다(모르는 접두는 버려진다). 옛 기록용 gw-egress 만 규칙에 없다.
+        # rsyslog 도 그 접두를 골라 gateway.log 에 써야 원장에 오른다
+        gwdir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "infra", "aws", "gateway")
+        with open(os.path.join(gwdir, "nftables.conf"), encoding="utf-8") as f:
+            prefixes = set(re.findall(r'log prefix "(gw-[a-z-]+) "', f.read()))
+        self.assertEqual(prefixes, set(pg.EVENTIDS) - {"gw-egress"})
+        with open(os.path.join(gwdir, "rsyslog-opsloop.conf"), encoding="utf-8") as f:
+            pick = re.search(r're_match\(\$msg, "([^"]+)"\)', f.read()).group(1)
+        for prefix in prefixes:
+            self.assertTrue(re.search(pick, f"{prefix} IN=ens5 OUT=ens5 SRC=198.51.100.23"), prefix)
 
     def test_시간대와_커널_가동_시각(self):
         row = pg.parse_line(gw(ts="2026-09-22T10:02:03+09:00"), EX)

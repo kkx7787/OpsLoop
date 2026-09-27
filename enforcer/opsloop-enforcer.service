@@ -1,0 +1,36 @@
+[Unit]
+Description=OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)
+Wants=network-online.target time-sync.target
+# 시계가 틀리면 S3 서명이 거부되고 관문 보고의 5분 판단도 어긋난다
+After=network-online.target time-sync.target docker.service
+
+[Service]
+Type=oneshot
+User=opsloop-enforcer
+Group=opsloop-enforcer
+# 버킷 · 관문 ID · 상태 폴더 · 지역만 (비밀 아님)
+EnvironmentFile=/etc/default/opsloop-enforcer
+# 비밀 셋은 0600 root:root 이다. systemd 가 root 로 읽어 이 서비스에만 읽기 전용 사본으로 건넨다($CREDENTIALS_DIRECTORY).
+# 집행기는 자기 비밀을 고칠 수 없고, 적재기의 읽기 키(s3-pull.env, root:opsloop-pull)를 읽으려고 opsloop-pull 그룹에
+# 들어가지 않아도 된다 (그 그룹은 적재 · 탐지 역할 접속 파일도 읽는다). 파일이 하나라도 없으면 서비스가 시작되지 않는다
+LoadCredential=enforcer.env:/etc/opsloop/enforcer.env
+LoadCredential=s3-block.env:/etc/opsloop/s3-block.env
+LoadCredential=s3-pull.env:/etc/opsloop/s3-pull.env
+ExecStart=/usr/bin/python3 /opt/opsloop/enforcer/block_enforcer.py run
+# DB · S3 · 관문 보고 가운데 하나라도 못 하면 종료 코드 1 로 남겨 systemctl --failed 에 드러나게 한다
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/opsloop-enforcer
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+SystemCallFilter=@system-service
+# 행은 수백 ~ 수천이고 목록은 4096 개 상한이다
+MemoryMax=256M
+# DB 문장 30초 · S3 연결 10초 + 읽기 30초 × 재시도 3회. 1분 타이머가 겹치지 않게 넉넉히
+TimeoutStartSec=300

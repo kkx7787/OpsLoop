@@ -1,0 +1,10 @@
+[Unit]
+Description=OpsLoop 관문 차단 목록 동기화 1분 주기
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

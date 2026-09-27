@@ -95,6 +95,26 @@ class DashboardDatabaseTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(await main.blocklist(False)), 4)
             self.assertEqual((await main.summary())["blocked_ips"], 2)
 
+    async def test_summary_splits_active_blocks_by_enforcement(self):
+        # 활성 차단 요청을 집행 상태로 나눈다(이슈 #47). 요청 수가 실제로 막은 수로 읽히지 않게 한다.
+        # 순서: 만료 없음 · 집행 제외 → 관문 불일치 → 집행 확인 → 집행 대기. 풀리거나 만료된 것은 세지 않는다
+        import main
+        await self.conn.execute("""INSERT INTO blocklist (actor_ip, expires_at, released_at, enforced_at, enforce_note)
+            VALUES
+            ('192.0.2.1', now() + interval '1 hour', NULL, now(), '관문 반영 · abcd1234 · x'),
+            ('192.0.2.2', now() + interval '1 hour', NULL, now(), '관문 반영 · abcd1234 · x'),
+            ('192.0.2.3', now() + interval '1 hour', NULL, NULL, NULL),
+            ('192.0.2.4', NULL, NULL, NULL, '집행 제외 · 만료 없음'),
+            ('192.0.2.5', NULL, NULL, NULL, NULL),
+            ('192.0.2.6', now() + interval '1 hour', NULL, NULL, '집행 제외 · 금지 대역'),
+            ('192.0.2.7', now() + interval '1 hour', NULL, now(), '관문 불일치 · 관문 상태가 7분 전'),
+            ('192.0.2.8', now() + interval '1 hour', now(), now(), '관문 반영 · abcd1234 · x'),
+            ('192.0.2.9', now() - interval '1 second', NULL, now(), '관문 반영 · abcd1234 · x')""")
+        with patch.object(main.app.state, "pool", self.pool, create=True):
+            data = await main.summary()
+        self.assertEqual(data["blocked_ips"], 7)
+        self.assertEqual(data["blocks"], {"enforced": 2, "pending": 1, "excluded": 3, "mismatch": 1})
+
     async def test_release_once_and_reject_expired_changed_incident(self):
         import main
         await self.incident("a", 0)

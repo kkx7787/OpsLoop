@@ -10,6 +10,9 @@ SSH 허니팟 규칙(R001~R006, app/proposals.py SSH_RULES) 밖에는 판정을 
 남는다.
 판정 화면은 공격자 값(아이디 · 비밀번호 · 명령 · URL)의 제어 문자(ESC · C1) · 숨은 문자를 ⟨U+XXXX⟩ 표식으로, 줄바꿈을 ↵ 로
 보인다. ANSI 이스케이프로 판정자 터미널을 지우거나 제안 · 근거 줄을 덮어쓰지 못한다.
+차단(이슈 #47): 이 출발지 차단은 만료(기본 24시간)가 있고 요청자는 'triage:<판정자>' 다. 사람이 푼 출발지는 되살리지 않고,
+차단 금지 대역 · 대역 주소는 트리거가 거부해도 판정은 남는다. 살아 있는 차단의 만료는 줄이지 않고 집행 정보도 그대로 두며,
+새 요청이면 집행 정보를 비운다. 흡수 차단은 DB 금지 대역(block_exempt)도 뺀다.
 
   - 가짜 커서: DB 없이 조회 문장과 인자에 규칙 버전이 들어가는지 본다
   - 임시 테이블: OPSLOOP_TEST_DATABASE_URL 이 있으면 연결 전용 임시 테이블(search_path=pg_temp)에서
@@ -18,6 +21,7 @@ SSH 허니팟 규칙(R001~R006, app/proposals.py SSH_RULES) 밖에는 판정을 
 import io
 import os
 import re
+import secrets
 import sys
 import types
 from unittest import mock
@@ -38,6 +42,34 @@ import triage  # noqa: E402
 
 ACTOR = "192.0.2.8"
 T0 = datetime(2026, 9, 20, 3, tzinfo=timezone.utc)
+
+# 차단 목록 표(schema.sql 과 같은 열)
+BLOCKLIST = """
+    CREATE TEMP TABLE blocklist (actor_ip inet PRIMARY KEY, reason text, incident_key text,
+        created_at timestamptz NOT NULL DEFAULT now(), expires_at timestamptz, released_at timestamptz,
+        method text, requested_by text, enforced_at timestamptz, enforce_note text, released_by text);
+"""
+
+# 차단 금지 대역 표와 트리거. 계약(이슈 #47 인터페이스)대로 흉내 낸다: 한 주소가 아니면 23514 blocklist_host_only,
+# 금지 대역이면 23514 blocklist_exempt, UPDATE 는 주소가 바뀔 때만 본다. 실제 트리거(schema.sql blocklist_guard)는 infra 시험이 본다
+GUARD = """
+    CREATE TEMP TABLE block_exempt (cidr inet PRIMARY KEY, note text NOT NULL, created_at timestamptz DEFAULT now());
+    CREATE FUNCTION pg_temp.blocklist_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+        IF TG_OP = 'UPDATE' AND NEW.actor_ip IS NOT DISTINCT FROM OLD.actor_ip THEN RETURN NEW; END IF;
+        IF masklen(NEW.actor_ip) <> (CASE WHEN family(NEW.actor_ip) = 4 THEN 32 ELSE 128 END) THEN
+            RAISE EXCEPTION USING ERRCODE = 'check_violation', CONSTRAINT = 'blocklist_host_only', MESSAGE = '대역 주소';
+        END IF;
+        IF EXISTS (SELECT 1 FROM block_exempt WHERE cidr >>= NEW.actor_ip) THEN
+            RAISE EXCEPTION USING ERRCODE = 'check_violation', CONSTRAINT = 'blocklist_exempt', MESSAGE = '금지 대역';
+        END IF;
+        RETURN NEW;
+    END $$;
+    CREATE TRIGGER blocklist_guard BEFORE INSERT OR UPDATE OF actor_ip ON blocklist
+        FOR EACH ROW EXECUTE FUNCTION pg_temp.blocklist_guard();
+    INSERT INTO block_exempt (cidr, note) VALUES ('10.0.0.0/8', '사설 · AWS VPC'), ('15.164.37.49/32', 'AWS 관문 EIP'),
+        ('192.168.0.0/16', '사설 · 관리망 · 서비스망');
+"""
 
 
 class FakeCursor:
@@ -119,6 +151,9 @@ class AbsorbedSqlSameAsConsoleTests(unittest.TestCase):
         finally:
             sys.path.pop(0)
         self.assertEqual(triage.NO_BLOCK_NETS, absorbed.NO_BLOCK_NETS)
+        self.assertEqual(triage.EXEMPT_READABLE_SQL, absorbed.EXEMPT_READABLE_SQL)
+        self.assertEqual((triage.REFUSED_SQLSTATE, triage.REFUSED_CONSTRAINTS),
+                         (absorbed.REFUSED_SQLSTATE, absorbed.REFUSED_CONSTRAINTS))
         self.assertEqual(triage.absorbed_reason_tag("k"), absorbed.absorbed_reason_tag("k"))
         for name, names in (("BLOCK_ABSORBED_SQL", ("key", "reason", "ip", "who", "expires", "nets")),
                             ("ABSORBED_STATE_SQL", ("key", "reason", "ip", "nets", "n")),
@@ -242,11 +277,10 @@ class OverlapDatabaseTests(unittest.TestCase):
                 last_ts timestamptz);
             CREATE TEMP TABLE events (ts timestamptz, src_ip inet, session text, eventid text,
                 username text, password text, input text, shasum text, url text);
-            CREATE TEMP TABLE blocklist (actor_ip inet PRIMARY KEY, released_at timestamptz);
             CREATE TEMP TABLE incident_absorbed (first_key text, member_key text, kind text, via_key text,
                 rule_id text, rule_version text, actor_ip inet, first_ts timestamptz, last_ts timestamptz,
                 signal_count integer, sessions text[] DEFAULT '{}', payloads text[] DEFAULT '{}');
-        """)
+        """ + BLOCKLIST)
 
     def tearDown(self):
         self.conn.rollback()
@@ -302,11 +336,10 @@ class NonSshBulkAcceptDatabaseTests(unittest.TestCase):
                 reason text, observed_value double precision, operator text, proposed text, decision_seconds integer);
             CREATE TEMP TABLE actions (id bigint GENERATED ALWAYS AS IDENTITY, incident_key text, action text,
                 operator text, note text);
-            CREATE TEMP TABLE blocklist (actor_ip inet PRIMARY KEY, released_at timestamptz);
             CREATE TEMP TABLE incident_absorbed (first_key text, member_key text, kind text, via_key text,
                 rule_id text, rule_version text, actor_ip inet, first_ts timestamptz, last_ts timestamptz,
                 signal_count integer, sessions text[] DEFAULT '{}', payloads text[] DEFAULT '{}');
-        """)
+        """ + BLOCKLIST)
         for key, rid, name, ver, sev in (("R002|v3|k", "R002", "로그인 후 명령", "v3", "high"),
                                          ("R106|c1|k", "R106", "알려진 취약점 공격 시도", "c1", "medium"),
                                          ("R105|c1|k", "R105", "제품 식별 탐색", "c1", "low")):
@@ -339,8 +372,8 @@ OWN = "192.0.2.1"
 
 @unittest.skipUnless(REAL_PG and os.environ.get("OPSLOOP_TEST_DATABASE_URL"), "PostgreSQL 시험 연결 미지정")
 class AbsorbedDatabaseTests(unittest.TestCase):
-    """흡수 기록 표시와 흡수 출발지 함께 차단(record absorbed=True). 이 출발지의 차단은 만료가 없고(triage 차단),
-    흡수 출발지는 만료(기본 24시간)가 있으며 후속 차단 약속을 남긴다."""
+    """흡수 기록 표시와 흡수 출발지 함께 차단(record absorbed=True). 이 출발지의 차단은 --block-hours(기본 24시간),
+    흡수 출발지는 --absorbed-hours(기본 24시간) 만료이며 후속 차단 약속을 남긴다. 요청자는 'triage:<판정자>' 다."""
 
     def setUp(self):
         self.conn = psycopg2.connect(os.environ["OPSLOOP_TEST_DATABASE_URL"])
@@ -368,7 +401,7 @@ class AbsorbedDatabaseTests(unittest.TestCase):
             CREATE TEMP TABLE rule_versions (rule_version text PRIMARY KEY, definition jsonb NOT NULL);
             INSERT INTO rule_versions VALUES ('v3', '{"rules": [{"id": "R002", "params": {}},
                 {"id": "R006", "params": {"absorb_same_payload": {"window_hours": 24, "max_sources": 100}}}]}');
-        """)
+        """ + GUARD)
         self.cur.execute("INSERT INTO incidents VALUES (%s, 'R006', 'SSH 키 심기', 'v3', 'critical', %s, %s, %s)",
                          (FIRST, OWN, T0, T0))
         for i, (ip, kind) in enumerate([("198.51.100.2", "absorbed"), ("198.51.100.2", "absorbed"),
@@ -408,10 +441,12 @@ class AbsorbedDatabaseTests(unittest.TestCase):
         rows = self.rows()
         tag = triage.absorbed_reason_tag(FIRST)
         self.assertEqual(set(rows), {OWN, "198.51.100.2", "198.51.100.3", "198.51.100.4"})
-        self.assertIsNone(rows[OWN][2])                               # 이 출발지의 triage 차단은 만료가 없다
         now = datetime.now(timezone.utc)
+        # 이 출발지의 triage 차단도 만료(기본 24시간)가 있고 요청자는 triage:<판정자> 다
+        self.assertTrue(now + timedelta(hours=23) < rows[OWN][2] < now + timedelta(hours=25))
+        self.assertEqual(rows[OWN][3], "triage:han")
         for ip in ("198.51.100.2", "198.51.100.3"):
-            self.assertEqual((rows[ip][0], rows[ip][1], rows[ip][3], rows[ip][4]), (tag, FIRST, "han", None))
+            self.assertEqual((rows[ip][0], rows[ip][1], rows[ip][3], rows[ip][4]), (tag, FIRST, "triage:han", None))
             self.assertTrue(now + timedelta(hours=23) < rows[ip][2] < now + timedelta(hours=25))
         # 다른 사건으로 살아 있는 차단은 그 사건 것으로 두고 만료도 건드리지 않는다
         self.assertEqual(rows["198.51.100.4"], before)
@@ -419,7 +454,7 @@ class AbsorbedDatabaseTests(unittest.TestCase):
                          {"blocked": 2, "kept": 1, "skipped_total": 0, "unblockable": 0})
         self.assertEqual(done["follow_expires_at"], rows["198.51.100.2"][2])
         self.cur.execute("SELECT expires_at, requested_by FROM absorbed_blocks WHERE first_key = %s", (FIRST,))
-        self.assertEqual(self.cur.fetchone(), (rows["198.51.100.2"][2], "han"))
+        self.assertEqual(self.cur.fetchone(), (rows["198.51.100.2"][2], "triage:han"))
         self.cur.execute("SELECT note FROM actions WHERE action = 'block_ip'")
         self.assertEqual(self.cur.fetchone()[0], "키 심기 캠페인 [흡수 출발지 2곳 함께 차단 · "
                                                  "1곳은 다른 사건으로 차단 중 · 만료 전 새 흡수도 차단]")
@@ -459,6 +494,209 @@ class AbsorbedDatabaseTests(unittest.TestCase):
         done = triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True)
         self.assertIsNone(done)
         self.assertEqual(set(self.rows()), {OWN, "198.51.100.4"})
+
+    # ------------------------------------------------------------ 이 출발지 차단(이슈 #47)
+
+    def row(self, ip):
+        self.cur.execute("""SELECT expires_at, released_at, released_by, requested_by, method, enforced_at, enforce_note,
+                                   reason FROM blocklist WHERE actor_ip = %s""", (ip,))
+        return self.cur.fetchone()
+
+    def last_action(self):
+        self.cur.execute("SELECT action, note FROM actions ORDER BY id DESC LIMIT 1")
+        return self.cur.fetchone()
+
+    def test_record_block_hours_and_range(self):
+        triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True, block_hours=3)
+        now = datetime.now(timezone.utc)
+        self.assertTrue(now + timedelta(hours=2) < self.row(OWN)[0] < now + timedelta(hours=4))
+        for hours in (0, 721):
+            with self.subTest(hours=hours), self.assertRaises(ValueError):
+                triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True, block_hours=hours)
+
+    def test_record_does_not_revive_human_release(self):
+        # 사람이 푼 출발지: 해제 기록 · 사유 · 요청자를 그대로 두고 판정만 남긴다. 조치는 확인이고 까닭이 이력에 남는다
+        self.cur.execute("""INSERT INTO blocklist (actor_ip, reason, incident_key, expires_at, released_at, released_by,
+            requested_by) VALUES (%s, 'console', 'R002|v3|x', now() + interval '1 hour', now(), 'admin', 'op')""", (OWN,))
+        before = self.row(OWN)
+        done = triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True, absorbed=True)
+        self.assertEqual(self.row(OWN), before)
+        self.assertIn("admin 가", done["refused"])
+        self.assertIn("콘솔에서 차단", done["refused"])
+        action, note = self.last_action()
+        self.assertEqual(action, "acknowledge")
+        self.assertTrue(note.startswith("근거 [차단 안 함 · admin 가"))
+        self.cur.execute("SELECT verdict FROM verdicts")
+        self.assertEqual(self.cur.fetchall(), [("threat",)])
+        # 이 출발지를 올리지 못했으면 흡수 차단 · 후속 차단 약속도 걸지 않는다
+        self.cur.execute("SELECT count(*) FROM absorbed_blocks")
+        self.assertEqual(self.cur.fetchone()[0], 0)
+        self.assertEqual(set(self.rows()), {OWN, "198.51.100.4"})
+
+    def test_record_revives_release_without_person_and_clears_enforcement(self):
+        # 누가 풀었는지 없는 해제 · 만료된 행은 새 요청이다. 옛 집행 정보가 '집행 확인' 으로 남지 않게 비운다
+        self.cur.execute("""INSERT INTO blocklist (actor_ip, reason, incident_key, expires_at, released_at, method,
+            enforced_at, enforce_note) VALUES
+            (%s, 'old', 'R002|v3|x', now() - interval '1 hour', NULL, 'nft', now() - interval '2 hours', '관문 반영 · abcd1234 · x'),
+            ('198.51.100.7', 'old', 'R002|v3|y', now() + interval '1 hour', now(), 'nft', now(), '관문 반영 · abcd1234 · y')""",
+                         (OWN,))
+        self.assertIsNone(triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True))
+        self.assertIsNone(triage.record(self.conn, "R002|v3|z", "198.51.100.7", "threat", "근거", 1.0, "han", None, True))
+        now = datetime.now(timezone.utc)
+        for ip in (OWN, "198.51.100.7"):
+            expires, released_at, released_by, who, method, enforced_at, enforce_note, reason = self.row(ip)
+            self.assertIsNone(released_at)
+            self.assertEqual((who, method, enforced_at, enforce_note, reason), ("triage:han", None, None, None, "근거"))
+            self.assertTrue(now + timedelta(hours=23) < expires < now + timedelta(hours=25))
+        self.assertEqual(self.last_action()[0], "block_ip")
+
+    def test_record_keeps_live_block_expiry_and_enforcement(self):
+        # 살아 있는 콘솔 차단(72시간 · 관문 반영)에 다시 걸면 만료를 줄이지 않고 집행 정보도 그대로다(관문에 이미 있다).
+        # 만료 없는 옛 차단은 그대로 없다(집행 제외로 남는다)
+        self.cur.execute("""INSERT INTO blocklist (actor_ip, reason, incident_key, expires_at, method, enforced_at,
+            enforce_note, requested_by) VALUES
+            (%s, 'console', 'R002|v3|x', now() + interval '72 hours', 'fail2ban', now(), '관문 반영 · abcd1234 · x', 'op'),
+            ('198.51.100.8', 'old', 'R002|v1|y', NULL, NULL, NULL, '집행 제외 · 만료 없음', NULL)""", (OWN,))
+        live = self.row(OWN)
+        triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True)
+        triage.record(self.conn, "R002|v3|z", "198.51.100.8", "threat", "근거", 1.0, "han", None, True)
+        got = self.row(OWN)
+        self.assertEqual((got[0], got[4], got[5], got[6]), (live[0], live[4], live[5], live[6]))
+        self.assertEqual(got[3], "triage:han")
+        self.assertEqual(self.row("198.51.100.8")[0], None)
+        self.assertEqual(self.row("198.51.100.8")[6], "집행 제외 · 만료 없음")
+
+    def test_record_refused_by_exempt_net_keeps_verdict(self):
+        # 차단 금지 대역(트리거 23514): 판정은 남고 차단 · 흡수 차단은 없다. 까닭에 걸린 대역과 메모가 보인다
+        key = "R002|v3|192.168.50.21|x"
+        self.cur.execute("INSERT INTO incidents VALUES (%s, 'R002', '침해 후 행위', 'v3', 'high', '192.168.50.21', %s, %s)",
+                         (key, T0, T0))
+        done = triage.record(self.conn, key, "192.168.50.21", "threat", "근거", 1.0, "han", None, True)
+        self.assertEqual(done["refused"], "192.168.50.21 는 차단 금지 대역 192.168.0.0/16(사설 · 관리망 · 서비스망)에 들어 "
+                                          "차단하지 않습니다. 인프라 · 사설 · 예약 주소는 막지 않습니다")
+        self.assertIsNone(self.row("192.168.50.21"))
+        self.assertEqual(self.last_action(), ("acknowledge", f"근거 [차단 안 함 · {done['refused']}]"))
+        self.cur.execute("SELECT verdict FROM verdicts WHERE incident_key = %s", (key,))
+        self.assertEqual(self.cur.fetchone(), ("threat",))
+        # 관문 EIP 는 사설 대역이 아니어도 막지 않는다
+        done = triage.record(self.conn, key, "15.164.37.49", "threat", "근거", 1.0, "han", None, True)
+        self.assertIn("15.164.37.49/32(AWS 관문 EIP)", done["refused"])
+
+    def test_gather_and_flow_do_not_offer_block_for_exempt_or_released(self):
+        # 판정 화면이 까닭을 미리 보이고 차단을 묻지 않는다. 판정은 남고 이력에 까닭이 붙는다
+        self.cur.execute("""ALTER TABLE incidents ADD COLUMN signal_count integer DEFAULT 1,
+            ADD COLUMN session_count integer DEFAULT 1, ADD COLUMN evidence jsonb, ADD COLUMN target text""")
+        key = "R006|v3|15.164.37.49|x"
+        self.cur.execute("INSERT INTO incidents (incident_key, rule_id, rule_name, rule_version, severity, actor_ip, "
+                         "first_ts, last_ts) VALUES (%s, 'R006', 'SSH 키 심기', 'v3', 'critical', '15.164.37.49', %s, %s)",
+                         (key, T0, T0))
+        ev = triage.gather(self.cur, key, "15.164.37.49", T0, T0, [], "v3")
+        self.assertEqual(ev["exempt"], ("15.164.37.49/32", "AWS 관문 EIP"))
+        self.cur.execute("""INSERT INTO blocklist (actor_ip, reason, incident_key, expires_at, released_at, released_by)
+            VALUES (%s, 'console', 'x', now() + interval '1 hour', now(), 'admin')""", (OWN,))
+        ev = triage.gather(self.cur, FIRST, OWN, T0, T0, [], "v3")
+        self.assertEqual(ev["released"][0], "admin")
+        self.assertFalse(ev["blocked"])
+        prompts = []
+        answers = iter(["t", "", "t", ""])
+
+        def fake_input(prompt=""):
+            prompts.append(prompt)
+            return next(answers)
+        with mock.patch("builtins.input", fake_input), mock.patch("sys.stdout", io.StringIO()) as out:
+            triage.triage(self.conn, "R006", 5, "han")
+        self.assertFalse(any("차단 목록에 올릴까요" in p for p in prompts))
+        self.assertIn("차단하지 않습니다: 15.164.37.49 는 차단 금지 대역 15.164.37.49/32(AWS 관문 EIP)", out.getvalue())
+        self.assertIn("차단하지 않습니다: admin 가", out.getvalue())
+        self.cur.execute("SELECT count(*) FROM verdicts WHERE verdict = 'threat'")
+        self.assertEqual(self.cur.fetchone()[0], 2)
+        self.cur.execute("SELECT note FROM actions WHERE incident_key = %s", (key,))
+        self.assertIn("[차단 안 함 · 15.164.37.49 는 차단 금지 대역", self.cur.fetchone()[0])
+
+    def test_flow_asks_block_with_hours(self):
+        self.cur.execute("""ALTER TABLE incidents ADD COLUMN signal_count integer DEFAULT 1,
+            ADD COLUMN session_count integer DEFAULT 1, ADD COLUMN evidence jsonb, ADD COLUMN target text""")
+        prompts = []
+        answers = iter(["t", "", "y", "n"])
+
+        def fake_input(prompt=""):
+            prompts.append(prompt)
+            return next(answers)
+        with mock.patch("builtins.input", fake_input), mock.patch("sys.stdout", io.StringIO()) as out:
+            triage.triage(self.conn, "R006", 5, "han", block_hours=6)
+        self.assertIn("차단 목록에 올릴까요? (만료 6시간", prompts[2])
+        self.assertIn("기록됨: 실제 위협  · 차단 6시간", out.getvalue())
+        now = datetime.now(timezone.utc)
+        self.assertTrue(now + timedelta(hours=5) < self.row(OWN)[0] < now + timedelta(hours=7))
+
+    def test_flow_says_legacy_block_without_expiry_stays_unenforced(self):
+        # 만료 없는 옛 차단(운영 13건 꼴 · 집행 제외)이 살아 있는 출발지. 다시 걸어도 만료를 줄이지 않으므로 만료가 그대로 없고
+        # 관문 집행에서 빠진다. 판정 화면은 묻기 전에 알리고, 기록 뒤에 '차단 N시간' 이라 하지 않으며 이력에 까닭을 남긴다
+        self.cur.execute("""ALTER TABLE incidents ADD COLUMN signal_count integer DEFAULT 1,
+            ADD COLUMN session_count integer DEFAULT 1, ADD COLUMN evidence jsonb, ADD COLUMN target text""")
+        self.cur.execute("""INSERT INTO blocklist (actor_ip, reason, incident_key, enforce_note)
+            VALUES (%s, 'v1 triage', 'R002|v1|x', '집행 제외 · 만료 없음')""", (OWN,))
+        ev = triage.gather(self.cur, FIRST, OWN, T0, T0, [], "v3")
+        self.assertTrue(ev["blocked"])
+        self.assertTrue(ev["no_expiry"])
+        prompts = []
+        answers = iter(["t", "", "y", "n"])
+
+        def fake_input(prompt=""):
+            prompts.append(prompt)
+            return next(answers)
+        with mock.patch("builtins.input", fake_input), mock.patch("sys.stdout", io.StringIO()) as out:
+            triage.triage(self.conn, "R006", 5, "han", block_hours=6)
+        text = out.getvalue()
+        self.assertIn("[이미 차단됨 · 만료 없음 · 관문 집행 제외]", text)
+        self.assertIn(f"차단     {triage.NO_EXPIRY_TEXT}", text)
+        self.assertIn("차단 목록에 올릴까요?", prompts[2])
+        self.assertNotIn("차단 6시간", text)
+        self.assertIn(f"기록됨: 실제 위협  · 차단 요청 유지({triage.NO_EXPIRY_TEXT})", text)
+        self.assertIsNone(self.row(OWN)[0])
+        self.assertEqual(self.last_action(), ("block_ip", f"실제 위협 [{triage.NO_EXPIRY_TAG}]"))
+        # record 도 까닭을 돌려준다. 새 차단 · 만료가 있는 살아 있는 차단은 전처럼 None 이다
+        done = triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True)
+        self.assertEqual(done, {"no_expiry": triage.NO_EXPIRY_TEXT})
+        self.assertIsNone(triage.record(self.conn, "R002|v3|z", "198.51.100.9", "threat", "근거", 1.0, "han", None, True))
+
+    def test_exempt_unreadable_degrades_to_constants(self):
+        # 역할 블록(20260924_db_roles.sql)만 다시 적용하면 콘솔의 block_exempt 읽기가 사라진다. 표가 있어도 읽지 못하면 코드 상수만
+        # 거르고 사유는 비운다. 판정 화면(gather)이 권한 오류로 죽지 않는다. 읽지 못하는 역할로 바꿔 본다(슈퍼유저 연결일 때만).
+        # 역할은 이 트랜잭션 안에서 만들어 tearDown 의 rollback 이 지운다
+        self.cur.execute("SELECT rolsuper FROM pg_roles WHERE rolname = current_user")
+        if not self.cur.fetchone()[0]:
+            self.skipTest("시험 역할을 만들 수 없는 연결")
+        role = f"t47_triage_{os.getpid()}_{secrets.token_hex(3)}"
+        self.cur.execute(f"CREATE ROLE {role} NOLOGIN NOINHERIT")
+        self.cur.execute(f"GRANT SELECT ON incidents, events, incident_absorbed, blocklist TO {role}")
+        self.cur.execute(f"SET ROLE {role}")
+        try:
+            self.cur.execute("SELECT to_regclass('block_exempt') IS NOT NULL")
+            self.assertTrue(self.cur.fetchone()[0])                                # 표는 보이지만
+            self.assertFalse(triage.has_exempt_table(self.cur))                     # 읽지 못한다
+            self.assertEqual(triage.block_nets(self.cur), triage.NO_BLOCK_NETS)
+            self.assertIsNone(triage.exempt_of(self.cur, "15.164.37.49"))
+            ev = triage.gather(self.cur, FIRST, "15.164.37.49", T0, T0, [], "v3")
+            self.assertIsNone(ev["exempt"])
+            self.assertEqual(ev["absorbed"]["state"]["unblockable"], 0)            # 관문 EIP 는 상수에 없다(트리거가 막는다)
+        finally:
+            self.cur.execute("RESET ROLE")
+        self.assertTrue(triage.has_exempt_table(self.cur))
+        self.assertEqual(triage.exempt_of(self.cur, "15.164.37.49"), ("15.164.37.49/32", "AWS 관문 EIP"))
+        self.assertEqual(triage.refused_text("15.164.37.49", "blocklist_exempt", None),
+                         "15.164.37.49 는 차단 금지 대역에 들어 차단하지 않습니다. 인프라 · 사설 · 예약 주소는 막지 않습니다")
+
+    def test_absorbed_block_skips_db_exempt_and_net_rows(self):
+        # 흡수 차단은 코드 상수에 없는 DB 금지 대역(관문 EIP)과 대역 주소를 미리 빼 트리거에 걸리지 않는다
+        for i, ip in enumerate(("15.164.37.49", "198.51.100.64/26")):
+            self.cur.execute("""INSERT INTO incident_absorbed (first_key, member_key, kind, rule_id, rule_version,
+                actor_ip, first_ts, last_ts, signal_count) VALUES (%s, %s, 'absorbed', 'R006', 'v3', %s, %s, %s, 1)""",
+                             (FIRST, f"x{i}", ip, T0, T0))
+        self.assertIn("15.164.37.49/32", triage.block_nets(self.cur))
+        done = triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True, absorbed=True)
+        self.assertEqual((done["blocked"], done["unblockable"]), (2, 2))
+        self.assertNotIn("15.164.37.49", self.rows())
 
 
 if __name__ == "__main__":

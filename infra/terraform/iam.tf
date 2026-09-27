@@ -95,6 +95,24 @@ resource "aws_iam_role_policy" "gateway_put" {
   policy = data.aws_iam_policy_document.gateway_put.json
 }
 
+# 관문 동기화(block-sync.py)가 차단 목록 한 객체만 읽는다 (이슈 #47). 목록 쓰기는 데이터 노드의 집행기만 한다
+# (아래 목록 쓰기 사용자 · 버킷 정책 OnlyBlockWriterWritesBlock). 적용 결과 보고는 hb/v1/host=<자기 ID>-block/latest.json 에
+# 쓰며, 위 gateway_put 의 hb 권한과 버킷 정책의 host 경계(s3.tf ledger_writers 의 hb 접미사)가 그대로 덮는다.
+# 목록 권한이 없으므로 목록이 아직 없으면 404 가 아니라 403 이 온다 (관문은 둘 다 '못 읽음'으로 보고 집합을 그대로 둔다)
+data "aws_iam_policy_document" "gateway_block_read" {
+  statement {
+    sid       = "ReadBlockListOnly"
+    actions   = ["s3:GetObject"]
+    resources = ["${aws_s3_bucket.archive.arn}/${local.block_list_key}"]
+  }
+}
+
+resource "aws_iam_role_policy" "gateway_block_read" {
+  name   = "opsloop-gateway-block-read"
+  role   = aws_iam_role.gateway.id
+  policy = data.aws_iam_policy_document.gateway_block_read.json
+}
+
 resource "aws_iam_instance_profile" "gateway" {
   name = "opsloop-gateway-role"
   role = aws_iam_role.gateway.name
@@ -166,4 +184,35 @@ resource "aws_iam_user_policy" "cti_put" {
   name   = "opsloop-cti-put"
   user   = aws_iam_user.cti_writer.name
   policy = data.aws_iam_policy_document.cti_put.json
+}
+
+# ══════════════════════════════════════════════════════════════
+#  차단 목록 쓰기 사용자 (이슈 #47)
+#
+#  데이터 노드의 차단 집행기(opsloop-enforcer)가 DB 차단 목록에서 만든 목록을
+#  block/v1/latest.json 한 객체에 덮어쓴다. 그 객체 쓰기만 된다. 읽기 · 목록 · 삭제가 없고
+#  원장(raw/ · hb/) · cti/ 에는 쓰지 못한다(버킷 정책). 관문은 이 목록대로 허니팟 유입을 막으므로
+#  목록을 쓰는 주체를 센서 · 관문 역할, 원장 읽기 · CTI 쓰기 사용자와 나눈다. 덮어쓴 이전 판은
+#  버저닝이 남긴다(언제 무엇을 내렸는지). 관문 보고(hb/)는 기존 원장 읽기 사용자 키로 읽는다.
+#  액세스 키는 Terraform 으로 만들지 않는다. 만들면 비밀값이 상태 파일에 평문으로 남는다.
+#  키는 CLI 로 발급해 데이터 노드 /etc/opsloop/s3-block.env 에 파이프로 바로 넣는다 (README).
+# ══════════════════════════════════════════════════════════════
+
+resource "aws_iam_user" "block_writer" {
+  name = "opsloop-block-writer"
+  tags = { purpose = "internal data node publishes the block list to the gateway" }
+}
+
+data "aws_iam_policy_document" "block_put" {
+  statement {
+    sid       = "PutBlockListOnly"
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.archive.arn}/${local.block_list_key}"]
+  }
+}
+
+resource "aws_iam_user_policy" "block_put" {
+  name   = "opsloop-block-put"
+  user   = aws_iam_user.block_writer.name
+  policy = data.aws_iam_policy_document.block_put.json
 }
