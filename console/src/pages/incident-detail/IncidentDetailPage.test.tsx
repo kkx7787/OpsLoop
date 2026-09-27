@@ -79,6 +79,8 @@ interface StubOptions {
   /** GET …/cti 응답. 기본은 서명 규칙 사건이 아님(applicable=false) */
   cti?: unknown
   ctiStatus?: number
+  /** 조치 POST 를 이 오류로 답한다(서버 거부) */
+  actionError?: { status: number; detail: string }
 }
 
 /** 이 표본 사건의 취약점 연계(서명 규칙 사건) */
@@ -94,7 +96,7 @@ function isDetail(body: unknown): body is IncidentDetail {
  * /api/me · 상세 GET · 판정 · 조치 POST 를 답하는 fetch. 서버처럼 POST 가 상세를 바꾼다
  * (판정 → 이력 추가 · resolved, 조치 → 이력 추가 · ACTION_STATUS). 그래야 조치 뒤 다시 받는 상세가 옛 상태로 되돌리지 않는다.
  */
-function stubApi({ role = 'operator', body = detail(), status = 200, cti = { as_of: '2026-09-18T08:00:00Z', incident_key: KEY, applicable: false }, ctiStatus = 200 }: StubOptions = {}) {
+function stubApi({ role = 'operator', body = detail(), status = 200, cti = { as_of: '2026-09-18T08:00:00Z', incident_key: KEY, applicable: false }, ctiStatus = 200, actionError }: StubOptions = {}) {
   let state = body
   const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
@@ -109,6 +111,7 @@ function stubApi({ role = 'operator', body = detail(), status = 200, cti = { as_
       return json(created, 201)
     }
     if (url === `${incidentPath(KEY)}/actions` && method === 'POST') {
+      if (actionError) return json({ detail: actionError.detail }, actionError.status)
       const sent = JSON.parse(String(init?.body)) as Record<string, unknown>
       const created = { id: 4, note: null, ...sent, operator: 'han', created_at: '2026-09-18T08:00:00+00:00', incident_key: KEY,
         ...(sent.include_absorbed ? { absorbed: sent.action === 'block_ip' ? { blocked: 2, kept: 0 } : { released: 3 } } : {}) }
@@ -183,7 +186,7 @@ describe('IncidentDetailPage', () => {
     // ③ 이력 · 차단 · 관련 사건 링크
     const actor = screen.getByRole('region', { name: '행위자 이력' })
     expect(within(actor).getByText('120건')).toBeInTheDocument()
-    expect(within(actor).getByText('차단 중')).toBeInTheDocument()
+    expect(within(actor).getByText('집행 확인', { selector: 'span' })).toBeInTheDocument()
     expect(within(actor).getByRole('link', { name: 'R001' })).toHaveAttribute('href', `/incidents/${encodeURIComponent(RELATED_KEY)}`)
 
     // ④ 원문은 접혀 있고 펼치면 줄이 보인다
@@ -455,7 +458,7 @@ describe('IncidentDetailPage', () => {
     fireEvent.click(panel.getByRole('button', { name: '차단' }))
     const block = within(panel.getByRole('form', { name: '차단 확인' }))
     expect(block.getByText(/사람이 푼 1곳\(198\.51\.100\.9\)은 다시 걸지 않습니다/)).toBeInTheDocument()
-    expect(block.getByText(/차단 금지 대역\(사설 · 예약 주소\) 2곳은 넣지 않습니다/)).toBeInTheDocument()
+    expect(block.getByText(/차단 금지 대역\(사설 · 예약 · 인프라 주소\) 2곳은 넣지 않습니다/)).toBeInTheDocument()
     fireEvent.click(panel.getByRole('button', { name: '취소' }))
     fireEvent.click(panel.getByRole('button', { name: '차단 해제' }))
     expect(within(panel.getByRole('form', { name: '차단 해제 확인' })).getByRole('checkbox', { name: '흡수 차단 3곳도 함께 해제 · 후속 차단 중지' })).toBeInTheDocument()
@@ -669,6 +672,89 @@ function hostileCti() {
     cves: [cve({ kev: null, description: MIXED })],
   })
 }
+
+describe('IncidentDetailPage · 차단 집행(#47)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const base = detail().actor.blocked!
+
+  it('③ 차단 칸은 관문 불일치 · 집행 제외를 까닭과 함께 보인다', async () => {
+    stubApi({ body: detail({ actor: { ...detail().actor, blocked: { ...base, enforce_note: '관문 불일치 · 관문 상태가 7분 전', requested_by: 'triage:han' } } }) })
+    renderRoutes(routes(), PATH)
+    const actor = within(await screen.findByRole('region', { name: '행위자 이력' }))
+    expect(actor.getByText('관문 불일치', { selector: 'span' })).toBeInTheDocument()
+    expect(actor.getByText('마지막 집행 확인')).toBeInTheDocument()
+    expect(actor.getByText(/^집행 메모/)).toHaveTextContent('집행 메모 관문 불일치 · 관문 상태가 7분 전')
+  })
+
+  it('③ 만료 없는 옛 차단은 집행 제외로 보이고 해제는 그대로 된다', async () => {
+    stubApi({ role: 'admin', body: detail({ actor: { ...detail().actor, blocked: { ...base, expires_at: null, enforced_at: null, method: null } } }) })
+    renderRoutes(routes(), PATH)
+    const { panel } = await readyPanel()
+    const actor = within(screen.getByRole('region', { name: '행위자 이력' }))
+    expect(actor.getByText('집행 제외', { selector: 'span' })).toBeInTheDocument()
+    expect(actor.getByText('만료 없는 차단 · 관문에 넘기지 않음')).toBeInTheDocument()
+    expect(panel.getByRole('button', { name: '차단 해제' })).not.toHaveAttribute('aria-disabled')
+  })
+
+  it('차단 금지 대역 출발지는 차단 단추를 흐리고 까닭을 보인다', async () => {
+    const fetch = stubApi({ body: detail({ actor: { ...detail().actor, blocked: null, exempt: { cidr: '15.164.37.49/32', note: 'AWS 관문 EIP' } } }) })
+    renderRoutes(routes(), PATH)
+    const { panel } = await readyPanel()
+    const button = panel.getByRole('button', { name: '차단' })
+    expect(button).toHaveAttribute('aria-disabled', 'true')
+    fireEvent.click(button)
+    expect(panel.queryByRole('form', { name: '차단 확인' })).toBeNull()
+    expect(panel.getByText('차단 금지 대역 15.164.37.49/32(AWS 관문 EIP)에 들어 차단할 수 없습니다. 인프라 · 사설 · 예약 주소는 막지 않습니다.')).toBeInTheDocument()
+    const actor = screen.getByRole('region', { name: '행위자 이력' })
+    expect(actor.querySelector('[data-block-exempt]')).toHaveTextContent('차단 금지 대역 15.164.37.49/32(AWS 관문 EIP) · 이 출발지는 차단하지 않습니다')
+    expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toBeUndefined()
+  })
+
+  it('서버가 금지 대역으로 거부하면(400) 까닭을 그대로 보이고 성공으로 표시하지 않는다', async () => {
+    const detailText = '4.4.66.84 는 차단 금지 대역 4.4.66.0/24(시험)에 들어 차단하지 않습니다. 인프라 · 사설 · 예약 주소는 막지 않습니다'
+    stubApi({ actionError: { status: 400, detail: detailText } })
+    renderRoutes(routes(), PATH)
+    const { panel } = await readyPanel()
+    fireEvent.click(panel.getByRole('button', { name: '차단' }))
+    fireEvent.click(within(panel.getByRole('form', { name: '차단 확인' })).getByRole('button', { name: '차단 확정' }))
+    expect(await panel.findByRole('alert')).toHaveTextContent(`조치를 기록하지 못했습니다 · ${detailText} (HTTP 400)`)
+    expect(panel.queryByText(/조치를 기록했습니다/)).toBeNull()
+  })
+
+  it('만료 없는 옛 차단이 살아 있으면 차단 확인이 몇 시간 차단이라 하지 않고 집행 제외로 남는다고 알린다', async () => {
+    stubApi({ body: detail({ actor: { ...detail().actor, blocked: { ...base, expires_at: null, enforced_at: null, method: null, enforce_note: '집행 제외 · 만료 없음' } } }) })
+    renderRoutes(routes(), PATH)
+    const { panel } = await readyPanel()
+    fireEvent.click(panel.getByRole('button', { name: '차단' }))
+    const form = within(panel.getByRole('form', { name: '차단 확인' }))
+    expect(form.getByText(/만료 없는 옛 차단이 살아 있습니다\. 다시 걸어도 만료를 앞당기지 않으므로 만료가 그대로 없고 관문 집행에서 빠집니다\(집행 제외\)/)).toBeInTheDocument()
+    expect(form.getByText(/admin 이 해제한 뒤 다시 차단합니다/)).toBeInTheDocument()
+    expect(form.queryByText(/동안 차단합니다/)).toBeNull()
+    expect(form.queryByText(/집행 확인으로 바뀝니다/)).toBeNull()
+  })
+
+  it('차단 확인은 요청이 관문 반영 뒤 집행 확인으로 바뀐다고 알린다', async () => {
+    stubApi()
+    renderRoutes(routes(), PATH)
+    const { panel } = await readyPanel()
+    fireEvent.click(panel.getByRole('button', { name: '차단' }))
+    expect(within(panel.getByRole('form', { name: '차단 확인' })).getByText(/AWS 관문이 허니팟 유입에 반영하면 차단 목록에 집행 확인으로 바뀝니다/)).toBeInTheDocument()
+  })
+
+  it('후속 차단은 첫 사건 판정이 위협이 아니면 멈춤 · 판정 전이면 대기로 보인다', async () => {
+    for (const [verdict, text] of [['false_positive', /^후속 차단 멈춤 · 첫 사건의 마지막 판정이 위협이 아니어서/], [null, /^후속 차단 대기 · 첫 사건에 위협 판정이 기록되면/], ['threat', /^후속 차단 중 · 새로 흡수되는/]] as const) {
+      stubApi({ body: detail({ absorbed: absorbed({ follow: { expires_at: '2026-09-19T07:00:00+00:00', requested_by: 'han', verdict } }) }) })
+      const { unmount } = renderRoutes(routes(), PATH)
+      const actor = within(await screen.findByRole('region', { name: '행위자 이력' }))
+      expect(actor.getByText(text)).toBeInTheDocument()
+      unmount()
+      vi.unstubAllGlobals()
+    }
+  })
+})
 
 describe('IncidentDetailPage · 비신뢰 문자열(#41)', () => {
   afterEach(() => {

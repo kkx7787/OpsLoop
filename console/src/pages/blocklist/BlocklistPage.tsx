@@ -14,7 +14,7 @@ import { Banner } from '@/components/molecules/Banner'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { MonitoringStatus } from '@/components/organisms/MonitoringStatus'
 import { IncidentPagination } from '@/components/organisms/incidents/IncidentPagination'
-import { blockState, isActiveBlock } from '@/components/organisms/incident-detail/format'
+import { BLOCK_STATE_LABEL, BLOCK_STATE_TONE, blockState, blockStateHint, LIVE_BLOCK_STATES, type BlockState } from '@/components/organisms/incident-detail/format'
 import { ApiErrorState } from '@/components/organisms/states/ApiErrorState'
 import { LoadingState } from '@/components/organisms/states/LoadingState'
 import { useNow } from '@/lib/useNow'
@@ -22,7 +22,7 @@ import { cn } from '@/lib/cn'
 
 type Tab = 'active' | 'expired' | 'released'
 const TABS: Array<[Tab, string]> = [['active', '활성'], ['expired', '만료'], ['released', '해제']]
-const COLUMNS = 'xl:grid-cols-[130px_minmax(160px,1fr)_120px_145px_95px_65px]'
+const COLUMNS = 'xl:grid-cols-[130px_minmax(160px,1fr)_170px_145px_95px_65px]'
 type Notice = { tone: 'success' | 'danger'; message: string }
 
 export function BlocklistPage() {
@@ -40,23 +40,25 @@ export function BlocklistPage() {
   const checked = rows[0]?.checked_at ? Date.parse(rows[0].checked_at) : NaN
   const now = Number.isFinite(checked) ? checked + Math.max(0, clock - query.dataUpdatedAt) : clock
   const groups = { active: [] as BlockEntry[], expired: [] as BlockEntry[], released: [] as BlockEntry[] }
+  // 활성 요청의 집행 상태별 수(이슈 #47). 요청 수를 막은 수로 읽지 않게 집행 확인 · 대기 · 제외 · 불일치로 나눈다
+  const live: Record<BlockState, number> = { enforced: 0, pending: 0, excluded: 0, mismatch: 0, released: 0, expired: 0 }
   for (const entry of rows) {
     const state = blockState(entry, now)
-    groups[state === 'pending' || state === 'active' ? 'active' : state].push(entry)
+    if (LIVE_BLOCK_STATES.includes(state)) live[state] += 1
+    groups[LIVE_BLOCK_STATES.includes(state) ? 'active' : state as 'expired' | 'released'].push(entry)
   }
   const keyword = search.trim().toLowerCase()
   const filtered = groups[tab].filter(entry => `${entry.actor_ip} ${entry.reason ?? ''} ${entry.incident_key ?? ''}`.toLowerCase().includes(keyword))
   const currentPage = Math.min(page, Math.max(1, Math.ceil(filtered.length / pageSize)))
   const shown = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
-  const pending = groups.active.filter(entry => !entry.enforced_at).length
 
   return <div className="flex min-w-0 flex-col gap-4">
-    <PageHeader title="차단 목록" description="차단 요청과 집행 결과를 함께 확인합니다." aside={<span className="text-xs text-ink-muted">해제 권한: admin</span>} />
+    <PageHeader title="차단 목록" description="차단 요청과 AWS 관문의 집행 결과를 함께 확인합니다." aside={<span className="text-xs text-ink-muted">해제 권한: admin</span>} />
     <MonitoringStatus updatedAt={query.dataUpdatedAt} error={query.data ? query.error : null} onRetry={() => void query.refetch()} busy={query.isFetching} />
     {notice && <Banner tone={notice.tone} title={notice.message} action={<Button size="sm" onClick={() => setNotice(null)}>닫기</Button>} />}
     {query.isPending ? <LoadingState title="차단 목록을 불러오는 중입니다" /> : !query.data ? <ApiErrorState error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} /> : <>
-      <Card padding="none" className="grid grid-cols-2 divide-x divide-line md:grid-cols-4">
-        <Count label="활성 요청" value={groups.active.length} /><Count label="집행 확인" value={groups.active.length - pending} /><Count label="집행 대기" value={pending} warning /><Count label="24시간 내 만료" value={groups.active.filter(entry => entry.expires_at && Date.parse(entry.expires_at) <= now + 86_400_000).length} />
+      <Card padding="none" className="grid grid-cols-2 divide-x divide-line md:grid-cols-3 xl:grid-cols-6">
+        <Count label="활성 요청" value={groups.active.length} /><Count label="집행 확인" value={live.enforced} /><Count label="집행 대기" value={live.pending} warning /><Count label="관문 불일치" value={live.mismatch} warning /><Count label="집행 제외" value={live.excluded} /><Count label="24시간 내 만료" value={groups.active.filter(entry => entry.expires_at && Date.parse(entry.expires_at) <= now + 86_400_000).length} />
       </Card>
       <Card padding="none" className="min-w-0">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2">
@@ -68,7 +70,7 @@ export function BlocklistPage() {
         {!shown.length && <p className="m-0 px-4 py-10 text-center text-ink-muted">{search ? '검색 조건에 맞는 차단이 없습니다.' : `${TABS.find(([value]) => value === tab)?.[1]} 항목이 없습니다.`}</p>}
         <IncidentPagination label="차단 목록 페이지" page={currentPage} pageSize={pageSize} total={filtered.length} busy={query.isPending} onPage={setPage} onPageSize={size => { setPageSize(size); setPage(1) }} />
       </Card>
-      <p className="m-0 text-xs text-ink-muted">활성은 만료·해제 전 요청입니다. 집행 확인 여부는 별도로 표시합니다. {query.dataUpdatedAt > 0 && <>마지막 조회 <Time value={query.dataUpdatedAt} format="time" zone /> · </>}30초마다 재조회</p>
+      <p className="m-0 text-xs text-ink-muted">활성은 만료·해제 전 요청입니다. 집행 확인은 관문이 허니팟 유입(22 · 23 · 8080) 차단 집합에 넣은 것을 집행기가 확인한 것이고, 만료 없는 옛 차단 · 금지 대역은 집행하지 않습니다(집행 제외). {query.dataUpdatedAt > 0 && <>마지막 조회 <Time value={query.dataUpdatedAt} format="time" zone /> · </>}30초마다 재조회</p>
     </>}
   </div>
 }
@@ -82,14 +84,26 @@ function isAbsorbedBlock(entry: Pick<BlockEntry, 'reason'>): boolean {
   return entry.reason?.startsWith('흡수: ') ?? false
 }
 
+/**
+ * 집행 결과 칸의 둘째 줄: 상태 설명 · 방식 · 확인 시각. 방식은 관문이 보고한 값이라 글자로만 그린다.
+ * 까닭(제외 · 불일치 사유)은 그 아래 집행 메모(enforce_note)로 보인다
+ */
+function EnforceFacts({ entry, state }: { entry: BlockEntry; state: BlockState }) {
+  return <div className="mt-1 break-all text-xs text-ink-muted">
+    {blockStateHint(entry, state)}
+    {entry.enforced_at && (state === 'enforced' || state === 'mismatch') && <> <Time value={entry.enforced_at} format="short" /></>}
+    {entry.method && <> · <UntrustedText value={entry.method} /></>}
+  </div>
+}
+
 function BlockRow({ entry, now, allowed, stale, onNotice, refresh }: { entry: BlockEntry; now: number; allowed: boolean; stale: boolean; onNotice: (notice: Notice) => void; refresh: () => void }) {
   const mutation = useActionMutation(entry.incident_key ?? '')
   const [confirming, setConfirming] = useState(false)
   const [note, setNote] = useState('')
-  const live = isActiveBlock(entry, now)
+  const state = blockState(entry, now)
+  const live = LIVE_BLOCK_STATES.includes(state)
   const absorbed = isAbsorbedBlock(entry)
   const canRelease = allowed && live && !!entry.incident_key && !stale
-  const label = entry.released_at ? '해제됨' : !live ? '만료됨' : entry.enforced_at ? '집행 확인' : '집행 대기'
   // 풀 행의 출발지를 함께 보낸다. 흡수 차단 행은 근거 사건(첫 사건)의 출발지와 이 행의 출발지가 달라,
   // 사건 키만 보내면 서버가 첫 사건 출발지의 차단을 푼다. 서버는 이 행이 그 사건의 흡수 차단일 때만 이 행 하나를 푼다
   function release(event: FormEvent) {
@@ -103,7 +117,7 @@ function BlockRow({ entry, now, allowed, stale, onNotice, refresh }: { entry: Bl
   return <li className={cn('grid min-w-0 grid-cols-2 items-start gap-3 px-4 py-3 text-sm', COLUMNS)}>
     <div className="col-span-2 font-mono font-semibold break-all xl:col-span-1">{entry.actor_ip}</div>
     <div className="col-span-2 min-w-0 xl:col-span-1"><div className="break-words"><UntrustedText value={entry.reason} fallback="사유 미기록" /></div><div className="mt-1 text-xs">{entry.incident_key ? <Link className="break-all" to={`/incidents/${encodeURIComponent(entry.incident_key)}`}>{entry.incident_key.split('|')[0]} · {absorbed ? '첫 사건 보기' : '사건 보기'}</Link> : <span className="text-ink-muted">근거 사건 없음</span>}</div></div>
-    <div><Badge tone={live && !entry.enforced_at ? 'warning' : 'neutral'}>{label}</Badge><div className="mt-1 break-all text-xs text-ink-muted"><UntrustedText value={entry.method} fallback="집행 정보 없음" /></div>{entry.enforce_note && <p className="m-0 mt-1 break-words text-xs text-ink-muted"><UntrustedText value={entry.enforce_note} /></p>}</div>
+    <div data-block-state={state}><Badge tone={BLOCK_STATE_TONE[state]}>{BLOCK_STATE_LABEL[state]}</Badge><EnforceFacts entry={entry} state={state} />{entry.enforce_note && <p className="m-0 mt-1 break-words text-xs text-ink-muted"><UntrustedText value={entry.enforce_note} /></p>}</div>
     <div className="text-xs"><span className="block text-ink-muted xl:hidden">만료 시각 (KST)</span>{entry.expires_at ? <Time value={entry.expires_at} format="short" /> : '만료 없음'}{entry.released_at && <div className="mt-1 text-ink-muted">해제 <Time value={entry.released_at} format="short" />{entry.released_by && <> · <UntrustedText value={entry.released_by} max={64} /></>}</div>}</div>
     <div className="break-words text-xs text-ink-muted"><span className="xl:hidden">요청자 </span><UntrustedText value={entry.requested_by} max={64} fallback="미기록" /></div>
     <div className="justify-self-end xl:justify-self-start">{allowed && live ? <Button size="sm" disabled={!canRelease || mutation.isPending} disabledReason={stale ? '최신 목록을 확인한 뒤 해제해 주세요' : '연결된 근거 사건이 없어 해제할 수 없습니다'} onClick={() => setConfirming(!confirming)} aria-expanded={confirming}>해제</Button> : <span className="text-xs text-ink-muted">{live ? 'admin만' : '—'}</span>}</div>

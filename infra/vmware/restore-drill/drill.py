@@ -96,7 +96,9 @@ INGEST_BIN = "/usr/local/bin/opsloop-ingest"
 PULL_LOKI = "/opt/opsloop/app/collector/pull_loki.py"
 PULL_USER = "opsloop-pull"
 BOOTSTRAP_ROLE = "opsloop"
-REQUIRED_ROLES = ("opsloop", "opsloop_gate", "opsloop_ingest", "opsloop_detector", "opsloop_console", "opsloop_backup")
+# opsloop_enforcer(차단 집행, 이슈 #47)는 enforcer/install-enforcer.sh 로 만든 뒤에 뜬 백업부터 들어 있다
+REQUIRED_ROLES = ("opsloop", "opsloop_gate", "opsloop_ingest", "opsloop_detector", "opsloop_console", "opsloop_backup",
+                  "opsloop_enforcer")
 PULL_ROLES = ("opsloop_ingest", "opsloop_detector")        # env 파일을 opsloop-pull 이 읽는다
 BACKUP_DIR = os.path.join("~", "opsloop-backup")
 VERIFY_ROLES_SH = os.path.join(ROOT, "infra", "vmware", "scripts", "verify-db-roles.sh")

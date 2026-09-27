@@ -6,6 +6,8 @@
 #   CVE · KEV 연계(이슈 #39)의 수집기 역할(opsloop_cti)과 CTI 표 권한도 본다. infra/migrations/20260925_cti.sql 을
 #   적용하고 cti/install-cti.sh 로 역할을 만든 뒤에 돌린다.
 #   콘솔 역할의 접속 한도(이슈 #43, 30 이상)도 본다. infra/migrations/20260926_console_connlimit.sql 을 적용한 뒤에 돌린다.
+#   차단 집행(이슈 #47)의 집행 역할(opsloop_enforcer) 권한 · 속성과 금지 대역 표(block_exempt) 권한도 본다.
+#   infra/migrations/20260927_block_enforce.sql 을 적용하고 enforcer/install-enforcer.sh 로 역할을 만든 뒤에 돌린다.
 # 사용 (Mac, 저장소 루트): infra/vmware/scripts/verify-db-roles.sh     종료 코드 0 = 전부 기대대로
 set -uo pipefail
 SSH=(ssh -F "$HOME/.ssh/config.opsloop" -o BatchMode=yes -o ConnectTimeout=10)
@@ -97,6 +99,35 @@ q opsloop_backup   "INSERT INTO events SELECT * FROM events WHERE false" 거부
 q opsloop_backup   "SELECT count(*) FROM events" 허용
 q opsloop_gate     "SELECT count(*) FROM events" 거부
 q opsloop_gate     "SELECT count(*) FROM nodes WHERE token_hash IS NOT NULL" 허용
+# 차단 집행 (이슈 #47). 집행기는 차단 목록 읽기, 집행 열(method · enforced_at · enforce_note) 쓰기, 금지 대역 읽기, 만료 기록 함수뿐이다.
+#   차단을 걸거나 풀거나 만료 · 주소를 바꾸지 못하고 events 를 보지 못한다(집행 열 변경의 감사는 SECURITY DEFINER 트리거가 남긴다).
+#   콘솔은 금지 대역을 읽기만 하고 탐지 · 적재는 보지 못한다. 만료 기록 함수는 집행 역할만 부른다.
+#   infra/test_block_enforce_db.py 가 이 줄들을 시험 DB 에서 무작위 역할로 돌려 같은 답이 나오는지 본다
+q opsloop_enforcer "SELECT actor_ip, expires_at, released_at, method, enforced_at, enforce_note FROM blocklist LIMIT 0" 허용
+q opsloop_enforcer "SELECT cidr, note FROM block_exempt LIMIT 0" 허용
+q opsloop_enforcer "UPDATE blocklist SET method = method, enforced_at = enforced_at, enforce_note = enforce_note WHERE false" 허용
+q opsloop_enforcer "UPDATE blocklist SET released_at = released_at WHERE false" 거부
+q opsloop_enforcer "UPDATE blocklist SET expires_at = expires_at WHERE false" 거부
+q opsloop_enforcer "UPDATE blocklist SET actor_ip = actor_ip WHERE false" 거부
+q opsloop_enforcer "INSERT INTO blocklist SELECT * FROM blocklist WHERE false" 거부
+q opsloop_enforcer "DELETE FROM blocklist WHERE false" 거부
+q opsloop_enforcer "INSERT INTO block_exempt SELECT * FROM block_exempt WHERE false" 거부
+q opsloop_enforcer "SELECT count(*) FROM events" 거부
+q opsloop_enforcer "INSERT INTO events SELECT * FROM events WHERE false" 거부
+q opsloop_enforcer "SELECT count(*) FROM incidents" 거부
+q opsloop_enforcer "SELECT count(*) FROM absorbed_blocks" 거부
+p opsloop_enforcer "has_function_privilege('opsloop_enforcer', 'note_block_expired(inet, timestamptz)', 'EXECUTE')" t
+p opsloop_enforcer "has_table_privilege('opsloop_enforcer', 'blocklist', 'TRUNCATE')" f
+q opsloop_console  "SELECT cidr, note FROM block_exempt LIMIT 0" 허용
+q opsloop_console  "INSERT INTO block_exempt SELECT * FROM block_exempt WHERE false" 거부
+q opsloop_console  "UPDATE block_exempt SET note = note WHERE false" 거부
+q opsloop_console  "DELETE FROM block_exempt WHERE false" 거부
+p opsloop_console  "has_function_privilege('opsloop_console', 'note_block_expired(inet, timestamptz)', 'EXECUTE')" f
+#   금지 대역 검사(blocklist_guard)는 SECURITY DEFINER 다. 역할 블록만 다시 적용해 콘솔의 block_exempt 읽기가 빠져도 정상 주소 차단이 막히지 않는다
+p opsloop_console  "(SELECT prosecdef FROM pg_proc WHERE proname = 'blocklist_guard')" t
+q opsloop_detector "SELECT count(*) FROM block_exempt" 거부
+p opsloop_detector "has_function_privilege('opsloop_detector', 'note_block_expired(inet, timestamptz)', 'EXECUTE')" f
+q opsloop_ingest   "SELECT count(*) FROM block_exempt" 거부
 
 echo "== 접속 한도 (이슈 #43. 콘솔 한 대 = 풀 10 + LISTEN 1 → 두 대 22 + triage.py)"
 #   20 이면 콘솔 B 를 켤 때 한도에 닿는다. 무제한(-1)도 기대와 다르다고 본다 (콘솔이 DB 접속을 다 써 버리지 않게 하는 울타리다)
@@ -106,6 +137,12 @@ cur=$(psql_as opsloop "SELECT count(*) FROM pg_stat_activity WHERE usename = 'op
 [[ "$cur" =~ ^[0-9]+$ ]] || cur="?"
 if [[ "$lim" =~ ^[0-9]+$ ]] && [ "$lim" -ge 30 ]; then row opsloop_console "CONNECTION LIMIT (지금 접속 $cur)" "≥30" "✔ $lim"
 else row opsloop_console "CONNECTION LIMIT (지금 접속 $cur)" "≥30" "✘ ${lim:-없음}"; fail=1; fi
+
+echo "== 집행 역할 속성 (이슈 #47. enforcer/install-enforcer.sh 가 만든다)"
+#   로그인 · 권한을 물려받지 않음 · 슈퍼유저 아님 · 접속 한도 2 (1분 타이머 한 번에 접속 하나. 겹쳐 돌아도 2 를 넘지 않는다)
+att=$(psql_as opsloop "SELECT rolcanlogin::text || ' ' || rolinherit::text || ' ' || rolsuper::text || ' ' || rolconnlimit FROM pg_roles WHERE rolname = 'opsloop_enforcer'" | head -1)
+if [ "$att" = "true false false 2" ]; then row opsloop_enforcer "LOGIN · NOINHERIT · 슈퍼유저 아님 · CONNECTION LIMIT" 2 "✔"
+else row opsloop_enforcer "LOGIN · NOINHERIT · 슈퍼유저 아님 · CONNECTION LIMIT" 2 "✘ ${att:-역할 없음}"; fail=1; fi
 
 echo "== 지금 붙어 있는 접속 (역할 · application_name · 수)"
 psql_as opsloop "SELECT usename || '  ' || app || '  ' || n FROM (SELECT usename, coalesce(nullif(application_name,''),'-') AS app, count(*) AS n FROM pg_stat_activity WHERE datname='opsloop' AND usename IS NOT NULL GROUP BY 1,2) t ORDER BY 1" 2>/dev/null | sed 's/^/  /'

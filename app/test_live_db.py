@@ -320,6 +320,8 @@ class LiveDatabaseTests(unittest.IsolatedAsyncioTestCase):
             {"id": "R006", "params": {"absorb_same_payload": {"window_hours": 24, "max_sources": 100}}}]}')""")
         await self.a.execute("INSERT INTO absorbed_blocks (first_key, expires_at, requested_by) "
                              "VALUES ($1, now() + interval '24 hours', 'test-operator')", KEY)
+        # 후속 차단은 첫 사건의 마지막 판정이 위협일 때만 돈다(이슈 #47)
+        await self.a.execute("INSERT INTO verdicts (incident_key, verdict, operator) VALUES ($1, 'threat', 'han')", KEY)
         for n, ip in enumerate(("198.51.100.2", "198.51.100.3")):
             await self.a.execute("""INSERT INTO incident_absorbed (first_key, member_key, kind, rule_id, rule_version,
                 actor_ip, first_ts, last_ts, signal_count) VALUES ($1, $2, 'absorbed', 'R006', 'v3', $3, $4, $4, 1)""",

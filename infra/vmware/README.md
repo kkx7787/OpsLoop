@@ -705,6 +705,46 @@ S="$HOME/Library/Application Support/OpsLoop/bin/console-watch.sh"
 - Mac 이 잠든 동안은 돌지 않는다(VM 도 함께 멈춘다). 깨어나면 다음 간격에 다시 본다.
 - 시험: `python3 infra/vmware/scripts/test_console_watch.py` (임시 HOME · 가짜 curl · osascript · launchctl, 진짜 curl 은 127.0.0.1 에만)
 
+## 차단 집행기 설치 (데이터 노드, 이슈 #47)
+
+DB 차단 목록을 AWS 관문에 넘기고 관문의 적용 결과를 DB 에 되쓴다. S3 경계 · 키는 `infra/terraform/README.md` '차단 목록 전달'.
+
+```
+데이터 노드  opsloop-enforcer.timer (1분) ─ DB blocklist → s3 block/v1/latest.json (opsloop-block-writer)
+관문         opsloop-block-sync.timer (1분) ─ 목록 → fail2ban/nft 집합 → s3 hb/v1/host=<관문 ID>-block/latest.json
+데이터 노드  opsloop-enforcer ─ 관문 보고(원장 읽기 키) → blocklist method · enforced_at · enforce_note
+```
+
+| 구성 | 위치 |
+|---|---|
+| 집행기 | `/opt/opsloop/enforcer/block_enforcer.py` (root 소유) · 래퍼 `/usr/local/bin/opsloop-enforcer` (`run [--dry-run]` · `list` · `status`) |
+| 주기 | `opsloop-enforcer.timer` 부팅 2분 뒤 · 1분 간격 (정확도 5초) |
+| 설정 | `/etc/default/opsloop-enforcer` (버킷 · 관문 ID · 상태 폴더 · 지역, 처음 설치 때만) · 상태 `/var/lib/opsloop-enforcer/state.json` |
+| 비밀 | `/etc/opsloop/enforcer.env` (DB 역할 `opsloop_enforcer`, 설치기가 만든다) · `/etc/opsloop/s3-block.env` (목록 쓰기 키, Mac 에서 파이프) · `/etc/opsloop/s3-pull.env` (기존 원장 읽기 키). 서비스는 systemd `LoadCredential` 로 받는다. 새 파일은 0600 root:root |
+
+순서 (Mac, 저장소 루트):
+
+```bash
+# 1. S3 경계 · 쓰기 사용자: infra/terraform/README.md '차단 목록 전달' 1단계 (plan 기대값 확인 뒤 apply)
+# 2. 데이터 노드: 사용자 · 코드 · 설정 · DB 역할 · 마이그레이션(20260927_block_enforce.sql) · 단위 (타이머는 켜지 않는다)
+C=$(git rev-parse --short HEAD)
+git archive "$C" enforcer infra/migrations/20260927_block_enforce.sql | ssh -F ~/.ssh/config.opsloop data01 \
+  "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo bash /tmp/ol/enforcer/install-enforcer.sh $C"
+#    권한 표 세 줄이 '기대대로' 여야 한다. 마지막 줄의 행 갈래 수에 운영 13건이 exclude 로 나온다
+# 3. 목록 쓰기 키: infra/terraform/README.md '차단 목록 전달' 2단계 (0600 root:root)
+# 4. 관문 동기화 설치 (infra/aws/gateway, 관문 담당 절차) 뒤, 할 일만 먼저 본다 (S3 · DB 를 고치지 않는다)
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n opsloop-enforcer run --dry-run'
+# 5. 한 번 돌려 보고 켠다
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n systemctl start opsloop-enforcer.service; sudo -n journalctl -u opsloop-enforcer -n 20 --no-pager'
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n systemctl enable --now opsloop-enforcer.timer'
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n opsloop-enforcer status'   # 관문 보고 · 집행 상태별 건수
+```
+
+- 첫 회차에 운영의 만료 없는 13건은 enforce_note 만 '집행 제외 · 만료 없음' 이 된다. 집행 열(enforced_at)이 바뀌지 않아 감사 · R201 에 영향이 없다.
+- 역할 블록(schema.sql · 20260924_db_roles.sql)을 다시 적용하면 집행 역할 권한이 사라진다. 그 뒤에는 이 설치기(또는 마이그레이션)를 다시 돌린다.
+- 원장 읽기 키(`s3-pull.env`)를 다시 넣어도 집행기는 따로 할 일이 없다(LoadCredential 이 회차마다 읽는다).
+- 되돌리기: `sudo systemctl disable --now opsloop-enforcer.timer`. 관문 집합은 항목별 만료(상한 fail2ban bantime 24시간)로 저절로 빈다.
+
 ## CVE · KEV 연계 (이슈 #39)
 
 공개 취약점 정보(CISA KEV · EPSS · 배포판 취약점 OSV · NVD)와 노드 자산 조사 결과를 사건 옆에 붙여 보인다.
@@ -822,6 +862,7 @@ ssh -F ~/.ssh/config.opsloop data01 'sudo -n -u opsloop-cti /usr/local/bin/opslo
 | `compose/data.yml` | 데이터 노드 PostgreSQL · Loki. initdb 에 스키마를 붙이지 않는다(스키마는 `install-collector.sh`, 복원은 'DB 복원') |
 | `test_data_compose.py` | 위 파일 시험 (initdb 마운트 없음 · 이미지 · 볼륨 · 바인드 주소 · 'DB 복원' 절). `python3 infra/vmware/test_data_compose.py` |
 | `scripts/console-join.sh` | 콘솔 B 합류 · 떼기 단계 (기본 드라이런). 시험 `python3 infra/vmware/scripts/test_console_join.py` (가짜 ssh · 접속 한도 30) |
+| `../../enforcer/` | 차단 집행기(데이터 노드): 차단 목록 → S3 → 관문 보고 대조 → 집행 결과 기록. 시험 `python3 enforcer/test_block_enforcer.py` |
 | `scripts/console-watch.sh` · `scripts/install-console-watch.sh` | Mac 에서 콘솔 진입점 감시(두 대 모두 죽으면 알림). 시험 `python3 infra/vmware/scripts/test_console_watch.py` |
 | `restore-drill/` | 복원 훈련 도구(기본 드라이런 · 훈련 DB 확인 블록 · RTO · RPO · 무결성 · 재생성 대조). 시험 `python3 infra/vmware/restore-drill/test_restore_drill.py` |
 | `failover/` | 장애 주입 시험 도구(요청 · 웹소켓 프로브, 방화벽 통계 수집, T0 기록, 지표 요약). 시험 `python3 infra/vmware/failover/test_failover_tools.py` |

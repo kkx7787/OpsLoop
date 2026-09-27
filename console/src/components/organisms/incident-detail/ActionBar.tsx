@@ -3,6 +3,7 @@ import { useActionMutation, type ActionCreated, type ActionInput, type IncidentD
 import { describeError } from '@/api/errors'
 import { useMe, usePermission } from '@/auth/useMe'
 import { cn } from '@/lib/cn'
+import { revealHidden } from '@/lib/untrusted'
 import { ACTION_LABEL, actionLabel, INCIDENT_STATUS_LABEL, type IncidentAction } from '@/lib/domain'
 import { Button } from '../../atoms/Button'
 import { Input } from '../../atoms/Input'
@@ -31,6 +32,8 @@ type Confirmable = Exclude<IncidentAction, 'acknowledge'>
  * 함께 해제'를 둔다(include_absorbed, 기본 끔). 흡수된 인시던트는 지워져 상세가 없으므로 첫 사건에서만 걸고 푼다.
  * 함께 차단하면 만료 전까지 새로 흡수되는 출발지도 서버가 같은 만료로 올린다(후속 차단). 흡수는 판정 · 차단 뒤에도
  * 붙으므로, 흡수 기록이 아직 없어도 흡수를 쓰는 규칙(absorbs)이면 선택을 보인다. 사람이 푼 곳 · 차단 금지 대역은 넣지 않는다.
+ * 차단은 요청이다. 데이터 노드 집행기가 AWS 관문에 넘기고 관문이 허니팟 유입을 막으면 '집행 확인' 으로 바뀐다(이슈 #47).
+ * 이 출발지가 차단 금지 대역(actor.exempt)이면 차단 단추를 흐리고 까닭을 보인다. 서버도 400 과 같은 까닭으로 거부한다.
  * 결과는 useActionMutation 이 상세 캐시에 바로 반영한다(이력 추가 · 상태 전이).
  */
 export function ActionBar({ detail, className }: ActionBarProps) {
@@ -49,6 +52,9 @@ export function ActionBar({ detail, className }: ActionBarProps) {
 
   const acked = detail.status !== 'open'
   const activeBlock = isActiveBlock(detail.actor.blocked)
+  // 만료 없는 옛 차단이 살아 있다(운영 13건 꼴). 살아 있는 차단의 만료는 앞당기지 않으므로 다시 걸어도 만료가 그대로 없고
+  // 집행기는 만료 없는 행을 관문에 넘기지 않는다(집행 제외). 확인 창이 '몇 시간 동안 차단' 이라 하지 않는다
+  const legacyBlock = activeBlock && !detail.actor.blocked?.expires_at
   // 함께 차단할 흡수 출발지(이 출발지 제외) · 함께 풀 흡수 차단. 첫 사건이 아니거나 이전 서버면 0
   const absorbedSources = detail.absorbed?.sources ?? 0
   const absorbedBlocked = detail.absorbed?.blocked ?? 0
@@ -94,7 +100,12 @@ export function ActionBar({ detail, className }: ActionBarProps) {
     send(input)
   }
 
-  const blockReason = !detail.actor_ip ? '출발지가 없는 사건은 차단할 수 없습니다' : block.reason
+  const exempt = detail.actor.exempt ?? null
+  const blockReason = !detail.actor_ip
+    ? '출발지가 없는 사건은 차단할 수 없습니다'
+    : exempt
+      ? `차단 금지 대역 ${exempt.cidr}(${revealHidden(exempt.note)})에 들어 차단할 수 없습니다`
+      : block.reason
   const releaseReason = !release.allowed
     ? release.reason
     : absorbedOnlyRelease
@@ -119,7 +130,7 @@ export function ActionBar({ detail, className }: ActionBarProps) {
         {block.allowed && <Button
           variant="secondary"
           className="text-danger"
-          disabled={!block.allowed || !detail.actor_ip}
+          disabled={!block.allowed || !detail.actor_ip || !!exempt}
           disabledReason={blockReason}
           aria-expanded={pending === 'block_ip'}
           aria-controls={panelId}
@@ -150,6 +161,10 @@ export function ActionBar({ detail, className }: ActionBarProps) {
         {me.data?.role === 'viewer' && <p className="m-0 text-xs text-ink-muted">조회 전용 계정입니다. 조치는 operator · admin이 수행합니다.</p>}
       </div>
 
+      {exempt && detail.actor_ip && block.allowed && (
+        <p className="m-0 text-xs text-ink-muted">{blockReason}. 인프라 · 사설 · 예약 주소는 막지 않습니다.</p>
+      )}
+
       {pending && canConfirm && (
         <form
           id={panelId}
@@ -158,10 +173,16 @@ export function ActionBar({ detail, className }: ActionBarProps) {
           className="flex flex-col gap-3 rounded-panel bg-canvas p-3"
         >
           <p className="m-0 text-sm">
-            {pending === 'block_ip' && (
+            {pending === 'block_ip' && !legacyBlock && (
               <>
                 출발지 <span className="font-mono font-medium">{detail.actor_ip}</span> 를 <strong>{hoursLabel(Number(hours))}</strong> 동안 차단합니다. 만료되면 저절로 풀립니다.
                 {activeBlock && ' 이미 살아 있는 차단이 있으면 만료를 앞당기지 않습니다.'}
+                {' 요청은 AWS 관문이 허니팟 유입에 반영하면 차단 목록에 집행 확인으로 바뀝니다.'}
+              </>
+            )}
+            {pending === 'block_ip' && legacyBlock && (
+              <>
+                출발지 <span className="font-mono font-medium">{detail.actor_ip}</span> 에는 만료 없는 옛 차단이 살아 있습니다. 다시 걸어도 만료를 앞당기지 않으므로 만료가 그대로 없고 관문 집행에서 빠집니다(집행 제외). 이 요청은 사유 · 요청자만 바꿉니다. 관문에서 막으려면 admin 이 해제한 뒤 다시 차단합니다.
               </>
             )}
             {pending === 'unblock_ip' && !absorbedOnlyRelease && (
@@ -271,13 +292,13 @@ function AbsorbedCheck({ checked, disabled, onChange, label, hint }: AbsorbedChe
 
 /** 함께 차단 확인의 안내. 넣지 않을 곳(사람이 푼 곳 · 차단 금지 대역)을 미리 밝힌다 */
 function blockHint(absorbed: IncidentDetail['absorbed']): string {
-  const parts = ['같은 페이로드로 이 사건에 묶인 출발지를 같은 만료로 올리고, 만료 전까지 새로 흡수되는 출발지도 같은 만료로 올립니다. 다른 사건으로 살아 있는 차단은 그 사건 것으로 두고 만료도 바꾸지 않습니다.']
+  const parts = ['같은 페이로드로 이 사건에 묶인 출발지를 같은 만료로 올리고, 만료 전까지 새로 흡수되는 출발지도 같은 만료로 올립니다(첫 사건의 마지막 판정이 위협일 때만). 다른 사건으로 살아 있는 차단은 그 사건 것으로 두고 만료도 바꾸지 않습니다.']
   const skipped = absorbed?.skipped_total ?? 0
   if (skipped > 0) {
     const list = (absorbed?.skipped ?? []).join(', ')
     parts.push(`사람이 푼 ${skipped}곳(${list}${skipped > (absorbed?.skipped?.length ?? 0) ? ' …' : ''})은 다시 걸지 않습니다.`)
   }
-  if (absorbed?.unblockable) parts.push(`차단 금지 대역(사설 · 예약 주소) ${absorbed.unblockable}곳은 넣지 않습니다.`)
+  if (absorbed?.unblockable) parts.push(`차단 금지 대역(사설 · 예약 · 인프라 주소) ${absorbed.unblockable}곳은 넣지 않습니다.`)
   return parts.join(' ')
 }
 

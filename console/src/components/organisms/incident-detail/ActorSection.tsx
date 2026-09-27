@@ -7,7 +7,7 @@ import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { Time } from '../../atoms/Time'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { DetailSection } from './DetailSection'
-import { BLOCK_STATE_LABEL, BLOCK_STATE_TONE, blockState, incidentHref } from './format'
+import { BLOCK_STATE_LABEL, BLOCK_STATE_TONE, blockState, blockStateHint, incidentHref } from './format'
 import { StatusBadge } from './StatusBadge'
 import { TABLE } from './table-styles'
 
@@ -27,7 +27,7 @@ export interface ActorSectionProps {
  * 첫 사건이면 같은 페이로드로 흡수된 다른 출발지도 이 사건의 행위자로 보인다. 흡수된 인시던트는 지워져 상세가 없다.
  */
 export function ActorSection({ actor, related, actorIp, absorbed, className }: ActorSectionProps) {
-  const { history, rules, blocked } = actor
+  const { history, rules, blocked, exempt } = actor
   const state = blocked ? blockState(blocked) : null
   return (
     <DetailSection number="③" title="행위자 이력" aside={actorIp && <span className="font-mono">{actorIp}</span>} className={className}>
@@ -77,21 +77,36 @@ export function ActorSection({ actor, related, actorIp, absorbed, className }: A
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <span className="text-xs text-ink-muted">차단 이력</span>
+            <span className="text-xs text-ink-muted">차단 이력 · 요청과 AWS 관문의 집행 결과</span>
             {blocked && state ? (
-              <dl className="m-0 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3" data-block-state={state}>
-                <Fact label="상태" value={<Badge tone={BLOCK_STATE_TONE[state]}>{BLOCK_STATE_LABEL[state]}</Badge>} />
-                <Fact label="사유" value={<UntrustedText value={blocked.reason} fallback="—" />} />
-                <Fact label="방식" value={<UntrustedText value={blocked.method} fallback="—" />} />
-                <Fact label="요청" value={<Time value={blocked.created_at} format="datetime" />} />
-                <Fact label="집행" value={blocked.enforced_at ? <Time value={blocked.enforced_at} format="datetime" /> : '아직 집행 전'} />
-                <Fact
-                  label={blocked.released_at ? '해제' : '만료'}
-                  value={blocked.released_at ? <Time value={blocked.released_at} format="datetime" /> : blocked.expires_at ? <Time value={blocked.expires_at} format="datetime" /> : '만료 없음'}
-                />
-              </dl>
+              <>
+                <dl className="m-0 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3" data-block-state={state}>
+                  <Fact label="상태" value={<Badge tone={BLOCK_STATE_TONE[state]}>{BLOCK_STATE_LABEL[state]}</Badge>} />
+                  <Fact label="사유" value={<UntrustedText value={blocked.reason} fallback="—" />} />
+                  <Fact label="방식" value={<UntrustedText value={blocked.method} fallback="—" />} />
+                  <Fact label="요청" value={<Time value={blocked.created_at} format="datetime" />} />
+                  <Fact
+                    label={state === 'mismatch' ? '마지막 집행 확인' : '집행 확인'}
+                    value={blocked.enforced_at && (state === 'enforced' || state === 'mismatch') ? <Time value={blocked.enforced_at} format="datetime" /> : blockStateHint(blocked, state)}
+                  />
+                  <Fact
+                    label={blocked.released_at ? '해제' : '만료'}
+                    value={blocked.released_at ? <Time value={blocked.released_at} format="datetime" /> : blocked.expires_at ? <Time value={blocked.expires_at} format="datetime" /> : '만료 없음'}
+                  />
+                </dl>
+                {blocked.enforce_note && (
+                  <p className="m-0 text-xs break-words text-ink-muted">
+                    집행 메모 <UntrustedText value={blocked.enforce_note} />
+                  </p>
+                )}
+              </>
             ) : (
               <span className="text-xs text-ink-muted">차단한 적 없음</span>
+            )}
+            {exempt && (
+              <p className="m-0 text-xs break-words text-ink-muted" data-block-exempt>
+                차단 금지 대역 <span className="font-mono">{exempt.cidr}</span>(<UntrustedText value={exempt.note} max={64} />) · 이 출발지는 차단하지 않습니다
+              </p>
             )}
           </div>
         </>
@@ -171,9 +186,17 @@ function AbsorbedList({ absorbed }: { absorbed: AbsorbedInfo }) {
         <strong className="font-semibold text-ink">같은 페이로드 흡수 {sources}곳</strong> · 기록 {total}건(억제 포함)
         {blocked > 0 && ` · 이 사건의 흡수 차단 ${blocked}곳 유지 중`}
       </span>
-      {follow && (
+      {follow && (follow.verdict === undefined || follow.verdict === 'threat') && (
         <span className="text-xs text-ink-muted">
           후속 차단 중 · 새로 흡수되는 출발지도 <Time value={follow.expires_at} format="datetime" /> 까지 차단합니다
+        </span>
+      )}
+      {follow && follow.verdict !== undefined && follow.verdict !== 'threat' && (
+        <span className="text-xs text-warning">
+          {follow.verdict === null
+            ? '후속 차단 대기 · 첫 사건에 위협 판정이 기록되면 새로 흡수되는 출발지를 '
+            : '후속 차단 멈춤 · 첫 사건의 마지막 판정이 위협이 아니어서 새로 흡수되는 출발지는 차단하지 않습니다. 다시 위협으로 판정하면 '}
+          <Time value={follow.expires_at} format="datetime" /> 까지 차단합니다
         </span>
       )}
       {items.length > 0 && <div className={`${TABLE.wrap} max-h-80`}>

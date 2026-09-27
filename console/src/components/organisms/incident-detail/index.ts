@@ -20,6 +20,7 @@ export {
   BLOCK_STATE_LABEL,
   BLOCK_STATE_TONE,
   blockState,
+  blockStateHint,
   decisionSeconds,
   DEFAULT_BLOCK_HOURS,
   formatRawLine,

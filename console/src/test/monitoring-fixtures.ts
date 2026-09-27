@@ -9,7 +9,7 @@ export const MONITORING_SUMMARY: Summary = {
     { rule_id: 'R001', rule_version: 'v2', incidents: 20, judged_effective: 10, non_action: 3, non_action_rate: 30 },
     { rule_id: 'R201', rule_version: 'v2', incidents: 2, judged_effective: 0, non_action: 0, non_action_rate: null },
   ],
-  blocked_ips: 2, latest_event: AS_OF,
+  blocked_ips: 2, blocks: { enforced: 1, pending: 1, excluded: 0, mismatch: 0 }, latest_event: AS_OF,
 }
 
 export function blockEntry(extra: Partial<BlockEntry> = {}): BlockEntry {

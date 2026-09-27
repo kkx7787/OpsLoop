@@ -90,6 +90,43 @@ describe('차단 목록', () => {
     expect(screen.queryByText(/차단 해제를 기록했습니다/)).toBeNull()
   })
 
+  it('활성 요청을 집행 확인 · 대기 · 제외 · 관문 불일치로 나눠 세고 행마다 까닭을 보인다(이슈 #47)', async () => {
+    const rows = [
+      blockEntry({ actor_ip: '198.51.100.1', method: 'fail2ban', enforced_at: '2026-09-23T07:59:00Z', enforce_note: '관문 반영 · abcd1234 · 2026-09-23T07:59:00Z' }),
+      blockEntry(),
+      blockEntry({ actor_ip: '198.51.100.2', expires_at: null, enforce_note: '집행 제외 · 만료 없음' }),
+      blockEntry({ actor_ip: '198.51.100.3', expires_at: null }),
+      blockEntry({ actor_ip: '198.51.100.4', method: 'nft', enforced_at: '2026-09-23T07:00:00Z', enforce_note: '관문 불일치 · 관문 상태가 7분 전' }),
+      blockEntry({ actor_ip: '198.51.100.5', released_at: '2026-09-23T07:00:00Z', enforced_at: null }),
+      blockEntry({ actor_ip: '198.51.100.6', expires_at: '2026-09-23T07:00:00Z' }),
+      // 풀었지만 관문이 뺀 목록을 적용했다는 보고가 아직 없다(enforced_at 이 남음). 관문은 아직 막고 있을 수 있다
+      blockEntry({ actor_ip: '198.51.100.7', released_at: '2026-09-23T07:00:00Z', method: 'nft', enforced_at: '2026-09-23T06:00:00Z', enforce_note: '관문 반영 · abcd1234 · 2026-09-23T06:00:00Z' }),
+    ]
+    vi.stubGlobal('fetch', vi.fn<typeof globalThis.fetch>(async (input) => {
+      const url = String(input)
+      if (url === '/api/me') return json({ username: 'tester', role: 'viewer' })
+      if (url.startsWith('/api/blocklist')) return json(rows)
+      return json({}, 404)
+    }))
+    const { container } = renderRoutes([{ path: '/blocklist', element: <BlocklistPage /> }], '/blocklist', noRetryClient())
+    expect(await screen.findByText('198.51.100.1')).toBeInTheDocument()
+    const count = (label: string) => screen.getByText(label, { selector: 'div' }).nextElementSibling?.textContent
+    expect([count('활성 요청'), count('집행 확인'), count('집행 대기'), count('관문 불일치'), count('집행 제외')]).toEqual(['5건', '1건', '1건', '1건', '2건'])
+    const states = [...container.querySelectorAll('[data-block-state]')].map(el => el.getAttribute('data-block-state'))
+    expect(states.sort()).toEqual(['enforced', 'excluded', 'excluded', 'mismatch', 'pending'])
+    const cell = (ip: string) => screen.getByText(ip).closest('li')!.querySelector('[data-block-state]')!.textContent
+    expect(cell('198.51.100.1')).toMatch(/^집행 확인관문 집합 반영 확인 \S+ \S+ · fail2ban관문 반영 · abcd1234/)
+    expect(cell('192.0.2.8')).toBe('집행 대기관문 반영 확인 전')
+    expect(cell('198.51.100.2')).toBe('집행 제외만료 없는 차단 · 관문에 넘기지 않음집행 제외 · 만료 없음')
+    expect(cell('198.51.100.3')).toBe('집행 제외만료 없는 차단 · 관문에 넘기지 않음')
+    expect(cell('198.51.100.4')).toMatch(/^관문 불일치관문 상태가 목록과 다름 · 마지막 확인 \S+ \S+ · nft관문 불일치 · 관문 상태가 7분 전$/)
+    fireEvent.click(screen.getByRole('button', { name: '해제 2' }))
+    expect(cell('198.51.100.5')).toBe('해제됨사람이 풂 · 관문 목록에서 빠짐')
+    expect(cell('198.51.100.7')).toBe('해제됨사람이 풂 · 관문에서 빠졌는지 확인 전 · nft관문 반영 · abcd1234 · 2026-09-23T06:00:00Z')
+    fireEvent.click(screen.getByRole('button', { name: '만료 1' }))
+    expect(cell('198.51.100.6')).toBe('만료됨만료가 지남 · 관문 목록에서 빠짐')
+  })
+
   it('차단 통보를 받으면 목록을 재조회한다', async () => {
     const { fetch, client } = setup()
     await screen.findByText('192.0.2.8')

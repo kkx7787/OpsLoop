@@ -12,8 +12,13 @@ DB 시험은 OPSLOOP_TEST_DATABASE_URL 이 있을 때만 돈다. 연결 전용 �
   - 후속 차단: 약속이 살아 있으면 뒤에 흡수된 출발지를 약속의 만료로 올리고 첫 사건에 메모 조치를 남긴다
   - 해제: include_absorbed 가 있으면 이 사건의 흡수 차단만 함께 풀고 약속을 거둔다. 다른 사건 차단은 두고, 풀 것이
     없으면 409. actor_ip 를 주면 이 사건의 흡수 차단 한 행만 푼다(차단 목록 화면). 첫 사건 출발지의 차단은 그대로다
+  - 차단 금지 대역(이슈 #47): 콘솔 차단은 트리거 거부(23514)를 400 과 사유(걸린 대역 · 메모)로 돌려주고 조치를 남기지
+    않는다. 흡수 차단 · 후속 차단은 DB 금지 대역(block_exempt)과 대역 주소를 미리 뺀다. 후속 차단은 첫 사건의 마지막
+    판정이 위협일 때만 돌고, 한 첫 사건이 거부돼도 다른 첫 사건은 올린다. 살아 있는 차단에 다시 걸면 집행 정보를 두고,
+    새 요청이면 비운다
 """
 import os
+import secrets
 import unittest
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -22,6 +27,27 @@ from unittest.mock import AsyncMock, patch
 
 import absorbed as absorbed_mod
 import main
+
+# 차단 금지 대역 표와 트리거. 계약(이슈 #47 인터페이스)대로 흉내 낸다: 한 주소가 아니면 23514 blocklist_host_only,
+# 금지 대역이면 23514 blocklist_exempt, UPDATE 는 주소가 바뀔 때만 본다. 실제 트리거(schema.sql blocklist_guard)는 infra 시험이 본다
+GUARD = """
+    CREATE TEMP TABLE block_exempt (cidr inet PRIMARY KEY, note text NOT NULL, created_at timestamptz DEFAULT now());
+    CREATE FUNCTION pg_temp.blocklist_guard() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+        IF TG_OP = 'UPDATE' AND NEW.actor_ip IS NOT DISTINCT FROM OLD.actor_ip THEN RETURN NEW; END IF;
+        IF masklen(NEW.actor_ip) <> (CASE WHEN family(NEW.actor_ip) = 4 THEN 32 ELSE 128 END) THEN
+            RAISE EXCEPTION USING ERRCODE = 'check_violation', CONSTRAINT = 'blocklist_host_only', MESSAGE = '대역 주소';
+        END IF;
+        IF EXISTS (SELECT 1 FROM block_exempt WHERE cidr >>= NEW.actor_ip) THEN
+            RAISE EXCEPTION USING ERRCODE = 'check_violation', CONSTRAINT = 'blocklist_exempt', MESSAGE = '금지 대역';
+        END IF;
+        RETURN NEW;
+    END $$;
+    CREATE TRIGGER blocklist_guard BEFORE INSERT OR UPDATE OF actor_ip ON blocklist
+        FOR EACH ROW EXECUTE FUNCTION pg_temp.blocklist_guard();
+    INSERT INTO block_exempt (cidr, note) VALUES ('10.0.0.0/8', '사설 · AWS VPC'), ('15.164.37.49/32', 'AWS 관문 EIP'),
+        ('192.168.0.0/16', '사설 · 관리망 · 서비스망');
+"""
 
 FIRST = "R006|v3|192.0.2.1|2026-09-20T00:00:00+00:00"
 OWN = "192.0.2.1"
@@ -78,7 +104,7 @@ class AbsorbedDatabaseTests(unittest.IsolatedAsyncioTestCase):
                 sessions text[] NOT NULL DEFAULT '{}', payloads text[] NOT NULL DEFAULT '{}',
                 recorded_at timestamptz NOT NULL DEFAULT now(), PRIMARY KEY (first_key, member_key),
                 CHECK ((kind = 'suppressed') = (via_key IS NOT NULL)));
-        """)
+        """ + GUARD)
         await self.conn.execute("""INSERT INTO incidents (incident_key, rule_id, rule_version, rule_name, severity,
             actor_ip, first_ts, last_ts, signal_count, session_count)
             VALUES ($1, 'R006', 'v3', 'SSH 키 심기', 'critical', $2, $3, $3, 1, 1)""", FIRST, OWN, T0)
@@ -259,8 +285,13 @@ class AbsorbedDatabaseTests(unittest.IsolatedAsyncioTestCase):
 
     # ------------------------------------------------------------ 후속 차단
 
+    async def threat(self, verdict="threat", key=FIRST, minutes=0):
+        await self.conn.execute("INSERT INTO verdicts (incident_key, verdict, operator, created_at) "
+                                "VALUES ($1, $2, 'han', now() + make_interval(mins => $3))", key, verdict, minutes)
+
     async def test_follow_blocks_sources_absorbed_after_block(self):
-        # 판정 · 차단이 흡수보다 먼저 온다. 약속이 있으면 뒤에 흡수된 출발지를 약속의 만료로 올린다
+        # 판정 · 차단이 흡수보다 먼저 온다. 약속이 있고 첫 사건이 위협이면 뒤에 흡수된 출발지를 약속의 만료로 올린다
+        await self.threat()
         out = await self.act(main.ActionIn(action="block_ip", expires_hours=48, include_absorbed=True))
         self.assertEqual(out["absorbed"]["blocked"], 0)
         self.assertIn("만료 전 새 흡수도 차단", out["note"])
@@ -286,6 +317,7 @@ class AbsorbedDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.conn.fetchval("SELECT count(*) FROM actions WHERE action = 'note'"), 1)
 
     async def test_follow_skips_released_rows_and_stops_after_release_all(self):
+        await self.threat()
         await self.absorb("198.51.100.2", 5)
         await self.act(main.ActionIn(action="block_ip", include_absorbed=True))
         # 잘못 묶인 한 곳을 풀면 후속 차단이 다시 걸지 않는다
@@ -397,6 +429,142 @@ class AbsorbedDatabaseTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(main.HTTPException) as error:
             await self.act(main.ActionIn(action="unblock_ip", include_absorbed=True), OPERATOR)
         self.assertEqual(error.exception.status_code, 403)
+
+    # ------------------------------------------------------------ 차단 금지 대역 · 집행(이슈 #47)
+
+    async def incident(self, key, ip, rule="R202", version="s1"):
+        await self.conn.execute("""INSERT INTO incidents (incident_key, rule_id, rule_version, rule_name, severity,
+            actor_ip, first_ts, last_ts, signal_count, session_count)
+            VALUES ($1, $2, $3, '시험 규칙', 'high', $4, $5, $5, 1, 1)""", key, rule, version, ip, T0)
+
+    async def test_console_block_refused_for_exempt_net(self):
+        # 인프라 주소(R202 사건의 web-01 · 관문 EIP)는 400 과 사유. 차단 · 조치 · 상태 변경 모두 남지 않는다
+        for ip, where in (("192.168.50.21", "192.168.0.0/16(사설 · 관리망 · 서비스망)"),
+                          ("15.164.37.49", "15.164.37.49/32(AWS 관문 EIP)")):
+            key = f"R202|s1|{ip}|x"
+            await self.incident(key, ip)
+            with self.subTest(ip=ip), self.assertRaises(main.HTTPException) as error:
+                await self.act(main.ActionIn(action="block_ip", note="메모", include_absorbed=True), key=key)
+            self.assertEqual(error.exception.status_code, 400)
+            self.assertEqual(error.exception.detail, f"{ip} 는 차단 금지 대역 {where}에 들어 차단하지 않습니다. "
+                                                     "인프라 · 사설 · 예약 주소는 막지 않습니다")
+            self.assertEqual(await self.conn.fetchval("SELECT status FROM incidents WHERE incident_key = $1", key), "open")
+        self.assertEqual(await self.block_rows(), {})
+        self.assertEqual(await self.conn.fetchval("SELECT count(*) FROM actions"), 0)
+        self.assertEqual(await self.conn.fetchval("SELECT count(*) FROM absorbed_blocks"), 0)
+        # 거부 뒤에도 연결은 멀쩡하다(저장점) · 문서용 주소는 막힌다
+        await self.act(main.ActionIn(action="block_ip"))
+        self.assertEqual(set(await self.block_rows()), {OWN})
+
+    async def test_detail_shows_exempt_and_enforcement(self):
+        await self.incident("R202|s1|15.164.37.49|x", "15.164.37.49")
+        with patch.object(main.app.state, "pool", self.pool, create=True):
+            d = await main.get_incident("R202|s1|15.164.37.49|x")
+            self.assertEqual(d["actor"]["exempt"], {"cidr": "15.164.37.49/32", "note": "AWS 관문 EIP"})
+            self.assertIsNone(d["actor"]["blocked"])
+            await self.conn.execute("""INSERT INTO blocklist (actor_ip, reason, incident_key, expires_at, method,
+                enforced_at, enforce_note, requested_by) VALUES ($1, 'console', $2, now() + interval '1 hour', 'nft',
+                now(), '관문 반영 · abcd1234 · 2026-09-27T08:00:00Z', 'triage:han')""", OWN, FIRST)
+            d = await main.get_incident(FIRST)
+        self.assertIsNone(d["actor"]["exempt"])
+        self.assertEqual((d["actor"]["blocked"]["method"], d["actor"]["blocked"]["enforce_note"],
+                          d["actor"]["blocked"]["requested_by"]),
+                         ("nft", "관문 반영 · abcd1234 · 2026-09-27T08:00:00Z", "triage:han"))
+        # 금지 대역 표가 없는 DB(마이그레이션 전)에서도 상세가 뜬다
+        await self.conn.execute("DROP TABLE block_exempt CASCADE")
+        await self.conn.execute("DROP TRIGGER blocklist_guard ON blocklist")
+        with patch.object(main.app.state, "pool", self.pool, create=True):
+            self.assertIsNone((await main.get_incident(FIRST))["actor"]["exempt"])
+
+    async def test_exempt_unreadable_degrades_to_constants(self):
+        # 역할 블록(20260924_db_roles.sql)만 다시 적용하면 콘솔의 block_exempt 읽기가 사라진다. 표가 있어도 읽지 못하면 코드 상수만
+        # 거르고 사유는 비운다(권한 오류로 상세 · 대시보드 · 차단 400 사유가 죽지 않는다). 읽지 못하는 역할로 바꿔 본다(슈퍼유저만)
+        if not await self.conn.fetchval("SELECT rolsuper FROM pg_roles WHERE rolname = current_user"):
+            self.skipTest("시험 역할을 만들 수 없는 연결")
+        role = f"t47_app_{os.getpid()}_{secrets.token_hex(3)}"
+        await self.conn.execute(f"CREATE ROLE {role} NOLOGIN NOINHERIT")
+        try:
+            await self.conn.execute(f"SET ROLE {role}")
+            self.assertTrue(await self.conn.fetchval("SELECT to_regclass('block_exempt') IS NOT NULL"))   # 표는 보이지만
+            self.assertFalse(await absorbed_mod.has_exempt_table(self.conn))                             # 읽지 못한다
+            self.assertEqual(await absorbed_mod.block_nets(self.conn), absorbed_mod.NO_BLOCK_NETS)
+            self.assertIsNone(await absorbed_mod.exempt_of(self.conn, "15.164.37.49"))
+        finally:
+            await self.conn.execute("RESET ROLE")
+            await self.conn.execute(f"DROP ROLE {role}")
+        self.assertEqual(absorbed_mod.refused_text("15.164.37.49", "blocklist_exempt", None),
+                         "15.164.37.49 는 차단 금지 대역에 들어 차단하지 않습니다. 인프라 · 사설 · 예약 주소는 막지 않습니다")
+        self.assertTrue(await absorbed_mod.has_exempt_table(self.conn))
+        self.assertEqual(await absorbed_mod.exempt_of(self.conn, "15.164.37.49"),
+                         {"cidr": "15.164.37.49/32", "note": "AWS 관문 EIP"})
+
+    async def test_absorbed_block_skips_db_exempt_and_net_rows(self):
+        # 코드 상수에 없는 DB 금지 대역(관문 EIP)과 대역 주소는 미리 빼 트리거에 걸리지 않는다(한 곳 때문에 전체가 실패하지 않는다)
+        await self.absorb("198.51.100.2", 5)
+        await self.absorb("15.164.37.49", 6)
+        await self.absorb("198.51.100.64/26", 7)
+        out = await self.act(main.ActionIn(action="block_ip", include_absorbed=True))
+        self.assertEqual((out["absorbed"]["blocked"], out["absorbed"]["unblockable"]), (1, 2))
+        self.assertEqual(set(await self.block_rows()), {OWN, "198.51.100.2"})
+        self.assertIn("차단 금지 대역 2곳 제외", out["note"])
+
+    async def test_follow_needs_threat_verdict_and_stops_when_flipped(self):
+        # 판정 전에 함께 차단을 걸면 그때 흡수된 곳만 오르고, 새 흡수는 위협 판정 뒤부터 오른다
+        await self.absorb("198.51.100.2", 5)
+        await self.act(main.ActionIn(action="block_ip", include_absorbed=True))
+        await self.absorb("198.51.100.3", 60)
+        follower = absorbed_mod.AbsorbedFollower(self.pool)
+        self.assertEqual(await follower.step(self.conn), [])
+        await self.threat()
+        self.assertEqual(await follower.step(self.conn), [(FIRST, 1)])
+        # 판정을 오탐으로 고치면 약속이 살아 있어도 멈춘다. 이미 올린 곳은 그대로(만료로 풀린다)
+        await self.threat("false_positive", minutes=1)
+        await self.absorb("198.51.100.4", 70)
+        self.assertEqual(await follower.step(self.conn), [])
+        self.assertNotIn("198.51.100.4", await self.block_rows())
+        self.assertIsNone((await self.block_rows())["198.51.100.3"]["released_at"])
+        with patch.object(main.app.state, "pool", self.pool, create=True):
+            follow = (await main.get_incident(FIRST))["absorbed"]["follow"]
+        self.assertEqual(follow["verdict"], "false_positive")
+        # 다시 위협이면 이어 간다
+        await self.threat(minutes=2)
+        self.assertEqual(await follower.step(self.conn), [(FIRST, 1)])
+
+    async def test_follow_refused_first_incident_does_not_stop_others(self):
+        # 금지 대역이 그 사이 늘어 한 첫 사건의 차단이 거부돼도(여기서는 상수만 걸러 흉내) 그 사건만 건너뛴다
+        other = "R006|v3|192.0.2.5|2026-09-20T00:00:00+00:00"
+        await self.incident(other, "192.0.2.5", rule="R006", version="v3")
+        for key in (FIRST, other):
+            await self.threat(key=key)
+            await self.conn.execute("INSERT INTO absorbed_blocks (first_key, expires_at, requested_by) "
+                                    "VALUES ($1, now() + interval '24 hours', 'han')", key)
+        await self.absorb("198.51.100.2", 5)
+        await self.absorb("15.164.37.49", 6)
+        await self.absorb("198.51.100.9", 7, first=other)
+        follower = absorbed_mod.AbsorbedFollower(self.pool)
+        with patch.object(absorbed_mod, "block_nets", AsyncMock(return_value=list(absorbed_mod.NO_BLOCK_NETS))), \
+                self.assertLogs("opsloop.absorbed", "WARNING") as logs:
+            self.assertEqual(await follower.step(self.conn), [(other, 1)])
+        self.assertIn(FIRST, logs.output[0])
+        self.assertEqual(set(await self.block_rows()), {"198.51.100.9"})
+        self.assertEqual(await self.conn.fetchval("SELECT count(*) FROM actions WHERE incident_key = $1", FIRST), 0)
+
+    async def test_console_reblock_keeps_live_enforcement_and_clears_new_request(self):
+        await self.conn.execute("""INSERT INTO blocklist (actor_ip, reason, incident_key, expires_at, method, enforced_at,
+            enforce_note) VALUES ($1, 'old', 'R002|v3|x', now() + interval '72 hours', 'fail2ban', now(),
+            '관문 반영 · abcd1234 · x')""", OWN)
+        before = await self.conn.fetchrow("SELECT expires_at, method, enforced_at, enforce_note FROM blocklist")
+        await self.act(main.ActionIn(action="block_ip", expires_hours=1))
+        row = await self.conn.fetchrow("SELECT expires_at, method, enforced_at, enforce_note, incident_key FROM blocklist")
+        # 만료를 앞당기지 않고 관문에 이미 있는 집행 정보는 그대로(감사에 unenforced 가 남지 않는다)
+        self.assertEqual(tuple(row)[:4], tuple(before))
+        self.assertEqual(row["incident_key"], FIRST)
+        # 만료된 행에 다시 걸면 새 요청이라 집행 정보를 비운다
+        await self.conn.execute("UPDATE blocklist SET expires_at = now() - interval '1 second'")
+        await self.act(main.ActionIn(action="block_ip", expires_hours=2))
+        row = await self.conn.fetchrow("SELECT expires_at, method, enforced_at, enforce_note FROM blocklist")
+        self.assertEqual((row["method"], row["enforced_at"], row["enforce_note"]), (None, None, None))
+        self.assertGreater(row["expires_at"], datetime.now(timezone.utc) + timedelta(hours=1))
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ActorBlock, BehaviorRow, RawLine } from '@/api/incidents'
-import { blockState, decisionSeconds, formatRawLine, formatValue, isActiveBlock, mergeHistory, sampleColumns, summarizeBehavior } from './format'
+import { BLOCK_STATE_LABEL, blockState, blockStateHint, decisionSeconds, formatRawLine, formatValue, isActiveBlock, mergeHistory, sampleColumns, summarizeBehavior } from './format'
 
 function row(extra: Partial<BehaviorRow> = {}): BehaviorRow {
   return { ts: '2026-09-18T06:00:30+00:00', sensor: 'hp-01', eventid: 'x', session: null, username: null, input: null, url: null, shasum: null, http_method: null, http_status: null, ...extra }
@@ -45,19 +45,47 @@ describe('formatValue · sampleColumns', () => {
 describe('blockState · isActiveBlock', () => {
   const now = Date.parse('2026-09-18T12:00:00+00:00')
 
-  it('해제 > 만료 > 집행 여부 순으로 판단한다', () => {
-    expect(blockState(block(), now)).toBe('active')
+  it('해제 > 만료 > 집행 제외 > 관문 불일치 > 집행 확인 > 집행 대기 순으로 판단한다(이슈 #47)', () => {
+    expect(blockState(block(), now)).toBe('enforced')
     expect(blockState(block({ enforced_at: null }), now)).toBe('pending')
     expect(blockState(block({ released_at: '2026-09-18T08:00:00+00:00' }), now)).toBe('released')
     expect(blockState(block({ expires_at: '2026-09-18T11:00:00+00:00' }), now)).toBe('expired')
-    expect(blockState(block({ expires_at: null }), now)).toBe('active')
+    // 만료 없는 옛 차단은 집행기가 메모를 쓰기 전에도 제외다(관문에 넘기지 않는다)
+    expect(blockState(block({ expires_at: null }), now)).toBe('excluded')
+    expect(blockState(block({ enforced_at: null, enforce_note: '집행 제외 · 금지 대역' }), now)).toBe('excluded')
+    // 불일치는 옛 enforced_at 이 남아 있어도 불일치다
+    expect(blockState(block({ enforce_note: '관문 불일치 · 관문 상태가 7분 전' }), now)).toBe('mismatch')
+    expect(blockState(block({ enforce_note: '관문 반영 · abcd1234 · 2026-09-18T07:00:10Z' }), now)).toBe('enforced')
+    // 해제 · 만료가 메모보다 앞선다
+    expect(blockState(block({ expires_at: null, released_at: '2026-09-18T08:00:00+00:00' }), now)).toBe('released')
+    expect(blockState(block({ enforce_note: '관문 불일치 · x', expires_at: '2026-09-18T11:00:00+00:00' }), now)).toBe('expired')
   })
 
-  it('풀 수 있는 차단은 살아 있거나 집행 대기인 것', () => {
+  it('다섯 상태의 이름과 설명', () => {
+    expect(BLOCK_STATE_LABEL).toMatchObject({ enforced: '집행 확인', pending: '집행 대기', excluded: '집행 제외', mismatch: '관문 불일치', released: '해제됨', expired: '만료됨' })
+    expect(blockStateHint(block({ expires_at: null, enforced_at: null }), 'excluded')).toBe('만료 없는 차단 · 관문에 넘기지 않음')
+    expect(blockStateHint(block(), 'mismatch')).toBe('관문 상태가 목록과 다름 · 마지막 확인')
+    expect(blockStateHint(block({ enforced_at: null }), 'pending')).toBe('관문 반영 확인 전')
+  })
+
+  it('해제 · 만료 · 제외인데 관문이 뺀 것을 아직 확인하지 못했으면(enforced_at 이 남음) 빠졌다고 적지 않는다', () => {
+    const released = '2026-09-18T08:00:00+00:00'
+    expect(blockStateHint(block({ released_at: released, enforced_at: null }), 'released')).toBe('사람이 풂 · 관문 목록에서 빠짐')
+    expect(blockStateHint(block({ released_at: released }), 'released')).toBe('사람이 풂 · 관문에서 빠졌는지 확인 전')
+    expect(blockStateHint(block({ expires_at: '2026-09-18T11:00:00+00:00', enforced_at: null }), 'expired')).toBe('만료가 지남 · 관문 목록에서 빠짐')
+    expect(blockStateHint(block({ expires_at: '2026-09-18T11:00:00+00:00' }), 'expired')).toBe('만료가 지남 · 관문에서 빠졌는지 확인 전')
+    expect(blockStateHint(block({ enforce_note: '집행 제외 · 금지 대역' }), 'excluded')).toBe('관문에 넘기지 않음 · 관문에서 빠졌는지 확인 전')
+    expect(blockStateHint(block({ enforce_note: '집행 제외 · 금지 대역', enforced_at: null }), 'excluded')).toBe('관문에 넘기지 않음')
+  })
+
+  it('풀 수 있는 차단은 살아 있는 것(집행 확인 · 대기 · 제외 · 불일치)', () => {
     expect(isActiveBlock(null, now)).toBe(false)
     expect(isActiveBlock(block(), now)).toBe(true)
     expect(isActiveBlock(block({ enforced_at: null }), now)).toBe(true)
+    expect(isActiveBlock(block({ expires_at: null }), now)).toBe(true)
+    expect(isActiveBlock(block({ enforce_note: '관문 불일치 · x' }), now)).toBe(true)
     expect(isActiveBlock(block({ released_at: '2026-09-18T08:00:00+00:00' }), now)).toBe(false)
+    expect(isActiveBlock(block({ expires_at: '2026-09-18T11:00:00+00:00' }), now)).toBe(false)
   })
 })
 

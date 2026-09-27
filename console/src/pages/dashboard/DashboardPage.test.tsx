@@ -24,6 +24,22 @@ describe('대시보드', () => {
     expect(fetch.mock.calls.every(([path]) => String(path) === '/api/stats/summary')).toBe(true)
   })
 
+  it('활성 차단 요청을 집행 확인 · 대기 · 제외로 나눠 막은 수로 읽히지 않게 한다(이슈 #47)', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => json({ ...MONITORING_SUMMARY, blocked_ips: 16, blocks: { enforced: 2, pending: 0, excluded: 13, mismatch: 1 } })))
+    renderPage()
+    expect(await screen.findByText('활성 차단 요청 16건')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '집행 확인 2 · 대기 0 · 제외 13' })).toHaveAttribute('href', '/blocklist')
+    expect(screen.getByText('관문 불일치 1건')).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: '16건' })).toBeNull()
+  })
+
+  it('집행 상태가 없는 이전 서버는 요청 수와 미확인을 보인다', async () => {
+    // JSON 은 undefined 칸을 싣지 않는다(이전 서버처럼 blocks 가 없다)
+    vi.stubGlobal('fetch', vi.fn(async () => json({ ...MONITORING_SUMMARY, blocks: undefined })))
+    renderPage()
+    expect(await screen.findByRole('link', { name: '2건 · 집행 상태 미확인' })).toBeInTheDocument()
+  })
+
   it('판정 뒤에 흡수됐는데 차단이 없는 출발지를 활성 차단 옆에 알린다', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({ ...MONITORING_SUMMARY, absorbed_unblocked: { sources: 12, incidents: 2, first_key: 'R006|v3|192.0.2.1|x' } })))
     renderPage()

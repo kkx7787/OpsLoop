@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-OpsLoop - 관문 방화벽 거부 기록 파서 (WBS 3.1 / 이슈 #15 / PostgreSQL)
+OpsLoop - 관문 방화벽 거부 기록 파서 (WBS 3.1 / 이슈 #15 · #47 / PostgreSQL)
 
 gateway.log / gateway.log.YYYY-MM-DD 를 읽어 events 로 정규화한다. 구조는 디코이 파서와 같다.
 로그 파일이 원장이고 DB 는 파생물이며, 재실행해도 중복이 쌓이지 않는다.
@@ -13,6 +13,7 @@ gateway.log / gateway.log.YYYY-MM-DD 를 읽어 events 로 정규화한다. 구�
 접두 → eventid (방화벽 규칙 infra/aws/gateway/nftables.conf 의 log prefix 와 같이 바꾼다)
   gw-forward-drop  gateway.forward.drop   전달 거부 (인터넷 → DMZ 는 DNAT 된 22 · 23 · 8080 만 허용)
   gw-input-drop    gateway.input.drop     방화벽 자신으로의 유입 거부 (관리는 SSM 뿐이라 유입 포트가 없다)
+  gw-block-drop    gateway.block.drop     차단 목록(집합 opsloop_block) 출발지의 허니팟 유입 거부 (이슈 #47. 초당 10줄까지)
   gw-egress        gateway.egress         DMZ → 인터넷 443 허용 기록 (이슈 #19 로 규칙이 없어져 새로 생기지 않는다. 옛 기록용)
 
 디코이 파서와 다른 점
@@ -53,6 +54,7 @@ SENSOR = "gateway"
 EVENTIDS = {
     "gw-forward-drop": "gateway.forward.drop",
     "gw-input-drop": "gateway.input.drop",
+    "gw-block-drop": "gateway.block.drop",
     "gw-egress": "gateway.egress",
 }
 
@@ -301,6 +303,9 @@ def report(conn, since, until):
                                           f"AND eventid = 'gateway.forward.drop' AND dst_port IS NOT NULL GROUP BY 1 ORDER BY c DESC LIMIT 15", p))
     section("유입 거부 목적지 포트 TOP 10", q(f"SELECT protocol || '/' || dst_port, count(*) c FROM events WHERE {w} "
                                           f"AND eventid = 'gateway.input.drop' AND dst_port IS NOT NULL GROUP BY 1 ORDER BY c DESC LIMIT 10", p))
+    # 차단 목록에 올라 허니팟 앞에서 막힌 출발지 (이슈 #47). '차단 요청 → 실제 거부'의 증거다
+    section("차단 거부 출발지 TOP 10", q(f"SELECT src_ip, count(*) c FROM events WHERE {w} "
+                                     f"AND eventid = 'gateway.block.drop' AND src_ip IS NOT NULL GROUP BY 1 ORDER BY c DESC LIMIT 10", p))
     section("출발지 TOP 10", q(f"SELECT src_ip, count(*) c FROM events WHERE {w} AND src_ip IS NOT NULL GROUP BY 1 ORDER BY c DESC LIMIT 10", p))
     # DMZ 에서 밖으로 나간 443 은 허용하되 기록한다. 목적지가 SSM · S3 가 아니면 센서가 경유지로 쓰인 것이다
     section("DMZ 유출(443) 출발지 → 목적지 TOP 10", q(f"SELECT host(src_ip) || ' → ' || input, count(*) c FROM events WHERE {w} "

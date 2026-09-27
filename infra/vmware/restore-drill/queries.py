@@ -24,13 +24,14 @@ PROD_GUARD = ("DO $ro$ BEGIN IF current_setting('transaction_read_only') <> 'on'
 PROD_HEAD = "\\set ON_ERROR_STOP on\n" + PROD_GUARD + "\n" + SESSION + "\n"
 
 IDENT = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
-# 덤프의 23개 표 (infra/schema.sql · infra/notify.sql). 복원 뒤 건수 대조는 덤프 목차의 표 이름으로 한다
+# 덤프의 24개 표 (infra/schema.sql · infra/notify.sql · 이슈 #47 block_exempt). 복원 뒤 건수 대조는 덤프 목차의 표 이름으로 한다
 TABLES = ("events", "sessions", "rule_versions", "incidents", "actions", "verdicts", "blocklist", "nodes",
           "console_users", "node_enrollments", "node_metrics", "detector_runs", "incident_absorbed",
           "absorbed_blocks", "notify_channels", "notify_deliveries", "cti_snapshots", "cti_kev", "cti_cve",
-          "cti_osv", "cti_watch", "asset_inventory", "asset_vulnerabilities")
-# 계약의 구조 수치 (참고). 합격은 운영 카탈로그(사전 점검 때 읽음)와 같은지로 본다
-EXPECT = {"tables": 23, "fk": 15, "triggers": 4, "functions": 7, "views": 3}
+          "cti_osv", "cti_watch", "asset_inventory", "asset_vulnerabilities", "block_exempt")
+# 계약의 구조 수치 (참고). 합격은 운영 카탈로그(사전 점검 때 읽음)와 같은지로 본다.
+# 이슈 #47 뒤: 표 +1(block_exempt) · 트리거 +1(blocklist_guard) · 함수 +2(blocklist_guard · note_block_expired)
+EXPECT = {"tables": 24, "fk": 15, "triggers": 5, "functions": 9, "views": 3}
 S3_SENSORS = ("cowrie", "decoy", "gateway")      # opsloop-ingest SENSORS. 나머지 센서는 관제 대상 로그(Loki · 관문 · 관리 원장)
 DB_ONLY_SENSORS = ("audit", "console")           # DB 에만 있는 이벤트. 원장에서 다시 만들 수 없다
 

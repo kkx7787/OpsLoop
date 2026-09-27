@@ -1,5 +1,5 @@
 import { Link } from 'react-router'
-import { useSummary } from '@/api/monitoring'
+import { useSummary, type BlockCounts } from '@/api/monitoring'
 import { Card, CardHeader } from '@/components/atoms/Card'
 import { SeverityBadge } from '@/components/atoms/SeverityBadge'
 import { Time } from '@/components/atoms/Time'
@@ -27,7 +27,9 @@ export function DashboardPage() {
           <Metric label="가장 오래된 미판정" value={data.pending.total ? formatDuration(data.pending.oldest_seconds * 1000) : '없음'} warn={data.pending.overdue > 0} />
           <Metric label="미판정" value={`${data.pending.total.toLocaleString()}건`} href="/incidents?judged=false" />
           <Metric label="판정 목표 초과" value={`${data.pending.overdue.toLocaleString()}건`} note={`목표 임박 ${data.pending.warning.toLocaleString()}건`} warn={data.pending.overdue > 0} />
-          <Metric label="활성 차단 요청" value={`${data.blocked_ips.toLocaleString()}건`} href="/blocklist" note={absorbedNote(data.absorbed_unblocked)} warn={!!data.absorbed_unblocked?.sources} />
+          <Metric label={`활성 차단 요청 ${data.blocked_ips.toLocaleString()}건`} value={blocksValue(data.blocks, data.blocked_ips)} href="/blocklist" compact={!!data.blocks}
+            note={[mismatchNote(data.blocks), absorbedNote(data.absorbed_unblocked)].filter(Boolean).join(' · ') || undefined}
+            warn={!!data.absorbed_unblocked?.sources || !!data.blocks?.mismatch} />
         </dl>
       </Card>
       <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
@@ -88,12 +90,26 @@ export function DashboardPage() {
   </div>
 }
 
+/**
+ * 활성 차단 요청을 집행 상태로 나눈 값(이슈 #47). 요청 수 하나만 크게 보이면 실제로 막은 수로 읽힌다.
+ * 관문이 반영한 것은 집행 확인뿐이다. 이전 서버(집행 상태 없음)는 요청 수와 '집행 상태 미확인' 을 보인다
+ */
+function blocksValue(blocks: BlockCounts | undefined, total: number): string {
+  if (!blocks) return `${total.toLocaleString()}건 · 집행 상태 미확인`
+  return `집행 확인 ${blocks.enforced.toLocaleString()} · 대기 ${blocks.pending.toLocaleString()} · 제외 ${blocks.excluded.toLocaleString()}`
+}
+
+/** 관문 불일치. 요청과 관문 상태가 5분 넘게 다르다(집행기 · 관문 동기화 확인) */
+function mismatchNote(blocks: BlockCounts | undefined): string | undefined {
+  return blocks?.mismatch ? `관문 불일치 ${blocks.mismatch.toLocaleString()}건` : undefined
+}
+
 /** 판정 뒤에 흡수됐는데 차단이 없는 출발지. 첫 사건 상세의 함께 차단(후속 차단)으로 막는다 */
 function absorbedNote(unblocked: { sources: number; incidents: number } | undefined): string | undefined {
   if (!unblocked?.sources) return undefined
   return `판정 뒤 흡수 미차단 ${unblocked.sources.toLocaleString()}곳 · 첫 사건 ${unblocked.incidents.toLocaleString()}건`
 }
 
-function Metric({ label, value, note, href, warn }: { label: string; value: string; note?: string; href?: string; warn?: boolean }) {
-  return <div className="min-w-0 px-4 py-4"><dt className="text-xs text-ink-muted">{label}</dt><dd className={cn('m-0 mt-1.5 break-words text-xl font-semibold tracking-heading tabular-nums', warn && 'text-warning')}>{href ? <Link to={href}>{value}</Link> : value}</dd>{note && <div className="mt-1 text-xs text-ink-muted">{note}</div>}</div>
+function Metric({ label, value, note, href, warn, compact }: { label: string; value: string; note?: string; href?: string; warn?: boolean; compact?: boolean }) {
+  return <div className="min-w-0 px-4 py-4"><dt className="text-xs text-ink-muted">{label}</dt><dd className={cn('m-0 mt-1.5 break-words font-semibold tracking-heading tabular-nums', compact ? 'text-base' : 'text-xl', warn && 'text-warning')}>{href ? <Link to={href}>{value}</Link> : value}</dd>{note && <div className="mt-1 text-xs text-ink-muted">{note}</div>}</div>
 }

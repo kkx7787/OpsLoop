@@ -115,35 +115,77 @@ export function sampleColumns(samples: readonly EvidenceSample[]): string[] {
   return columns
 }
 
-export type BlockState = 'active' | 'pending' | 'released' | 'expired'
+/**
+ * 차단 행의 지금 상태(이슈 #47). 요청과 실제 차단은 다르다. 데이터 노드 집행기가 AWS 관문의 반영 결과를
+ * enforce_note · enforced_at · method 에 쓰고, 화면은 그것과 만료로 가른다. 순서는 서버 BLOCK_STATES_SQL(대시보드 수)과 같다.
+ *  released  해제됨. 사람이 풀었다
+ *  expired   만료됨. 만료가 지나 관문에서 빠진다
+ *  excluded  집행 제외. 만료 없는 옛 차단이거나 집행기가 '집행 제외 · <사유>'(금지 대역 · 대역 주소)로 적었다. 관문에 넘기지 않는다
+ *  mismatch  관문 불일치. 관문 상태가 목록과 5분 넘게 다르거나 관문이 거부했다('관문 불일치 · <사유>'). enforced_at 은 마지막 확인
+ *  enforced  집행 확인. 관문 집합에 들어간 것을 확인했다(방식 · 시각)
+ *  pending   집행 대기. 요청했고 아직 관문 반영을 확인하지 못했다
+ */
+export type BlockState = 'enforced' | 'pending' | 'excluded' | 'mismatch' | 'released' | 'expired'
 
-/** 차단 행의 지금 상태. active 는 집행됐고 살아 있음, pending 은 요청했지만 아직 집행 전 */
-export function blockState(block: ActorBlock, now: number = Date.now()): BlockState {
+/** 집행기가 enforce_note 에 쓰는 말머리(서버 main.ENFORCE_EXCLUDED · ENFORCE_MISMATCH) */
+export const ENFORCE_EXCLUDED = '집행 제외'
+export const ENFORCE_MISMATCH = '관문 불일치'
+
+type BlockFields = Pick<ActorBlock, 'released_at' | 'expires_at' | 'enforced_at'> & { enforce_note?: string | null }
+
+export function blockState(block: BlockFields, now: number = Date.now()): BlockState {
   if (block.released_at) return 'released'
   const expires = toDate(block.expires_at)
   if (expires && expires.getTime() <= now) return 'expired'
-  return block.enforced_at ? 'active' : 'pending'
+  const note = block.enforce_note ?? ''
+  if (!block.expires_at || note.startsWith(ENFORCE_EXCLUDED)) return 'excluded'
+  if (note.startsWith(ENFORCE_MISMATCH)) return 'mismatch'
+  return block.enforced_at ? 'enforced' : 'pending'
 }
 
 export const BLOCK_STATE_LABEL: Record<BlockState, string> = {
-  active: '차단 중',
+  enforced: '집행 확인',
   pending: '집행 대기',
+  excluded: '집행 제외',
+  mismatch: '관문 불일치',
   released: '해제됨',
   expired: '만료됨',
 }
 
 export const BLOCK_STATE_TONE: Record<BlockState, Tone> = {
-  active: 'danger',
+  enforced: 'danger',
   pending: 'warning',
+  excluded: 'neutral',
+  mismatch: 'orange',
   released: 'neutral',
   expired: 'neutral',
 }
 
+/** 살아 있는(만료 · 해제 전) 상태. 해제할 수 있고 차단 목록의 '활성' 탭에 든다 */
+export const LIVE_BLOCK_STATES: readonly BlockState[] = ['enforced', 'pending', 'excluded', 'mismatch']
+
+/**
+ * 상태 옆의 짧은 설명. 방식 · 메모처럼 DB 에서 온 글자는 넣지 않는다(그리는 쪽이 UntrustedText 로 따로 보인다).
+ * 만료 없는 행은 집행기가 메모를 쓰기 전에도 제외로 보이므로 여기서 까닭을 적는다.
+ * 해제 · 만료 · 제외인데 enforced_at 이 남아 있으면 관문이 그 주소를 뺀 목록을 적용했다는 보고를 아직 받지 못한 것이다
+ * (집행기는 그 보고를 받아야 enforced_at 을 비운다). 관문 동기화가 멈추면 관문은 옛 만료까지 계속 막으므로 빠졌다고 적지 않는다
+ */
+export function blockStateHint(block: BlockFields, state: BlockState): string {
+  const leaving = block.enforced_at ? '관문에서 빠졌는지 확인 전' : ''
+  switch (state) {
+    case 'enforced': return '관문 집합 반영 확인'
+    case 'pending': return '관문 반영 확인 전'
+    case 'excluded': return [block.expires_at ? '관문에 넘기지 않음' : '만료 없는 차단 · 관문에 넘기지 않음', leaving].filter(Boolean).join(' · ')
+    case 'mismatch': return block.enforced_at ? '관문 상태가 목록과 다름 · 마지막 확인' : '관문 상태가 목록과 다름'
+    case 'released': return `사람이 풂 · ${leaving || '관문 목록에서 빠짐'}`
+    case 'expired': return `만료가 지남 · ${leaving || '관문 목록에서 빠짐'}`
+  }
+}
+
 /** 풀 수 있는 차단인가(해제 조치의 조건) */
-export function isActiveBlock(block: ActorBlock | null, now: number = Date.now()): boolean {
+export function isActiveBlock(block: BlockFields | null, now: number = Date.now()): boolean {
   if (!block) return false
-  const state = blockState(block, now)
-  return state === 'active' || state === 'pending'
+  return LIVE_BLOCK_STATES.includes(blockState(block, now))
 }
 
 /** 판정 · 조치 이력을 한 줄로 합친 것 */
