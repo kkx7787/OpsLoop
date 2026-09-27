@@ -1,0 +1,247 @@
+{
+  "version": "normal49-1",
+  "issue": 49,
+  "note": "정상 트래픽 시나리오 표(WBS 3.7 · 이슈 #49). 정상 사용자가 없는 환경에서 오탐 분모를 만들기 위해 사전에 정의한 정상 사용이다. 실험 DB 사본에만 넣는다(운영 · 콘솔 · web-01 · 허니팟 · 디코이에는 아무것도 보내지 않는다). 정의된 정상 시나리오가 규칙에 걸리면 판정값은 false_positive 다. 표는 detector/normal_traffic.py --table 로 뽑고 정의서 docs/2026-09-28-정상-트래픽-정의.md 의 표와 같아야 한다(test_normal_traffic 이 대조).",
+  "marker": {
+    "message_prefix": "[정상 시나리오 {id}] ",
+    "user_agent_prefix": "OpsLoop-Normal49/{id} ",
+    "username_prefix": "normal49.",
+    "line_hash": "sha256('normal49|{id}|{seq}|{ts}')",
+    "provenance": "real",
+    "comment": "message 머리가 표식이다. HTTP 행(console · nginx)은 user_agent 머리, 인증 행(console.login.* · sshd.*)은 username 머리도 표식이다. provenance 는 탐지기가 보도록 real 로 두되 실험 DB 에서만 넣는다."
+  },
+  "timing": {
+    "slot_seconds": 600,
+    "scenario_spacing_seconds": 1800,
+    "window_start_default": "실험 DB max(events.ts) + 1시간을 600초 경계로 올린 시각",
+    "comment": "R101 · R102 는 출발지별 10분 고정창(floor(epoch/600))으로 세고 신호 사이 1200초 안이면 한 사건으로 묶는다(aggregation_gap_seconds). 시나리오 하나는 한 창 안에 끝나고(600초 미만), 시나리오 사이는 1800초라 같은 출발지 · 같은 규칙의 시나리오도 따로 뜬다. 구간 길이 = 마지막 오프셋 + 1800초."
+  },
+  "sources": {
+    "console": {"src_ip": "192.168.70.1", "dst_port": 8000, "protocol": "http", "sensor": "console",
+                "why": "관리 단말(Mac). 이슈 #43 뒤 HAProxy 가 X-Forwarded-For 를 제 것으로 붙여 콘솔이 실제 클라이언트 주소를 기록한다."},
+    "web-01/sshd": {"src_ip": "192.168.50.1", "dst_port": 22, "protocol": "ssh", "sensor": "web-01",
+                    "why": "fw ProxyJump. 관리자 SSH 는 전부 이 주소로 보여 관리자 전원이 한 행위자로 뭉친다(운영 DB sshd.login.success 전부 이 주소)."},
+    "web-01/nginx": {"src_ip": "192.168.70.1", "dst_port": 80, "protocol": "http", "sensor": "web-01",
+                     "why": "관리망 Mac → web-01:80. nftables forward 의 MGMT accept 로 닿는 유일한 정상 HTTP 출발지다."}
+  },
+  "candidates": {"w2": 5, "w2-c3": 3, "w2-c8": 8,
+                 "comment": "R101 · R102 임계치. w2 는 현행(rules_w1.json), w2-c3 · w2-c8 은 리플레이 후보다. 규칙 파일은 lab-replay 가 만든다."},
+  "rules_watched": {
+    "R101": {"type": "actor_rate", "eventids": ["sshd.login.failed", "sshd.login.invalid_user", "console.login.failed", "decoy.login.failed"],
+             "counts": "출발지별 10분 창 안의 실패 이벤트 수"},
+    "R102": {"type": "actor_rate", "eventids": ["nginx.request", "decoy.request"], "http_status": [404],
+             "counts": "출발지별 10분 창 안의 404 수. w2 부터 사이트 메타데이터 경로(rules_w1.json exclude_url_patterns)는 세지 않는다"}
+  },
+  "verdict_rule": {
+    "false_positive": "사전 정의 정상 시나리오가 규칙에 걸렸다(정상 사용 · 우리 자신의 운영 행위). 판정 기준 §2 false_positive · 원안 ADR '정의된 정상 행위가 규칙에 걸리면 그것이 오탐'.",
+    "benign_positive": "탐지되기를 의도한 시험(격리 시험 · 노드 등록 시험 · 복원 훈련)이 만든 사건만. 이 표의 시나리오는 해당 없음."
+  },
+  "scenarios": [
+    {
+      "id": "C01", "target": "console", "source": "console", "name": "콘솔 로그인 성공", "offset_seconds": 0,
+      "events": [
+        {"eventid": "console.login.success", "count": 1, "interval_seconds": 0, "username": "normal49.operator",
+         "url": "/login", "http_method": "POST", "http_status": 302, "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "콘솔 로그인 성공"}
+      ],
+      "countable": {"R101": 0, "R102": 0},
+      "fires": {"w2": [], "w2-c3": [], "w2-c8": []},
+      "verdict_if_fired": "false_positive",
+      "rationale": "관제 담당자의 하루 첫 로그인. R101 은 실패만 세므로 성공 1회는 어느 임계치에도 닿지 않는다."
+    },
+    {
+      "id": "C02", "target": "console", "source": "console", "name": "콘솔 오타 2회 뒤 성공", "offset_seconds": 1800,
+      "events": [
+        {"eventid": "console.login.failed", "count": 2, "interval_seconds": 20, "username": "normal49.operator",
+         "url": "/login", "http_method": "POST", "http_status": 401, "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "콘솔 로그인 실패 · 비밀번호 오타"},
+        {"eventid": "console.login.success", "count": 1, "interval_seconds": 0, "gap_before_seconds": 25, "username": "normal49.operator",
+         "url": "/login", "http_method": "POST", "http_status": 302, "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "콘솔 로그인 성공"}
+      ],
+      "countable": {"R101": 2, "R102": 0},
+      "fires": {"w2": [], "w2-c3": [], "w2-c8": []},
+      "verdict_if_fired": "false_positive",
+      "rationale": "흔한 오타 반복. 후보 최소 임계치 3 아래라 어느 후보도 뜨지 않아야 한다."
+    },
+    {
+      "id": "C03", "target": "console", "source": "console", "name": "콘솔 오타 4회 뒤 성공", "offset_seconds": 3600,
+      "events": [
+        {"eventid": "console.login.failed", "count": 4, "interval_seconds": 25, "username": "normal49.operator",
+         "url": "/login", "http_method": "POST", "http_status": 401, "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "콘솔 로그인 실패 · 비밀번호 오타"},
+        {"eventid": "console.login.success", "count": 1, "interval_seconds": 0, "gap_before_seconds": 30, "username": "normal49.operator",
+         "url": "/login", "http_method": "POST", "http_status": 302, "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "콘솔 로그인 성공"}
+      ],
+      "countable": {"R101": 4, "R102": 0},
+      "fires": {"w2": [], "w2-c3": ["R101"], "w2-c8": []},
+      "verdict_if_fired": "false_positive",
+      "rationale": "현행 임계치 5 바로 아래의 경계값. 임계치를 3 으로 내리면 이 정상 사용이 오탐 1건이 된다."
+    },
+    {
+      "id": "C04", "target": "console", "source": "console", "name": "콘솔 오타 5회 뒤 성공 (10분 창)", "offset_seconds": 5400,
+      "events": [
+        {"eventid": "console.login.failed", "count": 5, "interval_seconds": 30, "username": "normal49.operator",
+         "url": "/login", "http_method": "POST", "http_status": 401, "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "콘솔 로그인 실패 · 비밀번호 오타"},
+        {"eventid": "console.login.success", "count": 1, "interval_seconds": 0, "gap_before_seconds": 40, "username": "normal49.operator",
+         "url": "/login", "http_method": "POST", "http_status": 302, "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "콘솔 로그인 성공"}
+      ],
+      "countable": {"R101": 5, "R102": 0},
+      "fires": {"w2": ["R101"], "w2-c3": ["R101"], "w2-c8": []},
+      "verdict_if_fired": "false_positive",
+      "rationale": "비밀번호를 바꾼 뒤 옛 것을 다섯 번 치는 하루. 현행 w2 가 이 정상 사용을 잡으면 그것이 오탐이고, 8 로 올리면 사라진다."
+    },
+    {
+      "id": "C05", "target": "console", "source": "console", "name": "콘솔 조회 뒤 로그아웃", "offset_seconds": 7200,
+      "events": [
+        {"eventid": "console.login.success", "count": 1, "interval_seconds": 0, "username": "normal49.operator",
+         "url": "/login", "http_method": "POST", "http_status": 302, "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "콘솔 로그인 성공"},
+        {"eventid": "console.logout", "count": 1, "interval_seconds": 0, "gap_before_seconds": 300, "username": "normal49.operator",
+         "url": "/logout", "http_method": "POST", "http_status": 302, "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "콘솔 로그아웃 · 사건 목록 · 규칙 화면 조회 뒤"}
+      ],
+      "countable": {"R101": 0, "R102": 0},
+      "fires": {"w2": [], "w2-c3": [], "w2-c8": []},
+      "verdict_if_fired": "false_positive",
+      "rationale": "로그인 · 5분 조회 · 로그아웃. 조회(화면 GET)는 HAProxy 요청 줄을 파싱하지 않아 이벤트가 없다. 콘솔 404 를 R102 가 볼 자료도 그래서 없다."
+    },
+    {
+      "id": "S01", "target": "web-01", "source": "web-01/sshd", "name": "web-01 관리자 SSH 성공", "offset_seconds": 9000,
+      "events": [
+        {"eventid": "sshd.login.success", "count": 1, "interval_seconds": 0, "username": "normal49.ops",
+         "message": "Accepted publickey for normal49.ops (관리 접속)"}
+      ],
+      "countable": {"R101": 0, "R102": 0},
+      "fires": {"w2": [], "w2-c3": [], "w2-c8": []},
+      "verdict_if_fired": "false_positive",
+      "rationale": "ProxyJump 를 거친 관리자 접속. 성공은 세지 않는다."
+    },
+    {
+      "id": "S02", "target": "web-01", "source": "web-01/sshd", "name": "web-01 SSH 오타 2회 뒤 성공", "offset_seconds": 10800,
+      "events": [
+        {"eventid": "sshd.login.failed", "count": 2, "interval_seconds": 15, "username": "normal49.ops",
+         "message": "Failed password for normal49.ops (오타)"},
+        {"eventid": "sshd.login.success", "count": 1, "interval_seconds": 0, "gap_before_seconds": 20, "username": "normal49.ops",
+         "message": "Accepted password for normal49.ops"}
+      ],
+      "countable": {"R101": 2, "R102": 0},
+      "fires": {"w2": [], "w2-c3": [], "w2-c8": []},
+      "verdict_if_fired": "false_positive",
+      "rationale": "비밀번호 인증을 켜 둔 계정의 오타. 어느 후보도 뜨지 않아야 한다."
+    },
+    {
+      "id": "S03", "target": "web-01", "source": "web-01/sshd", "name": "web-01 SSH 오타 5회 (없는 계정 1회 포함)", "offset_seconds": 12600,
+      "events": [
+        {"eventid": "sshd.login.invalid_user", "count": 1, "interval_seconds": 0, "username": "normal49.opz",
+         "message": "Invalid user normal49.opz (계정 이름 오타)"},
+        {"eventid": "sshd.login.failed", "count": 4, "interval_seconds": 20, "gap_before_seconds": 20, "username": "normal49.ops",
+         "message": "Failed password for normal49.ops (오타)"},
+        {"eventid": "sshd.login.success", "count": 1, "interval_seconds": 0, "gap_before_seconds": 30, "username": "normal49.ops",
+         "message": "Accepted password for normal49.ops"}
+      ],
+      "countable": {"R101": 5, "R102": 0},
+      "fires": {"w2": ["R101"], "w2-c3": ["R101"], "w2-c8": []},
+      "verdict_if_fired": "false_positive",
+      "rationale": "계정 이름 오타(invalid_user)와 비밀번호 오타(failed)를 R101 이 함께 센다. 출발지가 ProxyJump 주소라 관리자 누구의 오타든 같은 창에 쌓인다(한계)."
+    },
+    {
+      "id": "S04", "target": "web-01", "source": "web-01/sshd", "name": "web-01 자산 수집 (SSH 성공 1회)", "offset_seconds": 14400,
+      "events": [
+        {"eventid": "sshd.login.success", "count": 1, "interval_seconds": 0, "username": "normal49.ops",
+         "message": "Accepted publickey for normal49.ops (collect-assets.sh probe)"}
+      ],
+      "countable": {"R101": 0, "R102": 0},
+      "fires": {"w2": [], "w2-c3": [], "w2-c8": []},
+      "verdict_if_fired": "false_positive",
+      "rationale": "자산 수집 스크립트의 SSH 접속. 기획안 7.6 의 '자체 운영 작업'(백업 · 점검)이 여기 든다."
+    },
+    {
+      "id": "W01", "target": "web-01", "source": "web-01/nginx", "name": "web-01 정상 페이지 200", "offset_seconds": 16200,
+      "events": [
+        {"eventid": "nginx.request", "count": 3, "interval_seconds": 15, "url": "/", "http_method": "GET", "http_status": 200,
+         "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "정상 페이지 조회"}
+      ],
+      "countable": {"R101": 0, "R102": 0},
+      "fires": {"w2": [], "w2-c3": [], "w2-c8": []},
+      "verdict_if_fired": "false_positive",
+      "rationale": "있는 페이지 조회. R102 는 404 만 세므로 대상이 아니다."
+    },
+    {
+      "id": "W02", "target": "web-01", "source": "web-01/nginx", "name": "web-01 깨진 링크 404 2회", "offset_seconds": 18000,
+      "events": [
+        {"eventid": "nginx.request", "count": 2, "interval_seconds": 20, "url": "/docs/old-link", "http_method": "GET", "http_status": 404,
+         "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "깨진 링크 404"}
+      ],
+      "countable": {"R101": 0, "R102": 2},
+      "fires": {"w2": [], "w2-c3": [], "w2-c8": []},
+      "verdict_if_fired": "false_positive",
+      "rationale": "북마크 · 옛 문서의 깨진 링크를 두 번 누른다. 후보 최소 임계치 아래다."
+    },
+    {
+      "id": "W03", "target": "web-01", "source": "web-01/nginx", "name": "web-01 깨진 링크 404 4회", "offset_seconds": 19800,
+      "events": [
+        {"eventid": "nginx.request", "count": 4, "interval_seconds": 20, "url": "/docs/old-link", "http_method": "GET", "http_status": 404,
+         "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "깨진 링크 404"}
+      ],
+      "countable": {"R101": 0, "R102": 4},
+      "fires": {"w2": [], "w2-c3": ["R102"], "w2-c8": []},
+      "verdict_if_fired": "false_positive",
+      "rationale": "현행 임계치 5 바로 아래의 경계값. 3 으로 내리면 오탐 1건이 된다."
+    },
+    {
+      "id": "W04", "target": "web-01", "source": "web-01/nginx", "name": "web-01 깨진 링크 404 5회", "offset_seconds": 21600,
+      "events": [
+        {"eventid": "nginx.request", "count": 5, "interval_seconds": 20, "url": "/docs/old-link", "http_method": "GET", "http_status": 404,
+         "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "깨진 링크 404"}
+      ],
+      "countable": {"R101": 0, "R102": 5},
+      "fires": {"w2": ["R102"], "w2-c3": ["R102"], "w2-c8": []},
+      "verdict_if_fired": "false_positive",
+      "rationale": "같은 깨진 링크를 새로 고치며 다섯 번 누른 정상 사용. 현행 w2 가 잡으면 오탐이다. 디코이의 경로 탐색은 서로 다른 경로를 훑는다는 점이 다르지만 R102 는 경로의 다양성을 보지 않는다."
+    },
+    {
+      "id": "W05", "target": "web-01", "source": "web-01/nginx", "name": "web-01 메타데이터 404 (robots · favicon · security.txt 등)", "offset_seconds": 23400,
+      "events": [
+        {"eventid": "nginx.request", "count": 1, "interval_seconds": 0, "url": "/robots.txt", "http_method": "GET", "http_status": 404,
+         "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "사이트 메타데이터 조회 404"},
+        {"eventid": "nginx.request", "count": 1, "interval_seconds": 0, "gap_before_seconds": 1, "url": "/favicon.ico", "http_method": "GET", "http_status": 404,
+         "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "사이트 메타데이터 조회 404"},
+        {"eventid": "nginx.request", "count": 1, "interval_seconds": 0, "gap_before_seconds": 1, "url": "/.well-known/security.txt", "http_method": "GET", "http_status": 404,
+         "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "사이트 메타데이터 조회 404"},
+        {"eventid": "nginx.request", "count": 1, "interval_seconds": 0, "gap_before_seconds": 1, "url": "/security.txt", "http_method": "GET", "http_status": 404,
+         "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "사이트 메타데이터 조회 404"},
+        {"eventid": "nginx.request", "count": 1, "interval_seconds": 0, "gap_before_seconds": 1, "url": "/sitemap.xml", "http_method": "GET", "http_status": 404,
+         "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "사이트 메타데이터 조회 404"},
+        {"eventid": "nginx.request", "count": 1, "interval_seconds": 0, "gap_before_seconds": 1, "url": "/apple-touch-icon.png", "http_method": "GET", "http_status": 404,
+         "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "사이트 메타데이터 조회 404"}
+      ],
+      "countable": {"R101": 0, "R102": 0},
+      "fires": {"w2": [], "w2-c3": [], "w2-c8": []},
+      "verdict_if_fired": "false_positive",
+      "rationale": "브라우저 · 로봇이 어느 사이트에나 묻는 고정 이름 6개가 1초 안에 404. w1 이면 6회로 걸리고(2회차 오탐 1건과 같은 모양) w2 의 exclude_url_patterns 가 모두 빼 0 이다. 걸리면 제외 패턴이 깨진 것이다."
+    },
+    {
+      "id": "W06", "target": "web-01", "source": "web-01/nginx", "name": "web-01 헬스체크 /health 200 반복", "offset_seconds": 25200,
+      "events": [
+        {"eventid": "nginx.request", "count": 12, "interval_seconds": 30, "url": "/health", "http_method": "GET", "http_status": 200,
+         "user_agent": "curl/8.5.0", "message": "헬스체크"}
+      ],
+      "countable": {"R101": 0, "R102": 0},
+      "fires": {"w2": [], "w2-c3": [], "w2-c8": []},
+      "verdict_if_fired": "false_positive",
+      "rationale": "30초 간격 헬스체크 12회(6분). 기획안 7.6 의 '헬스체크 요청'. 200 은 R102 대상이 아니고 R101 도 무관하다. 운영 web-01 에는 실제 HTTP 헬스체크가 없어 순수 정의값이다."
+    },
+    {
+      "id": "W07", "target": "web-01", "source": "web-01/nginx", "name": "web-01 깨진 링크 3회 + 메타데이터 3회 (제외 경계)", "offset_seconds": 27000,
+      "events": [
+        {"eventid": "nginx.request", "count": 3, "interval_seconds": 20, "url": "/docs/old-link", "http_method": "GET", "http_status": 404,
+         "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "깨진 링크 404"},
+        {"eventid": "nginx.request", "count": 1, "interval_seconds": 0, "gap_before_seconds": 5, "url": "/favicon.ico", "http_method": "GET", "http_status": 404,
+         "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "사이트 메타데이터 조회 404"},
+        {"eventid": "nginx.request", "count": 1, "interval_seconds": 0, "gap_before_seconds": 1, "url": "/robots.txt", "http_method": "GET", "http_status": 404,
+         "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "사이트 메타데이터 조회 404"},
+        {"eventid": "nginx.request", "count": 1, "interval_seconds": 0, "gap_before_seconds": 1, "url": "/.well-known/security.txt", "http_method": "GET", "http_status": 404,
+         "user_agent": "Mozilla/5.0 (Macintosh) Safari/605.1", "message": "사이트 메타데이터 조회 404"}
+      ],
+      "countable": {"R101": 0, "R102": 3},
+      "fires": {"w2": [], "w2-c3": ["R102"], "w2-c8": []},
+      "verdict_if_fired": "false_positive",
+      "rationale": "404 는 6회지만 w2 가 세는 것은 깨진 링크 3회다. w2 는 뜨지 않고 3 후보만 뜬다. 제외 패턴과 임계치가 함께 작동하는지 보는 경계 시나리오다."
+    }
+  ]
+}
