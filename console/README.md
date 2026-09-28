@@ -38,6 +38,8 @@ src/components/        atoms · molecules · organisms · templates. index.ts �
   organisms/incidents/       인시던트 목록(S-03) 조각: 조건(filters · 주소 왕복) · 표 행 · 모바일 카드 · 높이 제한 목록 · 페이지 탐색 · 조건 막대 · 경과 시간
   organisms/incident-detail/ 인시던트 상세(S-04) · 판정 패널(S-05) 조각: 머리글 · 구역 ①~⑤ · ⑥ 취약점 연계(VulnLinkPanel) · 조치 막대 · 판정 패널 · 이력 · format(서버 행 → 글)
   organisms/assets/          자산 · 취약점(#39) 조각: 주목 CVE(WatchCard) · 자산 표(AssetTable) · 자산 상세(AssetDetailSection) · 공개 정보 신선도(CtiFreshnessFacts) · cti-format(적용 판정 · CVSS · EPSS 표기). ⑥ 도 이 신선도 · 표기를 쓴다
+  organisms/sources/         출발지 분석(S-09 · #58) 조각: 출발지 표(SourcesTable) · 지문 표(FingerprintsTable) · 차단 상태(SourceBlock) · 상세 구역(SourceDetailSections) · model(주소창 조건 · 경로 · 주소 검사)
+  organisms/reports/         보고서(S-11 · #58) 구역 표(ReportSections)
   organisms/notify/          알림 설정(S-12) 조각: 채널 양식(ChannelForm · 주소 password 형 · 틀 미리보기) · 채널 표(ChannelTable) · 발송 이력(DeliveryTable) · template(자리표시자 치환)
   organisms/           TopBar(경로 표시 · 실시간 연결 표시 · KST 시계 · 새로고침 · 모바일 메뉴 단추) · LiveIndicator(연결 점 · 붙은 콘솔) · SideNav(208px) · MobileNav(서랍)
   templates/           AppLayout(사이드바 + 상단바 + 본문 · /api/me 확인 · 401 → 로그인 · 실시간 통보 연결) · breadcrumbs
@@ -50,6 +52,8 @@ src/pages/             구현 화면 및 나머지 화면 자리(PlaceholderPage
   pages/blocklist/      차단 목록(S-06): 활성·만료·해제 · 검색·페이지 탐색 · 관리자 해제
   pages/incidents/       인시던트 목록 화면(IncidentsPage). 조건·page·page_size를 주소에 두어 새로고침·뒤로 가기·공유에도 남는다
   pages/incident-detail/ 인시던트 상세 · 판정 화면(IncidentDetailPage). 사건 키가 바뀌면 판정 소요 시계를 다시 시작한다
+  pages/sources/         출발지 분석(S-09): 목록 · 도구 지문 탭(/sources?tab=fingerprints) · 상세(/sources/detail?ip=)
+  pages/reports/         보고서(S-11): 기간 · 구역 선택(주소창 ?period=&s=) · 인쇄용 본문 · 인쇄(window.print)
   pages/alerts/          알림 설정(S-12): 채널 표 · 추가/수정 양식 · 사용/중지 · 시험 발송 · 발송 이력. admin 이 아니면 403
   pages/assets/          자산 · 취약점(#39, 경로 /inventory): 주목 CVE · 신선도 요약 · 자산 표 · 고른 자산의 주요 패키지 · 이미지 · 배포판 취약점(?asset= 로 주소에 남는다)
 src/test/              vitest setup(WebSocket 은 아무 일도 하지 않는 소켓) · render(메모리 라우터 · /api/me 스텁) · hostile-fixtures(악성 표본 · DOM 점검)
@@ -132,6 +136,15 @@ src/test/              vitest setup(WebSocket 은 아무 일도 하지 않는 �
 - 채널 주소는 비밀값이다. 서버는 https 만 받고, 일반 웹훅은 사설 · 링크로컬 · localhost 주소(`ipaddress` 로 판정, 이름은 해석하지 않음)와 `user:pass@` 를 거부한다. 응답과 화면에는 호스트와 끝 4자만 보이고, 발송 이력·감사 기록·서버 로그에는 주소와 응답 본문을 넣지 않는다. 채널 목록 응답은 `no-store` 다.
 - 배포 전 `infra/migrations/20260924_notify.sql` 을 적용한다(`notify_channels` · `notify_deliveries` 표, 감사 조회 뷰 · 변경 방지 트리거 갱신). 이력의 `payload` 에는 요약만 넣고 원문 로그를 넣지 않는다.
 - 화면(`/alerts`): 채널 표(사용/중지 토글 · 시험 발송 · 수정) · 추가/수정 양식 · 발송 이력(채널 · 상태 필터, 서버 페이지 탐색)이며 30초마다 재조회한다. 주소 입력은 password 형이고 수정 때 비우면 서버가 기존 주소를 유지한다. 양식의 '예시 미리보기'는 자리표시자를 예시 값으로 바꿔 화면에서만 그리며(`organisms/notify/template.ts`), 저장 전 시뮬레이션이 아니다. 시험 발송 결과는 띠(Banner)로 보이고 이력에 `test` 로 남는다.
+
+## 출발지 분석 · 보고서 (S-09 · S-11 · #58)
+
+- API(`app/sources.py`): `GET /api/sources?q&sort=recent|incidents|severity&include_test&fp_kind&fp&limit&offset`, `GET /api/sources/detail?ip=`, `GET /api/sources/fingerprints?kind=hassh|ssh_version|user_agent&limit&offset`. 모두 읽기 전용 트랜잭션에 조회 시간 상한 5초를 건다. 표 · 권한 변경은 없다.
+- 도구 지문은 이벤트 메시지에서 꺼낸다: HASSH 는 `cowrie.client.kex` 의 `fingerprint: <32자>`, SSH 버전은 `cowrie.client.version` 의 `Remote SSH version: …`, User-Agent 는 디코이 이벤트의 `user_agent`. 지문 값은 비신뢰 문자열로 그린다.
+- 지문 탭은 무거운 묶음 조회라 주기 재조회를 하지 않는다(1분 지나 탭에 돌아오면 다시 받는다). 목록 · 상세는 30초마다 받고 실시간 재접속 때 다시 받는다(`sourceKeys`).
+- 사건 목록은 주소창의 `actor_ip` 조건을 읽는다(출발지 상세의 '사건 목록에서 보기'). 주소가 아니면 버리고, 서버도 422 로 막는다.
+- API(`app/reports.py`): `GET /api/reports/period?period=24h|7d|14d|30d&sections=overview|rules|blocks|targets|cti|ops`. `ops`(운영 기록)는 admin 만이고 아니면 403 이다. 구역마다 표 권한을 먼저 보고 읽을 수 없으면 `available: false` 와 사유를 준다.
+- 보고서는 만든 뒤 다시 조회하지 않는다(`staleTime: Infinity`). 같은 조건으로 '보고서 만들기' 를 다시 누르면 새로 만든다. 인쇄는 지금 페이지의 `window.print()` 만 쓴다(CSP 가 iframe · 새 창 · `data:` 인쇄를 막는다). 인쇄 규칙은 `styles/index.css` 끝의 `@media print` 와 `AppLayout` 의 `print:hidden` 이다.
 
 ## CVE · KEV 연계 (#39)
 

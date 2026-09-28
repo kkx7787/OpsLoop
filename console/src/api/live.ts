@@ -4,6 +4,7 @@ import { ctiKeys } from './cti'
 import { incidentKeys, ruleKeys } from './incidents'
 import { nodeKey, auditKey } from './operations'
 import { monitoringKeys } from './monitoring-keys'
+import { sourceKeys } from './sources'
 
 /**
  * 실시간 통보(WS /ws). 서버는 접속하면 {type:'hello', data:{channel, console}} 을 보내고, 그 뒤로 사건 · 판정 · 조치가 생길 때마다 알린다.
@@ -68,6 +69,7 @@ const ME_KEY = ['me'] as const
 /**
  * 재접속 · resync 때 다시 조회하는 쿼리. 끊긴 동안의 통보는 다시 오지 않으므로 현재 상태를 통째로 다시 받는다.
  * CVE · KEV 연계(ctiKeys)는 통보가 없고 하루 단위로 바뀌지만, 오래 끊겼다 이어진 뒤에는 신선도를 다시 맞춘다.
+ * 출발지 분석(sourceKeys)도 통보가 없어 30초 주기로 받지만, 끊긴 동안 쌓인 사건 · 차단을 바로 맞춘다.
  * /api/me 는 끊긴 동안 세션이 끝났으면 401 을 받아 로그인으로 보내려고 넣는다.
  */
 export const RESYNC_KEYS = [
@@ -79,6 +81,7 @@ export const RESYNC_KEYS = [
   nodeKey,
   auditKey,
   ctiKeys.all,
+  sourceKeys.all,
   ME_KEY,
 ] as const
 

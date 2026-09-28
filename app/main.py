@@ -37,6 +37,8 @@ from operations import router as operations_router
 from notify import router as notify_router
 from cti import router as cti_router
 from targets import router as targets_router
+from sources import router as sources_router
+from reports import router as reports_router
 from notifier import Notifier
 import live
 from live import EVENT_CHANNEL, INCIDENT_CHANNEL, Listener, event_payload, hub
@@ -113,6 +115,9 @@ app.include_router(notify_router)
 app.include_router(cti_router)
 # 관제 대상별 상태판 (targets.py · 이슈 #52). GET /api/dashboard/targets
 app.include_router(targets_router)
+# 출발지 분석 · 도구 지문 묶음 (sources.py) · 기간 보고서 (reports.py) · 이슈 #58
+app.include_router(sources_router)
+app.include_router(reports_router)
 
 
 # 세션 없이 여는 경로. /health 는 HAProxy 헬스체크가 부르므로 상태 말고는 아무것도 내지 않는다.
@@ -314,6 +319,17 @@ async def list_incidents(
     판정이 사람의 일인 이상 가장 오래 밀린 건이 가장 위험하다. 심각도순으로
     두면 낮은 등급의 오래된 건이 영영 아래에 깔린다. (화면 설계 4장)
     """
+    # 출발지는 주소여야 한다. 그대로 ::inet 으로 넘기면 캐스팅 오류가 500 이 된다(화면이 주소창의 actor_ip 를 읽는다, 이슈 #58).
+    #   IPv6 영역 표기(fe80::1%eth0)는 파이썬은 받지만 inet 이 받지 않아 함께 거른다. 빈 값은 전처럼 조건 없음이다
+    if actor_ip:
+        try:
+            ip = ipaddress.ip_address(actor_ip.strip())
+        except ValueError:
+            ip = None
+        if ip is None or getattr(ip, "scope_id", None):
+            raise HTTPException(422, "actor_ip 는 IP 주소여야 합니다")
+        actor_ip = str(ip)
+
     where, params = [], []
 
     def add(clause, value):
@@ -537,6 +553,16 @@ BLOCK_STATES_SQL = f"""
           FROM blocklist WHERE released_at IS NULL AND (expires_at IS NULL OR expires_at > $1)) b"""
 
 
+# 요약의 상위 출발지. 최고 심각도는 글자 max 가 아니라 순위로 고른다(글자순이면 medium > low > high > critical 이라
+#   critical 이 있어도 medium 이 나온다, 이슈 #58). 순위는 사건 목록 정렬의 CASE 와 같다. 같은 수면 주소 순
+TOP_ACTORS_SQL = """
+    SELECT host(actor_ip) ip, count(*) n,
+           (ARRAY['critical', 'high', 'medium', 'low'])[
+               min(CASE severity WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END)] sev
+    FROM incidents WHERE actor_ip IS NOT NULL
+    GROUP BY actor_ip ORDER BY n DESC, actor_ip LIMIT 10"""
+
+
 @app.get("/api/stats/summary")
 async def summary():
     async with app.state.pool.acquire() as c, c.transaction(isolation="repeatable_read", readonly=True):
@@ -548,10 +574,7 @@ async def summary():
         daily = await c.fetch("""
             SELECT to_char(first_ts, 'YYYY-MM-DD') d, count(*)
             FROM incidents GROUP BY 1 ORDER BY 1 DESC LIMIT 14""")
-        top = await c.fetch("""
-            SELECT host(actor_ip) ip, count(*) n, max(severity) sev
-            FROM incidents WHERE actor_ip IS NOT NULL
-            GROUP BY 1 ORDER BY n DESC LIMIT 10""")
+        top = await c.fetch(TOP_ACTORS_SQL)
         ev = await c.fetchrow("""
             SELECT count(*) events, count(DISTINCT src_ip) actors, max(ts) latest
             FROM events WHERE provenance = 'real'""")

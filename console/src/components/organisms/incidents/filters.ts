@@ -1,11 +1,13 @@
 import type { Incident, IncidentFilters, IncidentSort, IncidentRule } from '@/api/incidents'
+import { isIpAddress } from '@/api/sources'
 import { isSeverity } from '@/lib/domain'
 import { isIncidentStatus } from './model'
 
 /**
  * 목록 조건과 URL 검색 매개변수의 짝. 새로고침 · 공유해도 같은 목록이 보이도록 조건은 주소에 둔다.
- *   /incidents?status=open&severity=critical&rule_id=R003&judged=false&sort=recent
+ *   /incidents?status=open&severity=critical&rule_id=R003&judged=false&actor_ip=203.0.113.5&sort=recent
  * 모르는 값은 버린다(주소를 손으로 고쳐도 화면이 깨지지 않는다). 기본 정렬(pending)은 붙이지 않는다.
+ * actor_ip 는 출발지 분석(S-09)에서 넘어오는 조건이다. 주소 하나(IPv4 · IPv6)가 아니면 버려 서버에 넘기지 않는다.
  */
 
 export const SORTS = ['pending', 'severity', 'recent'] as const satisfies readonly IncidentSort[]
@@ -24,7 +26,7 @@ export function isSort(value: unknown): value is IncidentSort {
 }
 
 /** 이 화면이 주소에 두는 칸. 이 순서로 붙인다. */
-export const FILTER_PARAMS = ['status', 'severity', 'rule_id', 'judged', 'sort'] as const
+export const FILTER_PARAMS = ['status', 'severity', 'rule_id', 'judged', 'actor_ip', 'sort'] as const
 
 export type ListFilters = Pick<IncidentFilters, (typeof FILTER_PARAMS)[number]>
 
@@ -40,6 +42,8 @@ export function filtersFromSearch(params: URLSearchParams): ListFilters {
   const judged = params.get('judged')
   if (judged === 'true') out.judged = true
   else if (judged === 'false') out.judged = false
+  const actorIp = params.get('actor_ip')?.trim()
+  if (actorIp && isIpAddress(actorIp)) out.actor_ip = actorIp
   const sort = params.get('sort')
   if (isSort(sort) && sort !== DEFAULT_SORT) out.sort = sort
   return out
@@ -53,6 +57,7 @@ export function searchFromFilters(filters: ListFilters, base?: URLSearchParams):
   if (filters.severity) params.set('severity', filters.severity)
   if (filters.rule_id) params.set('rule_id', filters.rule_id)
   if (filters.judged !== undefined) params.set('judged', String(filters.judged))
+  if (filters.actor_ip) params.set('actor_ip', filters.actor_ip)
   if (filters.sort && filters.sort !== DEFAULT_SORT) params.set('sort', filters.sort)
   return params
 }
@@ -64,6 +69,7 @@ export function countFilters(filters: ListFilters): number {
   if (filters.severity) n++
   if (filters.rule_id) n++
   if (filters.judged !== undefined) n++
+  if (filters.actor_ip) n++
   return n
 }
 

@@ -33,6 +33,7 @@ export interface AppLayoutProps {
  * 이동이 막힌 경우 본문에 세션 만료 화면이 남는다. 받는 동안 관리 묶음은 막아 둔다.
  * 실시간 통보(WS /ws)는 여기서 한 번 잇고, 연결 상태와 붙은 콘솔은 상단바의 점(LiveIndicator)으로 보인다.
  * 세션이 끝나 웹소켓이 1008 로 닫히면 /api/me 를 다시 물어 401 → 로그인으로 간다.
+ * 인쇄(보고서 #58)에는 틀(건너뛰기 링크 · 사이드바 · 상단바)을 빼고 본문만 여백 없이 찍는다(print:hidden · print:p-0).
  */
 export function AppLayout({ groups, children, sensor }: AppLayoutProps) {
   const me = useMe()
@@ -89,7 +90,7 @@ export function AppLayout({ groups, children, sensor }: AppLayoutProps) {
     <div className="flex min-h-screen">
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-control focus:bg-surface focus:px-3 focus:py-2 focus:shadow-card"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-control focus:bg-surface focus:px-3 focus:py-2 focus:shadow-card print:hidden"
       >
         본문으로 건너뛰기
       </a>
@@ -98,10 +99,11 @@ export function AppLayout({ groups, children, sensor }: AppLayoutProps) {
         userRole={user?.role}
         user={user}
         sensor={<SensorSummary {...sensor} />}
-        className="sticky top-0 hidden h-screen overflow-y-auto md:flex"
+        className="sticky top-0 hidden h-screen overflow-y-auto md:flex print:hidden"
       />
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar
+          className="print:hidden"
           breadcrumbs={crumbs}
           onRefresh={refresh}
           refreshing={refreshing}
@@ -111,7 +113,7 @@ export function AppLayout({ groups, children, sensor }: AppLayoutProps) {
           sensor={<SensorSummary {...sensor} compact />}
           live={<LiveIndicator live={live} />}
         />
-        <main id="main" className="flex flex-1 flex-col gap-3 p-4 md:px-6 md:py-4">
+        <main id="main" className="flex flex-1 flex-col gap-3 p-4 md:px-6 md:py-4 print:p-0">
           <LiveContext.Provider value={live}>{body}</LiveContext.Provider>
         </main>
       </div>

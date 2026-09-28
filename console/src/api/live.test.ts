@@ -7,6 +7,7 @@ import { ctiKeys } from './cti'
 import { incidentKeys, ruleKeys } from './incidents'
 import { nodeKey, auditKey } from './operations'
 import { monitoringKeys } from './monitoring-keys'
+import { sourceKeys } from './sources'
 import {
   applyLiveMessage,
   backoffMs,
@@ -22,7 +23,7 @@ import {
 } from './live'
 
 /** 재접속 · resync 때 다시 받는 쿼리 전부. /api/me 는 세션이 끝났으면 로그인으로 보내려고 넣는다 */
-const ALL_KEYS = [incidentKeys.all, ruleKeys.all, monitoringKeys.summary, monitoringKeys.blocklist, monitoringKeys.targets, nodeKey, auditKey, ctiKeys.all, ['me']]
+const ALL_KEYS = [incidentKeys.all, ruleKeys.all, monitoringKeys.summary, monitoringKeys.blocklist, monitoringKeys.targets, nodeKey, auditKey, ctiKeys.all, sourceKeys.all, ['me']]
 
 /** 서버 없이 여닫을 수 있는 가짜 WebSocket. 만들어진 순서대로 instances 에 남는다 */
 class FakeSocket extends EventTarget implements LiveSocket {
