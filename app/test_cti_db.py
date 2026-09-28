@@ -17,6 +17,8 @@
   - CVE 배지(이슈 #52): 목록 배지 조회 값 == 상세 badge(한 트랜잭션에서 여러 사건 · 틀린 kev_match 사건 포함) ·
     서명 규칙 사건만 · 없는 키 · 같은 키 · 공개 정보가 오래되면 비해당을 미확인으로 낮춤
   - 표가 없는 DB: available=false (사건은 적용 대상 여부와 404 를 그대로 가린다 · 배지는 빈 사전)
+  - 공개 규칙(Sigma) 서명 사건(이슈 #54, R107 sg1): 응답 코드 · 원본 규칙 출처 · mapping=sigma 를 내고, 자산 조건을 옮긴
+    c1 짝과 적용 판정이 같다 · CVE · KEV 결합 · 목록 배지 == 상세 badge · c1 서명은 두 칸이 null
 """
 import json
 import os
@@ -39,7 +41,33 @@ K105 = "R105|c1|198.51.100.7|2026-09-25T01:00:00+00:00"
 K_NOSIG = "R105|c1|198.51.100.8|2026-09-25T02:00:00+00:00"
 K_OTHER = "R101|w2|203.0.113.5|2026-09-25T02:00:00+00:00"
 K_BADRE = "R105|c9|198.51.100.9|2026-09-25T02:30:00+00:00"
+K107 = "R107|sg1|192.0.2.10|2026-09-25T00:05:00+00:00"
 UBUNTU = {"id": "ubuntu", "version_id": "24.04", "codename": "noble", "pretty": "Ubuntu 24.04.5 LTS"}
+# Sigma 공개 규칙에서 옮긴 서명(detector/rules_sigma.json 과 같은 꼴). 자산 조건은 c1 짝(apache-path-traversal)을 옮긴다
+SIGMA_URL = ("https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/"
+             "rules-emerging-threats/2021/Exploits/CVE-2021-41773/web_cve_2021_41773_apache_path_traversal.yml")
+SIGMA_SOURCE = {"id": "3007fec6-e761-4319-91af-e32e20ac43f5", "title": "CVE-2021-41773 Exploitation Attempt",
+                "url": SIGMA_URL, "author": "daffainfo, Florian Roth", "status": "test", "level": "high",
+                "license": "DRL-1.1", "notes": ["cs-uri-query 조건을 경로 · 질의를 합친 url 에 맞췄다(넓어짐)."]}
+SG_APACHE = "sg-cve-2021-41773-apache-path-traversal"
+
+
+def sigma_rules(c1: dict) -> dict:
+    """R107 규칙 정의(sg1). 자산 조건은 c1 서명에서 그대로 옮긴다."""
+    apache = next(s for r in c1["rules"] for s in r["params"].get("signatures") or []
+                  if s["id"] == "apache-path-traversal")
+    sig = {"id": SG_APACHE, "pattern": "^.*/cgi-bin/\\.%2e/.*$", "statuses": [200, 301],
+           "product": "Apache HTTP Server", "vendor": "Apache", "cves": ["CVE-2021-41773"],
+           "asset_match": apache["asset_match"], "mapping": "sigma", "source": "SigmaHQ 규칙을 변환했다.",
+           "sigma": {**SIGMA_SOURCE, "path": "rules-emerging-threats/2021/Exploits/CVE-2021-41773/"
+                                             "web_cve_2021_41773_apache_path_traversal.yml",
+                     "commit": "07ec293a51695cb1131a2e05260247872b31e1e1"}}
+    return {"rule_version": "sg1", "rules": [{"id": "R107", "name": "공개 규칙(Sigma) 웹 공격 요청", "severity": "medium",
+                                              "type": "url_signature", "enabled": True,
+                                              "params": {"eventids": ["nginx.request", "decoy.request"],
+                                                         "signatures": [sig]}}]}
+
+
 BASE_TABLES = """
     CREATE TEMP TABLE incidents (incident_key text PRIMARY KEY, rule_id text, rule_version text NOT NULL,
         rule_name text, severity text, actor_ip inet, target text, first_ts timestamptz, last_ts timestamptz,
@@ -81,6 +109,8 @@ class Base(unittest.IsolatedAsyncioTestCase):
                                 RULES_CVE.read_text(),
                                 json.dumps({"rules": [{"id": "R101", "type": "actor_rate", "params": {}}]}),
                                 json.dumps(broken))
+        await self.conn.execute("INSERT INTO rule_versions VALUES ('sg1', $1::jsonb)",
+                                json.dumps(sigma_rules(json.loads(RULES_CVE.read_text()))))
         self.now = await self.conn.fetchval("SELECT now()")
         for key, rule, version, evidence in [
                 (K106, "R106", "c1", {"sample": ["/cgi-bin/.%2e/.%2e/bin/sh"], "sessions": [],
@@ -90,6 +120,8 @@ class Base(unittest.IsolatedAsyncioTestCase):
                                       "sensors": ["web-01"]}),
                 (K_NOSIG, "R105", "c1", {"sample": ["/geoserver/web/"]}),
                 (K_BADRE, "R105", "c9", {"signatures": ["geoserver", "exchange-owa"], "sensors": ["web-01"]}),
+                (K107, "R107", "sg1", {"sample": ["/cgi-bin/.%2e/.%2e/bin/sh"], "signatures": [SG_APACHE],
+                                       "sensors": ["decoy", "web-01"]}),
                 (K_OTHER, "R101", "w2", {"signatures": ["geoserver"], "sensors": ["web-01"]})]:
             await self.conn.execute("""INSERT INTO incidents (incident_key, rule_id, rule_version, evidence)
                 VALUES ($1, $2, $3, $4::jsonb)""", key, rule, version, json.dumps(evidence))
@@ -392,6 +424,33 @@ class CtiDatabaseTests(Base):
         badge = (await cti.cti_badges(self.request, [K105]))["badges"][K105]
         self.assertEqual(badge, {"cves": 2, "kev": 2, "applicability": "not_affected", "stale": False})
         self.assertEqual(badge, (await cti.incident_cti(K105, self.request))["badge"])
+
+    async def test_Sigma_서명_사건은_응답_코드와_원본_규칙_출처를_붙이고_판정은_c1_짝과_같다(self):
+        body = await cti.incident_cti(K107, self.request)
+        self.assertEqual((body["applicable"], body["available"], body["rule_id"], body["rule_version"]),
+                         (True, True, "R107", "sg1"))
+        [sig] = body["signatures"]
+        self.assertEqual((sig["id"], sig["mapping"], sig["statuses"], sig["sigma"], sig["cves"], sig["kev_products"]),
+                         (SG_APACHE, "sigma", [200, 301], SIGMA_SOURCE, ["CVE-2021-41773"], None))
+        # 같은 요청 출처(디코이 · web-01)의 c1 사건과 자산마다 같은 판정 · 이유다
+        c1 = await cti.incident_cti(K106, self.request)
+        apache = next(s for s in c1["signatures"] if s["id"] == "apache-path-traversal")
+        self.assertEqual(sig["applicability"], apache["applicability"])
+        self.assertEqual(sig["summary"], apache["summary"])
+        # CVE · KEV · EPSS 는 c1 과 같은 표에서 붙는다
+        self.assertEqual([(c["cve_id"], c["signature_ids"]) for c in body["cves"]], [("CVE-2021-41773", [SG_APACHE])])
+        self.assertEqual(body["cves"][0]["kev"]["name"], "Apache HTTP Server Path Traversal Vulnerability")
+        self.assertEqual(body["badge"], {"cves": 1, "kev": 1, "applicability": "unknown", "stale": True})
+        # 목록 배지는 상세 badge 와 같다
+        badges = await cti.cti_badges(self.request, [K107, K106])
+        self.assertEqual(badges["badges"][K107], body["badge"])
+        self.assertEqual(badges["badges"][K106], c1["badge"])
+        # c1 서명은 두 칸이 null 이다(칸만 늘고 나머지 값은 그대로)
+        for s in c1["signatures"]:
+            with self.subTest(sig=s["id"]):
+                self.assertEqual((s["statuses"], s["sigma"]), (None, None))
+                self.assertIn(s["mapping"], ("explicit", "analyst"))
+        json.dumps(body)
 
     async def test_적용_대상이_아닌_사건과_없는_사건(self):
         for key in (K_NOSIG, K_OTHER):

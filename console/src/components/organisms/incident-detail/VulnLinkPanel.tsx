@@ -1,8 +1,9 @@
 import { Link } from 'react-router'
-import { APPLICABILITY_LABEL, MAPPING_LABEL, ROLE_LABEL, type CveCti, type IncidentCti, type SignatureCti } from '@/api/cti'
+import { APPLICABILITY_LABEL, MAPPING_LABEL, ROLE_LABEL, sigmaHref, type CveCti, type IncidentCti, type SigmaSource, type SignatureCti, type SignatureMapping } from '@/api/cti'
 import { isApiError } from '@/api/errors'
 import { revealHidden } from '@/lib/untrusted'
 import { Badge } from '../../atoms/Badge'
+import type { Tone } from '../../atoms/tones'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { Banner } from '../../molecules/Banner'
 import { CtiBadge } from '../../molecules/CtiBadge'
@@ -25,13 +26,17 @@ export interface VulnLinkPanelProps {
 const NUMBER = '⑥'
 const TITLE = '취약점 연계'
 
+/** 대응 방식 표지의 색. 명시 대응만 정보 색이고, 공개 규칙(Sigma)은 분석가 대응과 가려 보이게 보라색이다 */
+const MAPPING_TONE: Record<SignatureMapping, Tone> = { explicit: 'info', analyst: 'neutral', sigma: 'violet' }
+
 /**
- * ⑥ 취약점 연계(#39): 요청 경로 서명(R105 · R106)이 가리킨 제품 · CVE 와 공개 정보(KEV · CVSS · EPSS),
+ * ⑥ 취약점 연계(#39): 요청 경로 서명(R105 · R106 · 공개 규칙 R107)이 가리킨 제품 · CVE 와 공개 정보(KEV · CVSS · EPSS),
  * 자산마다 그 제품이 있는지(해당 · 비해당 · 미확인), 공개 정보의 신선도.
  * 조회는 페이지가 갖고 이 구역은 그리기만 한다. 서명 규칙 사건이 아니면(applicable=false) 구역을 그리지 않고,
  * 첫 조회 중에도 그리지 않는다(대부분의 사건은 대상이 아니라 빈 구역이 잠깐 보였다 사라지지 않게).
  * 404 는 이 기능을 모르는 이전 서버로 보고 안내 한 줄만, 그 밖의 오류는 구역 안에서 다시 시도할 수 있게 보인다.
  * 머리에는 목록 · 대상 카드와 같은 CVE 배지(서버 badge, #52)를 둔다. 배지가 없는 이전 서버는 그리지 않는다.
+ * 공개 규칙(Sigma) 서명은 원본 규칙 출처 · 변환 메모 · 응답 코드 조건을 함께 보인다(#54).
  */
 export function VulnLinkPanel({ data, pending, fetching, error, onRetry, className }: VulnLinkPanelProps) {
   if (!data) {
@@ -98,7 +103,7 @@ export function VulnLinkPanel({ data, pending, fetching, error, onRetry, classNa
   )
 }
 
-/** 서명 하나: 제품 · 공급사 · 대응 방식 · 적용 요약 · 근거 문장 · 자산 적용 표 */
+/** 서명 하나: 제품 · 공급사 · 대응 방식 · 적용 요약 · 메서드 · 응답 코드 조건 · 근거 문장 · 원본 규칙 출처 · 자산 적용 표 */
 function SignatureBlock({ signature: s }: { signature: SignatureCti }) {
   return (
     <div className="flex flex-col gap-1.5" data-signature={s.id}>
@@ -109,7 +114,9 @@ function SignatureBlock({ signature: s }: { signature: SignatureCti }) {
         <span className="min-w-0 text-xs text-ink-muted">
           <UntrustedText value={s.vendor} max={120} />
         </span>
-        <Badge tone={s.mapping === 'explicit' ? 'info' : 'neutral'}>{MAPPING_LABEL[s.mapping] ?? s.mapping}</Badge>
+        <Badge tone={MAPPING_TONE[s.mapping] ?? 'neutral'} data-mapping={s.mapping}>
+          {MAPPING_LABEL[s.mapping] ?? s.mapping}
+        </Badge>
         <span className="text-xs text-ink-muted">적용</span>
         <Badge tone={APPLICABILITY_TONE[s.summary] ?? 'neutral'} data-applicability={s.summary}>
           {APPLICABILITY_LABEL[s.summary] ?? s.summary}
@@ -118,10 +125,12 @@ function SignatureBlock({ signature: s }: { signature: SignatureCti }) {
           {s.id}
           {s.methods && s.methods.length > 0 && ` · ${s.methods.join(' · ')} 만`}
         </span>
+        {s.statuses && s.statuses.length > 0 && <span className="text-xs text-ink-muted" data-statuses="">{`응답 코드 ${s.statuses.join(' · ')} 일 때만`}</span>}
       </div>
       <p className="m-0 text-xs leading-5 text-ink-muted">
         <UntrustedText value={s.source} />
       </p>
+      {s.sigma && <SigmaSourceBlock sigma={s.sigma} />}
       {s.kev_products && (
         <span className="text-xs text-ink-muted">
           {s.kev_products.length > 0 ? `KEV 에 이 제품 항목 ${s.kev_products.length}건 · 아래 CVE 표에 함께 보입니다` : 'KEV 에 이 제품 항목이 없습니다.'}
@@ -165,6 +174,53 @@ function SignatureBlock({ signature: s }: { signature: SignatureCti }) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * 공개 규칙 서명의 원본 규칙 출처(#54): 제목 · id · 작성자 · 성숙도 · 등급 · 라이선스 · 원본 위치 · 변환 메모.
+ * 값은 서버 규칙 정의의 글자라 비신뢰 글자로 그린다. 원본 위치는 SigmaHQ 저장소 주소(sigmaHref)일 때만 새 창 링크다
+ */
+function SigmaSourceBlock({ sigma }: { sigma: SigmaSource }) {
+  const href = sigmaHref(sigma.url)
+  const notes = sigma.notes ?? []
+  return (
+    <div className="flex flex-col gap-1 rounded-sm border border-line px-2.5 py-2 text-xs leading-5" data-sigma-source="">
+      <span>
+        원본 규칙: <UntrustedText value={sigma.title} max={200} fallback="제목 없음" /> ·{' '}
+        <span className="font-mono">
+          <UntrustedText value={sigma.id} max={64} fallback="id 없음" />
+        </span>
+      </span>
+      <span className="text-ink-muted">
+        작성 <UntrustedText value={sigma.author} max={200} fallback="—" /> · 성숙도 <UntrustedText value={sigma.status} max={32} fallback="—" /> · 등급{' '}
+        <UntrustedText value={sigma.level} max={32} fallback="—" /> · 라이선스 <UntrustedText value={sigma.license} max={64} fallback="—" />
+      </span>
+      <span className="text-ink-muted">
+        원본 위치{' '}
+        {href ? (
+          <a href={href} target="_blank" rel="noopener noreferrer" className="font-mono [overflow-wrap:anywhere]">
+            {href}
+          </a>
+        ) : (
+          <span className="font-mono">
+            <UntrustedText value={sigma.url} max={300} fallback="—" />
+          </span>
+        )}
+      </span>
+      {notes.length > 0 && (
+        <div className="flex flex-col gap-0.5">
+          <span className="text-ink-muted">변환 메모 · 원본 규칙과 다르게 보는 것</span>
+          <ul aria-label="변환 메모" className="m-0 list-disc space-y-0.5 pl-4 text-ink-muted">
+            {notes.map((note, i) => (
+              <li key={i}>
+                <UntrustedText value={note} />
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>

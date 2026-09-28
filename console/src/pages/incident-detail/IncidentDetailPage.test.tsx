@@ -6,7 +6,7 @@ import { incidentPath, type AbsorbedInfo, type EvidenceSample, type IncidentDeta
 import { ACTION_STATUS } from '@/lib/domain'
 import { revealHidden } from '@/lib/untrusted'
 import { ctiBadgeText } from '@/components/molecules/cti-badge-format'
-import { applicability, cve, freshness, incidentCti, signature } from '@/test/cti-fixtures'
+import { applicability, cve, freshness, incidentCti, SIGMA_URL, sigmaSignature, sigmaSource, signature } from '@/test/cti-fixtures'
 import { expectInertDom, expectLongFolds, expectMixedRevealed, HOSTILE, LONG, MIXED } from '@/test/hostile-fixtures'
 import { noRetryClient, renderRoutes } from '@/test/render'
 import { IncidentDetailPage } from './IncidentDetailPage'
@@ -602,6 +602,54 @@ describe('IncidentDetailPage · ⑥ 취약점 연계', () => {
     expect(within(row).getAllByText('—').length).toBeGreaterThanOrEqual(4)
   })
 
+  it('공개 규칙(Sigma) 서명은 대응 방식 · 응답 코드 조건 · 원본 규칙 출처 · 변환 메모를 보이고 원본 위치는 새 창 링크다(#54)', async () => {
+    const sig = sigmaSignature()
+    stubApi({ cti: ctiFor({ rule_id: 'R107', rule_version: 'sg1', signatures: [sig], cves: [cve({ cve_id: 'CVE-2021-41773', signature_ids: [sig.id], kev: null })] }) })
+    renderRoutes(routes(), PATH)
+    const region = await screen.findByRole('region', { name: '취약점 연계' })
+    expect(within(region).getByText('규칙 R107 sg1 · 서명 1개 · CVE 1건')).toBeInTheDocument()
+    const block = region.querySelector(`[data-signature="${sig.id}"]`) as HTMLElement
+    const mapping = within(block).getByText('Sigma 규칙')
+    expect(mapping).toHaveAttribute('data-mapping', 'sigma')
+    expect(mapping.className).toContain('text-violet')
+    expect(within(block).getByText('응답 코드 200 · 301 일 때만')).toBeInTheDocument()
+    expect(within(block).getByText(/DRL 1\.1 로 배포된 것을 변환했다/)).toBeInTheDocument()
+
+    const source = block.querySelector('[data-sigma-source]') as HTMLElement
+    expect(source).toHaveTextContent('원본 규칙: CVE-2021-41773 Exploitation Attempt · 3007fec6-e761-4319-91af-e32e20ac43f5')
+    expect(source).toHaveTextContent('작성 daffainfo, Florian Roth · 성숙도 test · 등급 high · 라이선스 DRL-1.1')
+    const link = within(source).getByRole('link', { name: SIGMA_URL })
+    expect(link).toHaveAttribute('href', SIGMA_URL)
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+    const notes = within(within(source).getByRole('list', { name: '변환 메모' })).getAllByRole('listitem')
+    expect(notes.map((li) => li.textContent)).toEqual(sigmaSource().notes)
+    // 자산 적용 표는 다른 서명과 같이 그린다
+    expect(within(region).getByRole('table', { name: 'Apache HTTP Server 자산 적용' })).toBeInTheDocument()
+  })
+
+  it('c1 서명 · 이전 서버(칸 없음)는 응답 코드 조건과 원본 규칙 출처를 그리지 않고, 메모가 없으면 목록을 두지 않는다(#54)', async () => {
+    const cti = ctiFor({
+      signatures: [
+        signature({ statuses: null, sigma: null }),
+        signature({ id: 'phpunit-eval-stdin', product: 'PHPUnit', mapping: 'explicit' }),
+        sigmaSignature({ statuses: [], sigma: sigmaSource({ notes: [], url: null, author: null }) }),
+      ],
+    })
+    stubApi({ cti })
+    renderRoutes(routes(), PATH)
+    const region = await screen.findByRole('region', { name: '취약점 연계' })
+    expect(region.querySelectorAll('[data-statuses]')).toHaveLength(0)
+    expect(region.querySelectorAll('[data-sigma-source]')).toHaveLength(1)
+    expect(within(region).getByText('분석가 대응').className).toContain('text-muted')
+    expect(within(region).getByText('명시 대응').className).toContain('text-primary')
+    const source = region.querySelector('[data-sigma-source]') as HTMLElement
+    expect(within(source).queryByRole('list')).toBeNull()
+    expect(within(source).queryByRole('link')).toBeNull()
+    expect(source).toHaveTextContent('작성 — ·')
+    expect(source).toHaveTextContent('원본 위치 —')
+  })
+
   it('서명 규칙 사건이 아니면(applicable=false) 구역을 그리지 않는다', async () => {
     stubApi()
     const client = noRetryClient()
@@ -827,6 +875,22 @@ describe('IncidentDetailPage · 비신뢰 문자열(#41)', () => {
 
     // 2만 자: 원문 · 행위 · 표본 값 · 조치 메모 · 서명 근거가 접혀 있다가 펼치면 전부 보인다
     expectLongFolds(container)
+  })
+
+  it('공개 규칙 출처 값이 악성이어도 글자로만 그리고, SigmaHQ 주소가 아니면 원본 위치를 링크로 만들지 않는다(#54)', async () => {
+    const hostile = sigmaSource({ title: MIXED, id: HOSTILE.rlo, author: HOSTILE.img, level: HOSTILE.zwsp, url: `${HOSTILE.jsUrl} ${HOSTILE.bom}`, notes: [MIXED, LONG] })
+    stubApi({ cti: ctiFor({ signatures: [sigmaSignature({ sigma: hostile })] }) })
+    renderRoutes(routes(), PATH, noRetryClient())
+    const vuln = await screen.findByRole('region', { name: '취약점 연계' })
+    const source = vuln.querySelector('[data-sigma-source]') as HTMLElement
+    expect(source.querySelectorAll('a')).toHaveLength(0)
+    expect(source.textContent).toContain(`원본 위치 ${HOSTILE.jsUrl} ⟨U+FEFF⟩`)
+    // 제목은 200자에서 접힌다(원본 제목은 짧다). 앞부분은 글자 그대로 보인다
+    expect(source.textContent).toContain(`원본 규칙: ${HOSTILE.img} ${HOSTILE.svg}`)
+    expect(source.textContent).toContain('ad⟨U+200B⟩min')
+    expectInertDom(vuln)
+    expectMixedRevealed(vuln)
+    expectLongFolds(vuln)
   })
 
   it('주소로 받은 사건 키가 악성이어도 404 화면에 글자로만 보인다', async () => {

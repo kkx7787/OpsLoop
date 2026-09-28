@@ -31,6 +31,10 @@ OpsLoop - 탐지 엔진 (WBS 2.3 / PostgreSQL)
      regex_gap)은 탐지가 먼저 본다. 틀린 정의가 rule_versions 에 들어가면 같은 버전으로 고칠 수 없기 때문이다.
      사건 키가 묶음의 첫 신호 시각이라, 더 이른 요청이 늦게 적재되면 새 키 사건이 생기고 먼저 뜬 사건이 남는다
      (w2 R102 와 같은 구조적 한계, rules_cve.json note).
+  9. 공개 규칙(Sigma) 서명(sg1 R107, 이슈 #54). url_signature 서명에 선택 키 셋을 더했다. all_patterns(모두 맞아야
+     한다) · not_patterns(하나도 맞지 않아야 한다) · statuses(응답 코드 가운데 하나여야 한다). mapping 에 sigma 가
+     더해지고, 그때는 원본 출처(sigma 객체)가 있어야 한다. 세 키를 쓰는 서명이 없는 규칙(c1)은 문장 · 인자가 전과
+     한 글자도 같다. 규칙 파일은 detector/sigma_convert.py 가 SigmaHQ 원본(detector/sigma/)과 선정표로 만든다.
 
 사용
   export DATABASE_URL='postgresql://opsloop:PASSWORD@호스트:5432/opsloop'
@@ -40,6 +44,7 @@ OpsLoop - 탐지 엔진 (WBS 2.3 / PostgreSQL)
   python3 detect.py --run --rules rules_v3.json
   python3 detect.py --run --rules rules_self.json --quiet     요약 표 없이
   python3 detect.py --run --rules rules_cve.json
+  python3 detect.py --run --rules rules_sigma.json
   python3 detect.py --list
   python3 detect.py --compare v1 v2
   python3 detect.py --quality
@@ -616,7 +621,18 @@ GATE_SPLIT_SQL = (
 SIG_ID_RE = re.compile(r"[a-z0-9][a-z0-9-]*")
 SIG_METHOD_RE = re.compile(r"[A-Z]+")
 SIG_CVE_RE = re.compile(r"CVE-[0-9]{4}-[0-9]{4,}")
-SIG_MAPPINGS = ("explicit", "analyst")
+SIG_MAPPINGS = ("explicit", "analyst", "sigma")
+# 서명의 선택 조건(sg1, 이슈 #54). 하나라도 쓰는 서명이 있는 규칙만 URL_SIGNATURE_EXT_SQL 로 맞춘다
+SIG_EXTRA_KEYS = ("all_patterns", "not_patterns", "statuses")
+# mapping 이 sigma 인 서명의 원본 출처(sigma 객체). 탐지는 쓰지 않고 형식만 본다(콘솔이 읽는다)
+SIG_SIGMA_KEYS = ("id", "title", "path", "commit", "url", "author", "status", "level", "license", "notes")
+SIGMA_ID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+SIGMA_COMMIT_RE = re.compile(r"[0-9a-f]{40}")
+# 원본 저장소 안의 상대 경로. 조각은 점으로 시작하지 않는다(. · .. 로 저장소 밖을 가리키지 못한다)
+SIGMA_PATH_RE = re.compile(r"[A-Za-z0-9_-][A-Za-z0-9_.-]*(/[A-Za-z0-9_-][A-Za-z0-9_.-]*)*\.yml")
+SIGMA_STATUSES = ("stable", "test", "experimental", "deprecated", "unsupported")
+SIGMA_LEVELS = ("informational", "low", "medium", "high", "critical")
+SIGMA_BLOB_URL = "https://github.com/SigmaHQ/sigma/blob/"
 # kev_match · asset_match 에 둘 수 있는 키. 모르는 키는 오타로 보고 거절한다(빠진 조건이 조용히 '비해당'이 되지 않게)
 SIG_KEV_KEYS = ("vendor", "product", "text")
 SIG_ASSET_KEYS = ("platforms", "packages", "images", "note")
@@ -634,6 +650,8 @@ def regex_gap(text):
       \\b · \\B        파이썬은 단어 경계, PostgreSQL 은 백스페이스 · 역슬래시다
       \\z             PostgreSQL 은 모르는 이스케이프다(파이썬은 3.14 부터 받는다)
       \\1 ~ \\9        역참조. 대괄호 안에서는 파이썬이 8진 문자로 읽는 등 규칙이 다르다
+      \\x · \\u · \\U · \\N · \\0   글자 번호 이스케이프. \\x 뒤 16진 글자를 파이썬은 두 개만, PostgreSQL 은 끝까지 읽어 뜻이 갈리고
+                     \\N{이름} 은 파이썬만 받는다. 글자를 그대로(메타 문자면 역슬래시 + 글자) 적는다 (이슈 #54 검토)
       (?: 밖의 (?    이름 붙은 그룹 (?P< · (?< , 앞 · 뒤 보기 (?= · (?! · (?<= , 인라인 플래그 (?i) · (?i:…) , (?> 등.
                      PostgreSQL 은 플래그를 맨 앞에서만 받고 글자 뜻도 다르다(m 이 PostgreSQL 에서는 n 이다). 맨 앞도
                      받지 않는다. 대소문자는 이미 가리지 않는다
@@ -657,6 +675,8 @@ def regex_gap(text):
                 return "\\z 는 PostgreSQL 이 모르는 이스케이프다"
             if e and e in "123456789":
                 return "역참조(\\1 등)는 쓰지 않는다"
+            if e and e in "xuUN0":
+                return f"\\{e} 글자 번호 이스케이프는 두 엔진이 읽는 길이 · 뜻이 달라 쓰지 않는다(글자를 그대로 적는다)"
             i, quant = i + 2, False
             continue
         if in_set:
@@ -747,27 +767,74 @@ def check_sig_conditions(rule, sid, s):
             raise ValueError(f"{rule['id']}: 서명 {sid} 의 asset_match.note 는 비어 있지 않은 문자열이어야 합니다")
 
 
-def signals_url_signature(cur, rule, since, until):
-    """요청 경로 서명 (c1 R105 제품 식별 탐색 · R106 알려진 취약점 공격 시도).
+def check_sig_extra(rule, sid, s):
+    """서명의 선택 조건(sg1) 형식. 셋 다 없어도 되고, 있으면 아래 꼴이어야 한다.
 
-    params.eventids 의 요청 행(nginx.request · decoy.request) 가운데 url 이 서명의 pattern 에, 메서드가 서명의
-    methods 에 맞는 것이 신호다. eventid 로 반드시 한정한다. 디코이는 decoy.session.connect · decoy.login.* ·
-    decoy.action.* 행에도 같은 url 을 남겨, 한정하지 않으면 요청 하나가 두 번 잡힌다.
-    pattern 은 ^ 로 시작해 $ 로 끝나게 쓰고 엔진이 ^(?: … )$ 로 감싸 대소문자를 가리지 않고(~*) 맞춘다. 파이썬으로는
-    re.fullmatch(pattern, url, re.I | re.S) 와 같은 답이다. PostgreSQL 정규식의 . 은 줄바꿈에도 맞으므로 re.S 가
-    있어야 한다(디코이는 %0A 를 줄바꿈으로 풀어 url 에 남긴다). url 은 발생원마다 모양이 다르다. web-01(nginx)은
-    원시 요청 대상(질의 · 퍼센트 인코딩 그대로)이고 디코이는 1회 디코딩된 경로(질의 없음)라, 두 모양은 서명 쪽에서
-    함께 적는다.
-    methods(대문자 목록)가 있으면 그 메서드만, 없으면 메서드를 보지 않는다(메서드가 없는 행도 맞는다).
+    all_patterns · not_patterns  pattern 과 같은 꼴(^ 로 시작해 $ 로 끝남, regex_gap)의 비어 있지 않은 목록
+    statuses                     100 ~ 599 정수의 비어 있지 않은 목록(겹침 없이)
+    """
+    for key in ("all_patterns", "not_patterns"):
+        if key not in s:
+            continue
+        pats = s[key]
+        if not (isinstance(pats, list) and pats
+                and all(isinstance(x, str) and len(x) > 2 and x[0] == "^" and x[-1] == "$" for x in pats)):
+            raise ValueError(f"{rule['id']}: 서명 {sid} 의 {key} 는 ^ 로 시작해 $ 로 끝나는 정규식의 비어 있지 않은 "
+                             "목록이어야 합니다")
+        for x in pats:
+            check_sig_regex(rule, sid, key, x)
+    if "statuses" in s:
+        codes = s["statuses"]
+        if not (isinstance(codes, list) and codes
+                and all(isinstance(c, int) and not isinstance(c, bool) and 100 <= c <= 599 for c in codes)
+                and len(set(codes)) == len(codes)):
+            raise ValueError(f"{rule['id']}: 서명 {sid} 의 statuses 는 100 ~ 599 응답 코드(정수)를 겹치지 않게 적은 "
+                             "비어 있지 않은 목록이어야 합니다")
+
+
+def check_sig_sigma(rule, sid, s):
+    """공개 규칙(Sigma)에서 옮긴 서명의 원본 출처(sigma 객체) 형식. 탐지는 쓰지 않고 콘솔이 읽는다.
+
+    mapping 이 sigma 면 있어야 하고, 다른 mapping 에는 두지 않는다. 키는 SIG_SIGMA_KEYS 전부이고 모르는 키는 거절한다.
+      id 규칙 uuid · commit 40자리 sha · path 저장소 안 상대 경로(.yml) · status · level 은 Sigma 의 값 · license DRL-1.1
+      url  SigmaHQ 저장소의 그 커밋 · 경로 주소와 글자가 같아야 한다. 콘솔이 누르게 하는 주소를 다른 곳으로 돌리지 못한다
+      notes 변환에서 좁히거나 넓힌 것 · 옮기지 못한 조건의 문장 목록(비어도 된다)
+    """
+    if "sigma" not in s:
+        if s.get("mapping") == "sigma":
+            raise ValueError(f"{rule['id']}: 서명 {sid} 는 mapping 이 sigma 라 원본 출처(sigma)가 있어야 합니다")
+        return
+    if s.get("mapping") != "sigma":
+        raise ValueError(f"{rule['id']}: 서명 {sid} 의 sigma 는 mapping 이 sigma 일 때만 둡니다")
+    sg = s["sigma"]
+    if not (isinstance(sg, dict) and set(sg) == set(SIG_SIGMA_KEYS)):
+        raise ValueError(f"{rule['id']}: 서명 {sid} 의 sigma 는 {' · '.join(SIG_SIGMA_KEYS)} 만 모두 둡니다")
+    ok = all(isinstance(sg[k], str) and sg[k] for k in SIG_SIGMA_KEYS if k != "notes")
+    ok = ok and bool(SIGMA_ID_RE.fullmatch(sg["id"]) and SIGMA_COMMIT_RE.fullmatch(sg["commit"])
+                     and SIGMA_PATH_RE.fullmatch(sg["path"]))
+    ok = ok and sg["status"] in SIGMA_STATUSES and sg["level"] in SIGMA_LEVELS and sg["license"] == "DRL-1.1"
+    ok = ok and sg["url"] == f"{SIGMA_BLOB_URL}{sg['commit']}/{sg['path']}"
+    ok = ok and isinstance(sg["notes"], list) and all(isinstance(x, str) and x for x in sg["notes"])
+    if not ok:
+        raise ValueError(f"{rule['id']}: 서명 {sid} 의 sigma 값이 틀렸습니다 (id uuid · commit 40자리 · path 상대 경로 "
+                         f"· status · level Sigma 값 · license DRL-1.1 · url {SIGMA_BLOB_URL}<commit>/<path> · "
+                         "notes 문자열 목록)")
+
+
+def url_signature_args(rule):
+    """url_signature 규칙의 eventids · 서명을 검사해 (문장, 서명 배열 목록, eventids) 로 바꾼다. DB 는 쓰지 않는다.
+
     서명은 (id, 감싼 패턴, 메서드 정규식) 세 나란한 배열로 넘겨 SQL 이 unnest 로 다시 짝짓는다(GATE_SPLIT_SQL 과 같다).
-    요청 한 건(line_hash)이 서명 여럿에 맞아도 신호는 하나이고 detail.signatures 에 맞은 id 를 모두 정렬해 남긴다.
+    선택 조건(all_patterns · not_patterns · statuses, sg1)을 쓰는 서명이 하나라도 있으면 상태 정규식 배열과 추가 패턴 세
+    배열(서명 id · 감싼 패턴 · 부정 여부)을 더해 URL_SIGNATURE_EXT_SQL 로 맞춘다. 그런 서명이 없는 규칙(c1)은 문장 ·
+    인자가 전과 한 글자도 같다(URL_SIGNATURE_SQL).
 
-    탐지는 서명의 id · pattern · methods 만 쓴다. product · vendor · cves · kev_match · asset_match · mapping ·
-    source 는 콘솔 · CTI 수집기가 rule_versions 의 정의에서 읽는다. 그래도 cves · mapping · kev_match · asset_match
-    는 형식을 여기서 본다(check_sig_conditions). 틀린 정의가 rule_versions 에 한 번 들어가면 같은 버전으로는 고칠 수
-    없기 때문이다(ON CONFLICT DO NOTHING). 검증이 실패하면 run() 이 커밋하지 않아 정의도 남지 않는다.
-    pattern · kev_match · images 정규식은 PostgreSQL 과 파이썬 re 가 같게 읽는 구문만 받는다(regex_gap).
-    심각도는 규칙 단위(R105 low · R106 medium)이고 CVE · KEV 로 바꾸지 않는다.
+    탐지는 서명의 id · pattern · methods (와 선택 조건)만 쓴다. product · vendor · cves · kev_match · asset_match · mapping ·
+    source · sigma 는 콘솔 · CTI 수집기가 rule_versions 의 정의에서 읽는다. 그래도 cves · mapping · kev_match · asset_match
+    · sigma 는 형식을 여기서 본다(check_sig_conditions · check_sig_sigma). 틀린 정의가 rule_versions 에 한 번 들어가면 같은
+    버전으로는 고칠 수 없기 때문이다(ON CONFLICT DO NOTHING). 검증이 실패하면 run() 이 커밋하지 않아 정의도 남지 않는다.
+    pattern · all_patterns · not_patterns · kev_match · images 정규식은 PostgreSQL 과 파이썬 re 가 같게 읽는 구문만
+    받는다(regex_gap). 변환기(sigma_convert.py)도 이 함수로 만든 서명을 검사한다.
     """
     p = rule["params"]
     eids = p.get("eventids")
@@ -776,7 +843,7 @@ def signals_url_signature(cur, rule, since, until):
     sigs = p.get("signatures")
     if not (isinstance(sigs, list) and sigs):
         raise ValueError(f"{rule['id']}: signatures 는 비어 있지 않은 목록이어야 합니다")
-    ids, pats, methods = [], [], []
+    ids, pats, methods, statuses, extra = [], [], [], [], []
     for s in sigs:
         sid = s.get("id") if isinstance(s, dict) else None
         if not (isinstance(sid, str) and SIG_ID_RE.fullmatch(sid)):
@@ -794,14 +861,64 @@ def signals_url_signature(cur, rule, since, until):
         if not (isinstance(cves, list) and all(isinstance(x, str) and SIG_CVE_RE.fullmatch(x) for x in cves)):
             raise ValueError(f"{rule['id']}: 서명 {sid} 의 cves 는 CVE-연도-번호 꼴의 목록이어야 합니다")
         if not (isinstance(s.get("mapping"), str) and s["mapping"] in SIG_MAPPINGS):
-            raise ValueError(f"{rule['id']}: 서명 {sid} 의 mapping 은 explicit · analyst 중 하나여야 합니다")
+            raise ValueError(f"{rule['id']}: 서명 {sid} 의 mapping 은 {' · '.join(SIG_MAPPINGS)} 중 하나여야 합니다")
         check_sig_regex(rule, sid, "pattern", pat)
         check_sig_conditions(rule, sid, s)
+        check_sig_extra(rule, sid, s)
+        check_sig_sigma(rule, sid, s)
         ids.append(sid)
         pats.append(f"^(?:{pat})$")
         methods.append(f"^({'|'.join(ms)})$" if "methods" in s else "^.*$")
+        statuses.append(f"^({'|'.join(str(c) for c in s['statuses'])})$" if "statuses" in s else "^.*$")
+        extra += [(sid, f"^(?:{x})$", False) for x in s.get("all_patterns", ())]
+        extra += [(sid, f"^(?:{x})$", True) for x in s.get("not_patterns", ())]
+    if not any(k in s for s in sigs for k in SIG_EXTRA_KEYS):
+        return URL_SIGNATURE_SQL, [ids, pats, methods], eids
+    return URL_SIGNATURE_EXT_SQL, [ids, pats, methods, statuses] + [[x[i] for x in extra] for i in range(3)], eids
+
+
+def url_signature_fullmatch(sig, method, url, status):
+    """서명 하나가 요청 한 건에 맞는가. 두 신호 질의(URL_SIGNATURE_SQL · URL_SIGNATURE_EXT_SQL)와 같은 답의 파이썬 판이다.
+
+    탐지는 쓰지 않는다(시험 · 변환기 검증용). 정규식은 re.fullmatch(…, re.I | re.S | re.A) 로 본다. PostgreSQL ~* 에 ^(?: … )$ 로
+    감싼 것과 같은 답이다(PostgreSQL 정규식의 . 은 줄바꿈에도 맞는다). re.A 는 대소문자를 ASCII 글자 쌍으로만 접게 한다.
+    파이썬 re.I 는 유니코드 동치로 ſ(U+017F) 를 s 로, ı(U+0131) 를 i 로 보지만 PostgreSQL ~* 는 그러지 않는다.
+    메서드도 ASCII 일 때만 대문자로 바꿔 맞춘다('POſT'.upper() 는 'POST' 다). 서명 패턴은 ASCII 로 쓴다(규칙 파일 전부가 그렇다). pattern 에 맞고 · all_patterns 모두에 맞고 ·
+    not_patterns 어느 것에도 맞지 않고 · 메서드 · 응답 코드가 맞아야 한다. url 이 없으면 맞지 않는다.
+    methods 가 없으면 메서드를 보지 않고(메서드가 없는 행도 맞는다), statuses 가 없으면 응답 코드를 보지 않는다.
+    statuses 가 있으면 응답 코드가 없는 행은 맞지 않는다.
+    """
+    if url is None:
+        return False
+
+    def hit(p):
+        return re.fullmatch(p, url, re.I | re.S | re.A) is not None
+    return (hit(sig["pattern"]) and all(hit(p) for p in sig.get("all_patterns", ()))
+            and not any(hit(p) for p in sig.get("not_patterns", ()))
+            and ("methods" not in sig or (method is not None and method.isascii() and method.upper() in sig["methods"]))
+            and ("statuses" not in sig or status in sig["statuses"]))
+
+
+def signals_url_signature(cur, rule, since, until):
+    """요청 경로 서명 (c1 R105 제품 식별 탐색 · R106 알려진 취약점 공격 시도, sg1 R107 공개 규칙(Sigma) 웹 공격 요청).
+
+    params.eventids 의 요청 행(nginx.request · decoy.request) 가운데 url 이 서명의 pattern 에, 메서드가 서명의
+    methods 에 맞는 것이 신호다(sg1 은 선택 조건 all_patterns · not_patterns · statuses 도 맞아야 한다). eventid 로
+    반드시 한정한다. 디코이는 decoy.session.connect · decoy.login.* · decoy.action.* 행에도 같은 url 을 남겨, 한정하지
+    않으면 요청 하나가 두 번 잡힌다.
+    pattern 은 ^ 로 시작해 $ 로 끝나게 쓰고 엔진이 ^(?: … )$ 로 감싸 대소문자를 가리지 않고(~*) 맞춘다. 파이썬으로는
+    re.fullmatch(pattern, url, re.I | re.S) 와 같은 답이다. PostgreSQL 정규식의 . 은 줄바꿈에도 맞으므로 re.S 가
+    있어야 한다(디코이는 %0A 를 줄바꿈으로 풀어 url 에 남긴다). url 은 발생원마다 모양이 다르다. web-01(nginx)은
+    원시 요청 대상(질의 · 퍼센트 인코딩 그대로)이고 디코이는 1회 디코딩된 경로(질의 없음)라, 두 모양은 서명 쪽에서
+    함께 적는다.
+    methods(대문자 목록)가 있으면 그 메서드만, 없으면 메서드를 보지 않는다(메서드가 없는 행도 맞는다).
+    요청 한 건(line_hash)이 서명 여럿에 맞아도 신호는 하나이고 detail.signatures 에 맞은 id 를 모두 정렬해 남긴다.
+    서명 검사와 SQL 인자는 url_signature_args, 같은 뜻의 파이썬 판은 url_signature_fullmatch 가 맡는다.
+    심각도는 규칙 단위(R105 low · R106 medium · R107 medium)이고 CVE · KEV · Sigma level 로 바꾸지 않는다.
+    """
+    sql, arrays, eids = url_signature_args(rule)
     w, prm = range_clause(since, until, "ts", rule_sensors(rule))
-    cur.execute(URL_SIGNATURE_SQL.format(w=w), [ids, pats, methods] + prm + [eids])
+    cur.execute(sql.format(w=w), arrays + prm + [eids])
     return [(ts, ip, sess, {"eventid": ev, "sensor": sensor, "http_method": method, "url": url,
                             "http_status": status, "signatures": list(got)})
             for ts, ip, sess, ev, sensor, method, url, status, got in cur.fetchall()]
@@ -818,6 +935,25 @@ URL_SIGNATURE_SQL = (
     "array_agg(s.sig_id ORDER BY s.sig_id COLLATE \"C\") "
     "FROM events e JOIN unnest(%s::text[], %s::text[], %s::text[]) AS s(sig_id, sig_pattern, sig_method) "
     "ON e.url ~* s.sig_pattern AND coalesce(e.http_method, '') ~* s.sig_method "
+    "WHERE {w} AND eventid = ANY(%s) GROUP BY e.line_hash")
+
+# 선택 조건(all_patterns · not_patterns · statuses)을 쓰는 서명이 있는 규칙(sg1)의 신호 질의. URL_SIGNATURE_SQL 에 두
+# 가지를 더했다. 그런 서명이 없는 규칙(c1)은 이 문장을 쓰지 않는다.
+#   응답 코드  메서드와 같은 방식으로 서명마다 정규식 하나(statuses 가 없으면 '^.*$', 있으면 '^(200|301)$')를
+#             coalesce(http_status::text, '') 에 ~ 로 댄다. statuses 가 있는 서명은 응답 코드가 없는 행에 맞지 않는다
+#   추가 패턴  (서명 id · 감싼 패턴 · 부정 여부) 세 나란한 배열. all_patterns 는 부정 거짓, not_patterns 는 참으로 넣고,
+#             그 서명의 추가 패턴 가운데 어긋나는 것(맞아야 하는데 안 맞음 · 안 맞아야 하는데 맞음)이 없어야 맞는다
+# 인자는 서명 id · 감싼 패턴 · 메서드 정규식 · 상태 정규식(네 배열은 같은 길이), 추가 패턴의 서명 id · 감싼 패턴 · 부정
+# 여부(세 배열은 같은 길이), range_clause 인자, eventids 순서다. 추가 쪽 열(sid · pat · neg)은 x. 를 붙여 쓴다
+URL_SIGNATURE_EXT_SQL = (
+    "SELECT e.ts, e.src_ip, e.session, e.eventid, e.sensor, e.http_method, e.url, e.http_status, "
+    "array_agg(s.sig_id ORDER BY s.sig_id COLLATE \"C\") "
+    "FROM events e JOIN unnest(%s::text[], %s::text[], %s::text[], %s::text[]) "
+    "AS s(sig_id, sig_pattern, sig_method, sig_status) "
+    "ON e.url ~* s.sig_pattern AND coalesce(e.http_method, '') ~* s.sig_method "
+    "AND coalesce(e.http_status::text, '') ~ s.sig_status "
+    "AND NOT EXISTS (SELECT 1 FROM unnest(%s::text[], %s::text[], %s::boolean[]) AS x(sid, pat, neg) "
+    "WHERE x.sid = s.sig_id AND (e.url ~* x.pat) = x.neg) "
     "WHERE {w} AND eventid = ANY(%s) GROUP BY e.line_hash")
 
 

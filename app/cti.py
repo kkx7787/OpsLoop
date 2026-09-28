@@ -5,6 +5,8 @@ CVE · KEV · EPSS · CVSS 는 판정값이 아니라 조사 우선순위 정보
 원본은 데이터 노드 수집기(cti/opsloop_cti.py)가 S3 cti/ 에 한 번만 쓰고, 콘솔은 DB 의 정리된 행만 읽는다.
 목록 · 대상 카드 · 상세가 같은 CVE 배지(CVE 수 · KEV 수 · 자산 해당 여부)를 그린다(이슈 #52). 상세와 목록 배지는
 같은 계산(cti_body)을 쓴다.
+공개 규칙(Sigma)에서 옮긴 서명(R107, mapping=sigma, 이슈 #54)은 응답 코드 조건(statuses)과 원본 규칙 출처(sigma)를
+함께 낸다. 적용 판정 · 배지 계산은 다른 서명과 같다.
 """
 import json
 import re
@@ -41,6 +43,8 @@ DECOY_ENTRY = {"asset_id": "web-decoy", "role": "sensor", "targeted": True, "sta
 MISSING_ROLES = {"honeypot-dmz": "sensor", "gateway": "platform"}
 
 ROLE_ORDER = {"target": 0, "platform": 1, "sensor": 2}
+# 서명의 Sigma 출처 객체(이슈 #54)에서 화면에 내보내는 글자 칸. 원본 경로 · 커밋은 url 안에 있다
+SIGMA_FIELDS = ("id", "title", "url", "author", "status", "level", "license")
 AFFECTED, NOT_AFFECTED, UNKNOWN = "affected", "not_affected", "unknown"
 FIX_LABELS = {"fix_available": "수정판 있음", "reboot_pending": "재부팅하면 해소",
               "no_fix": "배포판 수정판 없음", "unknown": "수정 여부 미확인"}
@@ -675,6 +679,28 @@ def watch_item(row, affected, assets: list, ecosystems: list, now) -> dict:
     }
 
 
+def statuses_of(signature: dict) -> list[int] | None:
+    """서명이 보는 응답 코드(이슈 #54). 없으면 None(응답 코드를 보지 않는다). 탐지기가 받는 값(정수 100~599)만 낸다.
+    규칙 버전 정의는 한 번 들어가면 고칠 수 없으니, 이상한 값으로 조회가 500 이 되지 않게 거른다."""
+    statuses = signature.get("statuses")
+    if not isinstance(statuses, list):
+        return None
+    valid = [s for s in statuses if isinstance(s, int) and not isinstance(s, bool) and 100 <= s <= 599]
+    return valid or None
+
+
+def sigma_of(signature: dict) -> dict | None:
+    """서명의 원본 규칙 출처(이슈 #54, mapping=sigma). 없으면 None. 글자 칸(SIGMA_FIELDS)은 문자열만, notes 는
+    문자열 목록만 낸다(빈 칸은 None · 빈 목록). notes 는 변환에서 좁히거나 넓힌 것 · 옮기지 못한 조건이다.
+    url 을 누를 수 있게 할지는 화면이 정한다(SigmaHQ 저장소 주소일 때만 링크로 그린다)."""
+    sigma = signature.get("sigma")
+    if not isinstance(sigma, dict):
+        return None
+    notes = sigma.get("notes")
+    return {**{k: sigma[k] if isinstance(sigma.get(k), str) else None for k in SIGMA_FIELDS},
+            "notes": [n for n in notes if isinstance(n, str)] if isinstance(notes, list) else []}
+
+
 def badge_of(signatures: list[dict], cves: list[dict], stale: bool) -> dict:
     """목록 · 카드 · 상세가 같이 그리는 CVE 배지(이슈 #52). signatures · cves 는 상세 응답의 그것이다.
 
@@ -850,6 +876,7 @@ async def cti_body(look: Lookup, evidence: dict, signatures: list, as_of) -> dic
         kev = kev_products.get(sig["id"])
         out.append({"id": sig["id"], "product": sig.get("product"), "vendor": sig.get("vendor"),
                     "mapping": sig.get("mapping"), "source": sig.get("source"), "methods": sig.get("methods"),
+                    "statuses": statuses_of(sig), "sigma": sigma_of(sig),
                     "cves": sig.get("cves") or [],
                     "kev_products": [kev_item(r) for r in kev] if kev is not None else None,
                     "applicability": rows, "summary": summarize(rows)})

@@ -1,0 +1,207 @@
+{
+  "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+  "note": "sg1 선정표 (이슈 #54). c1 과 제품이 겹치는 CVE 웹 규칙 중심 10개. 변환기(detector/sigma_convert.py build)가 이 표와 원본(같은 폴더, manifest.json)으로 detector/rules_sigma.json 을 만든다. product · vendor · asset_match 는 사람이 적은 값이다. c1_pair 가 있으면 asset_match 는 그 c1 서명의 것을 글자 그대로 옮긴 것이다(시험이 대조한다). notes 는 변환기가 만드는 notes 뒤에 붙는 사람의 관찰이다. check 는 리플레이 비교에서 볼 것이다.",
+  "rules": [
+    {
+      "path": "rules-emerging-threats/2021/Exploits/CVE-2021-41773/web_cve_2021_41773_apache_path_traversal.yml",
+      "c1_pair": {
+        "rule": "R106",
+        "signature": "apache-path-traversal"
+      },
+      "check": "응답 코드 200 · 301 조건(디코이는 404)",
+      "product": "Apache HTTP Server",
+      "vendor": "Apache",
+      "asset_match": {
+        "platforms": [
+          "linux"
+        ],
+        "packages": [
+          "apache2"
+        ],
+        "images": [
+          "(^|/)httpd(:|@|$)"
+        ]
+      },
+      "notes": [
+        "원본은 퍼센트 인코딩된 꼴(.%2e · .%%32%65 · .%%%25%33)을 찾는다. 디코이 url 은 1회 디코딩된 경로라 한 번 인코딩한 요청(.%2e)은 ../ 로 남아 맞지 않고, web-01 은 루트를 넘는 경로를 400 으로 거절하며 url 을 비운다(c1 apache-path-traversal 의 source 와 같은 관찰)."
+      ]
+    },
+    {
+      "path": "rules-emerging-threats/2021/Exploits/CVE-2021-44228/web_cve_2021_44228_log4j.yml",
+      "c1_pair": {
+        "rule": "R106",
+        "signature": "log4shell-in-path"
+      },
+      "check": "keywords · and not filter",
+      "product": "Log4j2",
+      "vendor": "Apache",
+      "asset_match": {
+        "platforms": [
+          "linux"
+        ],
+        "packages": [
+          "apache-log4j2",
+          "liblog4j2-java"
+        ],
+        "images": [],
+        "note": "애플리케이션에 묶여 들어간 log4j 는 패키지 목록에 보이지 않는다."
+      },
+      "notes": [
+        "Log4Shell 시도는 대부분 헤더 · 본문으로 들어오는데 우리는 요청 url 만 저장해 그 시도는 보이지 않는다(c1 log4shell-in-path 와 같은 한계)."
+      ]
+    },
+    {
+      "path": "rules-emerging-threats/2019/Exploits/CVE-2019-3398/web_cve_2019_3398_confluence.yml",
+      "c1_pair": {
+        "rule": "R105",
+        "signature": "confluence"
+      },
+      "check": "POST · contains|all",
+      "product": "Confluence",
+      "vendor": "Atlassian",
+      "asset_match": {
+        "platforms": [
+          "linux"
+        ],
+        "packages": [],
+        "images": [
+          "(^|/)confluence(:|@|$)"
+        ],
+        "note": "배포판 패키지가 없는 제품이라 컨테이너 이미지 이름으로만 본다. 직접 내려받아 설치한 것은 자산 표에 보이지 않는다."
+      },
+      "notes": [
+        "filename=../../../../ 는 업로드 요청의 질의 값이다. 디코이 url 에는 질의가 없어 web-01 요청에서만 보인다."
+      ]
+    },
+    {
+      "path": "rules-emerging-threats/2023/Exploits/CVE-2023-22518/web_exploit_cve_2023_22518_confluence_auth_bypass.yml",
+      "c1_pair": {
+        "rule": "R105",
+        "signature": "confluence"
+      },
+      "check": "all of selection_* · 상태",
+      "product": "Confluence",
+      "vendor": "Atlassian",
+      "asset_match": {
+        "platforms": [
+          "linux"
+        ],
+        "packages": [],
+        "images": [
+          "(^|/)confluence(:|@|$)"
+        ],
+        "note": "배포판 패키지가 없는 제품이라 컨테이너 이미지 이름으로만 본다. 직접 내려받아 설치한 것은 자산 표에 보이지 않는다."
+      }
+    },
+    {
+      "path": "rules-emerging-threats/2020/Exploits/CVE-2020-0688/web_cve_2020_0688_msexchange.yml",
+      "c1_pair": {
+        "rule": "R105",
+        "signature": "exchange-owa"
+      },
+      "check": "두 선택의 AND",
+      "product": "Exchange Server",
+      "vendor": "Microsoft",
+      "asset_match": {
+        "platforms": [
+          "windows"
+        ],
+        "packages": [],
+        "images": []
+      },
+      "notes": [
+        "__VIEWSTATE= 는 질의 값이다. 디코이 url 에는 질의가 없어 web-01 요청에서만 보인다."
+      ]
+    },
+    {
+      "path": "rules-emerging-threats/2021/Exploits/ProxyShell-Exploit/web_exchange_proxyshell.yml",
+      "c1_pair": {
+        "rule": "R105",
+        "signature": "exchange-owa"
+      },
+      "check": "(A and B and C) or D · 상태 401",
+      "product": "Exchange Server",
+      "vendor": "Microsoft",
+      "asset_match": {
+        "platforms": [
+          "windows"
+        ],
+        "packages": [],
+        "images": []
+      }
+    },
+    {
+      "path": "rules-emerging-threats/2023/Exploits/CVE-2023-25157/web_cve_2023_25157_geoserver_sql_injection.yml",
+      "c1_pair": {
+        "rule": "R105",
+        "signature": "geoserver"
+      },
+      "check": "한 선택 안 필드 둘 · all",
+      "product": "GeoServer",
+      "vendor": "OSGeo",
+      "asset_match": {
+        "platforms": [
+          "linux"
+        ],
+        "packages": [],
+        "images": [
+          "(^|/)geoserver(:|@|$)"
+        ],
+        "note": "배포판 패키지가 없는 제품이라 컨테이너 이미지 이름으로만 본다. 직접 내려받아 설치한 것은 자산 표에 보이지 않는다."
+      },
+      "notes": [
+        "CQL_FILTER= 와 SQL 조각은 질의 값이다. 디코이 url 에는 질의가 없어 web-01 요청에서만 보인다."
+      ]
+    },
+    {
+      "path": "rules-emerging-threats/2019/Exploits/CVE-2019-11510/web_cve_2019_11510_pulsesecure_exploit.yml",
+      "c1_pair": {
+        "rule": "R105",
+        "signature": "ivanti-connect-secure"
+      },
+      "check": "값 와일드카드(*?)",
+      "product": "Connect Secure (옛 Pulse Connect Secure)",
+      "vendor": "Ivanti",
+      "asset_match": {
+        "platforms": [
+          "appliance"
+        ],
+        "packages": [],
+        "images": []
+      },
+      "notes": [
+        "원본 값 *?/dana/html5acc/guacamole/* 의 ? 는 공개 PoC(exploit-db 47297)에서 질의 문자열의 시작이다. 와일드카드로 옮겨 경로 안의 /dana/html5acc/guacamole/ 에도 맞는다."
+      ]
+    },
+    {
+      "path": "rules-emerging-threats/2021/Exploits/CVE-2021-22893/web_cve_2021_22893_pulse_secure_rce_exploit.yml",
+      "c1_pair": {
+        "rule": "R105",
+        "signature": "ivanti-connect-secure"
+      },
+      "check": "all of selection*",
+      "product": "Connect Secure (옛 Pulse Connect Secure)",
+      "vendor": "Ivanti",
+      "asset_match": {
+        "platforms": [
+          "appliance"
+        ],
+        "packages": [],
+        "images": []
+      },
+      "notes": [
+        "원본의 ?id= · ?token= 에서 ? 는 Sigma 한 글자 와일드카드라 .id= · .token= 으로 옮겼다. 질의의 ?id= 뿐 아니라 경로의 xid= · xtoken= 에도 맞는다(디코이 url 도 경로에 이 꼴이 있으면 맞는다). 나머지 낱말(meeting · smb · metric 등)은 경로에서도 맞는다."
+      ]
+    },
+    {
+      "path": "rules/web/webserver_generic/web_path_traversal_exploitation_attempt.yml",
+      "c1_pair": null,
+      "check": "일반 규칙 (R106 경로 조작과 일부 겹친다)",
+      "product": "웹 서버 일반",
+      "vendor": "(제품 무관)",
+      "notes": [
+        "제품과 무관한 일반 규칙이라 자산 조건(asset_match)을 두지 않는다. 퍼센트 인코딩된 꼴(%252f · %c0%af 등)은 디코이 url 에서 한 번 풀려 원형이 남지 않는다."
+      ]
+    }
+  ]
+}
