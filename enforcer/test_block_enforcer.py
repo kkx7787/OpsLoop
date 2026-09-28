@@ -34,6 +34,7 @@ GW = "i-0ffeb29efad03546d"
 STATUS = f"hb/v1/host={GW}-block/latest.json"
 MIN = timedelta(minutes=1)
 DAY = timedelta(days=1)
+FW = "fw-opsloop"
 
 
 def contract_digest(entries):
@@ -75,6 +76,8 @@ class FakeStore:
         self.writes, self.audit, self.expired_calls = 0, [], []
         self.fail_fetch = self.fail_apply = False
         self.before_apply = None
+        self.beats = []                  # heartbeat 호출마다 받은 행 목록 (차단 보고 생존 신호, 이슈 #52)
+        self.fail_heartbeat = None       # 오류를 낼 때의 pgcode ('' 이면 pgcode 없는 오류)
 
     def add(self, ip, expires=DAY, created=None, released=None, enforced=None, method=None, note=None, exempt_net=None,
             enforcement=None):
@@ -129,6 +132,13 @@ class FakeStore:
             self.audit.append(("expired", key))
         self.expired_calls.append((key, expires))
 
+    def heartbeat(self, rows):
+        if self.fail_heartbeat is not None:
+            e = RuntimeError("생존 신호 표를 쓰지 못했다")
+            e.pgcode = self.fail_heartbeat or None
+            raise e
+        self.beats.append(copy.deepcopy(rows))
+
 
 class Gateway:
     """관문(또는 내부 방화벽) block-sync.py 흉내. S3 목록을 읽어 digest 를 따로 확인하고 보고를 hb 경로에 쓴다."""
@@ -147,6 +157,9 @@ class Gateway:
 
     def put(self, status):
         self.s3.objects[self.key] = json.dumps(status).encode("utf-8")
+
+
+FW_STATUS = be.STATUS_KEY.format(gw=FW)
 
 
 class Base(unittest.TestCase):
@@ -923,6 +936,73 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(c.exception.code, 2)
 
 
+class HeartbeatTest(Base):
+    """차단 보고 생존 신호 (이슈 #52). 회차마다 지점별 한 줄을 넘기고, 못 읽은 회차는 seen_at 없이 까닭을 넘긴다."""
+
+    def test_관문_보고를_읽으면_그_at_을_못_읽으면_까닭을_넘긴다(self):
+        self.store.add("198.51.100.7")
+        self.run_once()
+        self.assertEqual(self.store.beats, [[{"source": "block:gateway", "role": "gateway", "host": GW, "seen_at": None,
+                                              "problem": "없음 (관문 동기화가 아직 쓰지 않았다)"}]])
+        at = self.store.now + timedelta(seconds=30)
+        self.gw.sync(at)
+        self.tick()
+        self.run_once()
+        self.assertEqual(self.store.beats[-1], [{"source": "block:gateway", "role": "gateway", "host": GW,
+                                                 "seen_at": at.replace(microsecond=0), "problem": None}])
+
+    def test_멈춘_보고도_읽었으면_문제가_아니고_시각으로_드러난다(self):
+        at = self.store.now
+        self.store.add("198.51.100.7")
+        self.run_once()
+        self.gw.sync(at)
+        self.tick(10 * MIN)
+        self.run_once()
+        self.assertEqual((self.store.beats[-1][0]["seen_at"], self.store.beats[-1][0]["problem"]), (at, None))
+        self.assertTrue(any("5분 넘게 멈춤" in m for _, m in self.logs))
+
+    def test_내부_방화벽을_설정하면_두_줄이다(self):
+        self.cfg["fw"] = FW
+        fw = Gateway(self.s3, key=FW_STATUS)
+        self.store.add("203.0.113.10")
+        self.run_once()
+        at = self.store.now + timedelta(seconds=40)
+        fw.sync(at)
+        self.tick()
+        self.run_once()
+        self.assertEqual(self.store.beats[-1], [
+            {"source": "block:gateway", "role": "gateway", "host": GW, "seen_at": None,
+             "problem": "없음 (관문 동기화가 아직 쓰지 않았다)"},
+            {"source": "block:fw", "role": "fw", "host": FW, "seen_at": at.replace(microsecond=0), "problem": None}])
+
+    def test_형식이_틀린_보고는_못_읽은_것이다(self):
+        self.gw.put({"v": 1, "at": be.iso(self.store.now + timedelta(minutes=10)), "mode": "nft", "applied": 0})
+        self.run_once()
+        self.assertEqual(self.store.beats[-1][0]["problem"], "관문 시각이 앞섬")
+        self.assertIsNone(self.store.beats[-1][0]["seen_at"])
+
+    def test_dry_run_은_기록하지_않는다(self):
+        self.gw.put({"v": 1, "at": be.iso(self.store.now), "mode": "nft", "applied": 0})
+        self.run_once(dry_run=True)
+        self.assertEqual(self.store.beats, [])
+
+    def test_기록이_실패해도_종료_코드와_집행은_그대로다(self):
+        self.store.add("198.51.100.7")
+        self.run_once()
+        self.gw.sync(self.store.now + timedelta(seconds=30))
+        for code, level in (("42P01", 5), ("42501", 5), ("", 4), ("57014", 4)):
+            with self.subTest(code=code):
+                self.store.fail_heartbeat = code
+                self.logs.clear()
+                self.tick()
+                self.assertEqual(self.run_once(), 0)
+                [(got, msg)] = [(lv, m) for lv, m in self.logs if m.startswith("차단 보고 생존 신호를 기록하지 못했다")]
+                self.assertEqual(got, level)
+        self.confirmed("198.51.100.7", T0 + timedelta(seconds=30))       # 집행 기록은 그대로 됐다
+        self.assertEqual(self.store.beats, [[{"source": "block:gateway", "role": "gateway", "host": GW, "seen_at": None,
+                                              "problem": "없음 (관문 동기화가 아직 쓰지 않았다)"}]])
+
+
 # ── 실제 PostgreSQL ────────────────────────────────────────────────────────────
 
 try:
@@ -935,6 +1015,7 @@ URL = os.environ.get("OPSLOOP_TEST_DATABASE_URL")
 SCHEMA = os.path.join(ROOT, "infra", "schema.sql")
 MIGRATION = os.path.join(ROOT, "infra", "migrations", "20260927_block_enforce.sql")
 MIGRATION51 = os.path.join(ROOT, "infra", "migrations", "20260929_block_points.sql")   # #47 뒤에 적용해야 enforcement 권한이 남는다
+MIGRATION52 = os.path.join(ROOT, "infra", "migrations", "20260930_status_board.sql")   # #47 뒤에 적용해야 생존 신호 권한이 남는다
 
 
 def with_db(url, db, user=None, password=None):
@@ -962,7 +1043,7 @@ class PgTest(unittest.TestCase):
         self.owner.autocommit = True
         with self.owner.cursor() as c:
             c.execute("SET client_min_messages = warning")
-            for path in (SCHEMA, MIGRATION, MIGRATION51):
+            for path in (SCHEMA, MIGRATION, MIGRATION51, MIGRATION52):
                 with open(path, encoding="utf-8") as f:
                     c.execute(f.read())
         self.conn = psycopg2.connect(with_db(URL, self.db, "opsloop_enforcer", self.pw))
@@ -1040,6 +1121,25 @@ class PgTest(unittest.TestCase):
                          {"198.51.100.0/24": "집행 제외 · 대역 주소", "10.9.9.9": "집행 제외 · 금지 대역",
                           "198.51.100.7": "집행 제외 · 금지 대역"})
 
+    def test_차단_보고_생존_신호를_집행_역할로_쓰고_못_읽은_회차는_시각을_둔다(self):
+        self.cycle()
+        self.assertEqual(self.sql("SELECT source, kind, role, host, seen_at, problem, checked_at > now() - interval '1 minute'"
+                                  " FROM sensor_heartbeats"),
+                         [("block:gateway", "block_report", "gateway", GW, None, "없음 (관문 동기화가 아직 쓰지 않았다)", True)])
+        at = datetime.now(timezone.utc).replace(microsecond=0)
+        self.gw.sync(at)
+        self.cycle()
+        self.assertEqual(self.sql("SELECT seen_at, problem FROM sensor_heartbeats"), [(at, None)])
+        del self.s3.objects[STATUS]
+        self.cycle()
+        self.assertEqual(self.sql("SELECT seen_at, problem FROM sensor_heartbeats"),
+                         [(at, "없음 (관문 동기화가 아직 쓰지 않았다)")])
+        # 트리거: 집행 역할은 업로더 신호를 꾸미지 못한다 (표 권한은 있다)
+        with self.assertRaises(psycopg2.errors.InsufficientPrivilege):
+            with self.conn, self.conn.cursor() as c:
+                c.execute("INSERT INTO sensor_heartbeats (source, kind, role, host, checked_at)"
+                          " VALUES ('uploader:i-058726c1a0671fe1d', 'uploader', 'sensor', 'i-058726c1a0671fe1d', now())")
+
     def test_집행_역할은_집행_세_열만_고친다(self):
         self.sql("INSERT INTO blocklist (actor_ip, reason, expires_at) VALUES ('198.51.100.7', '시험', now() + interval '1 day')")
         for q in ("UPDATE blocklist SET expires_at = now()", "UPDATE blocklist SET released_at = now()",
@@ -1048,10 +1148,6 @@ class PgTest(unittest.TestCase):
             with self.subTest(q=q), self.assertRaises(psycopg2.errors.InsufficientPrivilege):
                 with self.conn, self.conn.cursor() as c:
                     c.execute(q)
-
-
-FW = "fw-opsloop"
-FW_STATUS = be.STATUS_KEY.format(gw=FW)
 
 
 class PointsTest(Base):

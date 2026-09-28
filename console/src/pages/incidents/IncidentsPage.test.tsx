@@ -58,6 +58,11 @@ function calledUrls(fetch: ReturnType<typeof stubApi>): string[] {
   return fetch.mock.calls.map(([input]) => (typeof input === 'string' ? input : input instanceof URL ? input.href : input.url))
 }
 
+/** 목록 요청만(한 쪽을 받은 뒤 나가는 CVE 배지 요청 /api/cti/badges 는 뺀다) */
+function listUrls(fetch: ReturnType<typeof stubApi>): string[] {
+  return calledUrls(fetch).filter((url) => url.startsWith('/api/incidents'))
+}
+
 function routes(): RouteObject[] {
   return [
     { path: '/incidents', element: <IncidentsPage /> },
@@ -87,7 +92,8 @@ describe('IncidentsPage', () => {
     expect(option).toBeInTheDocument()
     fireEvent.change(screen.getByRole('combobox', { name: '규칙' }), { target: { value: 'R301' } })
     await waitFor(() => expect(calledUrls(fetch).some((url) => url.includes('rule_id=R301'))).toBe(true))
-    expect(calledUrls(fetch).every((url) => url.startsWith('/api/incidents'))).toBe(true)
+    // 규칙 선택지를 따로 묻지 않는다(목록 요청과 그 쪽의 CVE 배지 요청뿐)
+    expect(calledUrls(fetch).every((url) => url.startsWith('/api/incidents') || url.startsWith('/api/cti/badges?'))).toBe(true)
   })
   // 가상화가 행 높이를 다시 잴 때 창을 스크롤한다. jsdom 에는 scrollTo 가 없어 소음만 낸다
   beforeEach(() => {
@@ -233,7 +239,7 @@ describe('IncidentsPage', () => {
     const { router } = renderRoutes(routes(), '/incidents')
     await screen.findByRole('table', { name: '인시던트 목록' })
     expect(screen.getByRole('button', { name: '이전' })).toBeDisabled()
-    expect(calledUrls(fetch)).toEqual(['/api/incidents?limit=25&offset=0'])
+    expect(listUrls(fetch)).toEqual(['/api/incidents?limit=25&offset=0'])
     fireEvent.click(screen.getByRole('button', { name: '다음' }))
     await screen.findByText('26–50건 표시')
     expect(router.state.location.search).toBe('?page=2')
@@ -336,6 +342,75 @@ describe('IncidentsPage', () => {
     expect(cards[0]).toHaveTextContent('미판정')
     expect(cards[1]).toHaveTextContent('종결')
     expect(cards[1]).toHaveTextContent('실제 위협')
+  })
+})
+
+// ---------------------------------------------------------------- #52 CVE 배지
+
+describe('IncidentsPage · CVE 배지(#52)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('scrollTo', vi.fn())
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const SIGNATURE = incident(90, { incident_key: 'R105|c1|203.0.113.7|2026-09-18T06:00:00+00:00', rule_id: 'R105', rule_name: '제품 식별 탐색', severity: 'medium', actor_ip: '203.0.113.7' })
+  const ROWS = [incident(84), SIGNATURE]
+  const BADGE = { cves: 2, kev: 1, applicability: 'affected', stale: false }
+
+  /** 목록 한 쪽 · 배지 응답을 정한 fetch */
+  function stubWithBadges(badges: () => Response) {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+      const url = new URL(String(input), 'http://localhost')
+      if (url.pathname === '/api/incidents') return json(page(0, ROWS, 2))
+      if (url.pathname === '/api/cti/badges') return badges()
+      return json({ detail: '없는 경로' }, 404)
+    })
+    vi.stubGlobal('fetch', fetch)
+    return fetch
+  }
+
+  it('한 쪽의 키를 모아 배지를 한 번 묻고, 서명 규칙 사건의 규칙 이름 옆에 붙인다', async () => {
+    const fetch = stubWithBadges(() => json({ as_of: '', available: true, badges: { [SIGNATURE.incident_key]: BADGE } }))
+    renderRoutes(routes(), '/incidents', noRetryClient())
+    const table = await screen.findByRole('table', { name: '인시던트 목록' })
+    const row = within(table).getByRole('row', { name: /203\.0\.113\.7/ })
+    const badge = await within(row).findByText('CVE 2 · KEV 1 · 해당')
+    expect(badge).toHaveAttribute('data-cti-badge')
+    // 규칙 이름과 같은 칸 · 같은 줄
+    expect(badge.parentElement).toBe(within(row).getByTitle('제품 식별 탐색').parentElement)
+    expect(within(within(table).getByRole('row', { name: /4\.4\.66\.84/ })).queryByText(/CVE/)).toBeNull()
+
+    const calls = calledUrls(fetch).filter((url) => url.startsWith('/api/cti/badges'))
+    expect(calls).toHaveLength(1)
+    expect(new URL(calls[0], 'http://localhost').searchParams.getAll('key')).toEqual([KEY, SIGNATURE.incident_key].sort())
+  })
+
+  it('모바일 카드에도 같은 배지를 붙인다', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} })))
+    stubWithBadges(() => json({ as_of: '', available: true, badges: { [SIGNATURE.incident_key]: { ...BADGE, applicability: 'unknown', stale: true } } }))
+    renderRoutes(routes(), '/incidents', noRetryClient())
+    const list = await screen.findByRole('list', { name: '인시던트 목록' })
+    const card = within(list).getAllByRole('link')[1]
+    expect(await within(card).findByText('CVE 2 · KEV 1 · 미확인')).toHaveAttribute('title', '공개 정보 48시간 넘음 · 비해당으로 읽지 않음')
+  })
+
+  it('배지 조회가 실패해도 목록은 그대로 보이고 배지만 빠진다', async () => {
+    const fetch = stubWithBadges(() => json({ detail: '배지 실패' }, 503))
+    const { container } = renderRoutes(routes(), '/incidents', noRetryClient())
+    const table = await screen.findByRole('table', { name: '인시던트 목록' })
+    await waitFor(() => expect(calledUrls(fetch).some((url) => url.startsWith('/api/cti/badges'))).toBe(true))
+    expect(within(table).getAllByRole('row')).toHaveLength(3)
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(container.querySelector('[data-cti-badge]')).toBeNull()
+  })
+
+  it('CTI 표가 없으면(available=false) 배지를 그리지 않는다', async () => {
+    stubWithBadges(() => json({ as_of: '', available: false, badges: {} }))
+    const { container } = renderRoutes(routes(), '/incidents', noRetryClient())
+    await screen.findByRole('table', { name: '인시던트 목록' })
+    await waitFor(() => expect(container.querySelector('[data-cti-badge]')).toBeNull())
   })
 })
 

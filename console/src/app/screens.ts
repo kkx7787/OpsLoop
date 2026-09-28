@@ -15,8 +15,8 @@ export interface Screen {
 export const SCREENS = {
   dashboard: {
     code: 'S-02',
-    title: '미판정 현황',
-    description: '미판정 인시던트의 경과 시간과 판정 목표. 이 프로젝트가 줄이려는 비용을 보이는 화면.',
+    title: '관제 현황',
+    description: '관제 대상별 수집 · 보안 · 대응 상태와 미판정 인시던트의 경과 시간. 이 프로젝트가 줄이려는 비용을 보이는 화면.',
     wbs: '3.6.4',
   },
   incidents: {

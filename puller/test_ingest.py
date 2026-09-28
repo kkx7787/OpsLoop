@@ -10,6 +10,7 @@ import os
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -26,6 +27,15 @@ with open(os.environ["FAKE_LOG"], "a") as f:
 """
 FAKE_DETECT = """import json, os, sys
 open(os.environ["FAKE_DETECT"], "a").write(json.dumps(sys.argv[1:]) + "\\n")
+"""
+# 생존 신호 기록(record_heartbeats.py) 흉내. 받은 접속 정보 · S3 키 · 작업 폴더와, 그때까지 적재된 파일을 적는다
+FAKE_HEARTBEATS = """import json, os, sys, time
+loaded = open(os.environ["FAKE_LOG"]).read().split()
+with open(os.environ["FAKE_HB"], "a") as f:
+    f.write(json.dumps({"db": os.environ.get("DATABASE_URL"), "aws": os.environ.get("AWS_ACCESS_KEY_ID"),
+                        "home": os.environ.get("OPSLOOP_HOME"), "loaded": loaded}) + "\\n")
+time.sleep(float(os.environ.get("FAKE_HB_SLEEP") or 0))
+sys.exit(int(os.environ.get("FAKE_HB_RC") or 0))
 """
 
 
@@ -44,7 +54,7 @@ class IngestTest(unittest.TestCase):
         self.home = os.path.join(self.t, "home")
         for d, name, body in (("puller", "pull.py", FAKE_PULL), ("parser", "parse_cowrie.py", FAKE_PARSER),
                               ("parser", "parse_decoy.py", FAKE_PARSER), ("parser", "parse_gateway.py", FAKE_PARSER),
-                              ("detector", "detect.py", FAKE_DETECT)):
+                              ("detector", "detect.py", FAKE_DETECT), ("puller", "record_heartbeats.py", FAKE_HEARTBEATS)):
             os.makedirs(os.path.join(self.app, d), exist_ok=True)
             with open(os.path.join(self.app, d, name), "w") as f:
                 f.write(body)
@@ -54,12 +64,14 @@ class IngestTest(unittest.TestCase):
         self.set_pull(0)
         self.log = os.path.join(self.t, "loaded")
         self.detect = os.path.join(self.t, "detect")
-        for p in (self.log, self.detect):
+        self.hb = os.path.join(self.t, "heartbeats")
+        for p in (self.log, self.detect, self.hb):
             open(p, "w").close()
         s3env, dbenv = os.path.join(self.t, "s3.env"), os.path.join(self.t, "db.env")
         open(s3env, "w").write("AWS_ACCESS_KEY_ID=x\n")
         open(dbenv, "w").write("DATABASE_URL=postgresql://x\n")
-        os.environ.update({"FAKE_PULL_RC_FILE": self.rc_file, "FAKE_LOG": self.log, "FAKE_DETECT": self.detect})
+        os.environ.update({"FAKE_PULL_RC_FILE": self.rc_file, "FAKE_LOG": self.log, "FAKE_DETECT": self.detect,
+                           "FAKE_HB": self.hb})
         self.m = load_ingest()
         self.m.APP, self.m.HOME, self.m.S3_ENV, self.m.DB_ENV = self.app, self.home, s3env, dbenv
         self.m.base_env = lambda: {k: v for k, v in os.environ.items()
@@ -228,6 +240,41 @@ class IngestTest(unittest.TestCase):
         self.assertEqual(self.run_main("--full"), 0)
         self.assertEqual(self.loaded(), ["i-0123456789abcdef0.11.g0.000000000000-000000000008.jsonl"])
         self.assertTrue(os.path.exists(os.path.join(mirror, "000000000000-000000000008.jsonl")))  # 미러는 남는다
+
+    def heartbeat_calls(self):
+        return [json.loads(line) for line in open(self.hb).read().splitlines()]
+
+    def test_생존_신호는_DB_확인_뒤_적재_전에_적재_역할로_S3_키_없이_기록한다(self):
+        self.put("cowrie", "a.jsonl")
+        self.assertEqual(self.run_main(), 0)
+        self.assertEqual(self.heartbeat_calls(), [{"db": "postgresql://x", "aws": None, "home": self.home, "loaded": []}])
+        self.assertEqual(self.loaded(), ["a.jsonl"])
+
+    def test_생존_신호_기록이_실패하거나_멈춰도_종료_코드는_그대로다(self):
+        logs = []
+        self.m.log = lambda msg, level=6: logs.append((level, msg))
+        with unittest.mock.patch.dict(os.environ, {"FAKE_HB_RC": "1"}):
+            self.put("cowrie", "a.jsonl")
+            self.assertEqual(self.run_main(), 0)
+            self.set_pull(11)
+            self.assertEqual(self.run_main(), 11)
+        self.assertEqual(self.detected(), 2)
+        self.m.HEARTBEAT_TIMEOUT = 1
+        with unittest.mock.patch.dict(os.environ, {"FAKE_HB_SLEEP": "5"}):
+            self.set_pull(0)
+            self.assertEqual(self.run_main(), 0)
+        warn = [m for level, m in logs if level == 4 and m.startswith("생존 신호를 기록하지 못했다")]
+        self.assertEqual(len(warn), 3)
+        self.assertIn("1초 초과", warn[-1])
+        os.unlink(os.path.join(self.app, "puller", "record_heartbeats.py"))    # 옛 앱 폴더(파일 없음)도 적재는 한다
+        self.put("cowrie", "b.jsonl")
+        self.assertEqual(self.run_main(), 0)
+        self.assertIn("b.jsonl", self.loaded())
+
+    def test_DB_가_없으면_생존_신호도_기록하지_않는다(self):
+        self.m.db_ok = lambda env: False
+        self.assertEqual(self.run_main(), 1)
+        self.assertEqual(self.heartbeat_calls(), [])
 
     def test_파서는_S3_키를_보지_못함(self):
         seen = os.path.join(self.t, "env")

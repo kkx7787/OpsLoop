@@ -1,6 +1,7 @@
 import { useEffect, useMemo, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { cn } from '@/lib/cn'
+import { useCtiBadges } from '@/api/cti'
 import { useIncidentsPage } from '@/api/incidents'
 import { Button } from '@/components/atoms/Button'
 import { buttonClasses } from '@/components/atoms/button-styles'
@@ -26,6 +27,9 @@ export function IncidentsPage() {
   const now = useNow(30_000)
   const list = incidents.data
   const rules = useMemo(() => ruleOptionsOf(list?.rules, list?.items), [list])
+  // 한 쪽의 사건 키를 모아 CVE 배지를 한 번에 묻는다(#52). 실패하면 배지만 빠지고 목록은 그대로다
+  const keys = useMemo(() => list?.items.map((item) => item.incident_key) ?? [], [list])
+  const badges = useCtiBadges(keys)
   const active = countFilters(filters)
   const lastPage = Math.max(1, Math.ceil((list?.total ?? 0) / pageSize))
   const outOfRange = !!list && !incidents.isPlaceholderData && page > lastPage
@@ -79,7 +83,7 @@ export function IncidentsPage() {
       />
     )
   } else {
-    body = <IncidentList key={`${page}:${pageSize}:${searchParams}`} items={list.items} total={list.total} offset={(page - 1) * pageSize} now={now} dataUpdatedAt={incidents.dataUpdatedAt} className="md:h-full md:max-h-none" />
+    body = <IncidentList key={`${page}:${pageSize}:${searchParams}`} items={list.items} total={list.total} offset={(page - 1) * pageSize} now={now} dataUpdatedAt={incidents.dataUpdatedAt} badges={badges.data?.badges} className="md:h-full md:max-h-none" />
   }
 
   const quickViews: Array<{ label: string; filters: ListFilters; selected: boolean }> = [

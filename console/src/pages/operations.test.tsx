@@ -39,6 +39,8 @@ describe('규칙 결과',()=>{
     expect(screen.getByText('최근 30회 · 신규 생성 수')).toBeInTheDocument()
     expect(screen.getByText('서로 다른 두 버전과 동일한 시작·종료 구간을 선택해 주세요.')).toBeInTheDocument()
     expect(screen.getByRole('link',{name:'R001 · v2'})).toHaveAttribute('href','/incidents?rule_id=R001')
+    // 대시보드에서 옮긴 비조치 · 유효 판정 수(#52). 미결은 분모에서 빠진다
+    expect(screen.getByText('비조치 1 / 유효 판정 2')).toBeInTheDocument()
   })
   it('최근 실행은 5회로 요약하고 나머지 이력도 펼쳐 확인한다', async () => {
     vi.stubGlobal('fetch', vi.fn<typeof globalThis.fetch>(async input => {

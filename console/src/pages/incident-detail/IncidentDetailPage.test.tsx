@@ -5,6 +5,7 @@ import { ctiKeys, incidentCtiPath } from '@/api/cti'
 import { incidentPath, type AbsorbedInfo, type EvidenceSample, type IncidentDetail } from '@/api/incidents'
 import { ACTION_STATUS } from '@/lib/domain'
 import { revealHidden } from '@/lib/untrusted'
+import { ctiBadgeText } from '@/components/molecules/cti-badge-format'
 import { applicability, cve, freshness, incidentCti, signature } from '@/test/cti-fixtures'
 import { expectInertDom, expectLongFolds, expectMixedRevealed, HOSTILE, LONG, MIXED } from '@/test/hostile-fixtures'
 import { noRetryClient, renderRoutes } from '@/test/render'
@@ -559,6 +560,24 @@ describe('IncidentDetailPage · ⑥ 취약점 연계', () => {
 
     // 머리글의 심각도 표기(소문자)는 여전히 하나뿐이다
     expect(screen.getByText('critical')).toHaveAttribute('data-severity', 'critical')
+  })
+
+  it('머리에 목록 · 대상 카드와 같은 CVE 배지(서버 badge)를 보이고, 배지가 없는 이전 서버는 그리지 않는다(#52)', async () => {
+    const badge = { cves: 1, kev: 1, applicability: 'not_affected', stale: false } as const
+    stubApi({ cti: ctiFor({ badge }) })
+    const first = renderRoutes(routes(), PATH)
+    const region = await screen.findByRole('region', { name: '취약점 연계' })
+    const shown = within(region).getByText(ctiBadgeText(badge))
+    expect(shown).toHaveTextContent('CVE 1 · KEV 1 · 비해당')
+    expect(shown).toHaveAttribute('data-cti-badge')
+    first.unmount()
+    vi.unstubAllGlobals()
+
+    stubApi({ cti: ctiFor() })
+    renderRoutes(routes(), PATH)
+    const old = await screen.findByRole('region', { name: '취약점 연계' })
+    expect(within(old).getByText('규칙 R105 c1 · 서명 1개 · CVE 1건')).toBeInTheDocument()
+    expect(old.querySelector('[data-cti-badge]')).toBeNull()
   })
 
   it('R106 처럼 서명이 여럿이고 KEV 가 아닌 CVE 는 등재일 · 랜섬웨어 칸을 비우고 부른 서명을 적는다', async () => {

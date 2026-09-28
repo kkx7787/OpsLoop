@@ -36,6 +36,7 @@ from access import require_role
 from operations import router as operations_router
 from notify import router as notify_router
 from cti import router as cti_router
+from targets import router as targets_router
 from notifier import Notifier
 import live
 from live import EVENT_CHANNEL, INCIDENT_CHANNEL, Listener, event_payload, hub
@@ -105,6 +106,8 @@ app.include_router(operations_router)
 app.include_router(notify_router)
 # CVE · KEV 연계 (cti.py). 상세 조회 /api/incidents/{incident_key:path} 보다 먼저 붙어야 …/cti 가 상세로 빠지지 않는다
 app.include_router(cti_router)
+# 관제 대상별 상태판 (targets.py · 이슈 #52). GET /api/dashboard/targets
+app.include_router(targets_router)
 
 
 # 세션 없이 여는 경로. /health 는 HAProxy 헬스체크가 부르므로 상태 말고는 아무것도 내지 않는다.

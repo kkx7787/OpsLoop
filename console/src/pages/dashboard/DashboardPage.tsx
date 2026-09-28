@@ -1,11 +1,13 @@
 import { Link } from 'react-router'
 import { useSummary, type BlockCounts } from '@/api/monitoring'
+import { useTargets } from '@/api/targets'
 import { Card, CardHeader } from '@/components/atoms/Card'
 import { SeverityBadge } from '@/components/atoms/SeverityBadge'
 import { Time } from '@/components/atoms/Time'
 import { UntrustedText } from '@/components/atoms/UntrustedText'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { MonitoringStatus } from '@/components/organisms/MonitoringStatus'
+import { TargetBoard } from '@/components/organisms/dashboard/TargetBoard'
 import { ApiErrorState } from '@/components/organisms/states/ApiErrorState'
 import { LoadingState } from '@/components/organisms/states/LoadingState'
 import { formatDuration } from '@/lib/time'
@@ -15,12 +17,19 @@ import { revealHidden } from '@/lib/untrusted'
 
 const AGE_LABELS = ['1시간 미만', '1–4시간', '4–12시간', '12–24시간', '24시간 이상']
 
+/**
+ * 관제 현황(S-02). 위에서부터 관제 대상 상태판(#52) → 미판정 수치 네 칸 → 먼저 확인할 사건 · 경과 분포.
+ * 상태판과 요약은 따로 조회한다. 한쪽이 실패해도 다른 쪽은 그대로 보인다.
+ * 규칙별 비조치율은 규칙 화면(규칙별 판정 집계)에 있어 여기서는 그리로 잇기만 한다.
+ */
 export function DashboardPage() {
   const query = useSummary()
+  const targets = useTargets()
   const data = query.data
   return <div className="flex min-w-0 flex-col gap-4">
-    <PageHeader title="미판정 현황" aside={data && <span className="text-xs text-ink-muted"><Time value={data.as_of} format="time" zone /> 기준</span>} />
-    <MonitoringStatus updatedAt={query.dataUpdatedAt} error={data ? query.error : null} onRetry={() => void query.refetch()} busy={query.isFetching} />
+    <PageHeader title="관제 현황" aside={data && <span className="text-xs text-ink-muted"><Time value={data.as_of} format="time" zone /> 기준</span>} />
+    <MonitoringStatus updatedAt={query.dataUpdatedAt} error={data ? query.error : null} onRetry={() => { void query.refetch(); void targets.refetch() }} busy={query.isFetching} />
+    <TargetBoard data={targets.data} pending={targets.isPending} fetching={targets.isFetching} error={targets.error} updatedAt={targets.dataUpdatedAt} onRetry={() => void targets.refetch()} />
     {query.isPending ? <LoadingState title="대시보드를 불러오는 중입니다" /> : !data ? <ApiErrorState error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} /> : <>
       <Card padding="none">
         <dl className="m-0 grid grid-cols-2 divide-x divide-line md:grid-cols-4">
@@ -70,22 +79,7 @@ export function DashboardPage() {
           <div className="border-t border-line px-4 py-3 text-xs leading-5 text-ink-muted">판정 목표: critical 1시간 · high 4시간 · medium 12시간 · low 24시간. 콘솔·감사 사건은 1시간입니다.</div>
         </Card>
       </div>
-      <Card padding="none" className="min-w-0">
-        <CardHeader title="규칙별 비조치율" aside="사건별 마지막 판정 기준" />
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-line text-xs text-ink-muted"><tr>{['규칙', '버전', '전체 사건', '유효 판정', '비조치', '비조치율'].map(label => <th key={label} className="px-4 py-2 font-medium whitespace-nowrap">{label}</th>)}</tr></thead>
-            <tbody className="divide-y divide-line">{data.rule_quality.map(row => <tr key={`${row.rule_id}:${row.rule_version}`}>
-              <td className="px-4 py-2.5 font-mono"><Link to={`/incidents?rule_id=${encodeURIComponent(row.rule_id)}`}>{row.rule_id}</Link></td>
-              <td className="px-4 py-2.5">{row.rule_version}</td><td className="px-4 py-2.5 tabular-nums">{row.incidents}</td><td className="px-4 py-2.5 tabular-nums">{row.judged_effective}</td><td className="px-4 py-2.5 tabular-nums">{row.non_action}</td>
-              <td className="px-4 py-2.5 font-medium tabular-nums">{row.non_action_rate === null ? <span className="text-xs text-ink-muted">판정 없음</span> : `${Number(row.non_action_rate).toFixed(1)}%`}</td>
-            </tr>)}</tbody>
-          </table>
-        </div>
-        {!data.rule_quality.length && <p className="px-4 text-ink-muted">집계할 사건이 없습니다.</p>}
-        <p className="m-0 border-t border-line px-4 py-2 text-xs text-ink-muted">비조치 = 무시 가능 + 오탐 + 양성 정탐. 미결은 분모에서 제외합니다. 높은 비율만으로 규칙의 오류를 뜻하지 않습니다.</p>
-      </Card>
-      <p className="m-0 text-xs text-ink-muted">최근 원문 수집 <Time value={data.latest_event} format="short" zone /> · 웹소켓 통보 시 갱신 · 30초마다 재조회</p>
+      <p className="m-0 text-xs text-ink-muted">최근 원문 수집 <Time value={data.latest_event} format="short" zone /> · 웹소켓 통보 시 갱신 · 30초마다 재조회 · 규칙별 비조치율은 <Link to="/rules">규칙 화면에서 보기</Link></p>
     </>}
   </div>
 }

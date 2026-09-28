@@ -8,6 +8,7 @@ import {
   Card,
   CardHeader,
   Chip,
+  CtiBadge,
   EmptyState,
   ErrorState,
   ForbiddenState,
@@ -143,6 +144,13 @@ export function ComponentCatalog() {
             데이터 연결 끊김
           </span>
           <Kbd>/</Kbd>
+        </Row>
+        {/* CVE 배지(#52): 정보 색 · 둥근 테두리. 판정값 · 심각도 배지와 섞이지 않는다 */}
+        <Row>
+          <CtiBadge badge={{ cves: 2, kev: 1, applicability: 'affected', stale: false }} />
+          <CtiBadge badge={{ cves: 3, kev: 0, applicability: 'not_affected', stale: false }} />
+          <CtiBadge badge={{ cves: 1, kev: 1, applicability: 'unknown', stale: true }} />
+          <CtiBadge badge={{ cves: 0, kev: 0, applicability: 'unknown', stale: false }} />
         </Row>
       </Section>
 

@@ -9,9 +9,11 @@
   3. 정렬 · 모양: CVE(KEV 먼저 → EPSS → id) · EPSS 자리 · 커널 재부팅 대기(같은 판끼리) · 주요 패키지 · dpkg 버전 비교
   4. 커널 소스 규칙(계약 10.5) · 생태계 이름 · dpkg 비교가 수집기(cti/opsloop_cti.py)와 같은 답인지 ·
      주목 CVE 대조(judge_watch 전 분기 · 커널이 아닌 linux 소스 · 행 모양 · 정렬)
-  5. 라우터 계약: 경로 순서 회귀(…/cti 가 상세 조회로 빠지지 않는다 · /api/cti/watch 가 자산 상세 · 사건 상세와 겹치지 않는다) ·
-     세션 없으면 401 · 역할 검사 없음(viewer) · 잘못된 asset_id · limit · offset(상한 포함) · filter 는 DB 에 닿기 전에 422 ·
-     표가 없으면 available=false · kev_match 가 PG 정규식으로 틀리면 그 서명만 kev_products=null
+  5. 라우터 계약: 경로 순서 회귀(…/cti 가 상세 조회로 빠지지 않는다 · /api/cti/watch · /api/cti/badges 가 자산 상세 · 사건 상세와
+     겹치지 않는다) · 세션 없으면 401 · 역할 검사 없음(viewer) · 잘못된 asset_id · limit · offset(상한 포함) · filter 는 DB 에
+     닿기 전에 422 · 표가 없으면 available=false · kev_match 가 PG 정규식으로 틀리면 그 서명만 kev_products=null
+  6. CVE 배지(이슈 #52): 적용 세 값(해당 > 미확인 > 비해당) · 오래된 정보의 비해당은 미확인 · CVE · KEV 수 ·
+     목록 배지 조회(키 1~100개 · 512자 · 빈 키는 DB 에 닿기 전에 422 · 같은 키는 한 번 · 서명 규칙 사건만 · 상세 badge 와 같은 값)
 main 이 필요한 시험은 test_web 을 먼저 불러 asyncpg 가 없는 곳에서도 가짜를 넣는다(main 보다 먼저).
 """
 import asyncio
@@ -316,6 +318,33 @@ class SummaryTests(unittest.TestCase):
         self.assertEqual(cti.summarize(rows), "not_affected")
         self.assertEqual(cti.summarize([]), "not_affected")
         self.assertEqual(cti.summarize([dict(cti.DECOY_ENTRY)]), "not_affected")
+
+
+class BadgeTests(unittest.TestCase):
+    """목록 · 카드 · 상세가 같이 그리는 CVE 배지(badge_of)."""
+
+    @staticmethod
+    def sigs(*summaries):
+        return [{"id": f"s{i}", "summary": summary} for i, summary in enumerate(summaries)]
+
+    @staticmethod
+    def cves(*kev):
+        return [{"cve_id": f"CVE-2026-{1000 + i}", "kev": {"date_added": "2026-09-01"} if k else None}
+                for i, k in enumerate(kev)]
+
+    def test_적용은_해당_미확인_비해당_순으로_고른다(self):
+        self.assertEqual(cti.badge_of(self.sigs("not_affected", "unknown", "affected"), self.cves(True, False), False),
+                         {"cves": 2, "kev": 1, "applicability": "affected", "stale": False})
+        self.assertEqual(cti.badge_of(self.sigs("not_affected", "unknown"), [], False)["applicability"], "unknown")
+        self.assertEqual(cti.badge_of(self.sigs("not_affected", "not_affected"), self.cves(False), False),
+                         {"cves": 1, "kev": 0, "applicability": "not_affected", "stale": False})
+
+    def test_오래된_정보로는_비해당이라_하지_않는다(self):
+        self.assertEqual(cti.badge_of(self.sigs("not_affected"), [], True),
+                         {"cves": 0, "kev": 0, "applicability": "unknown", "stale": True})
+        # 해당 · 미확인은 그대로 둔다
+        self.assertEqual(cti.badge_of(self.sigs("affected"), self.cves(True, True), 1)["applicability"], "affected")
+        self.assertIs(cti.badge_of(self.sigs("affected"), [], 1)["stale"], True)
 
 
 class FreshnessTests(unittest.TestCase):
@@ -794,9 +823,10 @@ class WatchItemTests(unittest.TestCase):
 class FakeConn:
     """질의 글자로 답을 고른다. 들어온 질의를 모두 남겨 어느 처리기가 불렸는지 본다."""
 
-    def __init__(self, calls, incident=None, rule=None, tables=True, errors=None):
+    def __init__(self, calls, incident=None, rule=None, tables=True, errors=None, badge_incidents=(), args=None):
         self.calls, self.incident, self.rule, self.tables = calls, incident, rule, tables
         self.errors = errors or {}
+        self.badge_incidents, self.args = list(badge_incidents), args
 
     async def fetchval(self, sql, *args):
         self.calls.append(sql)
@@ -814,8 +844,12 @@ class FakeConn:
 
     async def fetch(self, sql, *args):
         self.calls.append(sql)
+        if self.args is not None:
+            self.args.append((sql, args))
         if sql in self.errors:
             raise self.errors[sql]
+        if sql == cti.BADGE_INCIDENTS_SQL:
+            return [i for i in self.badge_incidents if i["incident_key"] in args[0]]
         return []
 
     @asynccontextmanager
@@ -825,11 +859,11 @@ class FakeConn:
 
 class FakePool:
     def __init__(self, **kw):
-        self.calls, self.kw = [], kw
+        self.calls, self.kw, self.args = [], kw, []
 
     @asynccontextmanager
     async def acquire(self):
-        yield FakeConn(self.calls, **self.kw)
+        yield FakeConn(self.calls, args=self.args, **self.kw)
 
 
 KEY = "R105|c1|192.0.2.1|x"
@@ -961,6 +995,38 @@ class RouterContractTests(unittest.TestCase):
         response = self.client.get(ENCODED)
         self.assertEqual((response.status_code, response.json()), (404, {"detail": "인시던트를 찾을 수 없습니다"}))
 
+    def test_배지_조회의_잘못된_키는_DB_에_닿기_전에_422_다(self):
+        bad = ["/api/cti/badges", "/api/cti/badges?key=", "/api/cti/badges?key=" + "a" * 513,
+               "/api/cti/badges?" + "&".join(f"key=k{i}" for i in range(101)),
+               "/api/cti/badges?key=a&key="]
+        for path in bad:
+            with self.subTest(path=path[:60]):
+                self.assertEqual(self.client.get(path).status_code, 422)
+        self.assertEqual(self.pool.calls, [])
+        # 100개 · 512자까지는 받는다
+        self.pool.kw = {"tables": False}
+        ok = "/api/cti/badges?" + "&".join(f"key=k{i}" for i in range(99)) + "&key=" + "a" * 512
+        self.assertEqual(self.client.get(ok).status_code, 200)
+
+    def test_배지_조회는_표가_없으면_available_false_다(self):
+        self.pool.kw = {"tables": False}
+        body = self.client.get("/api/cti/badges?key=a").json()
+        self.assertEqual(body, {"as_of": "2026-09-25T03:00:00+00:00", "available": False, "badges": {}})
+        self.assertNotIn(cti.BADGE_INCIDENTS_SQL, self.pool.calls)
+
+    def test_배지는_서명_규칙_사건만_담고_상세_badge_와_같다(self):
+        self.pool.kw = {"incident": R105_INCIDENT, "rule": R105_RULE, "badge_incidents": [R105_INCIDENT]}
+        detail = self.client.get(ENCODED).json()
+        self.pool.args.clear()
+        # 같은 키는 한 번만 묻는다. 없는 키는 빠진다
+        body = self.client.get("/api/cti/badges", params=[("key", KEY), ("key", KEY), ("key", "없는 키")]).json()
+        self.assertEqual([args for sql, args in self.pool.args if sql == cti.BADGE_INCIDENTS_SQL], [([KEY, "없는 키"],)])
+        self.assertEqual((body["available"], body["badges"]), (True, {KEY: detail["badge"]}))
+        self.assertEqual(detail["badge"], {"cves": 0, "kev": 0, "applicability": "unknown", "stale": True})
+        # 서명 규칙이 아닌 사건은 담지 않는다
+        self.pool.kw["rule"] = json.dumps({"id": "R105", "type": "event_match", "params": {}})
+        self.assertEqual(self.client.get("/api/cti/badges", params={"key": KEY}).json()["badges"], {})
+
 
 class RouteOrderTests(unittest.TestCase):
     """main 앱 그대로. …/cti 가 상세 조회(/api/incidents/{incident_key:path})의 키로 빠지지 않아야 한다."""
@@ -992,14 +1058,14 @@ class RouteOrderTests(unittest.TestCase):
                         paths.index("/api/incidents/{incident_key:path}"))
 
     def test_경로마다_처리기가_하나로_정해진다(self):
-        cases = {"/api/cti/watch": cti.watch_list, "/api/assets": cti.assets_list,
+        cases = {"/api/cti/watch": cti.watch_list, "/api/cti/badges": cti.cti_badges, "/api/assets": cti.assets_list,
                  "/api/assets/web-01": cti.asset_detail, "/api/assets/watch": cti.asset_detail,
                  "/api/assets/cti": cti.asset_detail, ENCODED: cti.incident_cti, "/api/incidents/a/b/cti": cti.incident_cti}
         for path, endpoint in cases.items():
             with self.subTest(path=path):
                 self.assertIs(self.first_route(path).endpoint, endpoint)
         # 사건 상세 · 조치 경로는 cti 처리기로 오지 않는다
-        for path in ["/api/incidents/cti/watch", "/api/incidents/R105%7Cc1%7C192.0.2.1%7Cx"]:
+        for path in ["/api/incidents/cti/watch", "/api/incidents/cti/badges", "/api/incidents/R105%7Cc1%7C192.0.2.1%7Cx"]:
             with self.subTest(path=path):
                 self.assertEqual(self.first_route(path).path, "/api/incidents/{incident_key:path}")
         self.assertEqual(self.first_route(ENCODED + "/x").path, "/api/incidents/{incident_key:path}")
@@ -1049,7 +1115,7 @@ class RouteOrderTests(unittest.TestCase):
         self.assertTrue(any("signal_count" in c for c in self.pool.calls))
 
     def test_세션이_없으면_401_이다(self):
-        for path in [ENCODED, "/api/assets", "/api/assets/web-01", "/api/cti/watch"]:
+        for path in [ENCODED, "/api/assets", "/api/assets/web-01", "/api/cti/watch", "/api/cti/badges?key=a"]:
             with self.subTest(path=path):
                 response = self.client.get(path)
                 self.assertEqual((response.status_code, response.json()), (401, {"detail": "인증이 필요합니다"}))

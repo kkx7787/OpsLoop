@@ -4,6 +4,8 @@
 opsloop-ingest.service 가 opsloop-pull 사용자로 5분마다 돌린다.
 
   1. 가져오기   puller/pull.py. S3 읽기 키는 이 하위 프로세스에만 넘긴다 (파서 · 탐지기는 키를 보지 못한다)
+  1-1. 생존 신호 기록  DB 접속을 확인한 뒤 puller/record_heartbeats.py 가 풀러의 호스트별 hb 결과를 sensor_heartbeats 에
+                옮긴다 (이슈 #52 · 적재 역할 접속 정보 · S3 키 없음). 실패해도 경고만 하고 적재 · 탐지 · 종료 코드는 그대로다
   2. 적재       받은 편지함의 조각을 묶음(200개 · 32MiB)씩 발생원별 파서(parser/parse_<센서>.py)에 넘기고,
                 성공한 묶음만 편지함에서 뺀다.
                 묶음이 실패하면 한 파일씩 다시 넣어 보고, 그래도 실패하는 파일만 격리함(quarantine)으로 옮긴다.
@@ -50,6 +52,7 @@ SENSORS = ("cowrie", "decoy", "gateway")   # 편지함 이름이자 파서 이�
 BATCH_FILES, BATCH_BYTES = 200, 32 * 1024 * 1024
 PARSER_MEM = 384 * 1024 * 1024       # 파서 한 개의 주소 공간 상한. 넘으면 MemoryError 로 실패하고 그 파일만 격리된다
 RETRY_PER_RUN, RETRY_BASE, RETRY_MAX = 20, 300, 3600
+HEARTBEAT_TIMEOUT = 60               # 생존 신호 기록 하위 프로세스의 상한 (DB 문장 상한 30초 + 접속 10초)
 PULL_KNOWN = (0, 1, 10, 11, 13)      # 풀러가 판단을 끝낸 코드 (1 은 일시 오류)
 DETECT_OK = (0, 11)                  # 데이터가 다 들어온 상태
 _just_quarantined = set()            # 이번 회차에 격리한 파일. 같은 회차에 다시 시도하지 않는다
@@ -118,6 +121,21 @@ def db_ok(env):
     code = "import os,psycopg2; psycopg2.connect(os.environ['DATABASE_URL'], connect_timeout=10).close()"
     return subprocess.run([sys.executable, "-c", code], env=env,
                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
+
+def record_heartbeats(env):
+    """풀러가 남긴 호스트별 생존 신호 결과를 DB sensor_heartbeats 에 옮긴다 (이슈 #52).
+    적재 역할 접속 정보(env)로 돌고 S3 키는 넘기지 않는다. 실패해도 경고 한 줄만 남기고 적재 · 탐지 · 종료 코드에 닿지 않는다."""
+    child = dict(env, OPSLOOP_HOME=HOME)
+    try:
+        rc = subprocess.run([sys.executable, os.path.join(APP, "puller", "record_heartbeats.py")], env=child, cwd=APP,
+                            timeout=HEARTBEAT_TIMEOUT).returncode
+    except subprocess.TimeoutExpired:
+        rc = f"{HEARTBEAT_TIMEOUT}초 초과"
+    except OSError as e:
+        rc = type(e).__name__
+    if rc != 0:
+        log(f"생존 신호를 기록하지 못했다 ({rc}). 적재 · 탐지는 그대로 한다", 4)
 
 
 def _limit_memory():
@@ -244,6 +262,7 @@ def main():
         log("DB 에 접속하지 못했다. 편지함은 그대로 두고 다음 회차에 다시 한다", 3)
         return 1
 
+    record_heartbeats(env)
     for sensor in SENSORS:
         load_sensor(sensor, env)
 

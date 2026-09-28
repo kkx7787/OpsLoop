@@ -3,8 +3,8 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { createElement, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { noRetryClient } from '@/test/render'
-import { assetDetailResult, assetsResult, CTI_KEY, incidentCti, watchResult } from '@/test/cti-fixtures'
-import { assetPath, ctiKeys, incidentCtiPath, lastVulnOffset, useAsset, useAssets, useIncidentCti, useWatch, WATCH_PATH, type VulnFilter } from './cti'
+import { assetDetailResult, assetsResult, CTI_AS_OF, CTI_KEY, incidentCti, watchResult } from '@/test/cti-fixtures'
+import { assetPath, BADGE_MAX_KEYS, badgeKeys, BADGES_PATH, ctiKeys, incidentCtiPath, lastVulnOffset, useAsset, useAssets, useCtiBadges, useIncidentCti, useWatch, WATCH_PATH, type VulnFilter } from './cti'
 import { incidentKeys } from './incidents'
 
 function json(body: unknown, status = 200): Response {
@@ -164,3 +164,39 @@ describe('useWatch', () => {
   })
 })
 
+
+describe('CVE 배지(#52)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('배지 키는 빈 키 · 512자 넘는 키를 빼고 중복 없이 정렬해 100개까지 묻는다', () => {
+    expect(badgeKeys(['b', 'a', 'b', '', 'x'.repeat(513), 'x'.repeat(512)])).toEqual(['a', 'b', 'x'.repeat(512)])
+    const many = Array.from({ length: 130 }, (_, i) => `k${String(i).padStart(3, '0')}`)
+    expect(badgeKeys(many)).toHaveLength(BADGE_MAX_KEYS)
+    expect(badgeKeys(many)[0]).toBe('k000')
+  })
+
+  it('배지 쿼리 키는 cti 접두 밑이고 순서가 달라도 같다(재접속 · resync 때 함께 다시 받는다)', () => {
+    expect(ctiKeys.badges(['b', 'a'])).toEqual(['cti', 'badges', ['a', 'b']])
+    expect(ctiKeys.badges(['a', 'b'])).toEqual(ctiKeys.badges(['b', 'a', 'a']))
+    expect(ctiKeys.badges(['a']).slice(0, 1)).toEqual(ctiKeys.all)
+    expect(BADGES_PATH).toBe('/api/cti/badges')
+  })
+
+  it('키를 같은 이름으로 여러 번 붙여 한 번에 묻는다', async () => {
+    const body = { as_of: CTI_AS_OF, available: true, badges: { [CTI_KEY]: { cves: 1, kev: 1, applicability: 'unknown', stale: false } } }
+    const fetch = stubFetch((url) => (url.startsWith('/api/cti/badges?') ? json(body) : undefined))
+    const { wrapper } = withClient()
+    const { result } = renderHook(() => useCtiBadges([CTI_KEY, 'R001|v2|192.0.2.1|x', CTI_KEY]), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(calledUrls(fetch)).toEqual([`/api/cti/badges?key=${encodeURIComponent('R001|v2|192.0.2.1|x')}&key=${encodeURIComponent(CTI_KEY)}`])
+    expect(result.current.data?.badges[CTI_KEY]).toEqual({ cves: 1, kev: 1, applicability: 'unknown', stale: false })
+  })
+
+  it('키가 없으면 묻지 않는다', () => {
+    const fetch = stubFetch(() => undefined)
+    const { wrapper } = withClient()
+    const { result } = renderHook(() => useCtiBadges([]), { wrapper })
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(fetch).not.toHaveBeenCalled()
+  })
+})

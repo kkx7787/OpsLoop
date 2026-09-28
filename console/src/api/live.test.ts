@@ -22,7 +22,7 @@ import {
 } from './live'
 
 /** 재접속 · resync 때 다시 받는 쿼리 전부. /api/me 는 세션이 끝났으면 로그인으로 보내려고 넣는다 */
-const ALL_KEYS = [incidentKeys.all, ruleKeys.all, monitoringKeys.summary, monitoringKeys.blocklist, nodeKey, auditKey, ctiKeys.all, ['me']]
+const ALL_KEYS = [incidentKeys.all, ruleKeys.all, monitoringKeys.summary, monitoringKeys.blocklist, monitoringKeys.targets, nodeKey, auditKey, ctiKeys.all, ['me']]
 
 /** 서버 없이 여닫을 수 있는 가짜 WebSocket. 만들어진 순서대로 instances 에 남는다 */
 class FakeSocket extends EventTarget implements LiveSocket {
@@ -82,12 +82,14 @@ describe('wsUrl · backoffMs · parseLiveMessage', () => {
 describe('applyLiveMessage', () => {
   const KEY = 'R003|v2|4.4.66.84|2026-09-18T06:00:00+00:00'
 
-  it('incident.created 는 목록과 요약을 무효화한다', () => {
+  it('incident.created 는 목록 · 요약 · 대상 상태판을 무효화한다', () => {
     const client = noRetryClient()
     const invalidate = vi.spyOn(client, 'invalidateQueries')
     applyLiveMessage(client, { type: 'incident.created', data: { incident_key: KEY, severity: 'critical' } })
-    expect(invalidate).toHaveBeenCalledTimes(2)
+    expect(invalidate).toHaveBeenCalledTimes(3)
     expect(invalidate).toHaveBeenCalledWith({ queryKey: incidentKeys.lists() })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: monitoringKeys.summary })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: monitoringKeys.targets })
   })
 
   it('verdict.created 는 그 사건의 상세 · 목록 · 규칙 품질을 무효화한다', () => {
@@ -97,19 +99,21 @@ describe('applyLiveMessage', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: incidentKeys.detail(KEY) })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: incidentKeys.lists() })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ruleKeys.quality() })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: monitoringKeys.targets })
   })
 
-  it('action.created 는 상세 · 목록 · 요약 · 차단을 무효화한다. 키가 없으면 상세는 제외한다', () => {
+  it('action.created 는 상세 · 목록 · 요약 · 대상 상태판 · 차단을 무효화한다. 키가 없으면 상세는 제외한다', () => {
     const client = noRetryClient()
     const invalidate = vi.spyOn(client, 'invalidateQueries')
     applyLiveMessage(client, { type: 'action.created', data: { incident_key: KEY, action: 'block_ip' } })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: incidentKeys.detail(KEY) })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: incidentKeys.lists() })
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: monitoringKeys.targets })
     expect(invalidate).not.toHaveBeenCalledWith({ queryKey: ruleKeys.quality() })
 
     invalidate.mockClear()
     applyLiveMessage(client, { type: 'action.created' })
-    expect(invalidate).toHaveBeenCalledTimes(4)
+    expect(invalidate).toHaveBeenCalledTimes(5)
     expect(invalidate).toHaveBeenCalledWith({ queryKey: incidentKeys.lists() })
   })
 
@@ -121,7 +125,7 @@ describe('applyLiveMessage', () => {
     expect(invalidate).not.toHaveBeenCalled()
   })
 
-  it('resync 는 재접속 때와 같이 사건 · 규칙 · 지표 · 차단 · 노드 · 감사 · CVE 연계 · /api/me 를 전부 다시 조회한다', () => {
+  it('resync 는 재접속 때와 같이 사건 · 규칙 · 지표 · 차단 · 대상 상태판 · 노드 · 감사 · CVE 연계 · /api/me 를 전부 다시 조회한다', () => {
     const client = noRetryClient()
     const invalidate = vi.spyOn(client, 'invalidateQueries')
     applyLiveMessage(client, { type: 'resync' })
@@ -188,7 +192,8 @@ describe('connectLive', () => {
     FakeSocket.last().message({ type: 'incident.created', data: { incident_key: 'k' } })
     expect(invalidate).toHaveBeenCalledWith({ queryKey: incidentKeys.lists() })
     FakeSocket.last().message('깨진 JSON')
-    expect(invalidate).toHaveBeenCalledTimes(2)
+    // 목록 · 요약 · 대상 상태판 세 번. 깨진 JSON 은 더하지 않는다
+    expect(invalidate).toHaveBeenCalledTimes(3)
 
     stop()
   })

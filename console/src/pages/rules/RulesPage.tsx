@@ -1,6 +1,7 @@
 /* oxlint-disable jsx-a11y/no-noninteractive-tabindex -- 가로 스크롤 표를 키보드로도 스크롤할 수 있게 한다. */
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router'
+import type { RuleQuality } from '@/api/incidents'
 import { useRulesResult } from '@/api/operations'
 import { Badge } from '@/components/atoms/Badge'
 import { Button } from '@/components/atoms/Button'
@@ -18,6 +19,8 @@ import { readInterval } from '@/lib/interval'
 
 const cell = 'px-4 py-2.5 align-top'
 const percent = (n: number | null) => n === null ? '판정 없음' : `${Number(n).toFixed(1)}%`
+/** 비조치 = 무시 가능 + 오탐 + 양성 정탐. 비율의 분자 · 분모를 함께 보여 적은 판정의 비율을 크게 읽지 않게 한다(대시보드에서 옮긴 정보, #52) */
+const nonAction = (r: RuleQuality) => r.non_actionable + r.false_positives + r.benign_positives
 export function RulesPage() {
   const [start, setStart] = useState(''), [end, setEnd] = useState('')
   const [period, setPeriod] = useState<{ since?: string; until?: string }>({})
@@ -50,7 +53,7 @@ export function RulesPage() {
         <CardHeader title="규칙별 판정 집계" aside={<Select aria-label="규칙 버전" fieldSize="sm" value={version} onChange={e => setVersion(e.target.value)}><option value="">전체 버전</option>{versions.map(v => <option key={v.version}>{v.version}</option>)}</Select>} />
         <div className="overflow-auto md:max-h-[420px]" tabIndex={0} role="region" aria-label="규칙별 판정 집계 표"><table className="responsive-table w-full text-left text-sm">
           <thead className="sticky top-0 bg-surface border-b border-line text-xs text-ink-muted"><tr>{['규칙 · 버전', '사건', '판정', '비조치율', '오탐률', '판정 분포'].map(t => <th key={t} className={cell}>{t}</th>)}</tr></thead>
-          <tbody className="divide-y divide-line">{shown.map(r => <tr key={`${r.rule_id}:${r.rule_version}`}><td className={cell}><Link title="이 규칙의 모든 버전 사건 보기" to={`/incidents?rule_id=${encodeURIComponent(r.rule_id)}`}><span className="font-mono">{r.rule_id}</span> · {r.rule_version}</Link><div className="text-xs text-ink-muted">{names.get(`${r.rule_version}:${r.rule_id}`)?.name ?? '이름 미기록'}</div></td><td data-label="사건" className={`${cell} tabular-nums`}>{r.incidents}</td><td data-label="판정" className={`${cell} tabular-nums`}>{r.judged}</td><td data-label="비조치율" className={cell}>{percent(r.non_action_rate)}</td><td data-label="오탐률" className={cell}>{isCircularRule(r.rule_id) ? <span title="규칙 조건과 판정 근거가 겹쳐 독립적인 정확도 지표로 사용하지 않습니다">순환 규칙</span> : percent(r.false_positive_rate)}</td><td data-label="판정 분포" className={cell}><details className="text-xs"><summary aria-label={`${r.rule_id} ${r.rule_version} 판정 분포`} className="cursor-pointer text-ink-muted">5개 판정값</summary><dl className="m-0 mt-2 grid grid-cols-[auto_auto] gap-x-4 gap-y-1">{[['실제 위협', r.threats], ['무시 가능', r.non_actionable], ['오탐', r.false_positives], ['양성 정탐', r.benign_positives], ['미결', r.undetermined]].map(([label, n]) => <div key={label} className="contents"><dt>{label}</dt><dd className="m-0 text-right tabular-nums">{n}</dd></div>)}</dl></details></td></tr>)}</tbody>
+          <tbody className="divide-y divide-line">{shown.map(r => <tr key={`${r.rule_id}:${r.rule_version}`}><td className={cell}><Link title="이 규칙의 모든 버전 사건 보기" to={`/incidents?rule_id=${encodeURIComponent(r.rule_id)}`}><span className="font-mono">{r.rule_id}</span> · {r.rule_version}</Link><div className="text-xs text-ink-muted">{names.get(`${r.rule_version}:${r.rule_id}`)?.name ?? '이름 미기록'}</div></td><td data-label="사건" className={`${cell} tabular-nums`}>{r.incidents}</td><td data-label="판정" className={`${cell} tabular-nums`}>{r.judged}</td><td data-label="비조치율" className={cell}>{percent(r.non_action_rate)}{r.judged_effective > 0 && <div className="text-xs text-ink-muted tabular-nums">비조치 {nonAction(r)} / 유효 판정 {r.judged_effective}</div>}</td><td data-label="오탐률" className={cell}>{isCircularRule(r.rule_id) ? <span title="규칙 조건과 판정 근거가 겹쳐 독립적인 정확도 지표로 사용하지 않습니다">순환 규칙</span> : percent(r.false_positive_rate)}</td><td data-label="판정 분포" className={cell}><details className="text-xs"><summary aria-label={`${r.rule_id} ${r.rule_version} 판정 분포`} className="cursor-pointer text-ink-muted">5개 판정값</summary><dl className="m-0 mt-2 grid grid-cols-[auto_auto] gap-x-4 gap-y-1">{[['실제 위협', r.threats], ['무시 가능', r.non_actionable], ['오탐', r.false_positives], ['양성 정탐', r.benign_positives], ['미결', r.undetermined]].map(([label, n]) => <div key={label} className="contents"><dt>{label}</dt><dd className="m-0 text-right tabular-nums">{n}</dd></div>)}</dl></details></td></tr>)}</tbody>
         </table></div>
         {!shown.length && <p className="p-4 text-sm text-ink-muted">선택한 조건에 집계된 사건이 없습니다.</p>}
         <p className="m-0 border-t border-line px-4 py-3 text-xs text-ink-muted">사건별 마지막 판정 기준. 비조치 = 무시 가능 + 오탐 + 양성 정탐. 비율의 분모에서 미결은 제외합니다.</p>

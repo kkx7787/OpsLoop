@@ -41,7 +41,7 @@ describe('경로표', () => {
     expect(screen.getByRole('navigation', { name: '주 메뉴' })).toBeInTheDocument()
   })
 
-  it.each([['/', '미판정 현황'], ['/blocklist', '차단 목록'], ['/rules', '규칙 · 리플레이'], ['/nodes', '수집 노드'], ['/inventory', '자산 · 취약점']])('%s는 구현 화면이다', async (path, title) => {
+  it.each([['/', '관제 현황'], ['/blocklist', '차단 목록'], ['/rules', '규칙 · 리플레이'], ['/nodes', '수집 노드'], ['/inventory', '자산 · 취약점']])('%s는 구현 화면이다', async (path, title) => {
     stubIncidents({ username: 'han', role: 'operator' })
     renderRoutes(routes, path)
     expect(await screen.findByRole('heading', { level: 1, name: title })).toBeInTheDocument()

@@ -33,7 +33,8 @@
 경로
   $OPSLOOP_HOME/raw/v1/...          원장 미러. S3 키와 같은 모양
   $OPSLOOP_HOME/inbox/<센서>/        아직 적재하지 않은 조각 (미러 파일의 하드 링크)
-  $OPSLOOP_HOME/pull-state.json     받은 조각 목록과 이미 낸 경보
+  $OPSLOOP_HOME/pull-state.json     받은 조각 목록과 이미 낸 경보, 이번 회차의 호스트별 생존 신호 결과(heartbeats · 이슈 #52).
+                                    heartbeats 는 opsloop-ingest 가 record_heartbeats.py 로 DB sensor_heartbeats 에 옮긴다
 
 환경변수
   OPSLOOP_BUCKET     S3 버킷
@@ -115,6 +116,7 @@ def load_state(path):
     st.setdefault("ignored", {})    # 키 규칙 위반 키 → 이유 (한 번만 알린다)
     st.setdefault("bad_groups", [])  # 거부가 상한을 넘은 세대. 더 받지 않고 구멍으로 드러낸다
     st.setdefault("overflow", 0)    # 상한을 넘겨 기록하지 못한 거부 · 무시 수
+    st.setdefault("heartbeats", {})  # 호스트 → 이번 회차 hb 결과 (heartbeat_entry). 회차마다 새로 쓴다
     return st
 
 
@@ -378,6 +380,14 @@ def coverage(objects, hbs, ack=frozenset(), rejected=(), bad_groups=()):
     return gaps
 
 
+def heartbeat_entry(host, when, problem, now, gateway_hosts):
+    """호스트 하나의 hb 결과 (이슈 #52). seen_at 은 hb 의 S3 LastModified(못 읽었으면 None), checked_at 은 이번 회차 시각,
+    problem 은 읽기 문제(없음 · 형식이 틀림 · 읽기 일시 오류 …, 없으면 None)다. 오래됨은 problem 이 아니다(시각으로 판단한다)."""
+    return {"role": "gateway" if host in gateway_hosts else "sensor",
+            "seen_at": when.isoformat() if when is not None and problem is None else None,
+            "checked_at": now.isoformat(), "problem": problem}
+
+
 def role_ok(sensor, host, gateway_hosts):
     """발생원과 호스트의 짝이 맞는가. gateway 는 관문 호스트만, 나머지는 관문이 아닌 호스트만 올린다."""
     return (sensor == "gateway") == (host in gateway_hosts)
@@ -406,6 +416,8 @@ def run(s3, bucket, hosts, home, now=None, ack=frozenset(), gateway_hosts=frozen
     # 1. hb 를 먼저 읽는다. 이 시각 이후 조각은 이번에 받지 않는다
     hbs, cutoff, stale = {}, {}, []
     transient = 0
+    # 호스트별 생존 신호 결과는 이번 회차 것만 둔다. OPSLOOP_HOSTS 에서 빠진 호스트의 항목은 여기서 사라진다
+    beats = state["heartbeats"] = {}
     for host in sorted(hosts):
         try:
             files, when, problem = read_hb(s3, bucket, host)
@@ -422,6 +434,7 @@ def run(s3, bucket, hosts, home, now=None, ack=frozenset(), gateway_hosts=frozen
                          f"경고: {host} 생존 신호에 이 호스트가 올릴 수 없는 발생원 항목 {len(wrong)}개. 빼고 본다", 3)
                 files = {n: f for n, f in files.items() if n not in wrong}
         hbs[host], cutoff[host] = files, when
+        beats[host] = heartbeat_entry(host, when, problem, now, gateway_hosts)
         if problem:
             log(f"경고: {host} 생존 신호 {problem}. 이 호스트 조각은 받지 않는다", 3 if "틀림" in problem or "초과" in problem else 4)
             if "일시 오류" not in problem:
