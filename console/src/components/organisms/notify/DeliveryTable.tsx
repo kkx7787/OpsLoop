@@ -12,7 +12,7 @@ import { revealHidden } from '@/lib/untrusted'
 import { DeliveryStatusBadge } from './ChannelTable'
 import { deliveryProblem } from './problem'
 
-const HEAD = ['만든 시각 (KST)', '채널', '종류', '대상', '상태', '시도', '응답 · 원인', '보낸 시각 · 다음 시도 (KST)']
+const HEAD = ['만든 시각 (KST)', '채널 · 종류', '대상', '발송 결과', '보낸 시각 · 다음 시도 (KST)']
 const cell = 'px-4 py-3 align-top'
 
 interface Props {
@@ -33,32 +33,29 @@ export function DeliveryTable({ channels, filters, onFilters, data, pending, fet
   const set = (next: Partial<DeliveryFilters>) => onFilters({ ...filters, ...next, offset: 0 })
   return (
     <Card padding="none" className="min-w-0">
-      <CardHeader title="발송 이력" aside={<>
-        <label htmlFor={`${id}-channel`}>채널</label>
+      <CardHeader title="발송 이력" className="[&>div]:max-w-full" aside={<div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2 whitespace-nowrap"><label htmlFor={`${id}-channel`}>채널</label>
         <Select id={`${id}-channel`} fieldSize="sm" className="h-7 w-auto" value={filters.channel_id ?? ''} onChange={(e) => set({ channel_id: e.target.value ? Number(e.target.value) : undefined })}>
           <option value="">전체</option>{channels.map((c) => <option key={c.id} value={c.id}>{revealHidden(c.name)}</option>)}
         </Select>
-        <label htmlFor={`${id}-status`}>상태</label>
+        </div><div className="flex items-center gap-2 whitespace-nowrap"><label htmlFor={`${id}-status`}>상태</label>
         <Select id={`${id}-status`} fieldSize="sm" className="h-7 w-auto" value={filters.status ?? ''} onChange={(e) => set({ status: (e.target.value || undefined) as DeliveryStatus | undefined })}>
           <option value="">전체</option>{DELIVERY_STATUSES.map((s) => <option key={s} value={s}>{DELIVERY_STATUS_LABEL[s]}</option>)}
         </Select>
-        {data && <span>{data.total.toLocaleString()}건</span>}
-      </>} />
+        </div>{data && <span className="whitespace-nowrap">{data.total.toLocaleString()}건</span>}
+      </div>} />
       {pending ? <LoadingState className="m-4" /> : !data ? <ApiErrorState error={error} onRetry={onRetry} className="m-4" /> : <>
-        <div className="overflow-x-auto" role="region" aria-label="발송 이력 표" tabIndex={0}>
-          <table className="w-full min-w-[880px] text-left text-sm">
-            <thead className="border-b border-line text-xs text-ink-muted"><tr>{HEAD.map((t) => <th key={t} scope="col" className={`${cell} whitespace-nowrap`}>{t}</th>)}</tr></thead>
+        <div key={JSON.stringify(filters)} className="overflow-auto md:max-h-[420px]" role="region" aria-label="발송 이력 표" tabIndex={0}>
+          <table className="responsive-table w-full table-fixed text-left text-sm">
+            <thead className="sticky top-0 bg-surface border-b border-line text-xs text-ink-muted"><tr>{HEAD.map((t) => <th key={t} scope="col" className={`${cell} whitespace-nowrap`}>{t}</th>)}</tr></thead>
             <tbody className="divide-y divide-line">{data.rows.map((r) => {
               const problem = deliveryProblem(r.error, r.response_code)
               return <tr key={r.id}>
                 <td className={`${cell} whitespace-nowrap`}><Time value={r.created_at} format="short" /></td>
-                <td className={cell}><UntrustedText value={r.channel_name} max={120} /></td>
-                <td className={`${cell} whitespace-nowrap`}>{DELIVERY_EVENT_LABEL[r.event] ?? r.event}</td>
-                <td className={`${cell} max-w-xs break-all font-mono text-xs`}><UntrustedText value={r.subject_key} /></td>
-                <td className={cell}><DeliveryStatusBadge status={r.status} /></td>
-                <td className={`${cell} tabular-nums`}>{r.attempts}</td>
-                <td className={`${cell} max-w-64 text-xs`}>{problem ? <span className="break-keep text-danger"><UntrustedText value={problem} /></span> : r.response_code ?? '—'}</td>
-                <td className={`${cell} text-xs whitespace-nowrap`}>{r.status === 'sent' ? <Time value={r.sent_at} format="short" /> : r.status === 'queued' ? <>다음 <Time value={r.next_attempt_at} format="short" /></> : '—'}</td>
+                <td data-label="채널 · 종류" className={cell}><UntrustedText value={r.channel_name} max={120} /><div className="mt-1 text-xs text-ink-muted">{DELIVERY_EVENT_LABEL[r.event] ?? r.event}</div></td>
+                <td data-label="대상" className={`${cell} max-w-xs break-all font-mono text-xs`}><UntrustedText value={r.subject_key} /></td>
+                <td data-label="발송 결과" className={cell}><DeliveryStatusBadge status={r.status} /><div className="mt-1 text-xs text-ink-muted">시도 {r.attempts}회 · {r.response_code ?? '응답 없음'}</div>{problem && <div className="mt-1 text-xs text-danger"><UntrustedText value={problem} /></div>}</td>
+                <td data-label="보낸 시각 · 다음 시도" className={`${cell} text-xs`}>{r.status === 'sent' ? <Time value={r.sent_at} format="short" /> : r.status === 'queued' ? <>다음 <Time value={r.next_attempt_at} format="short" /></> : '—'}</td>
               </tr>
             })}</tbody>
           </table>

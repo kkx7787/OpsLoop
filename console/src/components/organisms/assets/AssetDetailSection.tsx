@@ -22,9 +22,9 @@ import { SegmentedControl } from '@/components/molecules/SegmentedControl'
 import { ApiErrorState } from '@/components/organisms/states/ApiErrorState'
 import { LoadingState } from '@/components/organisms/states/LoadingState'
 import { revealHidden } from '@/lib/untrusted'
-import { cvssTone, FIX_STATE_TONE, formatCvss, formatPercentile, formatProbability, ransomwareLabel, truncate, ubuntuPriorityLabel, ubuntuPriorityTone } from './cti-format'
+import { cvssTone, FIX_STATE_TONE, formatCvss, formatPercentile, formatProbability, ransomwareLabel, ubuntuPriorityLabel, ubuntuPriorityTone } from './cti-format'
 
-const HEAD = ['CVE', '패키지', '설치 버전', '수정 상태', 'KEV', 'CVSS', 'EPSS (백분위)', 'Ubuntu 등급', '요약']
+const HEAD = ['CVE · 패키지', '설치 버전', '수정 상태', '위험 참고', 'EPSS (백분위)', '요약']
 const cell = 'px-4 py-3 align-top'
 const FILTER_OPTIONS = VULN_FILTERS.map((value) => ({ value, label: VULN_FILTER_LABEL[value] }))
 const EMPTY: Record<VulnFilter, string> = {
@@ -152,29 +152,29 @@ function VulnTable({ page, checked, filter, offset, fetching, onFilter, onOffset
       <h3 className="m-0 text-sm font-semibold">배포판 취약점 <span className="font-normal text-ink-muted">{total.toLocaleString()}건</span></h3>
       <SegmentedControl aria-label="취약점 거르기" options={FILTER_OPTIONS} value={filter} onChange={onFilter} />
     </div>
-    {rows.length > 0 && <div className="overflow-x-auto" role="region" aria-label="배포판 취약점 표" tabIndex={0}>
-      <table className="w-full min-w-[1080px] text-left text-sm">
-        <thead className="border-y border-line text-xs text-ink-muted"><tr>{HEAD.map((t) => <th key={t} scope="col" className={`${cell} whitespace-nowrap`}>{t}</th>)}</tr></thead>
+    {rows.length > 0 && <div key={`${filter}:${page.offset}`} className="overflow-auto md:max-h-[480px]" role="region" aria-label="배포판 취약점 표" tabIndex={0}>
+      <table className="responsive-table w-full table-fixed text-left text-sm">
+        <thead className="sticky top-0 bg-surface border-y border-line text-xs text-ink-muted"><tr>{HEAD.map((t) => <th key={t} scope="col" className={`${cell} whitespace-nowrap`}>{t}</th>)}</tr></thead>
         <tbody className="divide-y divide-line">{rows.map((v) => {
           const summary = v.kev?.name ?? v.summary
           return <tr key={JSON.stringify([v.source_package, v.osv_id])} data-fix={v.fix_state}>
-            <td className={`${cell} font-mono text-xs whitespace-nowrap`} title={revealHidden(v.osv_id)}><UntrustedText value={v.cve_id ?? v.osv_id} max={64} /></td>
-            <td className={`${cell} max-w-60 font-mono text-xs break-all`}><UntrustedText value={v.source_package} max={120} /></td>
-            <td className={`${cell} font-mono text-xs whitespace-nowrap`}><UntrustedText value={v.version} max={64} /></td>
-            <td className={`${cell} text-xs`}>
+            <td className={`${cell} font-mono text-xs`} title={revealHidden(v.osv_id)}>
+              <span className="font-semibold"><UntrustedText value={v.cve_id ?? v.osv_id} max={64} /></span>
+              <div className="mt-1 text-ink-muted"><UntrustedText value={v.source_package} max={120} /></div>
+            </td>
+            <td data-label="설치 버전" className={`${cell} font-mono text-xs`}><UntrustedText value={v.version} max={64} /></td>
+            <td data-label="수정 상태" className={`${cell} text-xs`}>
               <Badge tone={FIX_STATE_TONE[v.fix_state] ?? 'neutral'}>{FIX_STATE_LABEL[v.fix_state] ?? v.fix_state}</Badge>
-              {v.fixed_version && <div className="mt-1 whitespace-nowrap text-ink-muted">{v.fix_state === 'reboot_pending' ? '설치된 커널' : '수정판'} <span className="font-mono"><UntrustedText value={v.fixed_version} max={64} /></span></div>}
+              {v.fixed_version && <div className="mt-1 text-ink-muted">{v.fix_state === 'reboot_pending' ? '설치된 커널' : '수정판'} <span className="font-mono"><UntrustedText value={v.fixed_version} max={64} /></span></div>}
             </td>
-            <td className={`${cell} text-xs whitespace-nowrap`}>
-              {v.kev ? <>
-                <Badge tone="danger">KEV</Badge> <span className="font-mono"><UntrustedText value={v.kev.date_added} max={64} /></span>
-                {v.kev.ransomware?.toLowerCase() === 'known' && <div className="mt-1"><Badge tone="danger">랜섬웨어 {ransomwareLabel(v.kev.ransomware)}</Badge></div>}
-              </> : <span className="text-ink-muted">—</span>}
+            <td data-label="위험 참고" className={`${cell} text-xs`}>
+              <div className="flex flex-wrap gap-1">{v.kev && <Badge tone="danger">KEV</Badge>}{v.cvss ? <Badge tone={cvssTone(v.cvss.severity)}>{formatCvss(v.cvss.score, v.cvss.severity)}</Badge> : <span className="text-ink-muted">CVSS —</span>}</div>
+              {v.kev && <div className="mt-1 text-ink-muted"><UntrustedText value={v.kev.date_added} max={64} /></div>}
+              {v.kev?.ransomware?.toLowerCase() === 'known' && <div className="mt-1"><Badge tone="danger">랜섬웨어 {ransomwareLabel(v.kev.ransomware)}</Badge></div>}
+              {v.ubuntu_priority && <div className="mt-1 text-ink-muted">Ubuntu <Badge tone={ubuntuPriorityTone(v.ubuntu_priority)}>{ubuntuPriorityLabel(v.ubuntu_priority)}</Badge></div>}
             </td>
-            <td className={cell}>{v.cvss ? <Badge tone={cvssTone(v.cvss.severity)}>{formatCvss(v.cvss.score, v.cvss.severity)}</Badge> : <span className="text-ink-muted">—</span>}</td>
-            <td className={`${cell} font-mono text-xs whitespace-nowrap`}>{v.epss ? <>{formatProbability(v.epss.score)} <span className="text-ink-muted">({formatPercentile(v.epss.percentile)})</span></> : <span className="text-ink-muted">—</span>}</td>
-            <td className={cell}>{v.ubuntu_priority ? <Badge tone={ubuntuPriorityTone(v.ubuntu_priority)}>{ubuntuPriorityLabel(v.ubuntu_priority)}</Badge> : <span className="text-ink-muted">—</span>}</td>
-            <td className={`${cell} min-w-[240px] text-xs`} title={summary ? revealHidden(summary) : undefined}><UntrustedText value={truncate(summary)} /></td>
+            <td data-label="EPSS (백분위)" className={`${cell} font-mono text-xs`}>{v.epss ? <>{formatProbability(v.epss.score)} <span className="text-ink-muted">({formatPercentile(v.epss.percentile)})</span></> : <span className="text-ink-muted">—</span>}</td>
+            <td data-label="요약" data-wide className={`${cell} text-xs`} title={summary ? revealHidden(summary) : undefined}><UntrustedText value={summary} max={160} /></td>
           </tr>
         })}</tbody>
       </table>

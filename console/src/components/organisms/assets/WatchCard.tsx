@@ -46,7 +46,7 @@ export function WatchCard({ data, pending, fetching, error, onRetry }: WatchCard
           ? <p className="m-0 p-4 text-sm text-ink-muted">주목 CVE 정보가 없습니다. 콘솔 API 가 이 기능 이전 판일 수 있습니다.</p>
           : <ApiErrorState error={error} onRetry={onRetry} retrying={fetching} titleAs="h3" className="m-4" />
       ) : !data.available ? (
-        <p className="m-0 p-4 text-sm text-ink-muted">주목 CVE 표가 아직 없습니다. 서버에 CTI 마이그레이션을 적용하고 수집기를 한 번 돌리면 보입니다.</p>
+        <p className="m-0 p-4 text-sm text-ink-muted">주목 CVE 표가 아직 없습니다. 공개 취약점 정보의 수집 상태를 확인해 주세요.</p>
       ) : <WatchBody data={data} error={error} />}
     </Card>
   )
@@ -80,7 +80,7 @@ function WatchTable({ rows }: { rows: WatchRow[] }) {
   })
   return (
     <div className="overflow-x-auto border-t border-line" role="region" aria-label="주목 CVE 표" tabIndex={0}>
-      <table className="w-full min-w-[980px] text-left text-sm">
+      <table className="responsive-table w-full table-fixed text-left text-sm">
         <thead className="border-b border-line text-xs text-ink-muted">
           <tr>{HEAD.map((t) => <th key={t} scope="col" className={`${cell} whitespace-nowrap`}>{t}</th>)}</tr>
         </thead>
@@ -94,18 +94,18 @@ function WatchTable({ rows }: { rows: WatchRow[] }) {
                   <span aria-hidden="true" className="inline-block w-3 text-ink-muted">{expanded ? '▾' : '▸'}</span><UntrustedText value={r.cve_id} max={64} clip />
                 </button>
               </th>
-              <td className={`${cell} min-w-[220px] text-xs leading-5`}><UntrustedText value={r.reason} /></td>
-              <td className={`${cell} text-xs whitespace-nowrap`}>
+              <td data-label="주목 이유" className={`${cell} text-xs leading-5`}><UntrustedText value={r.reason} /></td>
+              <td data-label="KEV" className={`${cell} text-xs`}>
                 {r.kev ? <>
                   <Badge tone="danger">KEV</Badge> <span className="font-mono"><UntrustedText value={r.kev.date_added} max={64} /></span>
                   {r.kev.ransomware?.toLowerCase() === 'known' && <div className="mt-1"><Badge tone="danger">랜섬웨어 {ransomwareLabel(r.kev.ransomware)}</Badge></div>}
                 </> : <span className="text-ink-muted">—</span>}
               </td>
-              <td className={`${cell} font-mono text-xs whitespace-nowrap`}>
+              <td data-label="EPSS (백분위)" className={`${cell} font-mono text-xs`}>
                 {r.epss ? <>{formatProbability(r.epss.score)} <span className="text-ink-muted">({formatPercentile(r.epss.percentile)})</span></> : <span className="text-ink-muted">—</span>}
               </td>
-              <td className={cell}><Badge tone={APPLICABILITY_TONE[r.summary] ?? 'neutral'}>{APPLICABILITY_LABEL[r.summary] ?? r.summary}</Badge></td>
-              <td className={cell}>
+              <td data-label="판정" className={cell}><Badge tone={APPLICABILITY_TONE[r.summary] ?? 'neutral'}>{APPLICABILITY_LABEL[r.summary] ?? r.summary}</Badge></td>
+              <td data-label="자산별 판정" data-wide className={cell}>
                 {r.assets.length === 0 ? <span className="text-xs text-ink-muted">자산 없음</span> : (
                   <ul className="m-0 flex list-none flex-wrap gap-1 p-0" aria-label={`${revealHidden(r.cve_id)} 자산별 판정`}>
                     {r.assets.map((a) => <li key={a.asset_id}>
@@ -154,7 +154,7 @@ function WatchDetail({ row: r }: { row: WatchRow }) {
         )}
       </div>
       {r.assets.length > 0 && <div className="w-full overflow-auto">
-        <table className="w-full border-collapse text-xs" aria-label={`${revealHidden(r.cve_id)} 자산별 대조`}>
+        <table className="w-full min-w-[680px] border-collapse text-xs" aria-label={`${revealHidden(r.cve_id)} 자산별 대조`}>
           <thead><tr>{ASSET_HEAD.map((t) => <th key={t} scope="col" className="px-2.5 py-2 text-left font-medium whitespace-nowrap text-ink-muted shadow-hairline">{t}</th>)}</tr></thead>
           <tbody>{r.assets.map((a) => <tr key={a.asset_id} data-asset={a.asset_id} data-status={a.status}>
             <td className={`${subCell} whitespace-nowrap`}><span className="font-mono font-medium">{a.asset_id}</span> <span className="text-ink-muted">{ROLE_LABEL[a.role] ?? a.role}</span></td>

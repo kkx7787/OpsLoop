@@ -44,6 +44,7 @@ describe('차단 목록', () => {
     const { container } = renderRoutes([{ path: '/blocklist', element: <BlocklistPage /> }], '/blocklist', noRetryClient())
     expect(await screen.findByText('203.0.113.10')).toBeInTheDocument()
     expect(screen.getByText(/집행 지점\(AWS 관문 · 내부 방화벽\)/)).toBeInTheDocument()
+    expect(screen.getByText(/AWS 관문이 허니팟 유입\(22 · 23 · 8080\), 내부 방화벽이 web-01 접근/)).toBeInTheDocument()
     const points = (ip: string) => [...screen.getByText(ip).closest('li')!.querySelectorAll('[data-enforce-point]')]
       .map(el => [el.getAttribute('data-enforce-point'), el.getAttribute('data-point-state')])
     expect(points('203.0.113.10')).toEqual([['gateway', 'confirmed'], ['fw', 'failed']])
@@ -51,7 +52,12 @@ describe('차단 목록', () => {
     const fw = screen.getByText('203.0.113.10').closest('li')!.querySelector('[data-enforce-point="fw"]')!
     expect(fw.textContent).toMatch(/^내부 방화벽실패/)
     // 지점이 보낸 방식 · 까닭은 글자로만, 길면 접는다 (방식 16자 · 까닭 160자)
-    expect(fw.textContent).toContain(HOSTILE.style.slice(0, 16))
+    const row = screen.getByText('203.0.113.10').closest('li')!
+    const disclosure = within(row).getByLabelText('203.0.113.10 집행 상세')
+    expect(disclosure.closest('details')).not.toHaveAttribute('open')
+    fireEvent.click(disclosure)
+    expect(disclosure.closest('details')).toHaveAttribute('open')
+    expect(row.textContent).toContain(HOSTILE.style.slice(0, 16))
     expect(fw.textContent).toMatch(/자 더 · 펼치기/)
     expectInertDom(container)
     // 해제된 행은 지점별 결과를 그리지 않는다 (해제 탭)
@@ -144,10 +150,10 @@ describe('차단 목록', () => {
     const { container } = renderRoutes([{ path: '/blocklist', element: <BlocklistPage /> }], '/blocklist', noRetryClient())
     expect(await screen.findByText('198.51.100.1')).toBeInTheDocument()
     const count = (label: string) => screen.getByText(label, { selector: 'div' }).nextElementSibling?.textContent
-    expect([count('활성 요청'), count('집행 확인'), count('집행 대기'), count('관문 불일치'), count('집행 제외')]).toEqual(['5건', '1건', '1건', '1건', '2건'])
+    expect([count('활성 요청'), count('AWS 집행 확인'), count('AWS 집행 대기'), count('관문 불일치'), count('집행 제외')]).toEqual(['5건', '1건', '1건', '1건', '2건'])
     const states = [...container.querySelectorAll('[data-block-state]')].map(el => el.getAttribute('data-block-state'))
     expect(states.sort()).toEqual(['enforced', 'excluded', 'excluded', 'mismatch', 'pending'])
-    const cell = (ip: string) => screen.getByText(ip).closest('li')!.querySelector('[data-block-state]')!.textContent
+    const cell = (ip: string) => screen.getByText(ip).closest('li')!.querySelector('[data-block-state]')!.textContent!.replace('집행 상세', '')
     expect(cell('198.51.100.1')).toMatch(/^집행 확인관문 집합 반영 확인 \S+ \S+ · fail2ban관문 반영 · abcd1234/)
     expect(cell('192.0.2.8')).toBe('집행 대기관문 반영 확인 전')
     expect(cell('198.51.100.2')).toBe('집행 제외만료 없는 차단 · 관문에 넘기지 않음집행 제외 · 만료 없음')

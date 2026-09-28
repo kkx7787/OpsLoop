@@ -1,9 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { ASSET_ID_PATTERN, lastVulnOffset, useAsset, useAssets, useWatch, type VulnFilter } from '@/api/cti'
 import { describeError } from '@/api/errors'
 import { Button } from '@/components/atoms/Button'
-import { Card, CardHeader } from '@/components/atoms/Card'
 import { Time } from '@/components/atoms/Time'
 import { buttonClasses } from '@/components/atoms/button-styles'
 import { Banner } from '@/components/molecules/Banner'
@@ -16,7 +15,7 @@ import { LoadingState } from '@/components/organisms/states/LoadingState'
 interface VulnView { asset: string; filter: VulnFilter; offset: number }
 
 /**
- * 자산 · 취약점(#39). 맨 위 주목 CVE(정해 둔 CVE 의 자산별 배포판 수정판 대조), 그 아래 노드마다 설치된 패키지 · 컨테이너와
+ * 자산 · 취약점(#39). 자산 목록 · 선택한 자산 상세를 먼저, 주목 CVE 대조를 그 아래에 둔다. 노드마다 설치된 패키지 · 컨테이너와
  * 배포판 기준 취약점(OSV)에 KEV · EPSS 를 붙여 보인다.
  * 고른 자산은 주소(?asset=)에 두어 새로고침 · 공유에도 남는다. 거르기 · 쪽은 그 자산에만 붙고, 다른 자산을 고르면 처음부터 본다.
  * 세 조회(주목 CVE · 자산 목록 · 자산 상세)는 이 페이지가 갖고 카드 · 표 · 상세는 그리기만 한다. 원본이 하루 단위로 바뀌어 주기 재조회는 두지 않는다.
@@ -28,6 +27,14 @@ export function AssetsPage() {
   const [params, setParams] = useSearchParams()
   const raw = params.get('asset') ?? ''
   const selected = ASSET_ID_PATTERN.test(raw) ? raw : ''
+  const detailRef = useRef<HTMLDivElement>(null)
+  const assetListRef = useRef<HTMLDivElement>(null)
+  const previousAsset = useRef(selected)
+  useEffect(() => {
+    if (selected) { detailRef.current?.scrollIntoView?.({ block: 'start' }); detailRef.current?.focus({ preventScroll: true }) }
+    else if (previousAsset.current) assetListRef.current?.querySelector<HTMLButtonElement>(`[data-asset="${previousAsset.current}"] button`)?.focus()
+    previousAsset.current = selected
+  }, [selected])
   const [view, setView] = useState<VulnView>({ asset: '', filter: 'all', offset: 0 })
   const filter = view.asset === selected ? view.filter : 'all'
   const offset = view.asset === selected ? view.offset : 0
@@ -45,23 +52,19 @@ export function AssetsPage() {
   const stale = staleSources(data?.freshness)
 
   return <div className="flex min-w-0 flex-col gap-4">
-    <PageHeader title="자산 · 취약점" description="노드에 설치된 패키지 · 컨테이너와 배포판 기준 취약점을 봅니다. KEV · EPSS 는 조사 우선순위 참고용이며 판정 근거가 아닙니다." aside={<Link className={buttonClasses({})} to="/nodes">수집 노드</Link>} />
-    <WatchCard data={watch.data} pending={watch.isPending} fetching={watch.isFetching} error={watch.error} onRetry={() => void watch.refetch()} />
+    <PageHeader title="자산 · 취약점" description="자산별 취약점과 수정 상태를 확인합니다. KEV · EPSS 는 조사 우선순위 참고용이며 판정 근거가 아닙니다." aside={<Link className={buttonClasses({})} to="/nodes">수집 노드</Link>} />
     {data && assets.error ? <Banner tone="danger" title="데이터를 갱신하지 못했습니다" action={<Button onClick={() => void assets.refetch()} loading={assets.isFetching}>다시 조회</Button>}>
       {describeError(assets.error)} · 이전 결과 유지 · 마지막 조회 <Time value={assets.dataUpdatedAt} format="time" zone />
     </Banner> : null}
     {assets.isPending ? <LoadingState /> : !data ? <ApiErrorState error={assets.error} onRetry={() => void assets.refetch()} retrying={assets.isFetching} /> : !data.available ? (
-      <EmptyState title="공개 취약점 정보 표가 아직 없습니다" description="서버에 CTI 마이그레이션(infra/migrations/20260925_cti.sql)을 적용하고 수집기 · 자산 수집을 한 번 돌리면 보입니다." />
+      <EmptyState title="공개 취약점 정보 표가 아직 없습니다" description="취약점 정보와 자산 정보를 아직 받지 못했습니다. 수집 상태를 확인해 주세요." />
     ) : <>
-      {data.freshness && <Card padding="none" className="min-w-0">
-        <CardHeader title="공개 정보 신선도" aside={<span><Time value={data.as_of} format="time" zone /> 기준</span>} />
-        <div className="flex flex-col gap-3 p-4">
-          {stale.length > 0 && <Banner tone="warning">공개 정보가 오래됐습니다. 비해당으로 읽지 않습니다. 오래된 출처: {stale.join(' · ')}</Banner>}
-          <CtiFreshnessFacts freshness={data.freshness} />
-        </div>
-      </Card>}
-      <AssetTable rows={data.rows ?? []} selected={selected} onSelect={select} />
-      {selected && <AssetDetailSection
+      {stale.length > 0 && <Banner tone="warning">공개 정보가 오래됐습니다. 비해당으로 읽지 않습니다. 오래된 출처: {stale.join(' · ')}</Banner>}
+      {data.freshness && <details className="rounded-panel border border-line px-3 py-2 text-xs text-ink-muted">
+        <summary className="cursor-pointer">공개 정보 신선도 · <Time value={data.as_of} format="time" zone /> 조회 기준</summary>
+        <div className="mt-3"><CtiFreshnessFacts freshness={data.freshness} /></div>
+      </details>}
+      {selected && <div ref={detailRef} tabIndex={-1} className="scroll-mt-16 outline-none"><AssetDetailSection
         assetId={selected}
         data={detail.data}
         pending={detail.isPending}
@@ -73,11 +76,12 @@ export function AssetsPage() {
         onFilter={(next) => setView({ asset: selected, filter: next, offset: 0 })}
         onOffset={(next) => setView({ asset: selected, filter, offset: next })}
         onClose={() => select('')}
-      />}
+      /></div>}
+      <div ref={assetListRef}><AssetTable rows={data.rows ?? []} selected={selected} onSelect={select} /></div>
       <p className="m-0 text-xs leading-5 text-ink-muted">
-        자산 정보는 Mac 의 자산 수집(collect-assets.sh)이 매일 모아 데이터 노드로 보냅니다. AWS 두 대(gateway · honeypot-dmz)는 AWS 로그인 뒤 손으로 돌립니다.
         수집이 48시간을 넘으면 오래됨으로 보고 비해당으로 읽지 않습니다. 배포판 대조는 Ubuntu 보안 정보(OSV) 기준이며, 컨테이너 이미지 안의 패키지 · 직접 설치한 프로그램은 대조하지 않습니다(미확인).
       </p>
     </>}
+    <WatchCard data={watch.data} pending={watch.isPending} fetching={watch.isFetching} error={watch.error} onRetry={() => void watch.refetch()} />
   </div>
 }

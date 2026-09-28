@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ActorBlock, BehaviorRow, RawLine } from '@/api/incidents'
-import { BLOCK_STATE_LABEL, blockState, blockStateHint, decisionSeconds, enforcementPoints, formatRawLine, formatValue, isActiveBlock, mergeHistory, sampleColumns, summarizeBehavior } from './format'
+import { BLOCK_STATE_LABEL, BLOCK_STATE_TONE, blockState, blockStateHint, decisionSeconds, enforcementPoints, formatRawLine, formatValue, isActiveBlock, mergeHistory, sampleColumns, summarizeBehavior } from './format'
 
 function row(extra: Partial<BehaviorRow> = {}): BehaviorRow {
   return { ts: '2026-09-18T06:00:30+00:00', sensor: 'hp-01', eventid: 'x', session: null, username: null, input: null, url: null, shasum: null, http_method: null, http_status: null, ...extra }
@@ -129,5 +129,12 @@ describe('enforcementPoints (이슈 #51)', () => {
     const bad = { enforcement: { gateway: { state: 'hacked' }, fw: { state: 'pending', since: 7, mode: ['nft'], note: {} }, other: { state: 'confirmed' } } }
     expect(enforcementPoints(bad as never)).toEqual([{ key: 'fw', label: '내부 방화벽', point: { state: 'pending', since: null, mode: null, note: null } }])
     expect(enforcementPoints({ enforcement: [] as never })).toEqual([])
+  })
+})
+
+describe('BLOCK_STATE_TONE', () => {
+  it('집행 확인은 정상 적용 결과라 초록이고 지점별 적용 확인과 같다', () => {
+    expect(BLOCK_STATE_TONE.enforced).toBe('success')
+    expect([BLOCK_STATE_TONE.pending, BLOCK_STATE_TONE.mismatch]).toEqual(['warning', 'orange'])
   })
 })

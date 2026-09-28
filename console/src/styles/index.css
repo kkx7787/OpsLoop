@@ -148,3 +148,23 @@
     outline-offset: 2px;
   }
 }
+
+/* 긴 작업 목록은 데스크톱 화면 안에서 탐색하고, 모바일에서는 문서 흐름을 따른다. */
+@media (min-width: 48rem) {
+  .worklist-page { height: calc(100dvh - 80px); min-height: 640px; }
+  .worklist-page > * { flex-shrink: 0; }
+  .worklist-page > .worklist-panel { flex: 1 1 0%; min-height: 0; }
+  .worklist-panel > * { flex-shrink: 0; }
+  .worklist-panel > .worklist-scroll { flex: 1 1 0%; min-height: 0; overflow: auto; }
+}
+
+/* 같은 데이터와 동작을 유지하면서 좁은 화면에서는 표의 한 행을 읽기 순서대로 쌓는다. */
+@media (max-width: 47.999rem) {
+  .responsive-table, .responsive-table > tbody { display: block; width: 100%; min-width: 0; }
+  .responsive-table > thead { display: none; }
+  .responsive-table > tbody > tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding: 8px; gap: 4px; }
+  .responsive-table > tbody > tr > :is(td, th) { display: block; min-width: 0; max-width: none; padding: 8px; white-space: normal; overflow-wrap: anywhere; }
+  .responsive-table > tbody > tr > :first-child,
+  .responsive-table > tbody > tr > [data-wide] { grid-column: 1 / -1; }
+  .responsive-table > tbody > tr > [data-label]::before { content: attr(data-label); display: block; margin-bottom: 4px; color: var(--color-ink-muted); font-size: var(--text-xs); font-weight: 400; }
+}

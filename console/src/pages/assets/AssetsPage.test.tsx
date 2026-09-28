@@ -236,13 +236,13 @@ describe('자산 · 취약점', () => {
 })
 
 describe('주목 CVE', () => {
-  it('맨 위 카드에 CVE · 주목 이유 · KEV · EPSS · 판정 요약 · 자산별 판정을 서버 순서대로 보인다', async () => {
+  it('자산 목록 다음에 CVE · 주목 이유 · KEV · EPSS · 판정 요약 · 자산별 판정을 서버 순서대로 보인다', async () => {
     setup()
     const card = await screen.findByRole('region', { name: '주목 CVE' })
     const table = await within(card).findByRole('region', { name: '주목 CVE 표' })
-    // 자산 표보다 앞(맨 위)에 있다
+    // 자산 목록을 먼저 읽고 주목 CVE 대조를 이어 본다
     const assetTable = await screen.findByRole('region', { name: '자산 표' })
-    expect(card.compareDocumentPosition(assetTable) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(assetTable.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(within(card).getByText(/3건 · 해당 1건/)).toBeInTheDocument()
     expect(within(card).getByText(/판정 근거가 아닙니다/)).toBeInTheDocument()
 

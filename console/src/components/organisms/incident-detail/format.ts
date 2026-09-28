@@ -152,8 +152,9 @@ export const BLOCK_STATE_LABEL: Record<BlockState, string> = {
   expired: '만료됨',
 }
 
+/** 집행 확인은 요청이 정상 적용됐다는 결과라 초록이다(지점별 '적용 확인' 과 같다). 주의가 필요한 것은 대기 · 불일치 쪽이다 */
 export const BLOCK_STATE_TONE: Record<BlockState, Tone> = {
-  enforced: 'danger',
+  enforced: 'success',
   pending: 'warning',
   excluded: 'neutral',
   mismatch: 'orange',
@@ -197,9 +198,9 @@ export const POINT_STATE_LABEL: Record<EnforcePointState, string> = {
 
 export const POINT_STATE_TONE: Record<EnforcePointState, Tone> = {
   pending: 'warning',
-  confirmed: 'danger',
-  failed: 'orange',
-  stale: 'orange',
+  confirmed: 'success',
+  failed: 'danger',
+  stale: 'warning',
 }
 
 export interface PointRow {

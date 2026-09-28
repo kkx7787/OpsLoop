@@ -17,7 +17,7 @@ export function DeliveryStatusBadge({ status }: { status: DeliveryStatus }) {
   return <Badge tone={STATUS_TONE[status] ?? 'neutral'}>{DELIVERY_STATUS_LABEL[status] ?? status}</Badge>
 }
 
-const HEAD = ['이름', '종류', '등급', '사건 종류', '최소 심각도', '묶음', '사용', '주소', '마지막 발송', '동작']
+const HEAD = ['채널', '통보 정책', '사용', '마지막 발송', '동작']
 const cell = 'px-4 py-3 align-top'
 
 interface Props {
@@ -36,30 +36,37 @@ export function ChannelTable({ channels, busyId, onEdit, onToggle, onTest }: Pro
     <Card padding="none" className="min-w-0">
       <CardHeader title="알림 채널" aside={`${channels.length}개`} />
       <div className="overflow-x-auto" role="region" aria-label="알림 채널 표" tabIndex={0}>
-        <table className="w-full min-w-[960px] text-left text-sm">
+        <table className="responsive-table w-full table-fixed text-left text-sm">
+          <colgroup><col className="w-[25%]" /><col className="w-[23%]" /><col className="w-[12%]" /><col className="w-[23%]" /><col className="w-[17%]" /></colgroup>
           <thead className="border-b border-line text-xs text-ink-muted"><tr>{HEAD.map((t) => <th key={t} scope="col" className={`${cell} whitespace-nowrap`}>{t}</th>)}</tr></thead>
           <tbody className="divide-y divide-line">{channels.map((c) => {
             const busy = busyId === c.id
             const daily = c.grade === 'daily'
             const last = c.last_delivery
             const problem = last && last.status !== 'sent' ? deliveryProblem(last.error, last.response_code) : ''
-            return <tr key={c.id} className={c.enabled ? undefined : 'text-ink-muted'}>
-              <th scope="row" className={`${cell} font-normal`}><div className="font-semibold"><UntrustedText value={c.name} max={120} /></div><div className="text-xs text-ink-muted"><UntrustedText value={c.updated_by} max={64} fallback="미기록" /> · <Time value={c.updated_at} format="short" /></div></th>
-              <td className={cell}><Badge tone={c.kind === 'teams' ? 'violet' : 'neutral'}>{KIND_LABEL[c.kind] ?? c.kind}</Badge></td>
-              <td className={`${cell} whitespace-nowrap`}>{GRADE_LABEL[c.grade] ?? c.grade}</td>
-              <td className={`${cell} text-xs`}>{daily ? '—' : c.events.map((e) => EVENT_LABEL[e] ?? e).join(' · ') || '—'}</td>
-              <td className={cell}>{daily ? '—' : <SeverityBadge severity={c.min_severity} />}</td>
-              <td className={`${cell} whitespace-nowrap tabular-nums`}>{daily ? '09:00 KST' : c.batch_seconds > 0 ? formatDuration(c.batch_seconds * 1000) : '바로'}</td>
-              <td className={cell}><Switch aria-label={`${revealHidden(c.name)} 사용`} label={c.enabled ? '사용' : '중지'} checked={c.enabled} disabled={anyBusy} onChange={() => onToggle(c)} /></td>
-              <td className={`${cell} font-mono text-xs`}><div>{c.url_host || '—'}</div><div className="text-ink-muted">…{c.url_tail}</div></td>
-              <td className={`${cell} text-xs`}>{last ? <>
-                <div className="whitespace-nowrap"><DeliveryStatusBadge status={last.status} /> <Time value={last.at ?? last.sent_at} format="short" />{last.status === 'sent' && last.response_code !== null && <span className="text-ink-muted"> · {last.response_code}</span>}</div>
+            return <tr key={c.id} data-channel-id={c.id} className={c.enabled ? undefined : 'text-ink-muted'}>
+              <th scope="row" className={`${cell} font-normal`}>
+                <div className="font-semibold break-words"><UntrustedText value={c.name} max={120} /></div>
+                <div className="mt-1 text-xs text-ink-muted">{KIND_LABEL[c.kind] ?? c.kind}</div>
+                <details className="mt-2 text-xs text-ink-muted"><summary className="cursor-pointer">연결 정보</summary>
+                  <div className="mt-2 break-all font-mono"><UntrustedText value={c.url_host} fallback="—" /><div>…{c.url_tail}</div></div>
+                  <div className="mt-1"><UntrustedText value={c.updated_by} max={64} fallback="미기록" /> · <Time value={c.updated_at} format="short" /></div>
+                </details>
+              </th>
+              <td data-label="통보 정책" className={cell}>
+                <div className="font-medium">{GRADE_LABEL[c.grade] ?? c.grade}</div>
+                <div className="mt-1 text-xs text-ink-muted">{daily ? '09:00 KST' : c.batch_seconds > 0 ? `${formatDuration(c.batch_seconds * 1000)} 묶음` : '바로'}</div>
+                {!daily && <div className="mt-2 text-xs"><SeverityBadge severity={c.min_severity} /> 이상<div className="mt-1 text-ink-muted">{c.events.map((e) => EVENT_LABEL[e] ?? e).join(' · ') || '—'}</div></div>}
+              </td>
+              <td data-label="사용" className={cell}><Switch aria-label={`${revealHidden(c.name)} 사용`} label={c.enabled ? '사용' : '중지'} checked={c.enabled} disabled={anyBusy} onChange={() => onToggle(c)} /></td>
+              <td data-label="마지막 발송" className={`${cell} text-xs`}>{last ? <>
+                <div className="flex flex-wrap items-center gap-1.5"><DeliveryStatusBadge status={last.status} /> <Time value={last.at ?? last.sent_at} format="short" />{last.status === 'sent' && last.response_code !== null && <span className="text-ink-muted"> · {last.response_code}</span>}</div>
                 {problem && <div className="mt-1 max-w-56 break-keep text-danger"><UntrustedText value={problem} /></div>}
               </> : '없음'}</td>
-              <td className={`${cell} whitespace-nowrap`}>
-                <Button size="sm" className="mr-1.5" aria-label={`${revealHidden(c.name)} 수정`} disabled={busy} onClick={() => onEdit(c)}>수정</Button>
+              <td data-label="동작" className={cell}><div className="flex flex-wrap gap-1.5">
+                <Button size="sm" data-edit-channel aria-label={`${revealHidden(c.name)} 수정`} disabled={busy} onClick={() => onEdit(c)}>수정</Button>
                 <Button size="sm" aria-label={`${revealHidden(c.name)} 시험 발송`} loading={busy} disabled={anyBusy && !busy} onClick={() => onTest(c)}>시험 발송</Button>
-              </td>
+              </div></td>
             </tr>
           })}</tbody>
         </table>

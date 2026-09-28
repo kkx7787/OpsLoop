@@ -65,8 +65,9 @@ describe('알림 설정', () => {
     // 일일 요약 채널은 사건 종류 · 심각도로 거르지 않으므로 보이지 않는다
     expect(within(region).queryByText('노드 수신 끊김')).toBeNull()
     const daily = within(region).getByRole('row', { name: /운영 웹훅/ })
-    expect(within(daily).getAllByText('—')).toHaveLength(2)
-    expect(within(region).getByText('5분')).toBeInTheDocument()
+    expect(within(daily).queryByText('high')).toBeNull()
+    expect(within(daily).queryByText('low')).toBeNull()
+    expect(within(region).getByText('5분 묶음')).toBeInTheDocument()
     expect(within(region).getByText('09:00 KST')).toBeInTheDocument()
     expect(within(region).getByText('…9999')).toBeInTheDocument()
     expect(within(region).getByText(TEAMS_HOST)).toBeInTheDocument()
@@ -74,11 +75,24 @@ describe('알림 설정', () => {
     // 실패도 언제였는지와 원인 안내를 보인다
     expect(within(daily).getByText('실패')).toBeInTheDocument()
     expect(within(daily).getByText(/이름 해석 실패/)).toBeInTheDocument()
+    fireEvent.click(within(daily).getByText('연결 정보'))
     expect(within(daily).getAllByRole('time')).toHaveLength(2)
     expect(within(region).getByRole('switch', { name: 'SOC Teams 사용' })).toBeChecked()
     expect(within(region).getByRole('switch', { name: '운영 웹훅 사용' })).not.toBeChecked()
     expect(within(region).getByRole('button', { name: '운영 웹훅 수정' })).toBeInTheDocument()
     expect(within(region).getByRole('button', { name: '운영 웹훅 시험 발송' })).toBeInTheDocument()
+  })
+
+  it('채널 편집에 집중하고 취소하면 목록과 키보드 초점을 복원한다', async () => {
+    setup()
+    const region = await screen.findByRole('region', { name: '알림 채널 표' })
+    fireEvent.click(within(region).getByRole('button', { name: 'SOC Teams 수정' }))
+    expect(screen.getByRole('form', { name: '채널 수정 양식' })).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: '알림 채널 표' })).toBeNull()
+    expect(screen.queryByRole('region', { name: '발송 이력 표' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '취소' }))
+    expect(await screen.findByRole('region', { name: '발송 이력 표' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'SOC Teams 수정' })).toHaveFocus()
   })
 
   it('채널 추가 요청 본문에 이름 · 종류 · 주소 · 사건 종류 · 메시지 틀을 담고, 입력한 주소는 캐시 어디에도 남지 않는다', async () => {
@@ -306,7 +320,7 @@ describe('알림 설정 · 비신뢰 문자열(#41)', () => {
     expectMixedRevealed(history)
     expectMixedRevealed(screen.getByRole('region', { name: '알림 채널 표' }))
     const first = within(history).getAllByRole('row')[1]
-    expect(within(first).getAllByRole('cell')[1].textContent).toBe('admin⟨U+202E⟩gnp.exe')
+    expect(within(first).getAllByRole('cell')[1].querySelector('bdi')?.textContent).toBe('admin⟨U+202E⟩gnp.exe')
     expectLongFolds(history)
   })
 
