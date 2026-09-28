@@ -64,11 +64,16 @@ async def lifespan(app: FastAPI):
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL 이 설정되지 않았습니다")
 
-    app.state.pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
+    # 서버 쪽 TCP keepalive · 전송 한도(live.DB_KEEPALIVE, 이슈 #56). 이 콘솔이 꺼지거나 끊기면 DB 가 약 1분 안에 연결을 닫는다
+    app.state.pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10, server_settings=live.DB_KEEPALIVE)
 
     # LISTEN 전용 연결(live.Listener). 사건 · 판정 · 조치 두 채널을 듣고, 끊기면 다시 붙어 화면에 resync 를 보낸다.
     # 첫 연결이 안 되면 풀과 같이 기동을 실패시킨다. 헬스체크가 빠져 HAProxy 가 다른 콘솔로 보낸다.
-    app.state.listener = Listener(DATABASE_URL, hub)
+    # 통보 연결이 끊겼다 다시 붙으면 풀 연결도 새 세대로 바꾼다(이슈 #56). 30초 넘게 끊겼으면 DB 가 keepalive 로 이 콘솔의 풀 연결을
+    #   이미 닫았을 수 있다. 끊긴 동안이라 닫힘을 모르는 연결을 그대로 빌려주면 첫 질의가 실패한다. 옛 연결은 다음에 빌릴 때 닫고 새로 붙는다
+    async def renew_pool():
+        await app.state.pool.expire_connections()
+    app.state.listener = Listener(DATABASE_URL, hub, on_reconnect=renew_pool)
     try:
         await app.state.listener.start()
     except BaseException:
@@ -244,6 +249,12 @@ async def shell(request: Request):
 <main><p>화면 구현 예정 (WBS 3.6.2~3.6.4)</p></main></body></html>"""
 
 
+# 끊긴 동안 DB 가 닫은 연결을 처음 쓸 때 나는 오류. asyncpg 0.30 은 ConnectionResetError 를 ConnectionDoesNotExistError 로 감싸고,
+#   그 부모는 PostgresConnectionError(SQLSTATE 08 계열)다. 닫힌 연결을 다시 쓰면 InterfaceError, 소켓 오류는 OSError 다.
+#   시험의 가짜 asyncpg 모듈에는 없을 수 있어 있는 것만 모은다
+STALE_CONNECTION_ERRORS = tuple(e for e in (getattr(asyncpg, "PostgresConnectionError", None),
+                                            getattr(asyncpg, "InterfaceError", None), OSError) if isinstance(e, type))
+
 # jsonb 열. asyncpg 는 코덱을 두지 않으면 글자로 준다. 화면이 객체로 받게 여기서 푼다 (이슈 #51 enforcement)
 JSON_COLUMNS = frozenset({"enforcement"})
 
@@ -271,9 +282,16 @@ def row_to_dict(r: asyncpg.Record) -> dict:
 async def health():
     """HAProxy 헬스체크(GET /health → 200). 세션 없이 열리므로 DB 가 닿는지만 보고 상태 말고는 내지 않는다.
     실시간 접속 수는 담당자가 지금 보고 있는지를 드러내므로 넣지 않는다(이슈 #41)."""
-    async with app.state.pool.acquire() as c:
-        await c.fetchval("SELECT 1")
-    return {"status": "ok"}
+    # 연결 오류면 한 번 더 빌려 본다(이슈 #56). 망이 끊겼던 동안 DB 가 닫은 풀 연결을 처음 쓰면 한 번 실패하고, 그 연결은 다음에
+    #   빌릴 때 새로 붙는다. 한 번의 옛 연결 때문에 헬스체크가 실패해 복귀(rise 3)가 늦어지지 않게 한다. DB 가 정말 없으면 둘 다 실패한다
+    for attempt in (1, 2):
+        try:
+            async with app.state.pool.acquire() as c:
+                await c.fetchval("SELECT 1")
+            return {"status": "ok"}
+        except STALE_CONNECTION_ERRORS:
+            if attempt == 2:
+                raise
 
 
 @app.get("/api/incidents")

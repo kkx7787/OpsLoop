@@ -5,7 +5,7 @@ DB 없이 가짜 연결로 본다. 실제 PostgreSQL 로 보는 두 연결 · �
   - 페이로드: opsloop_event 는 {"type", "data": {"incident_key", "id"}} 뿐이다. 8000 바이트를 넘으면 사건 키를 뺀다
   - 받은 통보: 사건 채널은 incident.created 로, 판정 · 조치 채널은 종류와 두 필드만 넘긴다. 모르는 것은 버린다
   - 콘솔 이름: OPSLOOP_WORKER, 없으면 hostname. 64자. 알림 발송기의 기본 이름과 같다
-  - 감시: 종료 알림 · SELECT 1 실패 · 시간 초과로 끊김을 안다. 1초 → 2배 → 최대 30초로 다시 붙고 resync 를 보낸다.
+  - 감시: 종료 알림 · SELECT 1 실패 · 시간 초과로 끊김을 안다. 1초 → 2배 → 최대 5초로 다시 붙고 resync 를 보낸다(이슈 #56).
     옛 연결의 늦은 종료 알림은 무시한다. 끊김 · 실패 · 재연결을 로그 한 줄씩 남긴다(주소 · 비밀번호는 없다)
   - 기동: 첫 연결이 안 되면 예외로 기동을 실패시키고 풀을 닫는다. 붙으면 두 채널을 듣고 종료 때 닫는다
 """
@@ -179,6 +179,7 @@ class ListenerTest(unittest.IsolatedAsyncioTestCase):
     def listener(self, connector, **kw):
         listener = live.Listener(DSN, self.hub, connect=connector, **kw)
         listener._sleep = self.record_sleep
+        listener._clock = lambda: 0.0        # 시도에 쓴 시간 0. 대기 간격을 정수로 본다(시간을 쓰는 시도는 따로 본다)
         self.addAsyncCleanup(listener.stop)
         return listener
 
@@ -200,6 +201,44 @@ class ListenerTest(unittest.IsolatedAsyncioTestCase):
             {"type": "verdict.created", "data": {"incident_key": "k1", "id": 7}},
             {"type": "action.created", "data": {"incident_key": "k1", "id": 8}}])
 
+    async def test_시도에_쓴_시간은_다음_대기에서_뺀다(self):
+        # 이슈 #56 검토: 응답 없는 끊김에서는 시도 하나가 연결 한도를 다 쓴다. 그 뒤 또 온전히 기다리면 복구 뒤 최대 약 8초 늦는다.
+        #   시도마다 3초를 쓰면 시작 사이 간격(1 → 2 → 4 → 5 → 5 …)에서 3초를 뺀 만큼만 기다린다
+        first, second = FakeConn("a"), FakeConn("b")
+        connector = Connector(first, *[TimeoutError()] * 6, second)
+        listener = self.listener(connector, ping_interval=60)
+        ticks = iter(range(0, 1000, 3))
+        await listener.start()
+        listener._clock = lambda: float(next(ticks))       # 부를 때마다 3초 흐른다(시작 · 실패 한 쌍이 한 시도)
+        with self.assertLogs("opsloop.live", "WARNING") as logs:
+            first.die()
+            await until(lambda: listener.reconnects == 1)
+        self.assertEqual(self.delays, [1, 0, 1, 2, 2, 2, 2])
+        self.assertIn("1회째 실패(TimeoutError). 0초 뒤 다시", logs.output[1])
+        self.assertIn("3회째 실패(TimeoutError). 2초 뒤 다시", logs.output[3])
+        # 시도에 쓴 시간이 간격보다 길면 곧바로 다음 시도를 한다(음수 대기 없음)
+        self.assertTrue(all(d >= 0 for d in self.delays))
+
+    async def test_다시_붙으면_on_reconnect_를_부르고_실패해도_resync_는_보낸다(self):
+        calls = []
+
+        async def renew():
+            calls.append(len(self.hub.messages))           # resync 보다 먼저 불린다
+            if len(calls) == 2:
+                raise RuntimeError("풀 정리 실패")
+        first, second, third = FakeConn("a"), FakeConn("b"), FakeConn("c")
+        listener = self.listener(Connector(first, second, third), ping_interval=60, on_reconnect=renew)
+        await listener.start()
+        with self.assertLogs("opsloop.live", "WARNING") as logs:
+            first.die()
+            await until(lambda: listener.reconnects == 1 and self.hub.messages)
+            second.die()
+            await until(lambda: listener.reconnects == 2 and len(self.hub.messages) == 2)
+        self.assertEqual(calls, [0, 1])
+        self.assertEqual(self.hub.messages, [{"type": "resync"}, {"type": "resync"}])
+        self.assertTrue(any("다시 붙은 뒤 정리 실패(RuntimeError)" in line for line in logs.output))
+        self.assertIs(listener.conn, third)
+
     async def test_termination_reconnects_with_backoff_and_resyncs(self):
         first, second = FakeConn("a"), FakeConn("b")
         failures = [OSError("password=secret-password")] * 6
@@ -210,7 +249,7 @@ class ListenerTest(unittest.IsolatedAsyncioTestCase):
             first.die()
             await until(lambda: listener.reconnects == 1)
             await until(lambda: self.hub.messages)
-        self.assertEqual(self.delays, [1, 2, 4, 8, 16, 30, 30])
+        self.assertEqual(self.delays, [1, 2, 4, 5, 5, 5, 5])
         self.assertIs(listener.conn, second)
         self.assertEqual(connector.calls, [DSN] * 8)
         self.assertEqual(self.hub.messages, [{"type": "resync"}])
@@ -219,7 +258,7 @@ class ListenerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(logs.output), 8)
         self.assertIn("끊김(종료 알림)", logs.output[0])
         self.assertIn("1회째 실패(OSError). 2초 뒤 다시", logs.output[1])
-        self.assertIn("6회째 실패(OSError). 30초 뒤 다시", logs.output[6])
+        self.assertIn("6회째 실패(OSError). 5초 뒤 다시", logs.output[6])
         self.assertIn("다시 붙음(7회째 시도", logs.output[7])
         self.assertIn("resync", logs.output[7])
         for line in logs.output:
@@ -312,7 +351,7 @@ class LifespanTest(unittest.IsolatedAsyncioTestCase):
         self.main = main
         saved = dict(main.app.state._state)
         self.addCleanup(lambda: (main.app.state._state.clear(), main.app.state._state.update(saved)))
-        self.pool = SimpleNamespace(closed=False)
+        self.pool = SimpleNamespace(closed=False, expire_connections=mock.AsyncMock())
 
         async def close():
             self.pool.closed = True
@@ -335,6 +374,36 @@ class LifespanTest(unittest.IsolatedAsyncioTestCase):
                     self.fail("기동하면 안 된다")
         self.assertTrue(self.pool.closed)
         self.side.start.assert_not_awaited()
+
+    async def test_풀과_LISTEN_연결에_keepalive_를_건다(self):
+        # 이슈 #56: 콘솔 VM 이 꺼져도 DB 가 약 1분 안에 연결을 닫게, 두 연결 모두 서버 쪽 TCP 설정을 연결 시작 때 보낸다
+        self.assertEqual(live.DB_KEEPALIVE, {"tcp_keepalives_idle": "30", "tcp_keepalives_interval": "10",
+                                             "tcp_keepalives_count": "3", "tcp_user_timeout": "60000"})
+        seen = {}
+
+        async def create_pool(*_a, **k):
+            seen["pool"] = k
+            return self.pool
+
+        async def connect(dsn, **k):
+            seen["listen"] = k
+            return FakeConn("a")
+        # 통보 연결(live._asyncpg_connect)도 같은 asyncpg 모듈의 connect 를 부른다
+        with mock.patch.object(self.main.asyncpg, "create_pool", create_pool), \
+                mock.patch.object(self.main.asyncpg, "connect", connect):
+            async with self.main.lifespan(self.main.app):
+                pass
+        self.assertEqual(seen["pool"]["server_settings"], live.DB_KEEPALIVE)
+        self.assertEqual((seen["pool"]["min_size"], seen["pool"]["max_size"]), (2, 10))
+        self.assertEqual(seen["listen"]["server_settings"], live.DB_KEEPALIVE)
+        self.assertEqual(seen["listen"]["timeout"], live.CONNECT_TIMEOUT)
+
+    async def test_통보가_다시_붙으면_풀_연결을_새_세대로_바꾼다(self):
+        # DB 가 keepalive 로 닫은 풀 연결을 끊긴 동안 모르고 들고 있다 빌려주지 않게 한다(이슈 #56)
+        with mock.patch.object(live, "_asyncpg_connect", Connector(FakeConn("a"))):
+            async with self.main.lifespan(self.main.app):
+                await self.main.app.state.listener.on_reconnect()
+        self.pool.expire_connections.assert_awaited_once()
 
     async def test_listener_runs_for_app_lifetime(self):
         conn = FakeConn("a")
