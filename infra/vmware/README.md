@@ -319,6 +319,33 @@ python3 infra/vmware/failover/probe_http.py --drop-cookie
 
 합격선: 전환 ≤ 30초이고 401 = 0 이어야 한다. 전환은 감지와 실패 구간 끝 가운데 늦은 쪽이다. 대상 시나리오는 stop · kill · vm-off 이다. 마지막 실패 뒤 성공이 20번 넘게 이어지지 않으면 전환을 확인하지 못한 것으로 보고 불합격이다. net-cut · db-cut · drain 은 관찰 시나리오라 같은 표에 참고로만 남긴다.
 
+### 이중화 후속 반영 뒤 (이슈 #56, 2026-09-29)
+
+#43 보강 뒤 측정에서 남은 한계 셋을 고치고 같은 도구로 콘솔 A 를 다시 쟀다(VM 끔 2 · 망 단절 1 · DB 끊김 3). 감지(약 11 ~ 12초)는 바꾸지 않았다.
+
+| 항목 | #43 보강 뒤 | #56 반영 뒤 | 바꾼 것 |
+|---|---|---|---|
+| VM 끔 · 망 단절 뒤 그 콘솔의 옛 DB 연결 | 매번 3개가 남아 손으로 정리 | 63 ~ 64초에 0 (세 회차) | 콘솔 DB 연결(풀 · 통보)에 서버 쪽 keepalive 30초 · 10초 · 3회와 tcp_user_timeout 60초 (`live.DB_KEEPALIVE`) |
+| VM 끔 · 망 단절 때 끊긴 요청 | 50 ~ 52건 | 10 ~ 11건 | HAProxy `timeout connect` 5초 → 1초. 1초 넘게 기다린 요청은 redispatch 로 다른 콘솔에서 받는다 |
+| 그때 성공한 요청의 최대 지연 | 약 5.0초 | 약 1.0초 | 위와 같다 |
+| DB 끊김이 풀린 뒤 통보 재연결 | 12.7초(최악 30초 넘음) | 0.7 · 1.7 · 0.8초 | 시도 시작 사이 최대 5초, 실패한 시도에 쓴 시간은 다음 대기에서 뺀다 |
+
+- 남은 끊김: DOWN 판정 직전 1초 안에 보낸 요청 약 10건은 여전히 끊긴다(연결을 기다리던 세션을 `on-marked-down shutdown-sessions` 가 끊는다).
+  DB 끊김 때의 5xx(50 ~ 60건)는 그 콘솔이 DB 에 닿지 못하는 동안 받은 요청이라 이번 변경과 무관하다(감지 전까지).
+- 통보가 다시 붙으면 풀 연결도 새 세대로 바꾸고(`pool.expire_connections`), `/health` 는 끊긴 연결 오류면 한 번 더 빌려 본다. 1분 넘게 끊겼다 돌아온 뒤
+  DB 가 닫은 옛 연결을 처음 쓰는 요청이 실패하지 않게 하려는 것이다. DB 쪽 소켓의 keepalive 는 데이터 노드에서 아래로 본다(콘솔 연결에 30초 이하 타이머).
+
+```bash
+ssh -F ~/.ssh/config.opsloop data01 'pid=$(sudo -n docker inspect -f "{{.State.Pid}}" opsloop-db); sudo -n nsenter -t $pid -n ss -tnoH state established "( sport = :5432 )"'
+```
+
+- **VM 을 강제로 끈 뒤에는 `docker logs` 가 그 뒤 로그를 읽지 못할 수 있다.** 전원이 끊긴 순간 로그 파일 끝이 깨져 그 자리에서 읽기가 멈춘다(#43 · #56 측정에서 통보 로그가 0줄로 보인 까닭).
+  그때는 로그 파일을 직접 읽는다.
+
+```bash
+ssh -F ~/.ssh/config.opsloop console-a 'f=$(docker inspect -f "{{.LogPath}}" opsloop-api); sudo -n grep -a "실시간 통보" "$f" | tail'
+```
+
 ## 데이터베이스 역할 (이슈 #31)
 
 구성요소마다 최소 권한 역할로 붙는다. 소유자 `opsloop` 는 스키마 적용 · `nodes.py` · `auth.py add` 에만 쓴다.
