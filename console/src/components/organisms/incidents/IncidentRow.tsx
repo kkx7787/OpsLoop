@@ -1,5 +1,6 @@
 import type { ComponentProps, MouseEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
+import type { CtiBadge as CtiBadgeValue } from '@/api/cti'
 import type { Incident } from '@/api/incidents'
 import { cn } from '@/lib/cn'
 import { sensorOf } from '@/lib/domain'
@@ -7,6 +8,7 @@ import { revealHidden } from '@/lib/untrusted'
 import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { VerdictBadge } from '../../atoms/VerdictBadge'
+import { CtiBadge } from '../../molecules/CtiBadge'
 import { ElapsedTime } from './ElapsedTime'
 import { IncidentStatusLabel } from './IncidentStatusLabel'
 import { incidentHref, isPending, ROW_GRID, sourceOf } from './model'
@@ -17,6 +19,8 @@ export interface IncidentRowProps extends Omit<ComponentProps<'div'>, 'children'
   elapsedSeconds: number
   /** aria-rowindex. 머리 행이 1 이므로 본문은 2 부터 */
   rowIndex?: number
+  /** CVE 배지(#52). 서명 규칙 사건이고 배지 조회가 성공했을 때만 준다 */
+  cti?: CtiBadgeValue
 }
 
 /**
@@ -24,7 +28,7 @@ export interface IncidentRowProps extends Omit<ComponentProps<'div'>, 'children'
  * 키보드 초점은 규칙 링크에 있다. 링크를 눌렀을 때는 링크가 이미 이동했으므로(defaultPrevented) 두 번 가지 않고,
  * 보조키(새 탭)와 글자 드래그는 누름으로 보지 않는다.
  */
-export function IncidentRow({ incident, elapsedSeconds, rowIndex, className, onClick, ...rest }: IncidentRowProps) {
+export function IncidentRow({ incident, elapsedSeconds, rowIndex, cti, className, onClick, ...rest }: IncidentRowProps) {
   const navigate = useNavigate()
   const href = incidentHref(incident.incident_key)
   const pending = isPending(incident)
@@ -61,13 +65,15 @@ export function IncidentRow({ incident, elapsedSeconds, rowIndex, className, onC
         <SeverityBadge severity={incident.severity} />
       </div>
       <div role="cell" className="flex min-w-0 flex-col gap-0.5">
-        <div className="flex min-w-0 items-baseline gap-2">
+        {/* 배지는 이름 옆에 두되, 이름이 6자 남짓(basis-24)보다 좁아지면 다음 줄로 내린다 */}
+        <div className={cn('flex min-w-0 items-baseline gap-x-2', cti && 'flex-wrap gap-y-0.5')}>
           <Link to={href} className="shrink-0 font-mono text-xs font-medium text-primary">
             {incident.rule_id}
           </Link>
-          <span className="truncate font-medium text-ink" title={revealHidden(incident.rule_name)}>
+          <span className={cn('truncate font-medium text-ink', cti && 'min-w-0 grow basis-24')} title={revealHidden(incident.rule_name)}>
             <UntrustedText value={incident.rule_name} clip />
           </span>
+          {cti && <CtiBadge badge={cti} className="shrink-0" />}
         </div>
         <span className="text-xs text-ink-muted tabular-nums">{incident.signal_count} 신호 · {incident.session_count} 세션</span>
       </div>

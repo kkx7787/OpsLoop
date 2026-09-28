@@ -5,6 +5,7 @@ import { revealHidden } from '@/lib/untrusted'
 import { Badge } from '../../atoms/Badge'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { Banner } from '../../molecules/Banner'
+import { CtiBadge } from '../../molecules/CtiBadge'
 import { CtiFreshnessFacts } from '../assets/CtiFreshnessFacts'
 import { APPLICABILITY_TONE, cvssTone, formatCvss, formatPercentile, formatProbability, ransomwareLabel, staleSources, truncate } from '../assets/cti-format'
 import { ApiErrorState } from '../states/ApiErrorState'
@@ -30,6 +31,7 @@ const TITLE = '취약점 연계'
  * 조회는 페이지가 갖고 이 구역은 그리기만 한다. 서명 규칙 사건이 아니면(applicable=false) 구역을 그리지 않고,
  * 첫 조회 중에도 그리지 않는다(대부분의 사건은 대상이 아니라 빈 구역이 잠깐 보였다 사라지지 않게).
  * 404 는 이 기능을 모르는 이전 서버로 보고 안내 한 줄만, 그 밖의 오류는 구역 안에서 다시 시도할 수 있게 보인다.
+ * 머리에는 목록 · 대상 카드와 같은 CVE 배지(서버 badge, #52)를 둔다. 배지가 없는 이전 서버는 그리지 않는다.
  */
 export function VulnLinkPanel({ data, pending, fetching, error, onRetry, className }: VulnLinkPanelProps) {
   if (!data) {
@@ -59,9 +61,12 @@ export function VulnLinkPanel({ data, pending, fetching, error, onRetry, classNa
       number={NUMBER}
       title={TITLE}
       aside={
-        <span>
-          규칙 {data.rule_id} {data.rule_version} · 서명 {data.signatures.length}개 · CVE {data.cves.length}건
-        </span>
+        <>
+          {data.badge && <CtiBadge badge={data.badge} />}
+          <span>
+            규칙 {data.rule_id} {data.rule_version} · 서명 {data.signatures.length}개 · CVE {data.cves.length}건
+          </span>
+        </>
       }
       className={className}
     >

@@ -8,8 +8,8 @@ import { monitoringKeys } from './monitoring-keys'
 /**
  * 실시간 통보(WS /ws). 서버는 접속하면 {type:'hello', data:{channel, console}} 을 보내고, 그 뒤로 사건 · 판정 · 조치가 생길 때마다 알린다.
  * 화면은 통보의 내용을 그리지 않고, 해당 쿼리를 무효화해 REST 로 다시 받는다(통보는 식별자와 요약뿐이다).
- *  incident.created                → 목록
- *  verdict.created · action.created → 그 사건의 상세 + 목록 (판정은 규칙 품질도). 키가 없으면(서버가 8000 바이트를 넘겨 뺐다) 목록만
+ *  incident.created                → 목록 · 요약 · 대상 상태판
+ *  verdict.created · action.created → 그 사건의 상세 + 목록 · 요약 · 대상 상태판 (판정은 규칙 품질도). 키가 없으면(서버가 8000 바이트를 넘겨 뺐다) 상세는 빼고
  *  resync                          → 전부 다시 조회(서버의 DB 통보 연결이 끊겼다 다시 붙었다. 끊긴 동안의 통보는 오지 않는다)
  * 판정 · 조치 통보는 DB(pg_notify)를 거쳐 모든 콘솔이 보낸다. 어느 콘솔에 붙어도 같은 통보를 받는다.
  * 같은 출처 쿠키로 인증한다. 끊기면 지수 백오프(1초 → 2배 → 최대 30초)로 다시 잇고, 다시 이어지면 resync 와 같이 전부 다시 조회한다.
@@ -75,6 +75,7 @@ export const RESYNC_KEYS = [
   ruleKeys.all,
   monitoringKeys.summary,
   monitoringKeys.blocklist,
+  monitoringKeys.targets,
   nodeKey,
   auditKey,
   ctiKeys.all,
@@ -132,6 +133,7 @@ export function applyLiveMessage(queryClient: QueryClient, message: LiveMessage)
     case 'incident.created':
       void queryClient.invalidateQueries({ queryKey: incidentKeys.lists() })
       void queryClient.invalidateQueries({ queryKey: monitoringKeys.summary })
+      void queryClient.invalidateQueries({ queryKey: monitoringKeys.targets })
       return
     case 'verdict.created':
     case 'action.created':
@@ -139,6 +141,8 @@ export function applyLiveMessage(queryClient: QueryClient, message: LiveMessage)
       void queryClient.invalidateQueries({ queryKey: incidentKeys.lists() })
       if (message.type === 'verdict.created') void queryClient.invalidateQueries({ queryKey: ruleKeys.quality() })
       void queryClient.invalidateQueries({ queryKey: monitoringKeys.summary })
+      // 대상별 미판정 · 차단 적용 수가 바뀐다
+      void queryClient.invalidateQueries({ queryKey: monitoringKeys.targets })
       if (message.type === 'action.created') {
         void queryClient.invalidateQueries({ queryKey: monitoringKeys.blocklist })
         void queryClient.invalidateQueries({ queryKey: auditKey })

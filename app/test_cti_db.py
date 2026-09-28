@@ -14,7 +14,9 @@
   - 주목 CVE: 비해당(설치 ≥ 수정판) · 해당(설치 < 수정판) · 수정판 없음(커널, AWS 커널은 linux-aws) · 기록 없음 ·
     이 릴리스 항목 없음 · 미설치(다른 판 커널 포함) · 상세 없는 기록 · 오래된 자산 · 수집 전 · 빈 패키지 목록 · 정렬 · 요약 ·
     설명(NVD → OSV) · cti_watch 가 없으면 available=false
-  - 표가 없는 DB: available=false (사건은 적용 대상 여부와 404 를 그대로 가린다)
+  - CVE 배지(이슈 #52): 목록 배지 조회 값 == 상세 badge(한 트랜잭션에서 여러 사건 · 틀린 kev_match 사건 포함) ·
+    서명 규칙 사건만 · 없는 키 · 같은 키 · 공개 정보가 오래되면 비해당을 미확인으로 낮춤
+  - 표가 없는 DB: available=false (사건은 적용 대상 여부와 404 를 그대로 가린다 · 배지는 빈 사전)
 """
 import json
 import os
@@ -367,6 +369,30 @@ class CtiDatabaseTests(Base):
         self.assertEqual(geo["web-01"]["status"], "not_affected")
         json.dumps(body)
 
+    async def test_목록_배지는_상세_배지와_같다(self):
+        keys = [K106, K105, K_NOSIG, K_BADRE, K_OTHER, "없는 키", K106]
+        body = await cti.cti_badges(self.request, keys)
+        self.assertTrue(body["available"])
+        # 서명 규칙 사건만 담는다(서명 근거가 없는 사건 · 서명 규칙이 아닌 사건 · 없는 키는 빠진다)
+        self.assertEqual(sorted(body["badges"]), sorted([K106, K105, K_BADRE]))
+        for key in (K106, K105, K_BADRE):
+            with self.subTest(key=key):
+                self.assertEqual(body["badges"][key], (await cti.incident_cti(key, self.request))["badge"])
+        self.assertEqual(body["badges"][K106], {"cves": 3, "kev": 2, "applicability": "affected", "stale": True})
+        self.assertEqual(body["badges"][K105], {"cves": 2, "kev": 2, "applicability": "affected", "stale": True})
+        json.dumps(body)
+
+    async def test_공개_정보가_오래되면_배지의_비해당은_미확인이다(self):
+        # 이미지 판정이 사라지면 K105 요약은 비해당이다. osv 가 60시간 전이라 배지는 미확인으로 낮춘다
+        await self.conn.execute("UPDATE asset_inventory SET images = '[]' WHERE asset_id = 'data-01'")
+        detail = await cti.incident_cti(K105, self.request)
+        self.assertEqual((detail["signatures"][0]["summary"], detail["stale"]), ("not_affected", True))
+        self.assertEqual(detail["badge"], {"cves": 2, "kev": 2, "applicability": "unknown", "stale": True})
+        await self.conn.execute("UPDATE cti_snapshots SET fetched_at = now() - interval '1 hour' WHERE source = 'osv'")
+        badge = (await cti.cti_badges(self.request, [K105]))["badges"][K105]
+        self.assertEqual(badge, {"cves": 2, "kev": 2, "applicability": "not_affected", "stale": False})
+        self.assertEqual(badge, (await cti.incident_cti(K105, self.request))["badge"])
+
     async def test_적용_대상이_아닌_사건과_없는_사건(self):
         for key in (K_NOSIG, K_OTHER):
             with self.subTest(key=key):
@@ -595,6 +621,8 @@ class CtiWithoutTablesTests(Base):
         self.assertEqual((detail["available"], detail["asset"], detail["vulnerabilities"]), (False, None, None))
         watch = await cti.watch_list(self.request)
         self.assertEqual((watch["available"], watch["rows"], watch["freshness"]), (False, [], None))
+        badges = await cti.cti_badges(self.request, [K106, K105])
+        self.assertEqual((badges["available"], badges["badges"]), (False, {}))
 
 
 if __name__ == "__main__":

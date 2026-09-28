@@ -3,6 +3,8 @@
 
 CVE · KEV · EPSS · CVSS 는 판정값이 아니라 조사 우선순위 정보다. 판정은 행위 증거로 한다(판정 기준 §8).
 원본은 데이터 노드 수집기(cti/opsloop_cti.py)가 S3 cti/ 에 한 번만 쓰고, 콘솔은 DB 의 정리된 행만 읽는다.
+목록 · 대상 카드 · 상세가 같은 CVE 배지(CVE 수 · KEV 수 · 자산 해당 여부)를 그린다(이슈 #52). 상세와 목록 배지는
+같은 계산(cti_body)을 쓴다.
 """
 import json
 import re
@@ -60,9 +62,20 @@ KERNEL_IMAGE_PREFIX = "linux-image-"
 # 자산 정렬: 관제 대상 → 관제 기반 → 센서, 그다음 id
 ASSET_ORDER = "CASE a.role WHEN 'target' THEN 0 WHEN 'platform' THEN 1 ELSE 2 END, a.asset_id"
 
-TABLES_SQL = "SELECT bool_and(to_regclass(t) IS NOT NULL) FROM unnest($1::text[]) AS t"
+# 표가 모두 있고 이 역할이 모두 읽을 수 있는가. 역할 블록(20260924_db_roles.sql)만 다시 적용하면 CTI 표는 있는데 콘솔 권한이
+#   빠진다. 그때 조회가 권한 오류로 트랜잭션째 멈추지 않고(상태판은 다른 구역까지 함께 멈춘다) '표 없음' 과 같이 available=false 로
+#   물러난다. 표가 없으면 권한 함수가 오류를 내므로 CASE 로 먼저 가른다(absorbed.EXEMPT_READABLE_SQL 과 같은 꼴)
+TABLES_SQL = ("SELECT coalesce(bool_and(CASE WHEN to_regclass(t) IS NULL THEN false"
+              " ELSE has_table_privilege(t, 'SELECT') END), false) FROM unnest($1::text[]) AS t")
 
 INCIDENT_SQL = "SELECT incident_key, rule_id, rule_version, evidence FROM incidents WHERE incident_key = $1"
+
+# 목록 배지(이슈 #52). 한 쪽의 사건 키를 모아 한 번에 묻는다. 키 수 · 키 길이 상한을 넘으면 DB 에 닿기 전에 422 다
+BADGE_INCIDENTS_SQL = """
+    SELECT incident_key, rule_id, rule_version, evidence FROM incidents
+    WHERE incident_key = ANY($1::text[]) ORDER BY incident_key"""
+BADGE_KEYS_MAX = 100
+BADGE_KEY_LENGTH = 512
 
 # 사건을 만든 규칙 정의. 규칙 버전 파일(rule_versions)에 서명의 제품 · CVE · KEV · 자산 조건이 함께 있다
 RULE_SQL = """
@@ -662,6 +675,24 @@ def watch_item(row, affected, assets: list, ecosystems: list, now) -> dict:
     }
 
 
+def badge_of(signatures: list[dict], cves: list[dict], stale: bool) -> dict:
+    """목록 · 카드 · 상세가 같이 그리는 CVE 배지(이슈 #52). signatures · cves 는 상세 응답의 그것이다.
+
+    적용은 서명 요약 중 해당이 하나라도 있으면 해당, 아니면 미확인이 하나라도 있으면 미확인, 아니면 비해당이다.
+    공개 정보가 오래됐으면(stale) 비해당을 미확인으로 낮춘다. 오래된 정보로 '해당 없음' 을 말하지 않는다."""
+    summaries = [s["summary"] for s in signatures]
+    if AFFECTED in summaries:
+        status = AFFECTED
+    elif UNKNOWN in summaries:
+        status = UNKNOWN
+    else:
+        status = NOT_AFFECTED
+    if stale and status == NOT_AFFECTED:
+        status = UNKNOWN
+    return {"cves": len(cves), "kev": sum(1 for c in cves if c["kev"] is not None), "applicability": status,
+            "stale": bool(stale)}
+
+
 def watch_sort_key(item: dict):
     """해당 먼저 → KEV 에 있는 것 → EPSS 높은 순(없는 것 뒤) → CVE id."""
     epss = item["epss"]["score"] if item["epss"] else None
@@ -714,7 +745,7 @@ def vuln_row(row) -> dict:
 # ----------------------------------------------------------------------
 #  모두 반복 읽기 · 읽기 전용 트랜잭션 하나에서 읽는다. 수집기가 도중에 표를 바꿔도 한 응답은 한 시점이다.
 #  main.py 는 이 라우터를 상세 조회(/api/incidents/{incident_key:path})보다 먼저 붙인다. 뒤에 붙이면 …/cti 가
-#  상세 조회의 키로 빨려 들어간다. 주목 CVE 는 /api/assets/{asset_id} 와 겹치지 않게 /api/cti 아래에 둔다.
+#  상세 조회의 키로 빨려 들어간다. 주목 CVE · 목록 배지는 /api/assets/{asset_id} · 사건 상세와 겹치지 않게 /api/cti 아래에 둔다.
 
 async def kev_products_for(c, match: dict):
     """서명 kev_match 에 맞는 KEV 항목. 조건 값이 문자열이 아니거나 PostgreSQL 정규식으로 읽을 수 없으면 None 이다.
@@ -734,45 +765,83 @@ async def kev_products_for(c, match: dict):
         raise
 
 
-@router.get("/api/incidents/{incident_key:path}/cti")
-async def incident_cti(incident_key: str, request: Request):
-    async with request.app.state.pool.acquire() as c, c.transaction(isolation="repeatable_read", readonly=True):
-        as_of = await c.fetchval("SELECT now()")
-        inc = await c.fetchrow(INCIDENT_SQL, incident_key)
-        if inc is None:
-            raise HTTPException(404, "인시던트를 찾을 수 없습니다")
-        rule = loads(await c.fetchval(RULE_SQL, inc["rule_version"], inc["rule_id"])) or {}
-        evidence = loads(inc["evidence"]) or {}
-        by_id = {s.get("id"): s for s in (rule.get("params") or {}).get("signatures") or []}
-        signatures = [by_id[s] for s in evidence.get("signatures") or [] if s in by_id]
-        # 서명 규칙이 아닌 사건(또는 서명 근거가 없는 사건)에는 붙일 것이 없다. 화면은 구역을 그리지 않는다
-        if rule.get("type") != "url_signature" or not signatures:
-            return {"as_of": iso(as_of), "incident_key": incident_key, "applicable": False}
-        head = {"as_of": iso(as_of), "incident_key": incident_key, "applicable": True,
-                "rule_id": inc["rule_id"], "rule_version": inc["rule_version"]}
-        if not await c.fetchval(TABLES_SQL, CTI_TABLES):
-            return {**head, "available": False}
+class Lookup:
+    """한 트랜잭션 안의 CTI 조회를 모아 둔다. 목록 배지는 사건 여럿이 같은 규칙 · 스냅숏 · KEV · CVE · 자산 행을 쓰므로
+    같은 질의를 한 번만 묻는다. 반복 읽기 트랜잭션 안이라 모아 둔 값은 다시 물은 값과 같다(배지 == 상세)."""
 
-        snapshots = await c.fetch(SNAPSHOTS_SQL)
-        # 서명 id → KEV 항목(kev_match 가 없는 서명은 빠진다. 조건을 읽지 못한 서명은 None)
-        kev_products = {}
-        for sig in signatures:
-            m = sig.get("kev_match")
-            if isinstance(m, dict) and m.get("vendor"):
-                kev_products[sig["id"]] = await kev_products_for(c, m)
-        cve_sigs: dict[str, set] = {}
-        for sig in signatures:
-            for cve in sig.get("cves") or []:
-                cve_sigs.setdefault(cve, set()).add(sig["id"])
-            for row in kev_products.get(sig["id"]) or []:
-                cve_sigs.setdefault(row["cve_id"], set()).add(sig["id"])
-        cve_rows = await c.fetch(CVES_SQL, sorted(cve_sigs))
-        wanted = sorted({p for sig in signatures for p in (sig.get("asset_match") or {}).get("packages") or []})
-        assets = [{**dict(r), "os": loads(r["os"]), "images": loads(r["images"]), "packages": loads(r["packages"]),
-                   "probe_errors": loads(r["probe_errors"])}
-                  for r in await c.fetch(APPLICABILITY_ASSETS_SQL, wanted)]
-        sig_cves = sorted({cve for sig in signatures for cve in sig.get("cves") or []})
-        vulns = [dict(r) for r in await c.fetch(VULN_HITS_SQL, sig_cves)] if sig_cves else []
+    def __init__(self, c):
+        self.c = c
+        self._snapshots = None
+        self._rules, self._kev, self._cves, self._assets, self._vulns = {}, {}, {}, {}, {}
+
+    async def rule(self, version, rule_id):
+        key = (version, rule_id)
+        if key not in self._rules:
+            self._rules[key] = loads(await self.c.fetchval(RULE_SQL, version, rule_id)) or {}
+        return self._rules[key]
+
+    async def snapshots(self):
+        if self._snapshots is None:
+            self._snapshots = await self.c.fetch(SNAPSHOTS_SQL)
+        return self._snapshots
+
+    async def kev_products(self, match: dict):
+        key = json.dumps([match.get(k) for k in ("vendor", "product", "text")], default=str)
+        if key not in self._kev:
+            self._kev[key] = await kev_products_for(self.c, match)
+        return self._kev[key]
+
+    async def cves(self, cve_ids: list):
+        key = tuple(cve_ids)
+        if key not in self._cves:
+            self._cves[key] = await self.c.fetch(CVES_SQL, cve_ids)
+        return self._cves[key]
+
+    async def assets(self, wanted: list):
+        key = tuple(wanted)
+        if key not in self._assets:
+            self._assets[key] = [{**dict(r), "os": loads(r["os"]), "images": loads(r["images"]),
+                                  "packages": loads(r["packages"]), "probe_errors": loads(r["probe_errors"])}
+                                 for r in await self.c.fetch(APPLICABILITY_ASSETS_SQL, wanted)]
+        return self._assets[key]
+
+    async def vulns(self, cve_ids: list):
+        key = tuple(cve_ids)
+        if key not in self._vulns:
+            self._vulns[key] = [dict(r) for r in await self.c.fetch(VULN_HITS_SQL, cve_ids)] if cve_ids else []
+        return self._vulns[key]
+
+
+async def signatures_of(look: Lookup, inc) -> tuple[dict, list] | None:
+    """사건의 (근거, 서명 정의들). 서명 규칙이 아니거나(또는 서명 근거가 없으면) None — 붙일 것이 없다."""
+    rule = await look.rule(inc["rule_version"], inc["rule_id"])
+    evidence = loads(inc["evidence"]) or {}
+    by_id = {s.get("id"): s for s in (rule.get("params") or {}).get("signatures") or []}
+    signatures = [by_id[s] for s in evidence.get("signatures") or [] if s in by_id]
+    if rule.get("type") != "url_signature" or not signatures:
+        return None
+    return evidence, signatures
+
+
+async def cti_body(look: Lookup, evidence: dict, signatures: list, as_of) -> dict:
+    """적용 대상 사건의 CTI 본문(available=true 부분)과 배지. 상세와 목록 배지가 이 함수 하나로 계산한다."""
+    snapshots = await look.snapshots()
+    # 서명 id → KEV 항목(kev_match 가 없는 서명은 빠진다. 조건을 읽지 못한 서명은 None)
+    kev_products = {}
+    for sig in signatures:
+        m = sig.get("kev_match")
+        if isinstance(m, dict) and m.get("vendor"):
+            kev_products[sig["id"]] = await look.kev_products(m)
+    cve_sigs: dict[str, set] = {}
+    for sig in signatures:
+        for cve in sig.get("cves") or []:
+            cve_sigs.setdefault(cve, set()).add(sig["id"])
+        for row in kev_products.get(sig["id"]) or []:
+            cve_sigs.setdefault(row["cve_id"], set()).add(sig["id"])
+    cve_rows = await look.cves(sorted(cve_sigs))
+    wanted = sorted({p for sig in signatures for p in (sig.get("asset_match") or {}).get("packages") or []})
+    assets = await look.assets(wanted)
+    vulns = await look.vulns(sorted({cve for sig in signatures for cve in sig.get("cves") or []}))
 
     sensors = [s for s in evidence.get("sensors") or [] if isinstance(s, str)]
     out = []
@@ -785,8 +854,50 @@ async def incident_cti(incident_key: str, request: Request):
                     "kev_products": [kev_item(r) for r in kev] if kev is not None else None,
                     "applicability": rows, "summary": summarize(rows)})
     fresh = freshness(snapshots, assets, as_of)
-    return {**head, "available": True, "stale": any_stale(fresh), "freshness": fresh, "signatures": out,
-            "cves": sorted((cve_item(r, cve_sigs[r["cve_id"]]) for r in cve_rows), key=cve_sort_key)}
+    cves = sorted((cve_item(r, cve_sigs[r["cve_id"]]) for r in cve_rows), key=cve_sort_key)
+    return {"stale": any_stale(fresh), "freshness": fresh, "signatures": out, "cves": cves,
+            "badge": badge_of(out, cves, any_stale(fresh))}
+
+
+@router.get("/api/incidents/{incident_key:path}/cti")
+async def incident_cti(incident_key: str, request: Request):
+    async with request.app.state.pool.acquire() as c, c.transaction(isolation="repeatable_read", readonly=True):
+        as_of = await c.fetchval("SELECT now()")
+        inc = await c.fetchrow(INCIDENT_SQL, incident_key)
+        if inc is None:
+            raise HTTPException(404, "인시던트를 찾을 수 없습니다")
+        look = Lookup(c)
+        found = await signatures_of(look, inc)
+        # 서명 규칙이 아닌 사건(또는 서명 근거가 없는 사건)에는 붙일 것이 없다. 화면은 구역을 그리지 않는다
+        if found is None:
+            return {"as_of": iso(as_of), "incident_key": incident_key, "applicable": False}
+        head = {"as_of": iso(as_of), "incident_key": incident_key, "applicable": True,
+                "rule_id": inc["rule_id"], "rule_version": inc["rule_version"]}
+        if not await c.fetchval(TABLES_SQL, CTI_TABLES):
+            return {**head, "available": False}
+        body = await cti_body(look, *found, as_of)
+    return {**head, "available": True, **body}
+
+
+@router.get("/api/cti/badges")
+async def cti_badges(request: Request, key: list[str] = Query(...)):
+    """사건 목록 · 대상 카드의 CVE 배지(이슈 #52). 한 쪽의 사건 키를 모아 한 번에 묻는다(?key=…&key=…).
+
+    서명 규칙 사건(상세의 applicable=true)만 담는다. 값은 상세의 badge 와 같다(같은 함수 cti_body 로 계산한다).
+    키는 1~100개 · 한 개 512자까지이고 같은 키는 한 번만 센다. 넘으면 DB 에 닿기 전에 422 다."""
+    if not 1 <= len(key) <= BADGE_KEYS_MAX or any(not k or len(k) > BADGE_KEY_LENGTH for k in key):
+        raise HTTPException(422, f"사건 키는 1~{BADGE_KEYS_MAX}개, 한 개 {BADGE_KEY_LENGTH}자까지 보낼 수 있습니다")
+    keys = list(dict.fromkeys(key))
+    async with request.app.state.pool.acquire() as c, c.transaction(isolation="repeatable_read", readonly=True):
+        as_of = await c.fetchval("SELECT now()")
+        if not await c.fetchval(TABLES_SQL, CTI_TABLES):
+            return {"as_of": iso(as_of), "available": False, "badges": {}}
+        look, badges = Lookup(c), {}
+        for inc in await c.fetch(BADGE_INCIDENTS_SQL, keys):
+            found = await signatures_of(look, inc)
+            if found is not None:
+                badges[inc["incident_key"]] = (await cti_body(look, *found, as_of))["badge"]
+    return {"as_of": iso(as_of), "available": True, "badges": badges}
 
 
 @router.get("/api/cti/watch")

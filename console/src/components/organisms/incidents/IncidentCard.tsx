@@ -1,11 +1,13 @@
 import type { ComponentProps } from 'react'
 import { Link } from 'react-router'
+import type { CtiBadge as CtiBadgeValue } from '@/api/cti'
 import type { Incident } from '@/api/incidents'
 import { cn } from '@/lib/cn'
 import { revealHidden } from '@/lib/untrusted'
 import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { VerdictBadge } from '../../atoms/VerdictBadge'
+import { CtiBadge } from '../../molecules/CtiBadge'
 import { IncidentStatusLabel } from './IncidentStatusLabel'
 import { ElapsedTime } from './ElapsedTime'
 import { incidentHref, isPending, sourceOf } from './model'
@@ -14,10 +16,12 @@ export interface IncidentCardProps extends Omit<ComponentProps<'li'>, 'children'
   incident: Incident
   /** 발생부터 지난 초 */
   elapsedSeconds: number
+  /** CVE 배지(#52). 서명 규칙 사건이고 배지 조회가 성공했을 때만 준다 */
+  cti?: CtiBadgeValue
 }
 
 /** 모바일 카드: 경과·심각도·규칙·출발지와 판정·처리 상태. 카드 전체가 링크다. */
-export function IncidentCard({ incident, elapsedSeconds, className, ...rest }: IncidentCardProps) {
+export function IncidentCard({ incident, elapsedSeconds, cti, className, ...rest }: IncidentCardProps) {
   return (
     <li data-incident-key={incident.incident_key} className={cn('list-none', className)} {...rest}>
       <Link
@@ -36,11 +40,12 @@ export function IncidentCard({ incident, elapsedSeconds, className, ...rest }: I
           />
           <SeverityBadge severity={incident.severity} />
         </div>
-        <div className="flex min-w-0 items-baseline gap-1.5 text-sm">
+        <div className={cn('flex min-w-0 items-baseline gap-x-1.5 text-sm', cti && 'flex-wrap gap-y-0.5')}>
           <span className="shrink-0 font-mono font-medium">{incident.rule_id}</span>
-          <span className="truncate text-ink-muted" title={revealHidden(incident.rule_name)}>
+          <span className={cn('truncate text-ink-muted', cti && 'min-w-0 grow basis-24')} title={revealHidden(incident.rule_name)}>
             <UntrustedText value={incident.rule_name} clip />
           </span>
+          {cti && <CtiBadge badge={cti} className="shrink-0" />}
         </div>
         <div className="truncate font-mono text-sm text-ink-muted" title={revealHidden(sourceOf(incident))}>
           <UntrustedText value={sourceOf(incident)} clip />

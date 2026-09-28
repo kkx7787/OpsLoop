@@ -325,9 +325,9 @@ python3 infra/vmware/failover/probe_http.py --drop-cookie
 | 역할 | 쓰는 곳 | 접속 파일 | 할 수 있는 것 |
 |---|---|---|---|
 | `opsloop_gate` | 수집 관문 | 데이터 노드 `/etc/opsloop/gate.env` | nodes 네 열 읽기 · `enroll_node` |
-| `opsloop_ingest` | 다리(pull_loki) · 파서 | `/etc/opsloop/collector.env` | events · sessions · node_metrics 적재, nodes 수신 기록 |
+| `opsloop_ingest` | 다리(pull_loki) · 파서 · 생존 신호 기록(record_heartbeats) | `/etc/opsloop/collector.env` | events · sessions · node_metrics 적재, nodes 수신 기록, 업로더 생존 신호(`sensor_heartbeats` 업로더 행, 이슈 #52) |
 | `opsloop_detector` | 탐지기(detect.py) | `/etc/opsloop/detector.env` | 규칙 입력 읽기, incidents 생성 · 억제 · 이어지는 사건 갱신(끝 시각 · 건수 · 근거 네 열), detector_runs |
-| `opsloop_console` | 콘솔 API · triage.py | 콘솔 `~/opsloop/.env` · 데이터 노드 `/etc/opsloop/triage.env` | 판정 · 조치 · 차단 · 등록 토큰 · 감사 · 로그인 기록 · CTI 표 읽기. 토큰 해시 · 계정 역할은 못 본다/못 고친다 |
+| `opsloop_console` | 콘솔 API · triage.py | 콘솔 `~/opsloop/.env` · 데이터 노드 `/etc/opsloop/triage.env` | 판정 · 조치 · 차단 · 등록 토큰 · 감사 · 로그인 기록 · CTI 표 읽기 · 생존 신호 · 노드 지표 읽기(이슈 #52). 토큰 해시 · 계정 역할은 못 본다/못 고친다 |
 | `opsloop_cti` | CTI 수집기(`opsloop-cti`: 공개 정보 갱신 · 자산 적재, 이슈 #39) | `/etc/opsloop/cti.env` | 공개 정보 · 자산 표(`cti_*` · `asset_*`) 쓰기(`cti_snapshots` 는 추가만), `rule_versions` 읽기. 이벤트 · 사건 · 판정은 못 본다 |
 | `opsloop_backup` | `backup-db.sh` 의 pg_dump · 역할 목록(pg_dumpall --globals-only --no-role-passwords) | 없음 (컨테이너 안 로컬 접속) | 읽기 전부 |
 | `opsloop` (소유자) | 스키마 · `nodes.py` · `auth.py add` | `/etc/opsloop/admin.env` (root 만) · compose `.env` | 전부 |
@@ -727,11 +727,11 @@ DB 차단 목록을 AWS 관문에 넘기고 관문의 적용 결과를 DB 에 �
 
 ```bash
 # 1. S3 경계 · 쓰기 사용자: infra/terraform/README.md '차단 목록 전달' 1단계 (plan 기대값 확인 뒤 apply)
-# 2. 데이터 노드: 사용자 · DB 역할 · 두 마이그레이션(20260927 → 20260929, #51 뒤) · 코드 · 설정 · 단위 (타이머는 새로 켜지 않는다)
+# 2. 데이터 노드: 사용자 · DB 역할 · 세 마이그레이션(20260927 → 20260929 → 20260930, #51 · #52 뒤) · 코드 · 설정 · 단위 (타이머는 새로 켜지 않는다)
 C=$(git rev-parse --short HEAD)
-git archive "$C" enforcer infra/migrations/20260927_block_enforce.sql infra/migrations/20260929_block_points.sql \
+git archive "$C" enforcer infra/migrations/20260927_block_enforce.sql infra/migrations/20260929_block_points.sql infra/migrations/20260930_status_board.sql \
   | ssh -F ~/.ssh/config.opsloop data01 "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo bash /tmp/ol/enforcer/install-enforcer.sh $C"
-#    권한 표 세 줄이 '기대대로' 여야 한다. 마지막 줄의 행 갈래 수에 운영 13건이 exclude 로 나온다
+#    권한 표 네 줄이 '기대대로' 여야 한다. 마지막 줄의 행 갈래 수에 운영 13건이 exclude 로 나온다
 # 3. 목록 쓰기 키: infra/terraform/README.md '차단 목록 전달' 2단계 (0600 root:root)
 # 4. 관문 동기화 설치 (infra/aws/gateway, 관문 담당 절차) 뒤, 할 일만 먼저 본다 (S3 · DB 를 고치지 않는다)
 ssh -F ~/.ssh/config.opsloop data01 'sudo -n opsloop-enforcer run --dry-run'
@@ -742,8 +742,10 @@ ssh -F ~/.ssh/config.opsloop data01 'sudo -n opsloop-enforcer status'   # 관문
 ```
 
 - 첫 회차에 운영의 만료 없는 13건은 enforce_note 만 '집행 제외 · 만료 없음' 이 된다. 집행 열(enforced_at)이 바뀌지 않아 감사 · R201 에 영향이 없다.
-- 역할 블록(schema.sql · 20260924_db_roles.sql)을 다시 적용하면 집행 역할 권한이 사라진다. 그 뒤에는 이 설치기(또는 두 마이그레이션을
-  20260927 → 20260929 순서로)를 다시 돌린다. 20260927 만 다시 적용하면 #51 의 enforcement 쓰기 권한이 빠져 집행기 회차가 실패한다.
+- 역할 블록(schema.sql · 20260924_db_roles.sql)을 다시 적용하면 집행 역할 권한이 사라진다. 그 뒤에는 이 설치기(또는 세 마이그레이션을
+  20260927 → 20260929 → 20260930 순서로)를 다시 돌린다. 설치기는 셋을 이 순서로 적용한다. 마이그레이션만 손으로 적용할 때는 순서가
+  중요하다. 20260927 만 다시 적용하면 #51 의 enforcement 쓰기 권한과 #52 의 생존 신호 표 권한이 빠진다(enforcement 가 빠지면 집행기
+  회차가 실패하고, 생존 신호만 빠지면 집행은 그대로 돌고 로그에 등급 5 한 줄만 남는다).
   내부 방화벽을 켠 뒤라면 `OPSLOOP_FW_ID` 는 설정 파일에 이미 있으므로 다시 줄 필요가 없다.
 - 원장 읽기 키(`s3-pull.env`)를 다시 넣어도 집행기는 따로 할 일이 없다(LoadCredential 이 회차마다 읽는다).
 - 되돌리기: `sudo systemctl disable --now opsloop-enforcer.timer`. 관문 집합은 항목별 만료(상한 fail2ban bantime 24시간)로 저절로 빈다.
@@ -810,8 +812,8 @@ ssh -F ~/.ssh/config.opsloop fw 'sudo -n sh -c "set -a; . /etc/default/opsloop-b
 ssh -F ~/.ssh/config.opsloop fw 'sudo -n systemctl start opsloop-block-sync.service; sudo -n journalctl -u opsloop-block-sync -n 10 --no-pager'
 ssh -F ~/.ssh/config.opsloop fw 'sudo -n systemctl enable --now opsloop-block-sync.timer'
 #    자가 시험 'ok' · 한 회차 요약 'nft · 목록 확인 · …' 이어야 한다
-# 6. 집행기 · DB: 두 마이그레이션(#47 → #51 순서)과 OPSLOOP_FW_ID. 설치기가 둘을 차례로 적용하고 설정에 없을 때만 줄을 더한다
-git archive "$C" enforcer infra/migrations/20260927_block_enforce.sql infra/migrations/20260929_block_points.sql \
+# 6. 집행기 · DB: 세 마이그레이션(#47 → #51 → #52 순서)과 OPSLOOP_FW_ID. 설치기가 셋을 차례로 적용하고 설정에 없을 때만 줄을 더한다
+git archive "$C" enforcer infra/migrations/20260927_block_enforce.sql infra/migrations/20260929_block_points.sql infra/migrations/20260930_status_board.sql \
   | ssh -F ~/.ssh/config.opsloop data01 "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo OPSLOOP_FW_ID=fw-opsloop bash /tmp/ol/enforcer/install-enforcer.sh $C"
 ssh -F ~/.ssh/config.opsloop data01 'sudo -n opsloop-enforcer status'     # '내부 방화벽 보고:' 줄이 있어야 한다
 # 7. 콘솔: 화면(npm run build → app/static)과 API 를 콘솔 A 에 올린다 (이슈 #47 과 같은 절차 · 백업 먼저). 콘솔 B 는 합류 때 image 단계가 옮긴다
@@ -887,6 +889,60 @@ ssh -F ~/.ssh/config.opsloop data01 "sudo -n sed -i '/^OPSLOOP_FW_ID=/d' /etc/de
 "/Applications/VMware Fusion.app/Contents/Library/vmrun" stop "$HOME/Virtual Machines.localized/opsloop-attacker.vmwarevm/opsloop-attacker.vmx" soft
 ```
 
+## 생존 신호 표 (이슈 #52)
+
+대시보드 관제 대상 카드가 '살아 있음' 을 말하는 근거다. 생존 신호가 있는 대상만 정상 · 수신 없음을 가르고, 로그 시각만 있는 대상은
+'생존 상태 미확인' 으로 둔다(로그가 없다고 장애로 칠하지 않는다). 표 하나(`sensor_heartbeats`)에 기록하는 쪽이 둘이다.
+
+```
+데이터 노드  opsloop-ingest (5분)   ─ pull.py 가 호스트별 hb 결과를 pull-state.json 에 → record_heartbeats.py(적재 역할) → uploader:<인스턴스 ID>
+데이터 노드  opsloop-enforcer (1분) ─ 관문 · 내부 방화벽 차단 보고를 읽은 결과 → block:gateway · block:fw(설정했을 때만)
+콘솔 API     GET /api/dashboard/targets ─ 콘솔 역할로 읽기만 (node_metrics 도 읽는다)
+```
+
+| 열 | 뜻 |
+|---|---|
+| `seen_at` | 신호 자체의 시각. 업로더 hb 의 S3 LastModified · 검증한 차단 보고의 at. 못 읽은 회차는 옛 값을 둔다. DB 시각보다 늦으면 DB 시각으로 줄인다 |
+| `checked_at` | 기록한 쪽(적재기 · 집행기)이 마지막으로 읽어 본 시각. 이것이 멈추면 신호가 끊긴 것이 아니라 기록하는 쪽이 멈춘 것이다 |
+| `problem` | 못 읽은 까닭(없음 · 형식이 틀림 · 읽기 일시 오류 …). 오래된 신호는 문제로 적지 않고 시각으로 드러낸다 |
+
+- 행 종류는 트리거 `sensor_heartbeats_guard` 가 가른다. 적재 역할은 업로더 행만, 집행 역할은 차단 보고 행만 넣고 바꾼다(키 모양
+  `uploader:<host>` · `block:<role>` 도 본다). 장악된 적재기가 방화벽 보고를, 장악된 집행기가 업로더 신호를 꾸미지 못한다. 지우는 역할은 없다.
+- 기록 실패는 적재 · 집행을 막지 않는다. 적재기는 '생존 신호를 기록하지 못했다', 집행기는 '차단 보고 생존 신호를 기록하지 못했다'
+  한 줄을 남기고 종료 코드는 그대로다. 표 · 권한이 없으면(마이그레이션 전 · 역할 블록 재적용 뒤) 등급 5 로만 알린다.
+
+순서 (Mac, 저장소 루트):
+
+```bash
+C=$(git rev-parse --short HEAD)
+# 1. 표 · 트리거 · 권한. 여러 번 적용해도 같다. 앱 · 적재기 · 집행기보다 먼저여도 뒤여도 된다
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n docker exec -i opsloop-db psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -q' \
+  < infra/migrations/20260930_status_board.sql
+# 2. 적재기 (pull.py · record_heartbeats.py · opsloop-ingest). 앱 폴더를 통째로 바꾸므로 새 파일도 함께 간다
+git archive "$C" parser detector puller | ssh -F ~/.ssh/config.opsloop data01 \
+  "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo bash /tmp/ol/puller/install-ingest.sh $C"
+# 3. 집행기: 위 '차단 집행기 설치' 2번과 같은 명령. 설치기가 #47 → #51 → #52 순으로 적용하고 권한 표에서 생존 신호 표 줄을 확인한다
+# 4. 확인 (다음 적재 회차 · 집행 회차 뒤). 줄마다 checked_at 이 5분(업로더) · 1분(차단 보고) 안이어야 한다
+echo "SELECT source, role, host, seen_at, checked_at, problem FROM sensor_heartbeats ORDER BY source;" \
+  | ssh -F ~/.ssh/config.opsloop data01 'sudo -n docker exec -i opsloop-db psql -U opsloop -d opsloop'
+infra/vmware/scripts/verify-db-roles.sh      # '관제 대상 상태판' 절
+```
+
+- 역할 블록(`schema.sql` · `20260924_db_roles.sql`)이나 `20260927_block_enforce.sql` 을 다시 적용하면 이 표 권한과 콘솔의 `node_metrics`
+  읽기가 빠진다. 그 뒤 1번을 다시 한다. 역할 블록을 다시 적용했다면 `20260925_cti.sql` 도 다시 적용한다(아래 CTI 절). 그러지 않아도
+  대시보드는 멈추지 않고 취약점 줄만 '취약점 정보 없음' 이 된다. `install-collector.sh` 가 `schema.sql` 전체를 적용할 때는 이 블록이 끝에 있어 권한이 남는다.
+- 센서 호스트를 `OPSLOOP_HOSTS` 에서 빼면 풀러 상태에서는 사라지지만 표의 줄은 남는다(적재 역할은 지우지 못한다). 콘솔은 적재기가
+  15분 넘게 확인하지 않은 업로더 줄을 떼어 둔 호스트로 보고 건너뛰지만, 뺀 직후 15분 동안은 그 줄이 섞이고 줄 자체도 쌓이므로 소유자로 지운다.
+
+  ```bash
+  echo "DELETE FROM sensor_heartbeats WHERE source = 'uploader:<옛 인스턴스 ID>';" \
+    | ssh -F ~/.ssh/config.opsloop data01 'sudo -n docker exec -i opsloop-db psql -U opsloop -d opsloop -v ON_ERROR_STOP=1'
+  ```
+- 되돌리기: 코드만 되돌리면 기록이 멈추고 줄은 남는다(콘솔은 멈춘 checked_at 을 '확인 중단' 으로 보인다). 표까지 지울 때는 소유자로
+  `DROP TABLE sensor_heartbeats; DROP FUNCTION sensor_heartbeats_guard();` 를 돌리고, 복원 훈련 구조 기대값(`restore-drill/queries.py`
+  표 26 · 트리거 7 · 함수 12)도 함께 되돌린다.
+- 시험: `python3 infra/test_status_board_db.py` · `python3 puller/test_record_heartbeats.py` (시험 DB 가 있으면 트리거 · 권한까지)
+
 ## CVE · KEV 연계 (이슈 #39)
 
 공개 취약점 정보(CISA KEV · EPSS · 배포판 취약점 OSV · NVD)와 노드 자산 조사 결과를 사건 옆에 붙여 보인다.
@@ -951,7 +1007,7 @@ infra/vmware/scripts/install-assets-agent.sh
 - 평소 꺼 둔 console-b 는 연결 실패로 보내져 옛 결과를 두고 시도 기록만 고친다(종료 코드 1, 알림 없음).
 - **`20260924_db_roles.sql` 을 다시 적용하면 `20260925_cti.sql` 도 다시 적용한다.** `20260924_db_roles.sql` 은 콘솔
   역할의 표 권한을 먼저 모두 거두고 정해 둔 표만 다시 주므로 콘솔의 CTI 표 읽기가 사라진다(콘솔 API 의 취약점 연계 ·
-  자산 조회가 권한 오류로 멈춘다). 수집기 역할(`opsloop_cti`)의 권한은 거두지 않는다. `20260925_round2.sql` 은 탐지
+  자산 조회 · CVE 배지가 '정보 없음'(available=false)으로 물러난다. 이슈 #52 전에는 권한 오류로 멈췄다). 수집기 역할(`opsloop_cti`)의 권한은 거두지 않는다. `20260925_round2.sql` 은 탐지
   역할만 거두고 `20260925_v3_absorbed.sql` 은 권한을 거두지 않으므로 CTI 권한과 무관하다. `opsloop_cti` 의 권한을
   거두는 곳은 `20260925_cti.sql` 과 `infra/schema.sql` 의 CTI 절뿐이고 둘 다 거둔 뒤 곧바로 다시 준다.
   `20260925_cti.sql` 은 여러 번 적용해도 같다. `install-collector.sh` 는 `infra/schema.sql` 전체(끝에 같은 CTI 절이

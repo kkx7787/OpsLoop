@@ -8,6 +8,8 @@
 #   콘솔 역할의 접속 한도(이슈 #43, 30 이상)도 본다. infra/migrations/20260926_console_connlimit.sql 을 적용한 뒤에 돌린다.
 #   차단 집행(이슈 #47)의 집행 역할(opsloop_enforcer) 권한 · 속성과 금지 대역 표(block_exempt) 권한도 본다.
 #   infra/migrations/20260927_block_enforce.sql 을 적용하고 enforcer/install-enforcer.sh 로 역할을 만든 뒤에 돌린다.
+#   관제 대상 상태판(이슈 #52)의 생존 신호 표(sensor_heartbeats) 권한 · 트리거와 콘솔의 노드 지표 읽기도 본다.
+#   infra/migrations/20260930_status_board.sql 을 적용한 뒤에 돌린다.
 # 사용 (Mac, 저장소 루트): infra/vmware/scripts/verify-db-roles.sh     종료 코드 0 = 전부 기대대로
 set -uo pipefail
 SSH=(ssh -F "$HOME/.ssh/config.opsloop" -o BatchMode=yes -o ConnectTimeout=10)
@@ -135,6 +137,24 @@ q opsloop_console  "SELECT cidr, note FROM test_ranges LIMIT 0" 허용
 q opsloop_console  "INSERT INTO test_ranges (cidr, note) VALUES ('192.0.2.0/24', 'x')" 거부
 q opsloop_detector "SELECT is_test_source('203.0.113.10'::inet)" 허용
 q opsloop_console  "SELECT is_test_source('203.0.113.10'::inet)" 허용
+
+echo "== 관제 대상 상태판 (이슈 #52. 생존 신호 표 · 콘솔의 노드 지표 읽기)"
+#   적재기는 업로더 신호, 집행기는 차단 보고 신호를 넣고 고친다(표 권한은 같고 행 종류는 트리거 sensor_heartbeats_guard 가 가른다).
+#   트리거는 행이 있어야 도므로 여기서는 켜져 있는지만 본다(쓰기 시험은 infra/test_status_board_db.py). 지우는 역할은 없다.
+#   콘솔은 생존 신호와 노드 지표를 읽기만 하고, 탐지는 생존 신호를 보지 못한다. infra/test_status_board_db.py 가 이 줄들을 시험 DB 에서 돌린다
+q opsloop_ingest   "INSERT INTO sensor_heartbeats SELECT * FROM sensor_heartbeats WHERE false ON CONFLICT (source) DO UPDATE SET seen_at = EXCLUDED.seen_at" 허용
+q opsloop_ingest   "DELETE FROM sensor_heartbeats WHERE false" 거부
+p opsloop_ingest   "has_table_privilege('opsloop_ingest', 'sensor_heartbeats', 'TRUNCATE')" f
+q opsloop_enforcer "INSERT INTO sensor_heartbeats SELECT * FROM sensor_heartbeats WHERE false ON CONFLICT (source) DO UPDATE SET seen_at = EXCLUDED.seen_at" 허용
+q opsloop_enforcer "DELETE FROM sensor_heartbeats WHERE false" 거부
+q opsloop_enforcer "SELECT count(*) FROM node_metrics" 거부
+q opsloop_console  "SELECT source, kind, role, host, seen_at, checked_at, problem FROM sensor_heartbeats LIMIT 0" 허용
+q opsloop_console  "SELECT node_id, ts, cpu_pct, mem_used_pct, disk_root_pct, load1 FROM node_metrics LIMIT 0" 허용
+q opsloop_console  "INSERT INTO sensor_heartbeats SELECT * FROM sensor_heartbeats WHERE false" 거부
+q opsloop_console  "UPDATE sensor_heartbeats SET problem = problem WHERE false" 거부
+q opsloop_console  "INSERT INTO node_metrics SELECT * FROM node_metrics WHERE false" 거부
+q opsloop_detector "SELECT count(*) FROM sensor_heartbeats" 거부
+p opsloop_ingest   "(SELECT tgenabled = 'O' FROM pg_trigger WHERE tgname = 'sensor_heartbeats_guard')" t
 
 echo "== 접속 한도 (이슈 #43. 콘솔 한 대 = 풀 10 + LISTEN 1 → 두 대 22 + triage.py)"
 #   20 이면 콘솔 B 를 켤 때 한도에 닿는다. 무제한(-1)도 기대와 다르다고 본다 (콘솔이 DB 접속을 다 써 버리지 않게 하는 울타리다)

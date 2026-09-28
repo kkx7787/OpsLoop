@@ -1,3 +1,4 @@
+import type { CtiBadge } from '@/api/cti'
 import type { Incident } from '@/api/incidents'
 import { cn } from '@/lib/cn'
 import { IncidentCard } from './IncidentCard'
@@ -14,11 +15,13 @@ export interface IncidentListProps {
   dataUpdatedAt: number
   offset?: number
   layout?: IncidentListLayout
+  /** 사건 키별 CVE 배지(#52, useCtiBadges). 없거나 조회 실패면 배지 없이 그린다 */
+  badges?: Readonly<Record<string, CtiBadge>>
   className?: string
 }
 
 /** 한 페이지(최대 100건). 표 머리글을 고정하고 목록 안에서 스크롤해 페이지 탐색을 계속 노출한다. */
-export function IncidentList({ items, total, now, dataUpdatedAt, offset = 0, layout, className }: IncidentListProps) {
+export function IncidentList({ items, total, now, dataUpdatedAt, offset = 0, layout, badges, className }: IncidentListProps) {
   const desktop = useIsDesktop()
   const table = (layout ?? (desktop ? 'table' : 'cards')) === 'table'
   const sinceFetch = dataUpdatedAt > 0 ? Math.max(0, Math.floor((now - dataUpdatedAt) / 1000)) : 0
@@ -37,15 +40,20 @@ export function IncidentList({ items, total, now, dataUpdatedAt, offset = 0, lay
           </div>
           <div role="rowgroup">
             {items.map((incident, index) => (
-              <IncidentRow key={incident.incident_key} rowIndex={offset + index + 2} incident={incident} elapsedSeconds={elapsedOf(incident)} />
+              <IncidentRow key={incident.incident_key} rowIndex={offset + index + 2} incident={incident} elapsedSeconds={elapsedOf(incident)} cti={badgeOf(badges, incident.incident_key)} />
             ))}
           </div>
         </div>
       ) : (
         <ul aria-label="인시던트 목록" className="m-0 flex list-none flex-col divide-y divide-line bg-surface">
-          {items.map((incident) => <IncidentCard key={incident.incident_key} incident={incident} elapsedSeconds={elapsedOf(incident)} />)}
+          {items.map((incident) => <IncidentCard key={incident.incident_key} incident={incident} elapsedSeconds={elapsedOf(incident)} cti={badgeOf(badges, incident.incident_key)} />)}
         </ul>
       )}
     </div>
   )
+}
+
+/** 자기 속성만 본다(사건 키가 '__proto__' 같은 이름이어도 원형의 값을 배지로 읽지 않는다) */
+function badgeOf(badges: Readonly<Record<string, CtiBadge>> | undefined, key: string): CtiBadge | undefined {
+  return badges && Object.hasOwn(badges, key) ? badges[key] : undefined
 }

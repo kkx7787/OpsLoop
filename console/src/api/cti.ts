@@ -8,6 +8,7 @@ import { incidentPath } from './incidents'
  *  GET /api/assets                                 → AssetsResult (자산별 수집 · 대조 요약)
  *  GET /api/assets/{asset_id}?filter&limit&offset  → AssetDetailResult (자산 한 대의 조사 결과와 배포판 취약점 한 쪽)
  *  GET /api/cti/watch                              → WatchResult (주목 CVE: 정해 둔 CVE 마다 자산 설치 버전과 배포판 수정판 대조)
+ *  GET /api/cti/badges?key=…&key=…                 → CtiBadgesResult (사건 목록 한 쪽의 CVE 배지. 상세의 badge 와 같은 값, #52)
  * 원본은 데이터 노드 수집기(opsloop-cti)가 하루 한 번 받는다. 화면은 신선도(freshness)를 함께 보이고
  * 오래된 정보는 '비해당'으로 읽지 않는다. CVE · KEV · EPSS · CVSS 는 판정값이 아니라 조사 우선순위 정보다.
  * 공개 데이터라 캐시에 두어도 된다. 사건 상세 키(incidentKeys) 밑에 두지 않는다: 판정 · 조치 통보마다 다시 받을 까닭이 없다.
@@ -164,6 +165,28 @@ export interface CveCti {
   nvd_fetched_at: string | null
 }
 
+/**
+ * 사건 한 건의 CVE 배지(#52, 서버 badge_of). 목록 · 대상 카드 · 상세 머리에 같은 값을 보인다.
+ *  cves           이어진 CVE 수
+ *  kev            그중 KEV 에 있는 수
+ *  applicability  서명들의 적용 요약: 해당이 하나라도 있으면 해당, 아니면 미확인이 하나라도 있으면 미확인, 아니면 비해당.
+ *                 공개 정보가 오래됐으면(stale) 비해당을 미확인으로 올린다
+ *  stale          kev · epss · osv 중 하나라도 48시간(서버 STALE_HOURS)을 넘었다
+ */
+export interface CtiBadge {
+  cves: number
+  kev: number
+  applicability: ApplicabilityStatus
+  stale: boolean
+}
+
+/** 사건 목록 한 쪽의 배지. 서명 규칙 사건만 badges 에 들어 있다. CTI 표가 없으면 available=false · badges {} */
+export interface CtiBadgesResult {
+  as_of: string
+  available: boolean
+  badges: Record<string, CtiBadge>
+}
+
 /** 서명 규칙 사건이 아니다(url_signature 가 아니거나 evidence.signatures 가 없다). 구역을 그리지 않는다 */
 export interface IncidentCtiNotApplicable {
   as_of: string
@@ -193,6 +216,8 @@ export interface IncidentCtiDetail {
   freshness: CtiFreshness
   signatures: SignatureCti[]
   cves: CveCti[]
+  /** 목록 · 카드와 같은 배지 값(#52). 이전 서버는 생략한다 */
+  badge?: CtiBadge
 }
 
 export type IncidentCti = IncidentCtiNotApplicable | IncidentCtiUnavailable | IncidentCtiDetail
@@ -391,7 +416,24 @@ export const ctiKeys = {
   assets: () => [...ctiKeys.all, 'assets'] as const,
   asset: (assetId: string, filter: VulnFilter, offset: number) => [...ctiKeys.assets(), assetId, filter, offset] as const,
   watch: () => [...ctiKeys.all, 'watch'] as const,
+  /** 정렬 · 중복 제거한 사건 키 목록(badgeKeys). 같은 쪽을 다른 순서로 받아도 캐시 하나다 */
+  badges: (keys: readonly string[]) => [...ctiKeys.all, 'badges', badgeKeys(keys)] as const,
 }
+
+/** 배지를 한 번에 묻는 사건 수 상한 · 키 길이 상한(서버가 넘으면 422 로 요청 전체를 거절한다) */
+export const BADGE_MAX_KEYS = 100
+export const BADGE_MAX_KEY_LENGTH = 512
+
+/**
+ * 배지를 물을 사건 키. 빈 키 · 너무 긴 키는 빼고(그 사건만 배지 없이 그린다) 중복을 없애 정렬한 뒤 앞 100개.
+ * 목록 한 쪽은 최대 100건이라 보통 다 들어간다
+ */
+export function badgeKeys(keys: readonly string[]): string[] {
+  return [...new Set(keys.filter((key) => key !== '' && key.length <= BADGE_MAX_KEY_LENGTH))].sort().slice(0, BADGE_MAX_KEYS)
+}
+
+/** 배지 경로. /api/incidents/{key} 와 겹치지 않게 /api/cti 아래에 있다 */
+export const BADGES_PATH = '/api/cti/badges'
 
 /** 주목 CVE 경로. /api/assets/{asset_id} 와 겹치지 않게 /api/cti 아래에 있다 */
 export const WATCH_PATH = '/api/cti/watch'
@@ -419,6 +461,11 @@ export function fetchAsset(assetId: string, filter: VulnFilter, offset: number, 
 
 export function fetchWatch(signal?: AbortSignal): Promise<WatchResult> {
   return api.get<WatchResult>(WATCH_PATH, { signal })
+}
+
+/** 키는 같은 이름으로 여러 번 붙인다(?key=a&key=b). 부르는 쪽이 badgeKeys 로 거른 목록을 준다 */
+export function fetchCtiBadges(keys: readonly string[], signal?: AbortSignal): Promise<CtiBadgesResult> {
+  return api.get<CtiBadgesResult>(BADGES_PATH, { signal, query: { key: keys } })
 }
 
 /** 사건 한 건의 취약점 연계. 원본이 하루 단위로 바뀌므로 5분 동안은 다시 묻지 않는다. 키가 비어 있으면 묻지 않는다 */
@@ -451,6 +498,22 @@ export function useAsset(assetId: string, filter: VulnFilter, offset: number) {
     placeholderData: (previous, previousQuery) => (previousQuery?.queryKey[2] === assetId ? keepPreviousData(previous) : undefined),
     staleTime: 60_000,
     enabled: assetId !== '',
+  })
+}
+
+/**
+ * 사건 여러 건의 CVE 배지를 한 번에 받는다(목록 한 쪽 · 대상 카드의 최근 사건). 상세(useIncidentCti)와 같이 5분 동안은 다시 묻지 않는다.
+ * 키가 없으면 묻지 않는다. 쪽을 넘기는 동안 이전 배지를 유지한다(없는 키는 배지 없이 그린다).
+ * 조회 실패는 목록을 막지 않는다: 부르는 쪽은 data 가 없으면 배지만 그리지 않는다
+ */
+export function useCtiBadges(keys: readonly string[]) {
+  const sorted = badgeKeys(keys)
+  return useQuery({
+    queryKey: ctiKeys.badges(sorted),
+    queryFn: ({ signal }) => fetchCtiBadges(sorted, signal),
+    placeholderData: keepPreviousData,
+    staleTime: 5 * 60_000,
+    enabled: sorted.length > 0,
   })
 }
 

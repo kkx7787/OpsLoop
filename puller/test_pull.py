@@ -9,6 +9,7 @@ import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pull  # noqa: E402
@@ -545,6 +546,85 @@ class PullTest(unittest.TestCase):
             self.assertEqual(len(self.s3.gets) - n, 1 + 1)   # hb + 조각 1개 뒤 한도
         finally:
             pull.RUN_BYTES = old
+
+
+class HeartbeatStateTest(unittest.TestCase):
+    """호스트별 생존 신호 결과 (이슈 #52). record_heartbeats.py 가 이 값을 DB sensor_heartbeats 로 옮긴다.
+    디스크 여유 · boto3 유무에 따라 달라지지 않게 두 곳을 고정한다(가짜 S3 오류를 S3 오류로 본다)."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.s3 = FakeS3()
+        pull._JOURNAL = False
+        for name, value in (("disk_ok", lambda home: (True, 10 ** 12)), ("client_errors", lambda: (Err,))):
+            p = mock.patch.object(pull, name, value)
+            p.start()
+            self.addCleanup(p.stop)
+        self.now = T0 + timedelta(minutes=1)
+
+    def run_pull(self, hosts=(HOST,), gateway_hosts=(), now=None):
+        out = io.StringIO()
+        with mock.patch.object(sys, "stdout", out):
+            return pull.run(self.s3, "b", set(hosts), self.dir, now=now or self.now, gateway_hosts=frozenset(gateway_hosts))
+
+    def beats(self):
+        with open(os.path.join(self.dir, "pull-state.json"), encoding="utf-8") as f:
+            return json.load(f)["heartbeats"]
+
+    def test_읽은_생존_신호는_S3_시각과_이번_회차_시각을_남긴다(self):
+        self.s3.hb({}, T0)
+        self.assertEqual(self.run_pull(), 0)
+        self.assertEqual(self.beats(), {HOST: {"role": "sensor", "seen_at": T0.isoformat(),
+                                               "checked_at": self.now.isoformat(), "problem": None}})
+
+    def test_오래된_생존_신호는_문제가_아니고_시각으로_드러난다(self):
+        self.s3.hb({}, T0)
+        self.assertEqual(self.run_pull(now=T0 + timedelta(hours=1)), pull.EXIT_STALE)
+        b = self.beats()[HOST]
+        self.assertEqual((b["seen_at"], b["problem"]), (T0.isoformat(), None))
+        self.assertEqual(b["checked_at"], (T0 + timedelta(hours=1)).isoformat())
+
+    def test_못_읽은_회차는_시각_없이_까닭을_남긴다(self):
+        key = f"hb/v1/host={HOST}/latest.json"
+        cases = (("없음", None, "없음 (NoSuchKey)"),
+                 ("형식", b'{"files": 1}', "형식이 틀림"),
+                 ("일시 오류", "SlowDown", "읽기 일시 오류 (SlowDown)"))
+        for name, body, want in cases:
+            with self.subTest(name):
+                self.s3.objs.pop(key, None)
+                self.s3.fail.pop(key, None)
+                if isinstance(body, bytes):
+                    self.s3.put(key, body, T0)
+                elif body:
+                    self.s3.hb({}, T0)
+                    self.s3.fail[key] = body
+                self.run_pull()
+                self.assertEqual(self.beats()[HOST], {"role": "sensor", "seen_at": None,
+                                                      "checked_at": self.now.isoformat(), "problem": want})
+
+    def test_관문_호스트는_gateway_역할이다(self):
+        self.s3.hb({}, T0)
+        self.s3.hb({}, T0 + timedelta(seconds=5), host=GW)
+        self.assertEqual(self.run_pull(hosts=(HOST, GW), gateway_hosts=(GW,)), 0)
+        b = self.beats()
+        self.assertEqual({h: (v["role"], v["seen_at"]) for h, v in b.items()},
+                         {HOST: ("sensor", T0.isoformat()), GW: ("gateway", (T0 + timedelta(seconds=5)).isoformat())})
+
+    def test_목록에서_뺀_호스트의_항목은_지운다(self):
+        self.s3.hb({}, T0)
+        self.s3.hb({}, T0, host=GW)
+        self.run_pull(hosts=(HOST, GW), gateway_hosts=(GW,))
+        self.assertEqual(sorted(self.beats()), sorted([HOST, GW]))
+        self.run_pull(hosts=(HOST,))
+        self.assertEqual(list(self.beats()), [HOST])
+
+    def test_옛_상태_파일에_항목이_없어도_읽는다(self):
+        with open(os.path.join(self.dir, "pull-state.json"), "w", encoding="utf-8") as f:
+            json.dump({"objects": {}, "alerts": {}}, f)
+        self.assertEqual(pull.load_state(os.path.join(self.dir, "pull-state.json"))["heartbeats"], {})
+        self.s3.hb({}, T0)
+        self.assertEqual(self.run_pull(), 0)
+        self.assertEqual(list(self.beats()), [HOST])
 
 
 if __name__ == "__main__":

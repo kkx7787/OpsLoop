@@ -719,6 +719,8 @@ class BlockEnforceDatabaseTest(DbCase):
         self.assertIn("block_exempt", rels)
         got = {(rel, p) for rel in rels for p in privs
                if self.one("SELECT has_table_privilege(%s, %s, %s)", (enforcer, f"public.{rel}", p))[0]}
+        # #52 블록의 sensor_heartbeats 권한(차단 보고 생존 신호)은 이 마이그레이션을 다시 적용하면 빠진다. 여기서는 #47 이 마지막이다.
+        #   #52 를 뒤에 적용했을 때는 infra/test_status_board_db.py 가 본다
         self.assertEqual(got, {("blocklist", "SELECT"), ("block_exempt", "SELECT")})
         cols = [r[0] for r in self.q("SELECT attname FROM pg_attribute WHERE attrelid = 'blocklist'::regclass"
                                      " AND attnum > 0 AND NOT attisdropped")]

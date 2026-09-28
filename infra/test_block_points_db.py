@@ -2,7 +2,7 @@
 """차단 집행 지점 · 시험 출발지(이슈 #51) DB 시험.  python3 infra/test_block_points_db.py
 
 DB 없이 도는 글자 시험: 마이그레이션(infra/migrations/20260929_block_points.sql)이 schema.sql 의 '차단 집행 지점 · 시험 출발지
-(이슈 #51)' 블록을 글자 그대로 담는지, 블록이 #47 블록 뒤 파일 끝에 있는지, 시험 출발지 초기값이 문서용 대역 셋인지(차단 금지 대역과
+(이슈 #51)' 블록을 글자 그대로 담는지, 블록이 #47 블록 뒤(그 뒤에는 #52 블록만)에 있는지, 시험 출발지 초기값이 문서용 대역 셋인지(차단 금지 대역과
 겹치지 않는지), 규칙 품질 뷰의 두 정의(차단 목록 앞 · 블록 안)가 같고 시험 출발지를 빼는지, 권한 줄이 계약과 같은지, 대시보드 · 규칙
 화면의 규칙별 집계와 집행기 열 목록이 같은 조건을 쓰는지 본다.
 
@@ -25,6 +25,7 @@ BLOCK47 = os.path.join(ROOT, "infra", "test_block_enforce_db.py")
 
 HEADER = "-- 차단 집행 지점 · 시험 출발지 (이슈 #51)"
 HEADER47 = "-- 차단 집행 (이슈 #47)"
+NEXT_HEADER = "-- 관제 대상 상태판 (이슈 #52)"      # 이 블록 뒤에 오는 다음 블록(infra/test_status_board_db.py)
 DOC_NETS = [("192.0.2.0/24", "문서용 · 동기화 자가 시험 주소"), ("198.51.100.0/24", "문서용 · 차단 집행 끝-끝 시험 주소"),
             ("203.0.113.0/24", "문서용 · 외부 역할 세그먼트 (시연용 공격자 VM)")]
 EXCLUDE = "WHERE NOT is_test_source(i.actor_ip)"
@@ -42,8 +43,11 @@ def read(path):
 
 
 def block51(text):
+    """'차단 집행 지점 · 시험 출발지 (이슈 #51)' 블록. 뒤에 #52 블록이 있으면 그 앞까지다."""
     start = text.index(HEADER + "\n")
-    end = text.rindex("END\n$$;") + len("END\n$$;")
+    stop = text.find("\n" + NEXT_HEADER, start)
+    region = text if stop < 0 else text[:stop]
+    end = region.rindex("END\n$$;") + len("END\n$$;")
     return text[start:end]
 
 
@@ -59,11 +63,12 @@ class BlockPointsTextTest(unittest.TestCase):
         self.assertTrue(all(ln.startswith("--") for ln in head.splitlines()))
         self.assertEqual(body.rstrip("\n"), block51(schema) + "\nCOMMIT;")
 
-    def test_블록은_47_블록_뒤_파일_끝에_있다(self):
+    def test_블록은_47_블록_뒤에_있고_그_뒤에는_52_블록만_온다(self):
         schema = read(SCHEMA)
         at = schema.index(HEADER + "\n")
         self.assertGreater(at, schema.index(HEADER47 + "\n"))
-        self.assertEqual(schema.rstrip("\n"), schema[:at] + block51(schema))
+        rest = schema[at + len(block51(schema)):].strip("\n")
+        self.assertTrue(rest.startswith(NEXT_HEADER), rest[:80])
         self.assertEqual(schema.count(HEADER + "\n"), 1)
 
     def test_시험_출발지_초기값은_문서용_대역_셋이고_금지_대역과_겹치지_않는다(self):

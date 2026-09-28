@@ -18,6 +18,12 @@
   관문의 세 열과 감사(console.block.enforced · unenforced)는 그대로다. 콘솔은 enforcement 가 있으면 지점별 표를 그린다.
   목록에서 빠진 행(해제 · 만료 · 제외)은 NULL 로 비운다.
 
+차단 보고 생존 신호 (sensor_heartbeats, 이슈 #52)
+  회차마다 관문 · 내부 방화벽 보고를 읽은 결과를 source='block:gateway' · 'block:fw'(설정했을 때만) 한 줄씩에 적는다.
+  seen_at = 검증한 보고의 at(못 읽었으면 옛 값을 둔다) · checked_at = DB now() · problem = 못 읽은 까닭(읽었으면 NULL).
+  대시보드 대상 카드의 대응 구역이 '<지점> 보고 <시각>' 으로 보인다. 오래된 보고도 읽었으면 문제가 아니다(시각으로 판단한다).
+  기록은 집행과 따로다. 실패해도 종료 코드를 바꾸지 않고 로그만 남긴다(표 · 권한이 없으면 등급 5, 그 밖은 4).
+
 하위 명령
   run [--dry-run]  한 회차. --dry-run 은 DB · 관문 보고를 읽고 할 일만 찍는다 (S3 · DB · 상태 파일을 고치지 않는다)
   list             올릴 목록 JSON 을 찍는다 (DB 만 읽는다)
@@ -773,6 +779,27 @@ GUARD = ("released_at", "expires_at", "enforced_at", "method", "enforce_note", "
 JSON_COLS = ("enforcement",)
 
 
+# 차단 보고 생존 신호 (이슈 #52). 트리거(sensor_heartbeats_guard)가 집행 역할에 block_report 행만 허락한다.
+# seen_at 은 DB now() 보다 늦으면 now() 로 한다(관문 시계가 2분까지 앞설 수 있다). least() 는 NULL 을 건너뛰므로 CASE 로 감싼다.
+# 못 읽은 회차는 옛 seen_at 을 둔다. 관문 인스턴스가 바뀌었으면(host 가 다르면) 옛 관문의 시각을 이어 쓰지 않는다
+HEARTBEAT_SQL = """
+INSERT INTO sensor_heartbeats AS h (source, kind, role, host, seen_at, checked_at, problem)
+VALUES (%(source)s, 'block_report', %(role)s, %(host)s,
+        CASE WHEN %(seen_at)s::timestamptz IS NOT NULL THEN least(%(seen_at)s::timestamptz, now()) END,
+        now(), %(problem)s)
+ON CONFLICT (source) DO UPDATE SET
+    kind = EXCLUDED.kind, role = EXCLUDED.role, host = EXCLUDED.host,
+    seen_at = CASE WHEN h.host = EXCLUDED.host THEN coalesce(EXCLUDED.seen_at, h.seen_at) ELSE EXCLUDED.seen_at END,
+    checked_at = EXCLUDED.checked_at, problem = EXCLUDED.problem"""
+HEARTBEAT_SKIP = ("42P01", "42501")     # 표 없음(마이그레이션 전) · 권한 없음(#47 · 역할 블록을 다시 적용한 뒤). 등급 5 로만 알린다
+
+
+def beat(point, host, report, problem):
+    """지점 하나의 생존 신호 행. report 는 validate_status 가 검증한 보고(못 읽었으면 None)다."""
+    return {"source": f"block:{point}", "role": point, "host": host,
+            "seen_at": report["at"] if report else None, "problem": None if report else clean(problem or "까닭 없음", 120)}
+
+
 def _pg_value(col, v):
     """jsonb 열은 Json 으로 감싼다 (None 은 SQL NULL 그대로)."""
     if col in JSON_COLS and v is not None:
@@ -786,7 +813,8 @@ def _ph(col):
 
 
 class PgStore:
-    """opsloop_enforcer 역할로 읽고 쓴다. 쓰는 열은 method · enforced_at · enforce_note · enforcement 넷뿐이다."""
+    """opsloop_enforcer 역할로 읽고 쓴다. 쓰는 열은 method · enforced_at · enforce_note · enforcement 넷뿐이다.
+    그 밖에 차단 보고 생존 신호(sensor_heartbeats 의 block_report 행, 이슈 #52)를 쓴다."""
 
     def __init__(self, conn):
         self.conn = conn
@@ -820,6 +848,14 @@ class PgStore:
         with self.conn, self.conn.cursor() as cur:
             cur.execute("SET LOCAL statement_timeout = '30s'")
             cur.execute("SELECT note_block_expired(%s::inet, %s)", (key, expires))
+
+    def heartbeat(self, rows):
+        """지점별 차단 보고 생존 신호를 한 트랜잭션으로 넣거나 고친다 (이슈 #52)."""
+        with self.conn, self.conn.cursor() as cur:
+            cur.execute("SET LOCAL lock_timeout = '5s'")
+            cur.execute("SET LOCAL statement_timeout = '30s'")
+            for r in rows:
+                cur.execute(HEARTBEAT_SQL, r)
 
 
 # ── 한 회차 ───────────────────────────────────────────────────────────────────
@@ -877,10 +913,12 @@ def cycle(cfg, store, s3w, s3r, st, dry_run=False):
     elif j["problems"]:
         log("관문 확인 보류: " + "; ".join(j["problems"])[:500], 5)
     judges = {"gateway": j}
+    beats = [beat("gateway", cfg["gateway"], gw, problem)]
     fwj = None
     if cfg.get("fw"):
         # 내부 방화벽 (이슈 #51). 같은 목록의 보고를 따로 판단한다. 관문의 세 열에는 닿지 않고 enforcement 의 fw 갈래만 쓴다
         fw, fproblem = read_status(s3r, cfg["bucket"], STATUS_KEY.format(gw=cfg["fw"]), now, label="내부 방화벽")
+        beats.append(beat("fw", cfg["fw"], fw, fproblem))
         if fw is None:
             rc = rc or 1
         fwj = judge(st, fw, fproblem, now, published, prefix="fw_", label="내부 방화벽")
@@ -921,6 +959,12 @@ def cycle(cfg, store, s3w, s3r, st, dry_run=False):
         except Exception as e:  # noqa: BLE001
             rc = 1
             log(f"만료 기록을 남기지 못했다 ({clean(key, 60)}): {why(e)}", 3)
+    try:
+        store.heartbeat(beats)
+    except Exception as e:  # noqa: BLE001 - 생존 신호는 집행과 따로다. 종료 코드를 바꾸지 않는다
+        skip = getattr(e, "pgcode", None) in HEARTBEAT_SKIP
+        hint = "infra/migrations/20260930_status_board.sql 을 적용한다" if skip else "다음 회차에 다시 쓴다"
+        log(f"차단 보고 생존 신호를 기록하지 못했다 (집행은 그대로 · {hint}): {why(e)}", 5 if skip else 4)
     prune(st, rows, now)
     gws = f"관문 {j['mode']} {iso(j['at'])} 목록 {j['d8'] or '-'}" if gw else f"관문 보고 없음 ({problem})"
     if fwj is not None:
