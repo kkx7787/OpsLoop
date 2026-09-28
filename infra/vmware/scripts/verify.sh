@@ -58,6 +58,34 @@ check "관문 · Loki · 다리 동작" 통과 ssh_in $D1 "systemctl is-active -
 if ssh_fw "sudo journalctl -k --since '-5 min' | grep -c 'fw-forward-drop.*SRC=$W1'" 2>/dev/null | grep -qv '^0$'; then
   echo "  [정상] 방화벽 거부 로그에 web-01 출발이 있음"; ok=$((ok+1)); else echo "  [문제] web-01 출발 거부 로그가 없음"; ng=$((ng+1)); fi
 echo "  (토큰 없이 · 임의 키 · 주소 불일치 · 폐기 키 전송은 R202 인시던트를 만들므로 여기서 돌리지 않는다. 결과 문서 참고)"
+echo "== 7. 외부 역할 세그먼트 · 차단 집행 (이슈 #51)"
+A1=203.0.113.10    # 시연용 공격자 VM (netplan/attacker.yaml)
+FWX=203.0.113.1    # 방화벽의 ext 주소
+# 기록 줄(log prefix "fw-block-drop ")이 아니라 거부 줄만 본다. 동기화의 DROP_RULE_RE 와 같은 경계다
+check "방화벽 차단 집합 · forward 거부 규칙 존재" 통과 ssh_fw "sudo -n nft list set inet filter opsloop_block >/dev/null && sudo -n nft list chain inet filter forward | grep -Eq 'ip saddr @opsloop_block (counter packets [0-9]+ bytes [0-9]+ )?drop( |\$)'"
+check "방화벽 차단 동기화 타이머 동작" 통과 ssh_fw "systemctl is-active -q opsloop-block-sync.timer"
+if ssh_in $A1 true >/dev/null 2>&1; then
+  # 공격자 주소가 차단 집합에 있으면 web-01 접속은 실패를, 없으면 통과를 기대한다 (차단 전 · 후 · 해제 뒤 세 상태를 같은 표로 본다)
+  inset=$(ssh_fw "sudo -n nft -j list set inet filter opsloop_block 2>/dev/null | grep -c '\"$A1\"'" 2>/dev/null | tr -dc '0-9')
+  if [ "${inset:-0}" != 0 ]; then exp=실패; echo "  (공격자 주소가 차단 집합에 있음 · web-01 은 실패를 기대)"; else exp=통과; fi
+  check "공격자 → web-01 80 (차단 $([ "$exp" = 실패 ] && echo 뒤 || echo 전))" $exp ssh_in $A1 "$(tcp $W1 80)"
+  check "공격자 → web-01 22 (열지 않음)" 실패 ssh_in $A1 "$(tcp $W1 22)"
+  check "공격자 → 콘솔 A 8000" 실패 ssh_in $A1 "$(tcp $S1 8000)"
+  check "공격자 → 데이터 노드 5432" 실패 ssh_in $A1 "$(tcp $D1 5432)"
+  check "공격자 → 방화벽 콘솔 진입점 8443" 실패 ssh_in $A1 "$(tcp $FWX 8443)"
+  check "공격자 → 방화벽 22" 실패 ssh_in $A1 "$(tcp $FWX 22)"
+  check "공격자 → 관리망 Mac 22" 실패 ssh_in $A1 "$(tcp 192.168.70.1 22)"
+  check "공격자 → 인터넷 443 (출구 없음)" 실패 ssh_in $A1 "$(tcp 1.1.1.1 443)"
+  check "정상 출발지 유지: 콘솔 → 데이터 노드 5432" 통과 ssh_in $S1 "$(tcp $D1 5432)"
+  check "정상 출발지 유지: web-01 → 수집 관문 3101" 통과 ssh_in $W1 "$(tcp $D1 3101)"
+  if [ "$exp" = 실패 ]; then
+    if ssh_fw "sudo journalctl -k --since '-5 min' | grep -c 'fw-block-drop.*SRC=$A1'" 2>/dev/null | grep -qv '^0$'; then
+      echo "  [정상] 방화벽 차단 거부 로그(fw-block-drop)에 공격자 출발이 있음"; ok=$((ok+1))
+    else echo "  [문제] 공격자 출발의 fw-block-drop 로그가 없음"; ng=$((ng+1)); fi
+  fi
+else
+  echo "  (공격자 VM $A1 에 닿지 않아 공격자 항목은 건너뜀 · 켜져 있는지 · fw 에서 ssh 가 되는지 본다)"
+fi
 
 echo
 echo "정상 $ok · 문제 $ng"

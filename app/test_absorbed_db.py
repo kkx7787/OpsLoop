@@ -92,7 +92,8 @@ class AbsorbedDatabaseTests(unittest.IsolatedAsyncioTestCase):
                 user_agent text, message text, src_ip inet, provenance text);
             CREATE TEMP TABLE blocklist (actor_ip inet PRIMARY KEY, reason text, incident_key text,
                 created_at timestamptz NOT NULL DEFAULT now(), expires_at timestamptz, released_at timestamptz,
-                method text, requested_by text, enforced_at timestamptz, enforce_note text, released_by text);
+                method text, requested_by text, enforced_at timestamptz, enforce_note text, released_by text,
+                enforcement jsonb);
             CREATE TEMP TABLE rule_versions (rule_version text PRIMARY KEY, definition jsonb NOT NULL);
             CREATE TEMP TABLE absorbed_blocks (first_key text PRIMARY KEY, expires_at timestamptz NOT NULL,
                 requested_by text, created_at timestamptz NOT NULL DEFAULT now(), released_at timestamptz,

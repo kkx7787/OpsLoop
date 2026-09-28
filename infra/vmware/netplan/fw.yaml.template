@@ -3,6 +3,7 @@
 #   service : 서비스망 vmnet2   · 192.168.50.1
 #   data    : 데이터망 vmnet3   · 192.168.60.1
 #   mgmt    : 관리망   vmnet4   · 192.168.70.254 (192.168.70.1 은 Mac)
+#   ext     : 외부 역할 vmnet5   · 203.0.113.1 (시연용 공격자 VM 이 붙는다 · 이슈 #51)
 network:
   version: 2
   ethernets:
@@ -25,3 +26,8 @@ network:
       set-name: mgmt
       dhcp4: false
       addresses: [192.168.70.254/24]
+    ext:
+      match: {macaddress: "__MAC_EXT__"}
+      set-name: ext
+      dhcp4: false
+      addresses: [203.0.113.1/24]

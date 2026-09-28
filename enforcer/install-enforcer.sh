@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# 데이터 노드에 차단 집행기(opsloop-enforcer)를 설치한다 (이슈 #47). 타이머는 켜지 않는다 (관문 동기화를 깔고 확인한 뒤 직접 켠다).
+# 데이터 노드에 차단 집행기(opsloop-enforcer)를 설치한다 (이슈 #47 · #51). 타이머를 새로 켜지는 않는다 (관문 동기화를 깔고 확인한 뒤
+# 직접 켠다). 이미 켜져 있으면 설치하는 동안 멈췄다가 끝나면(실패해도) 다시 켠다.
 # 여러 번 돌려도 된다. 이미 있는 사용자 · 비밀번호 · 설정은 지키고, 무엇을 했는지 찍는다.
 #
 # 하는 일: 사용자 opsloop-enforcer · 상태 폴더 /var/lib/opsloop-enforcer, 코드 /opt/opsloop/enforcer (root 소유),
 #   래퍼 /usr/local/bin/opsloop-enforcer, 설정 /etc/default/opsloop-enforcer (처음만), DB 역할 opsloop_enforcer 와
-#   접속 파일 /etc/opsloop/enforcer.env, 마이그레이션 infra/migrations/20260927_block_enforce.sql (표 · 트리거 · 권한),
-#   systemd 단위 (켜지 않음).
+#   접속 파일 /etc/opsloop/enforcer.env, 마이그레이션 두 개(20260927_block_enforce.sql → 20260929_block_points.sql, 이 순서.
+#   #47 이 집행 역할의 표 권한을 먼저 모두 거두므로 #51 이 뒤에 와야 enforcement 쓰기 권한이 남는다), systemd 단위 (켜지 않음),
+#   OPSLOOP_FW_ID 를 주면 설정에 내부 방화벽 줄 (없을 때만).
+# 순서: DB(역할 · 마이그레이션)를 코드보다 먼저 바꾼다. 옛 코드는 새 열을 모르므로 스키마가 먼저 바뀌어도 그대로 돌고,
+#   마이그레이션이 실패하면 코드를 바꾸지 않고 멈춘다 ('새 코드 · 옛 스키마' 가 생기지 않는다).
 # 안 하는 일: S3 쓰기 키(/etc/opsloop/s3-block.env)는 만들지 않는다. Mac 에서 aws iam create-access-key 출력을
 #   파이프로 바로 넣는다 (infra/terraform/README.md '차단 목록 전달'). 관문 보고를 읽는 키는 적재기의
 #   /etc/opsloop/s3-pull.env (원장 읽기 사용자, hb/* 읽기)를 그대로 쓴다.
@@ -18,7 +22,8 @@
 # 먼저 puller/install-ingest.sh · collector/install-collector.sh 가 깔려 있어야 한다 (스키마 · /etc/opsloop · DB 컨테이너).
 #
 # 사용 (Mac, 저장소 루트):
-#   C=$(git rev-parse --short HEAD); git archive "$C" enforcer infra/migrations/20260927_block_enforce.sql | ssh -F ~/.ssh/config.opsloop data01 "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo bash /tmp/ol/enforcer/install-enforcer.sh $C"
+#   C=$(git rev-parse --short HEAD); git archive "$C" enforcer infra/migrations/20260927_block_enforce.sql infra/migrations/20260929_block_points.sql | ssh -F ~/.ssh/config.opsloop data01 "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo bash /tmp/ol/enforcer/install-enforcer.sh $C"
+#   내부 방화벽까지: 마지막을 "sudo OPSLOOP_FW_ID=fw-opsloop bash /tmp/ol/enforcer/install-enforcer.sh $C" 로
 set -euo pipefail
 VERSION=${1:?커밋}
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
@@ -28,16 +33,21 @@ CODE=/opt/opsloop/enforcer
 STATE=/var/lib/opsloop-enforcer
 ENV_FILE=/etc/opsloop/enforcer.env
 MIGRATION=infra/migrations/20260927_block_enforce.sql
+# 집행 지점 · 시험 출발지 (이슈 #51). #47 이 집행 역할의 표 권한을 먼저 모두 거두므로 반드시 그 뒤에 적용한다
+MIGRATION51=infra/migrations/20260929_block_points.sql
+# 내부 방화벽 동기화의 OPSLOOP_HOST (선택 · 이슈 #51). 주면 설정 파일에 없을 때만 더한다
+FW_ID=${OPSLOOP_FW_ID:-}
 BUCKET=${OPSLOOP_BUCKET:-opsloop-archive-739272173045}
 GATEWAY_ID=${OPSLOOP_GATEWAY_ID:-i-0ffeb29efad03546d}   # 관문 인스턴스 (terraform state show aws_instance.gateway)
 PSQL=(docker exec -i -e "PGOPTIONS=-c client_min_messages=warning" "$DB" psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -qAt)
 
 echo "== 사전 확인"
 [ "$(id -u)" = 0 ] || { echo "root 로 돌린다 (sudo bash $0 $VERSION)" >&2; exit 1; }
-for f in enforcer/block_enforcer.py enforcer/opsloop-enforcer.service enforcer/opsloop-enforcer.timer "$MIGRATION"; do
-  [ -e "$SRC/$f" ] || { echo "받은 파일에 $f 가 없다. git archive 에 enforcer $MIGRATION 을 넣는다" >&2; exit 1; }
+for f in enforcer/block_enforcer.py enforcer/opsloop-enforcer.service enforcer/opsloop-enforcer.timer "$MIGRATION" "$MIGRATION51"; do
+  [ -e "$SRC/$f" ] || { echo "받은 파일에 $f 가 없다. git archive 에 enforcer $MIGRATION $MIGRATION51 을 넣는다" >&2; exit 1; }
 done
 [[ "$GATEWAY_ID" =~ ^i-[0-9a-f]{8,17}$ ]] || { echo "OPSLOOP_GATEWAY_ID 가 인스턴스 ID 가 아니다: $GATEWAY_ID" >&2; exit 1; }
+[ -z "$FW_ID" ] || [[ "$FW_ID" =~ ^fw-[a-z0-9-]{1,40}$ ]] || { echo "OPSLOOP_FW_ID 가 fw-<이름> 꼴이 아니다: $FW_ID" >&2; exit 1; }
 [ -d /etc/opsloop ] || { echo "/etc/opsloop 이 없다. puller/install-ingest.sh 를 먼저 돌린다" >&2; exit 1; }
 [ "$(docker inspect -f '{{.State.Running}}' "$DB" 2>/dev/null)" = true ] || { echo "DB 컨테이너 $DB 가 돌고 있지 않다" >&2; exit 1; }
 [ "$("${PSQL[@]}" -c "SELECT to_regclass('blocklist') IS NOT NULL AND to_regclass('events') IS NOT NULL")" = t ] \
@@ -63,45 +73,18 @@ if getfacl -cp /etc/opsloop 2>/dev/null | grep -q '^user:opsloop-enforcer:'; the
   echo "  경고: /etc/opsloop 에 opsloop-enforcer ACL 이 있다. 필요 없으니 setfacl -x u:opsloop-enforcer /etc/opsloop 로 뺀다" >&2
 fi
 
-echo "== 코드 $VERSION → $CODE (root 소유. 집행기가 자기 코드를 바꿀 수 없다)"
-# 적재기 앱 폴더(/opt/opsloop/app)와 따로 둔다. install-ingest.sh 가 앱 폴더를 통째로 바꿔도 사라지지 않는다
-install -d -m 755 /opt/opsloop
-rm -rf /opt/opsloop/.enforcer.new
-install -d -m 755 /opt/opsloop/.enforcer.new
-install -m 644 "$SRC/enforcer/block_enforcer.py" /opt/opsloop/.enforcer.new/block_enforcer.py
-echo "$VERSION" > /opt/opsloop/.enforcer.new/VERSION
-chown -R root:root /opt/opsloop/.enforcer.new
-rm -rf /opt/opsloop/enforcer.old
-if [ -d "$CODE" ]; then mv "$CODE" /opt/opsloop/enforcer.old; echo "  이전 판은 /opt/opsloop/enforcer.old"; fi
-mv /opt/opsloop/.enforcer.new "$CODE"
-ls "$CODE" | sed 's/^/    /'
-cat > /usr/local/bin/opsloop-enforcer.new <<'EOT'
-#!/bin/sh
-# 차단 집행기 실행 래퍼 (이슈 #47). enforcer/install-enforcer.sh 가 깐다. 코드는 root 소유 사본이다.
-# 타이머: opsloop-enforcer.service (opsloop-enforcer 사용자, run). 손으로는 root 로 status · list · run --dry-run
-exec /usr/bin/python3 /opt/opsloop/enforcer/block_enforcer.py "$@"
-EOT
-chmod 755 /usr/local/bin/opsloop-enforcer.new
-mv /usr/local/bin/opsloop-enforcer.new /usr/local/bin/opsloop-enforcer
-echo "  래퍼 /usr/local/bin/opsloop-enforcer → $CODE/block_enforcer.py"
-
-echo "== 설정 (/etc/default/opsloop-enforcer, 비밀 아님)"
-# 처음 설치할 때만 만든다. 이미 있으면 손으로 바꾼 값을 지키려고 덮어쓰지 않는다
-if [ ! -s /etc/default/opsloop-enforcer ]; then
-  cat > /etc/default/opsloop-enforcer <<EOT
-OPSLOOP_BUCKET=$BUCKET
-OPSLOOP_GATEWAY_ID=$GATEWAY_ID
-OPSLOOP_ENFORCER_HOME=$STATE
-AWS_DEFAULT_REGION=ap-northeast-2
-EOT
-  chmod 644 /etc/default/opsloop-enforcer
-  echo "  만들었다"
+echo "== 타이머 (설치하는 동안 멈춘다)"
+timer_was=$(systemctl is-active opsloop-enforcer.timer 2>/dev/null || true)
+if [ "$timer_was" = active ]; then
+  systemctl stop opsloop-enforcer.timer
+  for _ in $(seq 1 60); do systemctl is-active -q opsloop-enforcer.service || break; sleep 1; done   # 도는 회차가 끝나기를 기다린다
+  # 끝나거나 도중에 멈춰도 다시 켠다. DB 를 먼저 바꾸므로 어느 지점에서 멈춰도 돌던 코드가 그 스키마에서 돈다
+  trap 'systemctl start opsloop-enforcer.timer && echo "  타이머를 다시 켰다"' EXIT
+  echo "  멈췄다 (끝나면 다시 켠다)"
+else
+  echo "  켜져 있지 않다 (${timer_was:-없음}. 새로 켜지 않는다)"
 fi
-sed 's/^/    /' /etc/default/opsloop-enforcer
 
-# ── DB 역할 · 접속 파일 ──────────────────────────────────────────────────────
-# 아래 세 함수는 cti/install-cti.sh 의 것을 옮기고 접속 파일만 0600 root:root 로 바꿨다 (서비스는 LoadCredential 로 받는다).
-#   enforcer.env   opsloop_enforcer   root:root 0600   집행기 (blocklist 읽기 · 집행 세 열 갱신, block_exempt 읽기, 만료 기록)
 ensure_env() { # $1 파일  $2 DB 역할
   local f=$1 role=$2
   rm -f "$f.tmp"
@@ -187,16 +170,21 @@ echo "== 마이그레이션 ($MIGRATION, 여러 번 돌려도 같다)"
 docker exec -i -e "PGOPTIONS=-c client_min_messages=warning" "$DB" \
   psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -q < "$SRC/$MIGRATION" >/dev/null
 echo "  적용했다"
+echo "== 마이그레이션 ($MIGRATION51, #47 뒤. 여러 번 돌려도 같다)"
+docker exec -i -e "PGOPTIONS=-c client_min_messages=warning" "$DB" \
+  psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -q < "$SRC/$MIGRATION51" >/dev/null
+echo "  적용했다"
 # 역할별 권한 표. 기대값과 다르면 경고만 하고 계속한다 (마이그레이션을 고친 뒤 다시 돌린다)
 check_priv() { # $1 이름  $2 기대  $3 SQL(불리언 열들)
   local got; got=$("${PSQL[@]}" -F ' ' -c "$3" 2>/dev/null || echo 조회실패)
   if [ "$got" = "$2" ]; then echo "  $1: 기대대로 ($2)"; else echo "  경고: $1 권한이 예상과 다르다 (얻음 $got, 기대 $2)" >&2; fi
 }
-check_priv "집행 blocklist 읽기 · 집행 세 열 갱신 · 차단 금지 대역 읽기 · 만료 기록 실행" "t t t t" \
+check_priv "집행 blocklist 읽기 · 집행 네 열 갱신 · 차단 금지 대역 읽기 · 만료 기록 실행" "t t t t" \
   "SELECT has_table_privilege('opsloop_enforcer','blocklist','SELECT'),
           has_column_privilege('opsloop_enforcer','blocklist','enforced_at','UPDATE')
             AND has_column_privilege('opsloop_enforcer','blocklist','method','UPDATE')
-            AND has_column_privilege('opsloop_enforcer','blocklist','enforce_note','UPDATE'),
+            AND has_column_privilege('opsloop_enforcer','blocklist','enforce_note','UPDATE')
+            AND has_column_privilege('opsloop_enforcer','blocklist','enforcement','UPDATE'),
           has_table_privilege('opsloop_enforcer','block_exempt','SELECT'),
           has_function_privilege('opsloop_enforcer','note_block_expired(inet,timestamp with time zone)','EXECUTE')"
 check_priv "집행 만료 갱신 · 해제 갱신 · 주소 갱신 · 차단 삽입 · 차단 삭제 · 금지 대역 삽입 · events 읽기 · events 삽입 · 사건 읽기" \
@@ -212,6 +200,50 @@ check_priv "집행 역할 NOINHERIT · 접속 한도 2 · PUBLIC 만료 기록 �
   "SELECT rolinherit, rolconnlimit, has_function_privilege('public','note_block_expired(inet,timestamp with time zone)','EXECUTE')
      FROM pg_roles WHERE rolname = 'opsloop_enforcer'"
 
+echo "== 코드 $VERSION → $CODE (root 소유. 집행기가 자기 코드를 바꿀 수 없다)"
+# 적재기 앱 폴더(/opt/opsloop/app)와 따로 둔다. install-ingest.sh 가 앱 폴더를 통째로 바꿔도 사라지지 않는다
+install -d -m 755 /opt/opsloop
+rm -rf /opt/opsloop/.enforcer.new
+install -d -m 755 /opt/opsloop/.enforcer.new
+install -m 644 "$SRC/enforcer/block_enforcer.py" /opt/opsloop/.enforcer.new/block_enforcer.py
+echo "$VERSION" > /opt/opsloop/.enforcer.new/VERSION
+chown -R root:root /opt/opsloop/.enforcer.new
+rm -rf /opt/opsloop/enforcer.old
+if [ -d "$CODE" ]; then mv "$CODE" /opt/opsloop/enforcer.old; echo "  이전 판은 /opt/opsloop/enforcer.old"; fi
+mv /opt/opsloop/.enforcer.new "$CODE"
+ls "$CODE" | sed 's/^/    /'
+cat > /usr/local/bin/opsloop-enforcer.new <<'EOT'
+#!/bin/sh
+# 차단 집행기 실행 래퍼 (이슈 #47). enforcer/install-enforcer.sh 가 깐다. 코드는 root 소유 사본이다.
+# 타이머: opsloop-enforcer.service (opsloop-enforcer 사용자, run). 손으로는 root 로 status · list · run --dry-run
+exec /usr/bin/python3 /opt/opsloop/enforcer/block_enforcer.py "$@"
+EOT
+chmod 755 /usr/local/bin/opsloop-enforcer.new
+mv /usr/local/bin/opsloop-enforcer.new /usr/local/bin/opsloop-enforcer
+echo "  래퍼 /usr/local/bin/opsloop-enforcer → $CODE/block_enforcer.py"
+
+echo "== 설정 (/etc/default/opsloop-enforcer, 비밀 아님)"
+# 처음 설치할 때만 만든다. 이미 있으면 손으로 바꾼 값을 지키려고 덮어쓰지 않는다
+if [ ! -s /etc/default/opsloop-enforcer ]; then
+  cat > /etc/default/opsloop-enforcer <<EOT
+OPSLOOP_BUCKET=$BUCKET
+OPSLOOP_GATEWAY_ID=$GATEWAY_ID
+OPSLOOP_ENFORCER_HOME=$STATE
+AWS_DEFAULT_REGION=ap-northeast-2
+EOT
+  chmod 644 /etc/default/opsloop-enforcer
+  echo "  만들었다"
+fi
+# 내부 방화벽 (이슈 #51). 이미 있는 설정 파일에도 줄이 없을 때만 더한다 (손으로 바꾼 값은 지킨다)
+if [ -n "$FW_ID" ] && ! grep -q '^OPSLOOP_FW_ID=' /etc/default/opsloop-enforcer; then
+  echo "OPSLOOP_FW_ID=$FW_ID" >> /etc/default/opsloop-enforcer
+  echo "  OPSLOOP_FW_ID=$FW_ID 를 더했다"
+fi
+sed 's/^/    /' /etc/default/opsloop-enforcer
+
+# ── DB 역할 · 접속 파일 ──────────────────────────────────────────────────────
+# 아래 세 함수는 cti/install-cti.sh 의 것을 옮기고 접속 파일만 0600 root:root 로 바꿨다 (서비스는 LoadCredential 로 받는다).
+#   enforcer.env   opsloop_enforcer   root:root 0600   집행기 (blocklist 읽기 · 집행 세 열 갱신, block_exempt 읽기, 만료 기록)
 echo "== systemd 단위 (켜지 않는다)"
 for u in opsloop-enforcer.service opsloop-enforcer.timer; do
   if cmp -s "$SRC/enforcer/$u" "/etc/systemd/system/$u"; then echo "  $u 그대로"; else

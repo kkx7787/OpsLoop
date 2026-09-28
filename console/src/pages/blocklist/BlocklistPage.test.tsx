@@ -27,6 +27,39 @@ function setup(role = 'admin', failing = false) {
 }
 
 describe('차단 목록', () => {
+  it('활성 행에 집행 지점별 결과를 보이고 까닭은 글자로만 그린다(이슈 #51)', async () => {
+    const rows = [
+      blockEntry({ actor_ip: '203.0.113.10', method: 'nft', enforced_at: '2026-09-23T07:59:00Z', enforce_note: '관문 반영 · abcd1234 · 2026-09-23T07:59:00Z',
+        enforcement: { gateway: { state: 'confirmed', since: '2026-09-23T07:59:00Z', mode: 'nft', note: null },
+          fw: { state: 'failed', since: '2026-09-23T08:00:00Z', mode: HOSTILE.style, note: MIXED } } }),
+      blockEntry({ actor_ip: '203.0.113.11', enforcement: { gateway: { state: 'pending', since: '2026-09-23T07:59:00Z', mode: null, note: null } } }),
+      blockEntry({ actor_ip: '203.0.113.12', released_at: '2026-09-23T07:00:00Z', enforcement: { gateway: { state: 'confirmed', since: null, mode: null, note: null } } }),
+    ]
+    vi.stubGlobal('fetch', vi.fn<typeof globalThis.fetch>(async (input) => {
+      const url = String(input)
+      if (url === '/api/me') return json({ username: 'tester', role: 'viewer' })
+      if (url.startsWith('/api/blocklist')) return json(rows)
+      return json({}, 404)
+    }))
+    const { container } = renderRoutes([{ path: '/blocklist', element: <BlocklistPage /> }], '/blocklist', noRetryClient())
+    expect(await screen.findByText('203.0.113.10')).toBeInTheDocument()
+    expect(screen.getByText(/집행 지점\(AWS 관문 · 내부 방화벽\)/)).toBeInTheDocument()
+    const points = (ip: string) => [...screen.getByText(ip).closest('li')!.querySelectorAll('[data-enforce-point]')]
+      .map(el => [el.getAttribute('data-enforce-point'), el.getAttribute('data-point-state')])
+    expect(points('203.0.113.10')).toEqual([['gateway', 'confirmed'], ['fw', 'failed']])
+    expect(points('203.0.113.11')).toEqual([['gateway', 'pending']])
+    const fw = screen.getByText('203.0.113.10').closest('li')!.querySelector('[data-enforce-point="fw"]')!
+    expect(fw.textContent).toMatch(/^내부 방화벽실패/)
+    // 지점이 보낸 방식 · 까닭은 글자로만, 길면 접는다 (방식 16자 · 까닭 160자)
+    expect(fw.textContent).toContain(HOSTILE.style.slice(0, 16))
+    expect(fw.textContent).toMatch(/자 더 · 펼치기/)
+    expectInertDom(container)
+    // 해제된 행은 지점별 결과를 그리지 않는다 (해제 탭)
+    fireEvent.click(screen.getByRole('button', { name: /^해제 / }))
+    expect(await screen.findByText('203.0.113.12')).toBeInTheDocument()
+    expect(points('203.0.113.12')).toEqual([])
+  })
+
   it('서버 시각으로 활성·만료·해제를 구분하고 상태 탭을 주소에 보존한다', async () => {
     const { router, fetch } = setup()
     expect(await screen.findByText('192.0.2.8')).toBeInTheDocument()

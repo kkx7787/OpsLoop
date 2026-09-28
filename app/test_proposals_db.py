@@ -36,7 +36,8 @@ class ProposalBasisDatabaseTests(unittest.IsolatedAsyncioTestCase):
                 user_agent text, message text, src_ip inet, provenance text);
             CREATE TEMP TABLE blocklist (actor_ip inet PRIMARY KEY, reason text, method text,
                 created_at timestamptz DEFAULT now(), expires_at timestamptz, released_at timestamptz,
-                enforced_at timestamptz, enforce_note text, incident_key text, requested_by text, released_by text);
+                enforced_at timestamptz, enforce_note text, incident_key text, requested_by text, released_by text,
+                enforcement jsonb);
             -- 상세는 같은 페이로드 흡수 기록 · 후속 차단 약속(규칙 v3)과 규칙 정의도 읽는다. 여기서는 비어 있다
             CREATE TEMP TABLE incident_absorbed (first_key text, member_key text, kind text, via_key text,
                 rule_id text, rule_version text, actor_ip inet, first_ts timestamptz, last_ts timestamptz,

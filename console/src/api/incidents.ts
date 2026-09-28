@@ -177,7 +177,22 @@ export interface ActorBlock {
   enforce_note?: string | null
   /** 요청자(콘솔 사용자 · triage:<판정자>). 이전 서버의 상세에는 없다 */
   requested_by?: string | null
+  /** 집행 지점(AWS 관문 · 내부 방화벽)별 결과(이슈 #51). 집행기만 쓴다. 이전 서버 · 집행기에는 없다 */
+  enforcement?: BlockEnforcement | null
 }
+
+/** 집행 지점 하나의 결과. state 는 대기 · 적용 확인 · 실패 · 확인 지연 */
+export type EnforcePointState = 'pending' | 'confirmed' | 'failed' | 'stale'
+export interface EnforcePoint {
+  state: EnforcePointState
+  /** 그 상태가 된 시각(적용 확인이면 처음 확인한 지점 보고의 시각) */
+  since: string | null
+  /** 지점이 보고한 방식(nft · fail2ban). 지점이 보낸 값이라 글자로만 그린다 */
+  mode: string | null
+  /** 실패 · 확인 지연의 까닭 */
+  note: string | null
+}
+export type BlockEnforcement = Partial<Record<'gateway' | 'fw', EnforcePoint>>
 
 /** 이 출발지가 드는 차단 금지 대역(block_exempt). 콘솔 · triage · 흡수 어느 경로로도 차단 목록에 들어가지 않는다 */
 export interface BlockExempt {

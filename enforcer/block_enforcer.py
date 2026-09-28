@@ -1,11 +1,22 @@
 #!/usr/bin/env python3
-"""차단 집행기 (이슈 #47). DB 차단 목록을 관문에 넘기고, 관문이 보고한 적용 결과를 DB 에 되쓴다.
+"""차단 집행기 (이슈 #47 · #51). DB 차단 목록을 집행 지점에 넘기고, 지점이 보고한 적용 결과를 DB 에 되쓴다.
 
 데이터 노드에서 돈다. opsloop-enforcer.timer 가 1분마다 opsloop-enforcer 사용자로 `run` 을 돌린다.
 
   DB blocklist ─(opsloop_enforcer, 읽기)→ 원하는 목록 ─(S3 쓰기 사용자)→ s3://<버킷>/block/v1/latest.json
   관문 block-sync.py (1분) ─ 목록 읽기 · 재검사 · fail2ban 또는 nft 집합 → s3://<버킷>/hb/v1/host=<관문 ID>-block/latest.json
-  이 집행기 ─(원장 읽기 사용자)→ 관문 보고 대조 → blocklist 의 method · enforced_at · enforce_note (이 세 열만 고친다)
+  내부 방화벽 block-sync.py (1분 · nft) ─ 같은 목록 → s3://<버킷>/hb/v1/host=<OPSLOOP_FW_ID>-block/latest.json   (이슈 #51, 설정했을 때만)
+  이 집행기 ─(원장 읽기 사용자)→ 보고 대조 → blocklist 의 method · enforced_at · enforce_note (관문의 확인, 세 열) 와
+                                              enforcement (지점별 결과, jsonb)
+
+집행 지점별 결과 (enforcement, 이슈 #51)
+  {"gateway": {...}, "fw": {...}} (fw 는 OPSLOOP_FW_ID 가 있을 때만). 지점마다
+    state  pending(보고 전 · 확인 전) · confirmed(그 지점이 적용한 목록에 이 행이 있음) · failed(그 지점이 거부) ·
+           stale(보고 없음 · 5분 넘게 멈춤 · 5분 넘게 미반영 · 목록을 못 올림)
+    since  그 상태가 된 시각 (confirmed 는 처음 확인한 보고의 at). 상태 · 문구(숫자만 다른 것은 같다)가 바뀔 때만 다시 적는다
+    mode   그 지점이 보고한 방식(nft · fail2ban). note 는 failed · stale 의 짧은 까닭
+  관문의 세 열과 감사(console.block.enforced · unenforced)는 그대로다. 콘솔은 enforcement 가 있으면 지점별 표를 그린다.
+  목록에서 빠진 행(해제 · 만료 · 제외)은 NULL 로 비운다.
 
 하위 명령
   run [--dry-run]  한 회차. --dry-run 은 DB · 관문 보고를 읽고 할 일만 찍는다 (S3 · DB · 상태 파일을 고치지 않는다)
@@ -58,7 +69,8 @@
   2  설정 오류 (버킷 · 비밀 파일 · 인자)
 
 설정
-  /etc/default/opsloop-enforcer  OPSLOOP_BUCKET · OPSLOOP_GATEWAY_ID · OPSLOOP_ENFORCER_HOME · AWS_DEFAULT_REGION (비밀 아님)
+  /etc/default/opsloop-enforcer  OPSLOOP_BUCKET · OPSLOOP_GATEWAY_ID · OPSLOOP_FW_ID(선택, fw-<이름>. 내부 방화벽 동기화의 OPSLOOP_HOST 와 같다)
+                                 · OPSLOOP_ENFORCER_HOME · AWS_DEFAULT_REGION (비밀 아님)
   비밀 파일 셋은 0600 root:root 다. 서비스는 systemd LoadCredential 로 읽기 전용 사본을 받는다($CREDENTIALS_DIRECTORY).
   root 로 손으로 돌리면 /etc/opsloop 의 원본을 읽는다.
     enforcer.env   DATABASE_URL (opsloop_enforcer 역할). DB 연결에만 쓴다
@@ -98,6 +110,9 @@ TEXT_MAX = 160                           # 관문이 보낸 문구를 쪽지에 
 LOCK_WAIT = 30
 DEFAULT_GATEWAY = "i-0ffeb29efad03546d"  # 설정 OPSLOOP_GATEWAY_ID 가 없을 때 (2026-09-27 조사)
 GATEWAY_ID_RE = re.compile(r"i-[0-9a-f]{8,17}")
+FW_ID_RE = re.compile(r"fw-[a-z0-9-]{1,40}")   # 내부 방화벽 동기화의 OPSLOOP_HOST (infra/aws/gateway/block-sync.py HOST_RE 의 fw 갈래)
+POINT_LABEL = {"gateway": "관문", "fw": "내부 방화벽"}
+POINT_STATES = ("pending", "confirmed", "failed", "stale")
 DIGEST_RE = re.compile(r"[0-9a-f]{64}")
 MODES = ("fail2ban", "nft")
 
@@ -196,7 +211,10 @@ def settings():
     gw = get("OPSLOOP_GATEWAY_ID", DEFAULT_GATEWAY)
     if not GATEWAY_ID_RE.fullmatch(gw):
         raise ConfigError(f"OPSLOOP_GATEWAY_ID 가 인스턴스 ID 가 아니다: {clean(gw, 40)}")
-    return {"bucket": get("OPSLOOP_BUCKET"), "gateway": gw,
+    fw = (get("OPSLOOP_FW_ID") or "").strip() or None
+    if fw is not None and not FW_ID_RE.fullmatch(fw):
+        raise ConfigError(f"OPSLOOP_FW_ID 가 fw-<이름> 꼴이 아니다: {clean(fw, 40)}")
+    return {"bucket": get("OPSLOOP_BUCKET"), "gateway": gw, "fw": fw,
             "home": get("OPSLOOP_ENFORCER_HOME", "/var/lib/opsloop-enforcer"),
             "region": get("AWS_DEFAULT_REGION", "ap-northeast-2")}
 
@@ -316,7 +334,9 @@ def list_doc(entries, now):
 def new_state():
     return {"v": 1, "seq": 0, "published": None, "seen": {}, "entries": {}, "gone": {}, "confirmed": {},
             "status_fail_since": None, "unknown_since": None, "error_since": None, "upload_fail_since": None,
-            "expired_noted": {}}
+            "expired_noted": {},
+            # 지점별 결과 (이슈 #51). fw_* 는 내부 방화벽 보고의 5분 시계, points 는 지점 → ip → 지금 상태 기록
+            "fw_status_fail_since": None, "fw_unknown_since": None, "fw_error_since": None, "points": {}}
 
 
 def load_state(path):
@@ -405,7 +425,7 @@ def _int(v):
     return v if isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 10 ** 9 else None
 
 
-def validate_status(d, now):
+def validate_status(d, now, label="관문"):
     """(보고, None) 또는 (None, 까닭). 관문이 장악돼도 이 값으로 DB 에 쓰는 것은 검증한 시각 · 방식 · 짧은 문구뿐이다."""
     if not isinstance(d, dict) or d.get("v") != 1:
         return None, "형식 틀림 (v)"
@@ -413,7 +433,7 @@ def validate_status(d, now):
     if at is None:
         return None, "형식 틀림 (at)"
     if at > now + FUTURE_SLACK:
-        return None, "관문 시각이 앞섬"
+        return None, f"{label} 시각이 앞섬"
     mode = d.get("mode")
     if mode not in MODES:
         return None, "형식 틀림 (mode)"
@@ -443,58 +463,60 @@ def validate_status(d, now):
             "selftest": clean(selftest, 80) if isinstance(selftest, str) else None}, None
 
 
-def read_status(s3r, bucket, key, now):
+def read_status(s3r, bucket, key, now, label="관문"):
     """(보고, 까닭). 못 읽었거나 틀렸으면 보고는 None."""
     try:
         r = s3r.get_object(Bucket=bucket, Key=key)
         body = r["Body"].read(STATUS_MAX + 1)
     except Exception as e:  # noqa: BLE001 - boto3 · 연결 오류를 모두 '읽지 못함'으로 본다
         code = err_code(e)
-        return None, "없음 (관문 동기화가 아직 쓰지 않았다)" if code in ("NoSuchKey", "404") else clean(code, 60)
+        return None, f"없음 ({label} 동기화가 아직 쓰지 않았다)" if code in ("NoSuchKey", "404") else clean(code, 60)
     if len(body) > STATUS_MAX:
         return None, "크기 초과"
     try:
         d = json.loads(body, parse_constant=_no_const)
     except (ValueError, RecursionError):
         return None, "JSON 이 아니다"
-    return validate_status(d, now)
+    return validate_status(d, now, label)
 
 
-def judge(st, gw, problem, now, published):
-    """관문 보고를 이번 회차의 판단으로. published 는 (digest, 항목) — 올린 목록이 S3 에 있을 때만."""
+def judge(st, gw, problem, now, published, prefix="", label="관문"):
+    """집행 지점(관문 · 내부 방화벽)의 보고를 이번 회차의 판단으로. published 는 (digest, 항목) — 올린 목록이 S3 에 있을 때만.
+    prefix 는 5분 시계 키의 접두("" 관문 · "fw_" 내부 방화벽), label 은 문구에 쓰는 이름이다. 관문의 문구는 그대로다."""
     j = {"ok": False, "verified": False, "gseq": None, "mode": None, "at": None, "d8": None, "mismatch": None,
          "rejected": {}, "problems": []}
+    k_fail, k_unknown, k_error = prefix + "status_fail_since", prefix + "unknown_since", prefix + "error_since"
     if gw is None:
-        age = since(st, "status_fail_since", now)
-        j["problems"].append(f"관문 보고를 읽지 못했다: {problem}")
+        age = since(st, k_fail, now)
+        j["problems"].append(f"{label} 보고를 읽지 못했다: {problem}")
         if age >= STALE:
-            j["mismatch"] = f"관문 상태를 읽지 못함 ({problem})"
+            j["mismatch"] = f"{label} 상태를 읽지 못함 ({problem})"
         return j
-    st["status_fail_since"] = None
+    st[k_fail] = None
     j.update(mode=gw["mode"], at=gw["at"])
     if now - gw["at"] > STALE:
         # 쪽지가 회차마다 바뀌지 않게 지난 시간(분) 대신 마지막 보고 시각을 적는다
-        st["unknown_since"] = st["error_since"] = None
-        j["mismatch"] = f"관문 보고가 5분 넘게 멈춤 (마지막 {iso(gw['at'])})"
+        st[k_unknown] = st[k_error] = None
+        j["mismatch"] = f"{label} 보고가 5분 넘게 멈춤 (마지막 {iso(gw['at'])})"
         return j
     j["rejected"] = gw["rejected"]
     dg = gw["digest"]
     j["gseq"] = st["seen"].get(dg) if dg else None
     j["d8"] = dg[:8] if dg else None
     if j["gseq"] is None:
-        # list_digest 가 비면 관문이 목록을 못 읽었거나 대조를 못 마친 것이다. 관문의 첫 오류가 까닭이다
-        age = since(st, "unknown_since", now)
+        # list_digest 가 비면 그 지점이 목록을 못 읽었거나 대조를 못 마친 것이다. 그 지점의 첫 오류가 까닭이다
+        age = since(st, k_unknown, now)
         if dg:
-            what = f"관문이 모르는 목록을 적용함 ({dg[:8]})"
+            what = f"{label}이 모르는 목록을 적용함 ({dg[:8]})"
         elif gw["errors"]:
-            what = f"관문이 목록을 적용하지 못함 · {gw['errors'][0]}"
+            what = f"{label}이 목록을 적용하지 못함 · {gw['errors'][0]}"
         else:
-            what = "관문이 목록을 아직 적용하지 않음"
+            what = f"{label}이 목록을 아직 적용하지 않음"
         j["problems"].append(what)
         if age >= STALE:
             j["mismatch"] = what
         return j
-    st["unknown_since"] = None
+    st[k_unknown] = None
     # 관문이 아는 목록을 적용했다. 행마다의 판단은 rejected 가 맡는다 (관문이 실제 집합과 대조해 빠진 항목을 돌려준다).
     # 셈이 맞지 않으면 어느 행이 빠졌는지 모르므로 어느 행도 확인하지 않는다. 그 밖의 관문 오류는 로그에만 남긴다
     problems = []
@@ -505,14 +527,14 @@ def judge(st, gw, problem, now, published):
     if gw["set_count"] is not None and gw["set_count"] < gw["applied"]:
         problems.append(f"집합 원소 수 부족 ({gw['set_count']}/{gw['applied']})")
     if len(gw["rejected"]) >= GW_REJECTED_CAP:
-        problems.append(f"거부 목록이 관문 상한에 닿음 ({len(gw['rejected'])})")
+        problems.append(f"거부 목록이 {label} 상한에 닿음 ({len(gw['rejected'])})")
     j["problems"] += problems + gw["errors"]
     if problems:
-        age = since(st, "error_since", now)
+        age = since(st, k_error, now)
         if age >= STALE:
-            j["mismatch"] = f"관문 오류 · {problems[0]}"
+            j["mismatch"] = f"{label} 오류 · {problems[0]}"
         return j
-    st["error_since"] = None
+    st[k_error] = None
     j["verified"] = True                  # 행마다 확인 · 거부를 판단할 수 있다
     j["ok"] = not gw["errors"]            # 목록 밖 원소까지 없는 깨끗한 회차 (집행 해제는 이때만)
     return j
@@ -576,6 +598,90 @@ def want_listed(row, st, j, now):
     return {}, "pending"
 
 
+def point_state(row, st, j, now):
+    """지점 하나에서 이 행의 (state, note). want_listed 와 같은 판단이지만 관문의 열은 고치지 않는다 (이슈 #51)."""
+    ip, until = row["ip"], iso(row["extra"])
+    e = st["entries"].get(ip)
+    published = bool(e) and e.get("until") == until
+    applied = published and j["gseq"] is not None and j["gseq"] >= e["seq"]
+    if applied and ip in j["rejected"]:
+        if row["extra"] <= j["at"] + COUNT_SLACK:
+            return None, None                            # 곧 만료될 행의 '만료 지남' 거부는 확인도 실패도 아니다 (보류)
+        return "failed", j["rejected"][ip]
+    if j["verified"] and applied:
+        return "confirmed", None
+    if j["mismatch"]:
+        return "stale", j["mismatch"]
+    if not published and j.get("upload_stuck"):
+        return "stale", j["upload_stuck"]
+    if j["verified"] and published and now - (parse_ts(e.get("at")) or now) >= STALE:
+        return "stale", "5분 넘게 반영되지 않음"
+    # 판정할 수 있는 보고인데 아직 이 행이 없으면 대기다. 보고를 못 읽었거나 · 모르는 목록 · 셈이 맞지 않는 회차(5분 전)는
+    # 판정할 수 없으므로 보류(None)다. 직전 상태를 그대로 둔다 (want_listed 가 관문 확인을 유지하는 것과 같다)
+    return ("pending", None) if j["verified"] else (None, None)
+
+
+def same_note(a, b):
+    """숫자만 다른 문구는 같은 것으로 본다 (지점 문구의 분 · 건수가 회차마다 바뀐다)."""
+    if a is None or b is None:
+        return a is b
+    return _DIGITS.sub("#", a) == _DIGITS.sub("#", b)
+
+
+def _view(rec):
+    return {"state": rec["state"], "since": rec.get("since"), "mode": rec.get("mode"), "note": rec.get("note")}
+
+
+def _prev_point(row, point):
+    """DB 에 남은 그 지점의 결과(상태 파일을 잃었거나 처음 배포할 때 이어받는다). 모양이 틀리면 None."""
+    prev = row.get("enforcement")
+    prev = prev.get(point) if isinstance(prev, dict) else None
+    if not isinstance(prev, dict) or prev.get("state") not in POINT_STATES:
+        return None
+    return prev
+
+
+def enforcement_of(row, st, judges, now):
+    """지점별 결과. 상태 · 문구가 바뀔 때만 since 를 새로 적어 회차마다 DB 를 다시 쓰지 않는다.
+    - 판정할 수 없는 회차(보류)는 직전 기록을 그대로 둔다. 기록이 없으면 DB 의 값, 그것도 없으면 대기다
+    - 상태 파일에 기록이 없으면(분실 · 첫 배포) DB 의 같은 상태 · 같은 문구를 이어받는다
+    - 관문의 적용 확인 시각은 관문 열의 확인 시각(st['confirmed'] · enforced_at)과 늘 같다"""
+    out, until = {}, iso(row["extra"])
+    for point, j in judges.items():
+        state, note = point_state(row, st, j, now)
+        note = clean(note, TEXT_MAX) if note else None
+        book = st["points"].setdefault(point, {})
+        rec = book.get(row["ip"])
+        if rec and rec.get("until") != until:
+            rec = None
+        prev = _prev_point(row, point)
+        if state is None:
+            if rec is None and prev is not None:
+                rec = {"until": until, "state": prev["state"], "note": prev.get("note"), "mode": prev.get("mode"),
+                       "since": prev.get("since")}
+                book[row["ip"]] = rec
+            if rec is not None:
+                out[point] = _view(rec)
+                continue
+            state, note = "pending", None
+        if rec is None and prev is not None and prev["state"] == state and same_note(prev.get("note"), note):
+            rec = {"until": until, "state": state, "note": prev.get("note"), "mode": prev.get("mode") or j["mode"],
+                   "since": prev.get("since")}
+            book[row["ip"]] = rec
+        if rec is None or rec.get("state") != state or not same_note(rec.get("note"), note):
+            rec = {"until": until, "state": state, "note": note, "mode": j["mode"],
+                   "since": iso(j["at"] if state == "confirmed" and j["at"] else now)}
+            book[row["ip"]] = rec
+        elif j["mode"] and rec.get("mode") != j["mode"]:
+            rec["mode"] = j["mode"]
+        if point == "gateway" and rec["state"] == "confirmed":
+            c = st["confirmed"].get(row["ip"])
+            if c and c.get("until") == until and c.get("at"):
+                rec["since"] = c["at"]
+        out[point] = _view(rec)
+    return out
+
+
 def want_unenforce(row, st, j, now, current):
     """목록 밖 행의 enforced_at 을 NULL 로 할 때인가."""
     if row["enforced_at"] is None:
@@ -592,8 +698,9 @@ def want_unenforce(row, st, j, now, current):
     return row["kind"] in ("expired", "released") and exp is not None and now >= exp + BAN_HOLD
 
 
-def plan(rows, st, j, now, current):
-    """DB 에 쓸 것 (행마다 바꿀 열 · 읽은 값) 과 만료 기록을 부를 행."""
+def plan(rows, st, j, now, current, judges=None):
+    """DB 에 쓸 것 (행마다 바꿀 열 · 읽은 값) 과 만료 기록을 부를 행. judges 는 지점 → 판단(관문 j 를 포함)."""
+    judges = judges or {"gateway": j}
     updates, expired, tally = [], [], {}
     for row in rows:
         kind, ip = row["kind"], row["ip"]
@@ -603,8 +710,12 @@ def plan(rows, st, j, now, current):
             if tag == "pending" and (row["note"] or "").startswith("집행 제외"):
                 # 제외였던 행이 목록에 들어왔다 (만료가 생겼거나 금지 대역에서 빠졌다). 확인 전까지는 '집행 대기'다
                 want = {"enforce_note": None}
+            want["enforcement"] = enforcement_of(row, st, judges, now)
         else:
             st["confirmed"].pop(ip, None)
+            for book in st["points"].values():
+                book.pop(ip, None)
+            want["enforcement"] = None
             if kind == "exclude":
                 want["enforce_note"] = row["extra"]
             elif kind == "overcap":
@@ -614,7 +725,8 @@ def plan(rows, st, j, now, current):
                 st["gone"].pop(ip, None)
                 tag = f"{kind}+unenforce"
         tally[tag] = tally.get(tag, 0) + 1
-        cur = {"enforced_at": row["enforced_at"], "method": row["method"], "enforce_note": row["note"]}
+        cur = {"enforced_at": row["enforced_at"], "method": row["method"], "enforce_note": row["note"],
+               "enforcement": row.get("enforcement")}
         change = {k: v for k, v in want.items() if cur[k] != v}
         if "enforce_note" in change and same_mismatch(cur["enforce_note"], change["enforce_note"]):
             del change["enforce_note"]
@@ -636,6 +748,9 @@ def prune(st, rows, now):
     listed = {r["ip"] for r in rows if r["kind"] == "list"}
     for ip in [ip for ip in st["confirmed"] if ip not in listed]:
         del st["confirmed"][ip]
+    for book in st["points"].values():
+        for ip in [ip for ip in book if ip not in listed]:
+            del book[ip]
     for k in [k for k, t in st["expired_noted"].items() if now - (parse_ts(t) or now) > KEEP]:
         del st["expired_noted"][k]
 
@@ -644,20 +759,34 @@ def prune(st, rows, now):
 
 FETCH_SQL = """
 SELECT abbrev(b.actor_ip) AS key, host(b.actor_ip) AS ip, family(b.actor_ip) AS fam, masklen(b.actor_ip) AS mask,
-       b.created_at, b.expires_at, b.released_at, b.enforced_at, b.method, b.enforce_note,
+       b.created_at, b.expires_at, b.released_at, b.enforced_at, b.method, b.enforce_note, b.enforcement,
        (SELECT e.cidr::text FROM block_exempt e WHERE b.actor_ip <<= e.cidr
          ORDER BY masklen(e.cidr) DESC LIMIT 1) AS exempt_net
   FROM blocklist b
  WHERE (b.released_at IS NULL AND (b.expires_at IS NULL OR b.expires_at > now() - %s::interval))
     OR b.enforced_at IS NOT NULL
+    OR b.enforcement IS NOT NULL      -- 관문 확인 전에 해제 · 만료된 행의 지점별 결과를 비우려고 읽는다 (이슈 #51)
  ORDER BY b.actor_ip"""
 FIELDS = ("key", "ip", "fam", "mask", "created_at", "expires_at", "released_at", "enforced_at", "method", "note",
-          "exempt_net")
-GUARD = ("released_at", "expires_at", "enforced_at", "method", "enforce_note")
+          "enforcement", "exempt_net")
+GUARD = ("released_at", "expires_at", "enforced_at", "method", "enforce_note", "enforcement")
+JSON_COLS = ("enforcement",)
+
+
+def _pg_value(col, v):
+    """jsonb 열은 Json 으로 감싼다 (None 은 SQL NULL 그대로)."""
+    if col in JSON_COLS and v is not None:
+        from psycopg2.extras import Json
+        return Json(v)
+    return v
+
+
+def _ph(col):
+    return "%s::jsonb" if col in JSON_COLS else "%s"
 
 
 class PgStore:
-    """opsloop_enforcer 역할로 읽고 쓴다. 쓰는 열은 method · enforced_at · enforce_note 셋뿐이다."""
+    """opsloop_enforcer 역할로 읽고 쓴다. 쓰는 열은 method · enforced_at · enforce_note · enforcement 넷뿐이다."""
 
     def __init__(self, conn):
         self.conn = conn
@@ -679,10 +808,11 @@ class PgStore:
             cur.execute("SET LOCAL statement_timeout = '30s'")
             for u in updates:
                 cols = sorted(u["set"])
-                sql = ("UPDATE blocklist SET " + ", ".join(f"{c} = %s" for c in cols)
+                sql = ("UPDATE blocklist SET " + ", ".join(f"{c} = {_ph(c)}" for c in cols)
                        + " WHERE actor_ip = %s::inet AND "
-                       + " AND ".join(f"{c} IS NOT DISTINCT FROM %s" for c in GUARD))
-                cur.execute(sql, [u["set"][c] for c in cols] + [u["key"]] + [u["guard"][c] for c in GUARD])
+                       + " AND ".join(f"{c} IS NOT DISTINCT FROM {_ph(c)}" for c in GUARD))
+                cur.execute(sql, [_pg_value(c, u["set"][c]) for c in cols] + [u["key"]]
+                            + [_pg_value(c, u["guard"][c]) for c in GUARD])
                 n += cur.rowcount
         return n
 
@@ -732,11 +862,13 @@ def cycle(cfg, store, s3w, s3r, st, dry_run=False):
     gw, problem = read_status(s3r, cfg["bucket"], STATUS_KEY.format(gw=cfg["gateway"]), now)
     if gw is None:
         rc = rc or 1
-    j = judge(st, gw, problem, now, (doc["digest"], entries) if current else None)
+    published = (doc["digest"], entries) if current else None
+    j = judge(st, gw, problem, now, published)
     fail_at = parse_ts(st.get("upload_fail_since")) if st.get("upload_fail_since") else None
+    stuck = None
     if fail_at is not None and now - fail_at >= STALE:
         # 쪽지가 회차마다 바뀌지 않게 오류 문구 · 지난 시간을 넣지 않는다 (까닭은 로그의 '목록을 올리지 못했다')
-        j["upload_stuck"] = "목록을 5분 넘게 올리지 못함"
+        stuck = j["upload_stuck"] = "목록을 5분 넘게 올리지 못함"
         log(f"목록을 {fail_at.isoformat()} 부터 올리지 못했다. S3 에 없는 행은 관문 불일치로 둔다", 4)
     if j["mismatch"]:
         log(f"관문 불일치: {j['mismatch']}", 4)
@@ -744,7 +876,28 @@ def cycle(cfg, store, s3w, s3r, st, dry_run=False):
         log("관문 오류 (행 확인은 보고대로): " + "; ".join(j["problems"])[:500], 4)
     elif j["problems"]:
         log("관문 확인 보류: " + "; ".join(j["problems"])[:500], 5)
-    updates, expired, tally = plan(rows, st, j, now, current)
+    judges = {"gateway": j}
+    fwj = None
+    if cfg.get("fw"):
+        # 내부 방화벽 (이슈 #51). 같은 목록의 보고를 따로 판단한다. 관문의 세 열에는 닿지 않고 enforcement 의 fw 갈래만 쓴다
+        fw, fproblem = read_status(s3r, cfg["bucket"], STATUS_KEY.format(gw=cfg["fw"]), now, label="내부 방화벽")
+        if fw is None:
+            rc = rc or 1
+        fwj = judge(st, fw, fproblem, now, published, prefix="fw_", label="내부 방화벽")
+        if stuck:
+            fwj["upload_stuck"] = stuck
+        if fwj["mismatch"]:
+            log(f"내부 방화벽 불일치: {fwj['mismatch']}", 4)
+        elif fwj["problems"]:
+            log("내부 방화벽 " + ("오류 (행 확인은 보고대로): " if fwj["verified"] else "확인 보류: ")
+                + "; ".join(fwj["problems"])[:500], 4 if fwj["verified"] else 5)
+        judges["fw"] = fwj
+    # 설정에서 뺀 지점의 기록 · 시계를 버린다. 다시 넣으면 새로 센다 (옛 확인 시각을 이어 쓰지 않는다)
+    for p in [p for p in st["points"] if p not in judges]:
+        del st["points"][p]
+    if "fw" not in judges:
+        st["fw_status_fail_since"] = st["fw_unknown_since"] = st["fw_error_since"] = None
+    updates, expired, tally = plan(rows, st, j, now, current, judges)
     summary = " · ".join(f"{k} {v}" for k, v in sorted(tally.items())) or "없음"
     if dry_run:
         for u in updates:
@@ -770,6 +923,9 @@ def cycle(cfg, store, s3w, s3r, st, dry_run=False):
             log(f"만료 기록을 남기지 못했다 ({clean(key, 60)}): {why(e)}", 3)
     prune(st, rows, now)
     gws = f"관문 {j['mode']} {iso(j['at'])} 목록 {j['d8'] or '-'}" if gw else f"관문 보고 없음 ({problem})"
+    if fwj is not None:
+        gws += (f" · 내부 방화벽 {fwj['mode']} {iso(fwj['at'])} 목록 {fwj['d8'] or '-'}" if fwj["at"]
+                else f" · 내부 방화벽 보고 없음 ({fwj['problems'][0] if fwj['problems'] else '-'})")
     log(f"행 {len(rows)} · 목록 {len(entries)} · {gws}: {summary}")
     return rc
 
@@ -877,6 +1033,16 @@ def cmd_status(args, out=print):
         f" · 자가 시험 {gw['selftest'] or '-'}")
     for e in gw["errors"][:5]:
         out(f"  오류: {e}")
+    if cfg.get("fw"):
+        fw, fproblem = read_status(s3r, cfg["bucket"], STATUS_KEY.format(gw=cfg["fw"]), datetime.now(timezone.utc),
+                                   label="내부 방화벽")
+        if fw is None:
+            out(f"내부 방화벽 보고: 없음 ({fproblem})")
+            return 1
+        out(f"내부 방화벽 보고: {iso(fw['at'])} · {fw['mode']} · 목록 {str(fw['digest'] or '-')[:8]} · 적용 {fw['applied']}"
+            f" · 집합 {fw['set_count']} · 거부 {len(fw['rejected'])} · 오류 {len(fw['errors'])} · 자가 시험 {fw['selftest'] or '-'}")
+        for e in fw["errors"][:5]:
+            out(f"  오류: {e}")
     return rc
 
 

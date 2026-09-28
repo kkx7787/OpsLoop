@@ -36,7 +36,7 @@ python3 - "$HERE/netplan/fw.yaml.template" /tmp/fw.yaml <<'PY'
 import sys
 src,dst=sys.argv[1:3]
 m={'__MAC_UPLINK__':'00:50:56:20:01:00','__MAC_SERVICE__':'00:50:56:20:01:01',
-   '__MAC_DATA__':'00:50:56:20:01:02','__MAC_MGMT__':'00:50:56:20:01:03'}
+   '__MAC_DATA__':'00:50:56:20:01:02','__MAC_MGMT__':'00:50:56:20:01:03','__MAC_EXT__':'00:50:56:20:01:04'}
 s=open(src).read()
 for k,v in m.items(): s=s.replace(k,v)
 open(dst,'w').write(s)

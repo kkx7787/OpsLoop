@@ -73,6 +73,9 @@ locals {
   }
   # 차단 목록 (이슈 #47). 데이터 노드 집행기가 쓰고(iam.tf block_writer) 관문 동기화가 읽는다(gateway_block_read)
   block_list_key = "block/v1/latest.json"
+  # 내부 방화벽의 적용 보고 (이슈 #51). block-sync.py 의 OPSLOOP_HOST=fw-opsloop 가 만드는 상태 키. 동기화 사용자(iam.tf fw_sync)만 쓴다
+  fw_sync_host       = "fw-opsloop"
+  fw_sync_status_key = "hb/v1/host=${local.fw_sync_host}-block/latest.json"
   # 저장 등급 · 기본 암호화 · 고객 키 조건을 거는 접두사 (원장 · 생존 신호 · 공개 정보 원본 · 차단 목록)
   written_prefixes = ["raw/*", "hb/*", "cti/*", "block/*"]
 }
@@ -96,7 +99,8 @@ data "aws_iam_policy_document" "archive_bucket" {
   }
 
   # 원장에는 센서 · 관문 역할만 쓴다. 루트 계정을 포함한 다른 모든 주체의 쓰기를 거부한다.
-  # IAM 권한이 실수로 넓어져도 이 규칙이 남는다.
+  # IAM 권한이 실수로 넓어져도 이 규칙이 남는다. 내부 방화벽 동기화 사용자는 hb/ 의 자기 보고 키 하나 때문에 예외에 들고
+  # (이슈 #51), 그 밖의 경로는 아래 OnlyFwSyncWritesFwHb · LedgerKnownHostsOnly 와 IAM 정책(그 키 하나)이 막는다
   statement {
     sid       = "OnlySensorWritesLedger"
     effect    = "Deny"
@@ -109,7 +113,25 @@ data "aws_iam_policy_document" "archive_bucket" {
     condition {
       test     = "ArnNotEquals"
       variable = "aws:PrincipalArn"
-      values   = [aws_iam_role.sensor.arn, aws_iam_role.gateway.arn]
+      values   = [aws_iam_role.sensor.arn, aws_iam_role.gateway.arn, aws_iam_user.fw_sync.arn]
+    }
+  }
+
+  # 내부 방화벽의 적용 보고 키는 동기화 사용자만 쓴다 (이슈 #51). 센서 · 관문 역할 · 다른 사용자 · 루트 모두 거부된다.
+  # 장악된 허니팟이나 관문이 '내부 방화벽에 반영됨' 보고를 꾸미지 못한다
+  statement {
+    sid       = "OnlyFwSyncWritesFwHb"
+    effect    = "Deny"
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.archive.arn}/${local.fw_sync_status_key}"]
+    principals {
+      type        = "*"
+      identifiers = ["*"]
+    }
+    condition {
+      test     = "ArnNotEquals"
+      variable = "aws:PrincipalArn"
+      values   = [aws_iam_user.fw_sync.arn]
     }
   }
 
@@ -135,8 +157,8 @@ data "aws_iam_policy_document" "archive_bucket" {
     }
   }
 
-  # 알려진 인스턴스의 경로 · 공개 정보 원본(cti/) · 차단 목록 한 객체(block/v1/latest.json) 밖에는 아무도 쓰지 못한다.
-  # 이 버킷은 원장 · cti/ · 차단 목록만 담는다. 새 노드는 여기(ledger_writers)에 더해야 원장에 쓴다.
+  # 알려진 인스턴스의 경로 · 공개 정보 원본(cti/) · 차단 목록 한 객체(block/v1/latest.json) · 내부 방화벽 보고 키 밖에는
+  # 아무도 쓰지 못한다. 이 버킷은 원장 · cti/ · 차단 목록 · 집행 보고만 담는다. 새 노드는 여기(ledger_writers)에 더해야 원장에 쓴다.
   # 쓰는 인스턴스가 하나도 없으면 문을 내지 않는다
   dynamic "statement" {
     for_each = length(local.ledger_writer_paths) > 0 ? [1] : []
@@ -147,6 +169,7 @@ data "aws_iam_policy_document" "archive_bucket" {
       not_resources = concat(flatten(values(local.ledger_writer_paths)), [
         "${aws_s3_bucket.archive.arn}/cti/*",
         "${aws_s3_bucket.archive.arn}/${local.block_list_key}",
+        "${aws_s3_bucket.archive.arn}/${local.fw_sync_status_key}",
       ])
       principals {
         type        = "*"

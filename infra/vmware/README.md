@@ -12,6 +12,7 @@ WBS 3.3 · 이슈 #8. 보호 자산을 인터넷에서 닿지 않는 내부망�
 | opsloop-console-b | 1GB · 1 | 서비스망 192.168.50.12 | 관제 콘솔 예비 (평소 꺼 둠 · 시험 · 시연 때 켬, 아래 '콘솔 B 운용') |
 | opsloop-data-01 | 2GB · 2 | 데이터망 192.168.60.11 | PostgreSQL · Loki · 수집 · 탐지 |
 | opsloop-web-01 | 768MB · 1 | 서비스망 192.168.50.21 | 관제 대상 서버 (nginx · sshd · 에이전트). DB 에는 닿지 않는다 |
+| opsloop-attacker | 512MB · 1 | 외부 역할 203.0.113.10 | 시연용 공격자 VM (평소 꺼 둠 · 아래 '내부 방화벽 차단 집행'). web-01 의 80 에만 닿는다 |
 
 - 관리망 192.168.70.1 은 Mac(작업자 단말)이다.
 - 가상 네트워크는 DHCP 를 끄고 주소를 고정한다.
@@ -726,10 +727,10 @@ DB 차단 목록을 AWS 관문에 넘기고 관문의 적용 결과를 DB 에 �
 
 ```bash
 # 1. S3 경계 · 쓰기 사용자: infra/terraform/README.md '차단 목록 전달' 1단계 (plan 기대값 확인 뒤 apply)
-# 2. 데이터 노드: 사용자 · 코드 · 설정 · DB 역할 · 마이그레이션(20260927_block_enforce.sql) · 단위 (타이머는 켜지 않는다)
+# 2. 데이터 노드: 사용자 · DB 역할 · 두 마이그레이션(20260927 → 20260929, #51 뒤) · 코드 · 설정 · 단위 (타이머는 새로 켜지 않는다)
 C=$(git rev-parse --short HEAD)
-git archive "$C" enforcer infra/migrations/20260927_block_enforce.sql | ssh -F ~/.ssh/config.opsloop data01 \
-  "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo bash /tmp/ol/enforcer/install-enforcer.sh $C"
+git archive "$C" enforcer infra/migrations/20260927_block_enforce.sql infra/migrations/20260929_block_points.sql \
+  | ssh -F ~/.ssh/config.opsloop data01 "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo bash /tmp/ol/enforcer/install-enforcer.sh $C"
 #    권한 표 세 줄이 '기대대로' 여야 한다. 마지막 줄의 행 갈래 수에 운영 13건이 exclude 로 나온다
 # 3. 목록 쓰기 키: infra/terraform/README.md '차단 목록 전달' 2단계 (0600 root:root)
 # 4. 관문 동기화 설치 (infra/aws/gateway, 관문 담당 절차) 뒤, 할 일만 먼저 본다 (S3 · DB 를 고치지 않는다)
@@ -741,9 +742,150 @@ ssh -F ~/.ssh/config.opsloop data01 'sudo -n opsloop-enforcer status'   # 관문
 ```
 
 - 첫 회차에 운영의 만료 없는 13건은 enforce_note 만 '집행 제외 · 만료 없음' 이 된다. 집행 열(enforced_at)이 바뀌지 않아 감사 · R201 에 영향이 없다.
-- 역할 블록(schema.sql · 20260924_db_roles.sql)을 다시 적용하면 집행 역할 권한이 사라진다. 그 뒤에는 이 설치기(또는 마이그레이션)를 다시 돌린다.
+- 역할 블록(schema.sql · 20260924_db_roles.sql)을 다시 적용하면 집행 역할 권한이 사라진다. 그 뒤에는 이 설치기(또는 두 마이그레이션을
+  20260927 → 20260929 순서로)를 다시 돌린다. 20260927 만 다시 적용하면 #51 의 enforcement 쓰기 권한이 빠져 집행기 회차가 실패한다.
+  내부 방화벽을 켠 뒤라면 `OPSLOOP_FW_ID` 는 설정 파일에 이미 있으므로 다시 줄 필요가 없다.
 - 원장 읽기 키(`s3-pull.env`)를 다시 넣어도 집행기는 따로 할 일이 없다(LoadCredential 이 회차마다 읽는다).
 - 되돌리기: `sudo systemctl disable --now opsloop-enforcer.timer`. 관문 집합은 항목별 만료(상한 fail2ban bantime 24시간)로 저절로 빈다.
+
+## 내부 방화벽 차단 집행 (이슈 #51)
+
+사람이 요청한 차단을 AWS 관문뿐 아니라 실서비스(web-01) 앞의 내부 방화벽에서도 집행한다. 목록은 하나이고 두 지점이 각자 가져가
+적용한 뒤 결과를 보고한다. 집행기는 두 보고를 따로 판단해 차단 행의 지점별 결과(`enforcement`)에 적고, 콘솔 차단 목록 · 사건 상세가
+지점마다 대기 · 적용 확인 · 실패 · 확인 지연과 마지막 확인 시각을 보인다.
+
+```
+데이터 노드  opsloop-enforcer (1분) ─ DB blocklist → s3 block/v1/latest.json
+관문         opsloop-block-sync (1분 · fail2ban) ─ 목록 → 허니팟 유입(22 · 23 · 8080) 차단 → hb/v1/host=<관문 ID>-block
+내부 방화벽  opsloop-block-sync (1분 · nft)      ─ 같은 목록 → forward 차단(fw-block-drop) → hb/v1/host=fw-opsloop-block
+데이터 노드  opsloop-enforcer ─ 두 보고 → blocklist 관문 세 열(method · enforced_at · enforce_note) · enforcement(지점별)
+```
+
+검증하는 것은 둘로 나눈다.
+
+- **내부 방화벽:** web-01 을 향한 실제 접속이 막힌다. 공격자 VM 의 재시도가 시간 초과로 끝나고 방화벽에 `fw-block-drop` 이 남는다.
+- **AWS 관문:** 같은 목록이 전달 · 적용된다. 문서용 주소를 관문 집합에 넣어도 공격자 VM 의 인터넷 접속이 막히는 것은 아니다
+  (공격자 VM 은 인터넷에 나가지 않는다). 목록 동기화와 실제 트래픽 차단은 다른 검증이다.
+
+| 구성 | 위치 |
+|---|---|
+| 외부 역할 세그먼트 | vmnet5 203.0.113.0/24 (호스트 미연결). 방화벽 `ext` 203.0.113.1 · 공격자 VM 203.0.113.10. 문서용 대역이라 차단 금지 대역에 걸리지 않는다 |
+| 방화벽 규칙 | `fw/nftables.conf`: 집합 `opsloop_block`(관문과 같은 꼴) · forward 첫머리 두 줄(`fw-block-drop` 기록 · drop) · `ext` → web-01 80 만 허용 · `ext` 에서 방화벽 자신에는 핑 · NTP 만 |
+| 동기화 | 관문과 같은 파일 `infra/aws/gateway/block-sync.py` · `.service` · `.timer` → `/usr/local/lib/opsloop/` · `/etc/systemd/system/`. `/etc/default/opsloop-block-sync` (`MODE=nft` · `OPSLOOP_HOST=fw-opsloop`) |
+| 비밀 | `/etc/opsloop/block-sync.env` (IAM 사용자 `opsloop-fw-sync` 키, 0600 root:root). 방화벽은 EC2 가 아니라 인스턴스 역할이 없다 |
+| 집행기 | `/etc/default/opsloop-enforcer` 의 `OPSLOOP_FW_ID=fw-opsloop`. 없으면 관문만 본다(이전과 같다) |
+| 시험 출발지 | DB `test_ranges`(문서용 대역 셋)와 `is_test_source()`. 그 출발지의 사건은 탐지 · 판정 · 차단은 그대로, 규칙별 집계에서만 빠진다 |
+| 지점별 결과 | DB `blocklist.enforcement`. 집행기만 쓴다(트리거 `blocklist_enforcement_guard` 가 콘솔 역할의 쓰기를 막는다). 해제 · 만료된 행은 다음 회차에 비운다 |
+
+순서 (Mac, 저장소 루트). 방화벽 · Terraform · 타이머 반영은 사람이 돌린다.
+
+```bash
+C=$(git rev-parse --short HEAD)       # 커밋된 판만 올린다
+# 0. 외부 역할 가상망 (있으면 건너뛴다). vmnet 을 다시 띄우는 몇 초 동안 VM 네트워크가 끊긴다
+sudo infra/vmware/scripts/create-networks.sh
+# 1. 방화벽 랜카드 · netplan (계획을 본 뒤 --apply. 방화벽이 1분 안팎 꺼져 내부망 통신이 멈춘다)
+infra/vmware/scripts/fw-add-ext-nic.sh
+infra/vmware/scripts/fw-add-ext-nic.sh --apply
+# 2. 방화벽 규칙 · 시간 서버: 위 '방화벽 설정 올리기 · 되돌리기' 2번(nftables)과 같은 명령, 이어서 chrony
+git show "$C:infra/vmware/fw/chrony-server.conf" | ssh -F ~/.ssh/config.opsloop fw \
+  'sudo -n install -m 644 /dev/stdin /etc/chrony/conf.d/opsloop-server.conf && sudo -n systemctl restart chrony'
+ssh -F ~/.ssh/config.opsloop fw 'sudo -n nft list set inet filter opsloop_block; sudo -n nft list chain inet filter forward | head -8'
+#    기대: 빈 집합(size 4096) · forward 첫머리에 fw-block-drop 기록과 drop · ext → 192.168.50.21:80 허용
+# 3. 공격자 VM (콘솔 비밀번호를 입력받는다). ~/.ssh/config.opsloop 의 'Host console-a console-b data01 web01' 줄에 attacker 를 더하고
+#    'Host attacker' · 'HostName 203.0.113.10' 두 줄을 넣는다 (ProxyJump fw)
+infra/vmware/scripts/add-node.sh opsloop-attacker 512 1 vmnet5 00:50:56:20:05:10 netplan/attacker.yaml 203.0.113.1 203.0.113.10
+# 4. S3 경계 · 동기화 사용자 · 키: infra/terraform/README.md '내부 방화벽 동기화' 1 · 2단계
+# 5. 방화벽 동기화 설치 · 자가 시험 · 켜기
+git archive "$C" infra/aws/gateway/block-sync.py infra/aws/gateway/opsloop-block-sync.service infra/aws/gateway/opsloop-block-sync.timer \
+  | ssh -F ~/.ssh/config.opsloop fw 'set -e; rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && cd /tmp/ol/infra/aws/gateway
+  sudo -n apt-get install -y -q python3-boto3 >/dev/null
+  sudo -n install -d -m 0755 /usr/local/lib/opsloop
+  sudo -n install -m 0755 block-sync.py /usr/local/lib/opsloop/
+  sudo -n install -m 0644 opsloop-block-sync.service opsloop-block-sync.timer /etc/systemd/system/
+  printf "MODE=nft\nOPSLOOP_BUCKET=opsloop-archive-739272173045\nOPSLOOP_HOST=fw-opsloop\nAWS_DEFAULT_REGION=ap-northeast-2\n" \
+    | sudo -n install -m 0644 /dev/stdin /etc/default/opsloop-block-sync
+  sudo -n systemctl daemon-reload'
+ssh -F ~/.ssh/config.opsloop fw 'sudo -n sh -c "set -a; . /etc/default/opsloop-block-sync; . /etc/opsloop/block-sync.env; set +a; python3 /usr/local/lib/opsloop/block-sync.py --dry-run"'
+ssh -F ~/.ssh/config.opsloop fw 'sudo -n sh -c "set -a; . /etc/default/opsloop-block-sync; . /etc/opsloop/block-sync.env; set +a; python3 /usr/local/lib/opsloop/block-sync.py --selftest"'
+ssh -F ~/.ssh/config.opsloop fw 'sudo -n systemctl start opsloop-block-sync.service; sudo -n journalctl -u opsloop-block-sync -n 10 --no-pager'
+ssh -F ~/.ssh/config.opsloop fw 'sudo -n systemctl enable --now opsloop-block-sync.timer'
+#    자가 시험 'ok' · 한 회차 요약 'nft · 목록 확인 · …' 이어야 한다
+# 6. 집행기 · DB: 두 마이그레이션(#47 → #51 순서)과 OPSLOOP_FW_ID. 설치기가 둘을 차례로 적용하고 설정에 없을 때만 줄을 더한다
+git archive "$C" enforcer infra/migrations/20260927_block_enforce.sql infra/migrations/20260929_block_points.sql \
+  | ssh -F ~/.ssh/config.opsloop data01 "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo OPSLOOP_FW_ID=fw-opsloop bash /tmp/ol/enforcer/install-enforcer.sh $C"
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n opsloop-enforcer status'     # '내부 방화벽 보고:' 줄이 있어야 한다
+# 7. 콘솔: 화면(npm run build → app/static)과 API 를 콘솔 A 에 올린다 (이슈 #47 과 같은 절차 · 백업 먼저). 콘솔 B 는 합류 때 image 단계가 옮긴다
+# 8. 검증 (7장이 공격자 세그먼트 · 차단 집합 · 정상 출발지 유지를 본다)
+infra/vmware/scripts/verify.sh
+```
+
+### 시연 흐름
+
+```bash
+# 1. 차단 전: 통과해야 한다 (404 는 web-01 의 정상 응답)
+ssh -F ~/.ssh/config.opsloop attacker 'for p in owa/x1 owa/x2 confluence/ x3 x4 x5 x6 x7; do curl -s -o /dev/null -m 5 -w "%{http_code} " http://192.168.50.21/$p; done; echo'
+# 2. 1 ~ 2분 뒤 콘솔에 R102(404 반복) · R105(제품 식별 탐색) 사건이 뜬다. 사건을 열어 benign_positive(의도한 시험)로 판정하고 1시간 차단
+#    "반복 탐색과 제품 식별 요청을 확인하고 운영자가 차단했다" 이고, 침해 성공을 확인한 것이 아니다
+# 3. 2분 안에 두 지점이 적용 확인이 된다 (차단 목록 화면의 지점별 결과)
+ssh -F ~/.ssh/config.opsloop fw 'sudo -n nft list set inet filter opsloop_block'
+# 4. 차단 뒤: 새 연결은 시간 초과, 방화벽에 거부 기록
+ssh -F ~/.ssh/config.opsloop attacker 'curl -s -o /dev/null -m 5 -w "%{http_code}\n" http://192.168.50.21/ || echo 시간초과'
+ssh -F ~/.ssh/config.opsloop fw 'sudo -n journalctl -k --since "-5 min" | grep fw-block-drop | tail -3'
+infra/vmware/scripts/verify.sh        # 7장이 공격자 → web-01 을 '실패' 로 기대한다 (차단 집합에 있으므로)
+```
+
+완료 전에 함께 본다.
+
+- **정상 출발지 유지:** 차단 전후 모두 콘솔 → DB 5432 · web-01 → 수집 관문 3101 이 통과한다 (verify.sh 7장).
+- **맺어진 연결과 새 연결:** 차단 전에 연 연결은 `ct state established` 로 끝까지 가고 새 연결부터 막힌다. web-01 nginx 는 요청 없는
+  연결을 60초(`client_header_timeout` 기본값) 뒤, 요청 사이가 65초(`keepalive_timeout` 기본값)를 넘으면 닫으므로 연결을 30초마다 요청으로
+  살려 둔 채 차단한다. 공격자 VM 에서 아래를 띄워 두고 콘솔에서 차단한 뒤, 이 줄들이 계속 응답 줄을 찍는 동안 다른 창의 새 `curl` 은
+  시간 초과인지 본다.
+
+  ```bash
+  ssh -F ~/.ssh/config.opsloop attacker 'exec 3<>/dev/tcp/192.168.50.21/80; for i in $(seq 1 10); do printf "GET / HTTP/1.1\r\nHost: w\r\n\r\n" >&3; head -1 <&3; sleep 30; done'
+  ```
+- **해제 · 만료 뒤 복구:** 콘솔에서 해제하면 2분 안에 두 집합에서 빠지고 공격자 VM 의 요청이 다시 통과한다. 만료는 원소 timeout 이 목록의
+  until 과 같아 저절로 빠진다(`nft list set` 의 `expires`).
+- **동기화 중단:** 아래로 멈춘 뒤 새 차단은 관문에만 들어가고, 5분 뒤 내부 방화벽 지점이 '확인 지연' 이 된다. 이미 들어간 원소는 만료까지
+  남는다. 다시 켜면 한 회차 안에 맞춰진다.
+
+  ```bash
+  ssh -F ~/.ssh/config.opsloop fw 'sudo -n systemctl stop opsloop-block-sync.timer'
+  ssh -F ~/.ssh/config.opsloop fw 'sudo -n systemctl start opsloop-block-sync.timer'
+  ```
+- **시연 사건:** benign_positive 로 판정한다. 출발지가 시험 대역이라 규칙 품질 · 대시보드 · 규칙 화면의 규칙별 집계에서 빠진다.
+
+### 장비 방화벽 연동 자리
+
+`block-sync.py` 의 실행기 클래스(`Nft` · `Fail2ban`)가 집행 지점의 경계다. 실행기는 세 동작만 가진다.
+
+| 동작 | 하는 일 | 장비 API 로 옮길 때 |
+|---|---|---|
+| `list_set()` | 지금 차단 중인 주소와 남은 만료 | 주소 객체 그룹 조회 |
+| `has_drop_rule()` | 그 집합을 막는 정책이 실제로 있는가 | 정책 조회 (없으면 원소가 있어도 막지 못한다) |
+| `apply(ops)` | 넣기 · 바꿔 넣기 · 빼기 | 객체 추가 · 삭제. 장비가 만료를 지원하지 않으면 동기화가 until 에 뺀다 |
+
+목록 형식 · 재검사(금지 대역 · 상한 · 만료) · 보고 형식 · 집행기는 그대로 두고 실행기 하나를 더하면 된다. 실제 연동은 장비나 API 문서가
+있어야 검증할 수 있어 이번 범위 밖이다.
+
+### 한계
+
+- 인터넷이 끊기면 내부 방화벽은 새 목록을 받지 못한다. 이미 들어간 원소는 만료까지 남고, 집행기는 5분 뒤 '확인 지연' 으로 보인다.
+- 내부 방화벽의 거부 기록(`fw-block-drop`)은 콘솔 사건으로 적재하지 않는다. 방화벽 저널과 공격자 VM 의 시간 초과로 확인한다.
+- 공격자 VM 은 같은 Mac 위의 VM 이다. 허니팟에서 본 공격자와 출발지가 달라(허니팟 쪽은 NAT 뒤 공인 IP), 이 구성만으로 허니팟 정보가
+  web-01 보호에 기여했다는 것까지 증명하지는 않는다.
+
+### 되돌리기
+
+```bash
+ssh -F ~/.ssh/config.opsloop fw 'sudo -n systemctl disable --now opsloop-block-sync.timer; sudo -n nft flush set inet filter opsloop_block'
+#    규칙까지: 위 '방화벽 설정 올리기 · 되돌리기' 의 .prev 되돌리기(nft -f 뒤 tailscaled 재시작 포함)
+ssh -F ~/.ssh/config.opsloop data01 "sudo -n sed -i '/^OPSLOOP_FW_ID=/d' /etc/default/opsloop-enforcer"
+#    집행기는 다음 회차부터 관문만 본다. enforcement 의 fw 갈래와 상태 파일의 fw 기록 · 시계도 그 회차에 빠진다(다시 넣으면 새로 센다)
+#    키 · 정책: infra/terraform/README.md '내부 방화벽 동기화' 되돌리기 (접근 키를 먼저 지운다)
+"/Applications/VMware Fusion.app/Contents/Library/vmrun" stop "$HOME/Virtual Machines.localized/opsloop-attacker.vmwarevm/opsloop-attacker.vmx" soft
+```
 
 ## CVE · KEV 연계 (이슈 #39)
 
@@ -866,6 +1008,8 @@ ssh -F ~/.ssh/config.opsloop data01 'sudo -n -u opsloop-cti /usr/local/bin/opslo
 | `scripts/console-watch.sh` · `scripts/install-console-watch.sh` | Mac 에서 콘솔 진입점 감시(두 대 모두 죽으면 알림). 시험 `python3 infra/vmware/scripts/test_console_watch.py` |
 | `restore-drill/` | 복원 훈련 도구(기본 드라이런 · 훈련 DB 확인 블록 · RTO · RPO · 무결성 · 재생성 대조). 시험 `python3 infra/vmware/restore-drill/test_restore_drill.py` |
 | `failover/` | 장애 주입 시험 도구(요청 · 웹소켓 프로브, 방화벽 통계 수집, T0 기록, 지표 요약). 시험 `python3 infra/vmware/failover/test_failover_tools.py` |
+| `scripts/fw-add-ext-nic.sh` | 운영 중인 방화벽에 외부 역할 세그먼트 랜카드를 붙인다 (기본 계획만, `--apply`) |
+| `netplan/attacker.yaml` | 시연용 공격자 VM 주소 (203.0.113.10 · 경로 203.0.113.1 · 이름 해석 없음) |
 | `scripts/*.sh` | 네트워크 생성 · seed · 복제 · 구성 · 검증 · DB 백업 · 자산 수집 |
 
 비밀번호와 개인 키는 저장소에 넣지 않는다. seed 이미지도 저장소 밖(`~/Virtual Machines.localized`)에 만든다.

@@ -216,3 +216,37 @@ resource "aws_iam_user_policy" "block_put" {
   user   = aws_iam_user.block_writer.name
   policy = data.aws_iam_policy_document.block_put.json
 }
+
+# ══════════════════════════════════════════════════════════════
+#  내부 방화벽 동기화 사용자 (이슈 #51)
+#
+#  온프레미스 내부 방화벽(opsloop-fw)의 동기화(block-sync.py · nft 모드)가 관문과 같은 차단 목록
+#  block/v1/latest.json 을 읽고, 적용 결과를 hb/v1/host=fw-opsloop-block/latest.json 에 쓴다.
+#  EC2 가 아니라 인스턴스 역할이 없으므로 IAM 사용자다. 그 두 객체뿐이다. 원장(raw/) · 다른 hb 경로 ·
+#  cti/ · 목록 쓰기는 버킷 정책(OnlySensorWritesLedger 예외 · OnlyFwSyncWritesFwHb · OnlyBlockWriterWritesBlock)이 막는다.
+#  액세스 키는 Terraform 으로 만들지 않는다. 키는 CLI 로 발급해 방화벽 /etc/opsloop/block-sync.env 에 파이프로 바로 넣는다 (README).
+# ══════════════════════════════════════════════════════════════
+
+resource "aws_iam_user" "fw_sync" {
+  name = "opsloop-fw-sync"
+  tags = { purpose = "on-prem internal firewall pulls the block list and reports enforcement" }
+}
+
+data "aws_iam_policy_document" "fw_sync" {
+  statement {
+    sid       = "ReadBlockListOnly"
+    actions   = ["s3:GetObject"]
+    resources = ["${aws_s3_bucket.archive.arn}/${local.block_list_key}"]
+  }
+  statement {
+    sid       = "PutOwnBlockReportOnly"
+    actions   = ["s3:PutObject"]
+    resources = ["${aws_s3_bucket.archive.arn}/${local.fw_sync_status_key}"]
+  }
+}
+
+resource "aws_iam_user_policy" "fw_sync" {
+  name   = "opsloop-fw-sync"
+  user   = aws_iam_user.fw_sync.name
+  policy = data.aws_iam_policy_document.fw_sync.json
+}

@@ -76,7 +76,8 @@ class FakeStore:
         self.fail_fetch = self.fail_apply = False
         self.before_apply = None
 
-    def add(self, ip, expires=DAY, created=None, released=None, enforced=None, method=None, note=None, exempt_net=None):
+    def add(self, ip, expires=DAY, created=None, released=None, enforced=None, method=None, note=None, exempt_net=None,
+            enforcement=None):
         net = ipaddress.ip_network(ip, strict=False)
         host = net.prefixlen == net.max_prefixlen
         key = str(net.network_address) if host else str(net)
@@ -84,7 +85,7 @@ class FakeStore:
                           "created_at": created or self.now,
                           "expires_at": (self.now + expires) if isinstance(expires, timedelta) else expires,
                           "released_at": released, "enforced_at": enforced, "method": method, "note": note,
-                          "exempt_net": exempt_net}
+                          "enforcement": enforcement, "exempt_net": exempt_net}
         return self.rows[key]
 
     def fetch(self):
@@ -93,7 +94,7 @@ class FakeStore:
         out = []
         for r in sorted(self.rows.values(), key=lambda r: r["key"]):
             live = r["released_at"] is None and (r["expires_at"] is None or r["expires_at"] > self.now - 2 * DAY)
-            if live or r["enforced_at"] is not None:
+            if live or r["enforced_at"] is not None or r["enforcement"] is not None:
                 out.append({k: r[k] for k in be.FIELDS})
         return {"now": self.now, "rows": out}
 
@@ -108,7 +109,7 @@ class FakeStore:
             if r is None:
                 continue
             cur = {"released_at": r["released_at"], "expires_at": r["expires_at"], "enforced_at": r["enforced_at"],
-                   "method": r["method"], "enforce_note": r["note"]}
+                   "method": r["method"], "enforce_note": r["note"], "enforcement": r["enforcement"]}
             if any(cur[k] != u["guard"][k] for k in be.GUARD):
                 continue
             for c, v in u["set"].items():
@@ -130,10 +131,10 @@ class FakeStore:
 
 
 class Gateway:
-    """관문 block-sync.py 흉내. S3 목록을 읽어 digest 를 따로 확인하고 보고를 hb 경로에 쓴다."""
+    """관문(또는 내부 방화벽) block-sync.py 흉내. S3 목록을 읽어 digest 를 따로 확인하고 보고를 hb 경로에 쓴다."""
 
-    def __init__(self, s3, mode="nft"):
-        self.s3, self.mode = s3, mode
+    def __init__(self, s3, mode="nft", key=STATUS):
+        self.s3, self.mode, self.key = s3, mode, key
 
     def sync(self, at, rejected=(), errors=(), digest=None, applied=None, set_count=None):
         doc = self.s3.listed()
@@ -145,7 +146,7 @@ class Gateway:
                   "rejected": [{"ip": ip, "why": w} for ip, w in rejected], "errors": list(errors), "selftest": None})
 
     def put(self, status):
-        self.s3.objects[STATUS] = json.dumps(status).encode("utf-8")
+        self.s3.objects[self.key] = json.dumps(status).encode("utf-8")
 
 
 class Base(unittest.TestCase):
@@ -354,9 +355,10 @@ class ConfirmTest(Base):
         self.gw.sync(T0 + timedelta(seconds=30))
         self.tick()
         self.store.add("198.51.100.8")
+        before = self.store.writes                     # 첫 회차가 7번 행의 지점별 결과(대기)를 한 번 썼다
         self.run_once(dry_run=True)
         self.assertEqual(len(self.s3.puts), 1)
-        self.assertEqual(self.store.writes, 0)
+        self.assertEqual(self.store.writes, before)
         self.assertTrue(any("(dry-run)" in m and "confirm" in m for _, m in self.logs))
 
 
@@ -458,7 +460,9 @@ class MismatchTest(Base):
         r = self.row("198.51.100.3")
         self.assertEqual((r["note"], r["enforced_at"]), ("관문 불일치 · 관문 거부 · nft 반영 실패", None))
         self.assertEqual(self.store.audit, [("enforced", "198.51.100.1"), ("enforced", "198.51.100.2")])
-        self.assertEqual(self.store.writes, 3)
+        # 첫 회차의 지점별 결과(대기) 3 + 확인 2 · 거부 1. 거부가 이어져도 다시 쓰지 않는다
+        self.assertEqual(self.store.writes, 6)
+        self.assertEqual(self.row("198.51.100.3")["enforcement"]["gateway"]["state"], "failed")
         self.assertTrue(any("관문 오류 (행 확인은 보고대로)" in m for _, m in self.logs))
 
     def test_셈이_맞지_않는_보고가_5분_이어지면_불일치다(self):
@@ -522,7 +526,8 @@ class MismatchTest(Base):
         self.tick()
         self.run_once()
         self.confirmed("198.51.100.7", at)
-        self.assertEqual(self.store.writes, 2)
+        # 관문 열 2(확인 · 재확인) + 지점별 결과 2(첫 대기 · 연장 뒤 새 만료의 대기). 확인은 관문 열과 같은 쓰기에 실린다
+        self.assertEqual(self.store.writes, 4)
         self.assertEqual(self.store.audit, [("enforced", "198.51.100.7")] * 2)
 
     def test_모르는_목록의_거부는_붙지_않는다(self):
@@ -929,6 +934,7 @@ except ImportError:
 URL = os.environ.get("OPSLOOP_TEST_DATABASE_URL")
 SCHEMA = os.path.join(ROOT, "infra", "schema.sql")
 MIGRATION = os.path.join(ROOT, "infra", "migrations", "20260927_block_enforce.sql")
+MIGRATION51 = os.path.join(ROOT, "infra", "migrations", "20260929_block_points.sql")   # #47 뒤에 적용해야 enforcement 권한이 남는다
 
 
 def with_db(url, db, user=None, password=None):
@@ -956,7 +962,7 @@ class PgTest(unittest.TestCase):
         self.owner.autocommit = True
         with self.owner.cursor() as c:
             c.execute("SET client_min_messages = warning")
-            for path in (SCHEMA, MIGRATION):
+            for path in (SCHEMA, MIGRATION, MIGRATION51):
                 with open(path, encoding="utf-8") as f:
                     c.execute(f.read())
         self.conn = psycopg2.connect(with_db(URL, self.db, "opsloop_enforcer", self.pw))
@@ -1042,6 +1048,229 @@ class PgTest(unittest.TestCase):
             with self.subTest(q=q), self.assertRaises(psycopg2.errors.InsufficientPrivilege):
                 with self.conn, self.conn.cursor() as c:
                     c.execute(q)
+
+
+FW = "fw-opsloop"
+FW_STATUS = be.STATUS_KEY.format(gw=FW)
+
+
+class PointsTest(Base):
+    """집행 지점별 결과 (이슈 #51). 관문의 세 열 · 감사는 그대로고 enforcement 에 지점마다 state · since · mode · note 가 붙는다."""
+
+    def points(self, ip):
+        return self.row(ip)["enforcement"]
+
+    def test_관문만_설정하면_gateway_갈래만_적힌다(self):
+        self.settle()
+        pts = self.points("198.51.100.7")
+        self.assertEqual(list(pts), ["gateway"])
+        self.assertEqual(pts["gateway"], {"state": "confirmed", "since": be.iso(T0 + timedelta(seconds=30)),
+                                          "mode": "nft", "note": None})
+        # 확인이 이어져도 다시 쓰지 않는다
+        w = self.store.writes
+        self.gw.sync(self.store.now + timedelta(seconds=30))
+        self.tick()
+        self.run_once()
+        self.assertEqual(self.store.writes, w)
+
+    def test_첫_회차는_대기로_적고_since_는_그때다(self):
+        self.store.add("198.51.100.7")
+        self.run_once()
+        self.assertEqual(self.points("198.51.100.7"), {"gateway": {"state": "pending", "since": be.iso(T0), "mode": None,
+                                                                    "note": None}})
+        self.assertIsNone(self.row("198.51.100.7")["enforced_at"])       # 관문 열은 아직 비어 있다
+
+    def test_내부_방화벽까지_확인되면_두_지점이_confirmed(self):
+        self.cfg["fw"] = FW
+        fw = Gateway(self.s3, key=FW_STATUS)
+        self.store.add("203.0.113.10")
+        self.run_once()
+        self.gw.sync(self.store.now + timedelta(seconds=20))
+        fw.sync(self.store.now + timedelta(seconds=40))
+        self.tick()
+        self.assertEqual(self.run_once(), 0)
+        self.confirmed("203.0.113.10", T0 + timedelta(seconds=20))       # 관문 열은 관문 보고로만
+        pts = self.points("203.0.113.10")
+        self.assertEqual(pts["gateway"]["state"], "confirmed")
+        self.assertEqual(pts["fw"], {"state": "confirmed", "since": be.iso(T0 + timedelta(seconds=40)), "mode": "nft",
+                                     "note": None})
+        self.assertEqual(self.store.audit, [("enforced", "203.0.113.10")])     # 내부 방화벽 확인은 감사를 만들지 않는다
+        w = self.store.writes
+        self.gw.sync(self.store.now + timedelta(seconds=20))
+        fw.sync(self.store.now + timedelta(seconds=40))
+        self.tick()
+        self.run_once()
+        self.assertEqual(self.store.writes, w)
+        self.assertTrue(any("내부 방화벽 nft" in m for _, m in self.logs))
+
+    def test_내부_방화벽_보고가_없으면_대기_뒤_5분에_stale(self):
+        self.cfg["fw"] = FW
+        self.store.add("203.0.113.10")
+        self.run_once()
+        self.gw.sync(self.store.now + timedelta(seconds=30))
+        self.tick()
+        self.assertEqual(self.run_once(), 1)                             # 못 한 일(내부 방화벽 보고 읽기)이 있다
+        self.confirmed("203.0.113.10", T0 + timedelta(seconds=30))
+        self.assertEqual(self.points("203.0.113.10")["fw"]["state"], "pending")
+        for _ in range(5):
+            self.gw.sync(self.store.now + timedelta(seconds=30))
+            self.tick()
+            self.run_once()
+        fwp = self.points("203.0.113.10")["fw"]
+        self.assertEqual(fwp["state"], "stale")
+        self.assertEqual(fwp["note"], "내부 방화벽 상태를 읽지 못함 (없음 (내부 방화벽 동기화가 아직 쓰지 않았다))")
+        self.confirmed("203.0.113.10", T0 + timedelta(seconds=30))       # 관문 확인은 그대로
+        self.assertTrue(any("내부 방화벽 불일치" in m for _, m in self.logs))
+        # stale 이 이어져도 since · 쓰기는 그대로
+        w, since = self.store.writes, fwp["since"]
+        self.gw.sync(self.store.now + timedelta(seconds=30))
+        self.tick()
+        self.run_once()
+        self.assertEqual((self.store.writes, self.points("203.0.113.10")["fw"]["since"]), (w, since))
+
+    def test_내부_방화벽이_거부하면_failed_에_까닭이_붙는다(self):
+        self.cfg["fw"] = FW
+        fw = Gateway(self.s3, key=FW_STATUS)
+        self.store.add("203.0.113.10")
+        self.run_once()
+        self.gw.sync(self.store.now + timedelta(seconds=20))
+        fw.sync(self.store.now + timedelta(seconds=40), rejected=[("203.0.113.10", "nft 반영 실패")],
+                errors=["nft 반영 실패 1건"])
+        self.tick()
+        self.run_once()
+        self.confirmed("203.0.113.10", T0 + timedelta(seconds=20))
+        self.assertEqual(self.points("203.0.113.10")["fw"], {"state": "failed", "since": be.iso(T0 + MIN), "mode": "nft",
+                                                              "note": "nft 반영 실패"})
+        self.assertEqual(self.row("203.0.113.10")["note"], "관문 반영 · " + self.s3.listed()["digest"][:8] + " · "
+                         + be.iso(T0 + timedelta(seconds=20)))
+
+    def test_해제되면_지점별_결과를_비운다(self):
+        self.cfg["fw"] = FW
+        fw = Gateway(self.s3, key=FW_STATUS)
+        self.store.add("203.0.113.10")
+        self.run_once()
+        self.gw.sync(self.store.now + timedelta(seconds=20))
+        fw.sync(self.store.now + timedelta(seconds=40))
+        self.tick()
+        self.run_once()
+        self.row("203.0.113.10")["released_at"] = self.store.now
+        self.tick()
+        self.run_once()
+        self.assertIsNone(self.points("203.0.113.10"))
+        self.assertNotIn("203.0.113.10", self.st["points"]["fw"])
+
+    def test_보고를_한_회차_못_읽어도_지점별_결과는_그대로다(self):
+        self.settle()
+        before, w = dict(self.points("198.51.100.7")), self.store.writes
+        del self.s3.objects[STATUS]                      # 관문 보고를 한 회차 못 읽는다
+        self.tick()
+        self.run_once()
+        self.assertEqual((self.points("198.51.100.7"), self.store.writes), (before, w))
+        self.gw.sync(self.store.now + timedelta(seconds=30))
+        self.tick()
+        self.run_once()
+        self.assertEqual((self.points("198.51.100.7"), self.store.writes), (before, w))
+
+    def test_목록을_못_읽은_보고_한_회차도_보류다(self):
+        self.settle()
+        before, w = dict(self.points("198.51.100.7")), self.store.writes
+        self.gw.put({"v": 1, "at": be.iso(self.store.now + timedelta(seconds=30)), "mode": "nft", "list_digest": None,
+                     "list_generated_at": None, "applied": 0, "set_count": 1, "rejected": [],
+                     "errors": ["목록을 읽지 못함 (SlowDown)"], "selftest": None})
+        self.tick()
+        self.run_once()
+        self.assertEqual((self.points("198.51.100.7"), self.store.writes), (before, w))
+
+    def test_상태_파일을_잃어도_지점별_확인_시각을_이어받는다(self):
+        self.cfg["fw"] = FW
+        fw = Gateway(self.s3, key=FW_STATUS)
+        self.store.add("203.0.113.10")
+        self.run_once()
+        for _ in range(3):
+            self.gw.sync(self.store.now + timedelta(seconds=20))
+            fw.sync(self.store.now + timedelta(seconds=40))
+            self.tick()
+            self.run_once()
+        before, w = dict(self.points("203.0.113.10")), self.store.writes
+        self.assertEqual(before["gateway"]["since"], be.iso(self.row("203.0.113.10")["enforced_at"]))
+        self.st = be.new_state()                         # 상태 파일을 잃었다
+        self.gw.sync(self.store.now + timedelta(seconds=20))
+        fw.sync(self.store.now + timedelta(seconds=40))
+        self.tick()
+        self.run_once()
+        self.assertEqual((self.points("203.0.113.10"), self.store.writes), (before, w))
+
+    def test_처음_배포하면_관문_확인_시각은_enforced_at_과_같다(self):
+        self.settle()
+        for _ in range(2):
+            self.gw.sync(self.store.now + timedelta(seconds=30))
+            self.tick()
+            self.run_once()
+        self.st["points"] = {}                           # #47 판 상태 파일 (points 없음)
+        self.row("198.51.100.7")["enforcement"] = None   # 옛 DB (열 비어 있음)
+        self.gw.sync(self.store.now + timedelta(seconds=30))
+        self.tick()
+        self.run_once()
+        self.assertEqual(self.points("198.51.100.7")["gateway"]["since"], be.iso(T0 + timedelta(seconds=30)))
+
+    def test_관문_확인_전에_해제된_행의_지점별_결과도_비운다(self):
+        self.cfg["fw"] = FW
+        fw = Gateway(self.s3, key=FW_STATUS)
+        self.store.add("203.0.113.10")
+        self.run_once()
+        fw.sync(self.store.now + timedelta(seconds=20))  # 내부 방화벽만 확인, 관문 보고는 없다
+        self.tick()
+        self.run_once()
+        self.assertIsNone(self.row("203.0.113.10")["enforced_at"])
+        self.assertEqual(self.points("203.0.113.10")["fw"]["state"], "confirmed")
+        self.row("203.0.113.10")["released_at"] = self.store.now
+        self.tick()
+        self.run_once()
+        self.assertIsNone(self.points("203.0.113.10"))
+
+    def test_내부_방화벽을_뺐다_다시_넣으면_새로_센다(self):
+        self.cfg["fw"] = FW
+        fw = Gateway(self.s3, key=FW_STATUS)
+        self.store.add("203.0.113.10")
+        self.run_once()
+        self.gw.sync(self.store.now + timedelta(seconds=20))
+        fw.sync(self.store.now + timedelta(seconds=40))
+        self.tick()
+        self.run_once()
+        old_since = self.points("203.0.113.10")["fw"]["since"]
+        self.cfg["fw"] = None
+        for _ in range(10):                              # 10분 동안 관문만 본다 (내부 방화벽 보고는 그대로 멈춰 있다)
+            self.gw.sync(self.store.now + timedelta(seconds=20))
+            self.tick()
+            self.run_once()
+        self.assertEqual(list(self.points("203.0.113.10")), ["gateway"])
+        self.assertNotIn("fw", self.st["points"])
+        self.cfg["fw"] = FW
+        self.gw.sync(self.store.now + timedelta(seconds=20))
+        self.tick()
+        self.run_once()
+        fwp = self.points("203.0.113.10")["fw"]
+        self.assertEqual(fwp["state"], "stale")          # 멈춘 옛 보고를 확인으로 이어 쓰지 않는다
+        self.assertNotEqual(fwp["since"], old_since)
+
+    def test_내부_방화벽_문구는_관문이라_적지_않는다(self):
+        got, why = be.validate_status({"v": 1, "at": be.iso(self.store.now + timedelta(minutes=10)), "mode": "nft",
+                                       "applied": 0}, self.store.now, "내부 방화벽")
+        self.assertEqual((got, why), (None, "내부 방화벽 시각이 앞섬"))
+
+    def test_설정의_내부_방화벽_ID(self):
+        with mock.patch.dict(os.environ, {"OPSLOOP_ENFORCER_DEFAULTS": "/nonexistent", "OPSLOOP_BUCKET": "b",
+                                          "OPSLOOP_FW_ID": " fw-opsloop "}):
+            self.assertEqual(be.settings()["fw"], "fw-opsloop")
+        with mock.patch.dict(os.environ, {"OPSLOOP_ENFORCER_DEFAULTS": "/nonexistent", "OPSLOOP_BUCKET": "b",
+                                          "OPSLOOP_FW_ID": ""}):
+            self.assertIsNone(be.settings()["fw"])
+        for bad in ("i-0ffeb29efad03546d", "fw-", "fw-Opsloop", "fw-" + "a" * 41):
+            with mock.patch.dict(os.environ, {"OPSLOOP_ENFORCER_DEFAULTS": "/nonexistent", "OPSLOOP_BUCKET": "b",
+                                              "OPSLOOP_FW_ID": bad}):
+                with self.assertRaises(be.ConfigError):
+                    be.settings()
+        self.assertEqual(be.STATUS_KEY.format(gw="fw-opsloop"), "hb/v1/host=fw-opsloop-block/latest.json")
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-import type { ActionRecord, ActorBlock, BehaviorRow, EvidenceSample, IncidentDetail, RawLine, VerdictRecord } from '@/api/incidents'
+import type { ActionRecord, ActorBlock, BehaviorRow, EnforcePoint, EnforcePointState, EvidenceSample, IncidentDetail, RawLine, VerdictRecord } from '@/api/incidents'
 import { actionLabel, VERDICT_LABEL, type IncidentStatus, type Verdict } from '@/lib/domain'
 import { formatKst, toDate } from '@/lib/time'
 import type { Tone } from '../../atoms/tones'
@@ -180,6 +180,54 @@ export function blockStateHint(block: BlockFields, state: BlockState): string {
     case 'released': return `사람이 풂 · ${leaving || '관문 목록에서 빠짐'}`
     case 'expired': return `만료가 지남 · ${leaving || '관문 목록에서 빠짐'}`
   }
+}
+
+/**
+ * 집행 지점(이슈 #51). 관문은 허니팟 유입(22 · 23 · 8080)을, 내부 방화벽은 실서비스(web-01) 앞에서 외부 역할 세그먼트의 출발지를 막는다.
+ * 위의 상태(blockState)는 관문의 확인 열로 가른 것이고, 지점별 결과는 enforcement 로 따로 보인다
+ */
+export const ENFORCE_POINTS: ReadonlyArray<readonly ['gateway' | 'fw', string]> = [['gateway', 'AWS 관문'], ['fw', '내부 방화벽']]
+
+export const POINT_STATE_LABEL: Record<EnforcePointState, string> = {
+  pending: '대기',
+  confirmed: '적용 확인',
+  failed: '실패',
+  stale: '확인 지연',
+}
+
+export const POINT_STATE_TONE: Record<EnforcePointState, Tone> = {
+  pending: 'warning',
+  confirmed: 'danger',
+  failed: 'orange',
+  stale: 'orange',
+}
+
+export interface PointRow {
+  key: 'gateway' | 'fw'
+  label: string
+  point: EnforcePoint
+}
+
+const POINT_STATES = Object.keys(POINT_STATE_LABEL) as EnforcePointState[]
+const text = (value: unknown): string | null => (typeof value === 'string' && value ? value : null)
+
+/**
+ * 행의 지점별 결과. 알려진 지점 · 상태만 정해진 순서(관문 → 내부 방화벽)로 돌려준다.
+ * 값은 DB 에서 온 것이라 모양을 다시 본다. 모르는 상태는 버리고, 글자가 아닌 값은 비운다. 없으면 빈 목록(이전 서버 · 집행기)
+ */
+export function enforcementPoints(block: Pick<ActorBlock, 'enforcement'> | null | undefined): PointRow[] {
+  const raw: unknown = block?.enforcement
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return []
+  const rows: PointRow[] = []
+  for (const [key, label] of ENFORCE_POINTS) {
+    const item: unknown = (raw as Record<string, unknown>)[key]
+    if (!item || typeof item !== 'object') continue
+    const value = item as Record<string, unknown>
+    const state = value.state
+    if (typeof state !== 'string' || !POINT_STATES.includes(state as EnforcePointState)) continue
+    rows.push({ key, label, point: { state: state as EnforcePointState, since: text(value.since), mode: text(value.mode), note: text(value.note) } })
+  }
+  return rows
 }
 
 /** 풀 수 있는 차단인가(해제 조치의 조건) */

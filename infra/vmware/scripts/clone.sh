@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 기본 VM 을 연결 복제해 내부망 4대를 만든다.
-#   opsloop-fw        1GB / 2core  NAT + 서비스망 + 데이터망 + 관리망
+#   opsloop-fw        1GB / 2core  NAT + 서비스망 + 데이터망 + 관리망 + 외부 역할(vmnet5 · 이슈 #51. 이미 있는 방화벽은 scripts/fw-add-ext-nic.sh)
 #   opsloop-console-a 1GB / 1core  서비스망
 #   opsloop-console-b 1GB / 1core  서비스망 (평소에는 꺼 둔다)
 #   opsloop-data-01   2GB / 2core  데이터망 (실사용 0.5GB 안팎. Mac 메모리가 빠듯해 3GB 에서 줄였다)
@@ -17,7 +17,7 @@ VMRUN="/Applications/VMware Fusion.app/Contents/Library/vmrun"
 
 # 이름:메모리:CPU:"랜카드 정의(vmnet,MAC 공백 구분)"
 NODES=(
-  "opsloop-fw:1024:2:vmnet8,00:50:56:20:01:00 vmnet2,00:50:56:20:01:01 vmnet3,00:50:56:20:01:02 vmnet4,00:50:56:20:01:03"
+  "opsloop-fw:1024:2:vmnet8,00:50:56:20:01:00 vmnet2,00:50:56:20:01:01 vmnet3,00:50:56:20:01:02 vmnet4,00:50:56:20:01:03 vmnet5,00:50:56:20:01:04"
   "opsloop-console-a:1024:1:vmnet2,00:50:56:20:02:01"
   "opsloop-console-b:1024:1:vmnet2,00:50:56:20:02:02"
   "opsloop-data-01:2048:2:vmnet3,00:50:56:20:03:01"

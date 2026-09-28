@@ -85,7 +85,7 @@ SSM 은 VPC 엔드포인트로 가서 방화벽을 지나지 않는다. 규칙�
 ```bash
 aws s3api get-bucket-policy --bucket opsloop-archive-739272173045 --query Policy --output text \
   | python3 -c 'import json,sys; d=json.load(sys.stdin)["Statement"]; print(len(d)); [print(s["Sid"], s["Condition"]) for s in d if s["Sid"].startswith("OnlyOwnHost")]'
-                                          # 문 10개(DMZ 허니팟이 생기면 11개. CTI 문 두 개를 더해 12개, 차단 목록 문 하나를 더한 지금은 13개 — 아래 'CTI 원본 보관' · '차단 목록 전달'). OnlyOwnHost* 의 ARN 이 terraform state show 의 인스턴스 ARN 과 같다
+                                          # 문 10개(DMZ 허니팟이 생기면 11개. CTI 문 두 개를 더해 12개, 차단 목록 문 하나를 더해 13개, 내부 방화벽 보고 문 하나를 더한 지금은 14개 — 아래 'CTI 원본 보관' · '차단 목록 전달' · '내부 방화벽 동기화'). OnlyOwnHost* 의 ARN 이 terraform state show 의 인스턴스 ARN 과 같다
 aws s3api head-object --bucket opsloop-archive-739272173045 \
   --key hb/v1/host=i-058726c1a0671fe1d/latest.json --query LastModified   # 한 회차(6분) 뒤, 적용 완료보다 늦은 시각
 aws ssm send-command --instance-ids i-058726c1a0671fe1d --document-name AWS-RunShellScript \
@@ -448,7 +448,7 @@ terraform plan      # 추가 3(aws_iam_user.block_writer · aws_iam_user_policy.
 terraform apply
 aws s3api get-bucket-policy --bucket opsloop-archive-739272173045 --query Policy --output text \
   | python3 -c 'import json,sys; d=json.load(sys.stdin)["Statement"]; print(len(d)); [print(s["Sid"], s.get("Resource") or s.get("NotResource"), s.get("Condition", "")) for s in d if s["Sid"] in ("OnlyBlockWriterWritesBlock", "LedgerKnownHostsOnly", "OnlyOwnHostGateway")]'
-                    # 문 13개. OnlyBlockWriterWritesBlock 의 ARN 이 …:user/opsloop-block-writer, LedgerKnownHostsOnly 의
+                    # 문 13개(이슈 #51 뒤에는 14개). OnlyBlockWriterWritesBlock 의 ARN 이 …:user/opsloop-block-writer, LedgerKnownHostsOnly 의
                     # NotResource 에 …/block/v1/latest.json 과 …/hb/v1/host=<관문 ID>-block/latest.json, OnlyOwnHostGateway 의
                     # Resource 에 …/hb/v1/host=<관문 ID>-block/latest.json 이 있다
 ```
@@ -673,6 +673,61 @@ gwrun "apt-get purge -y -q fail2ban && rm -f /etc/fail2ban/jail.d/opsloop-block.
 ```
 
 되돌리면 집행기는 5분 뒤부터 행마다 '관문 불일치 · 관문 보고가 5분 넘게 멈춤' 을 쓴다(예상된 표시).
+
+## 내부 방화벽 동기화 (이슈 #51)
+
+온프레미스 내부 방화벽이 관문과 같은 차단 목록 `block/v1/latest.json` 을 읽고, 적용 결과를 `hb/v1/host=fw-opsloop-block/latest.json` 에
+쓴다. 방화벽은 EC2 가 아니라 인스턴스 역할이 없으므로 IAM 사용자 `opsloop-fw-sync` 의 키를 쓴다. 그 두 객체뿐이다.
+설치 순서 전체는 `infra/vmware/README.md` '내부 방화벽 차단 집행'.
+
+| 주체 | `block/v1/latest.json` | `hb/v1/host=fw-opsloop-block/latest.json` | 그 밖 |
+|---|---|---|---|
+| 동기화 사용자 `opsloop-fw-sync` | 읽기 | 쓰기 | 원장 · 다른 hb · cti/ · 목록 쓰기 거부 |
+| 센서 · 관문 역할 · 다른 사용자 · 루트 | (관문 역할만 읽기) | 쓰기 거부 (`OnlyFwSyncWritesFwHb`) | 그대로 |
+
+`s3.tf` 에서 바뀐 곳:
+
+- `OnlySensorWritesLedger`: `hb/*` 쓰기 예외 주체에 동기화 사용자를 더했다. 그 밖의 hb 경로는 아래 두 문과 IAM 정책(그 키 하나)이 막는다
+- `OnlyFwSyncWritesFwHb` (새 문): 그 보고 키는 동기화 사용자만 쓴다. 장악된 허니팟 · 관문이 '내부 방화벽 반영' 보고를 꾸미지 못한다
+- `LedgerKnownHostsOnly`: 예외(`not_resources`)에 그 보고 키를 더했다
+
+### 1. 정책 · 사용자 적용
+
+```bash
+aws s3api get-bucket-policy --bucket opsloop-archive-739272173045 --query Policy --output text > bucket-policy.before.json
+terraform plan      # 추가 2(aws_iam_user.fw_sync · aws_iam_user_policy.fw_sync) · 변경 1(aws_s3_bucket_policy.archive) · 삭제 0
+terraform apply
+aws s3api get-bucket-policy --bucket opsloop-archive-739272173045 --query Policy --output text \
+  | python3 -c 'import json,sys; d=json.load(sys.stdin)["Statement"]; print(len(d)); [print(s["Sid"], s.get("Condition") or s.get("NotResource")) for s in d if s["Sid"] in ("OnlySensorWritesLedger", "OnlyFwSyncWritesFwHb", "LedgerKnownHostsOnly")]'
+                    # 문 14개. OnlySensorWritesLedger 에 …:user/opsloop-fw-sync, OnlyFwSyncWritesFwHb 가 그 사용자 하나,
+                    # LedgerKnownHostsOnly 의 NotResource 에 …/hb/v1/host=fw-opsloop-block/latest.json
+```
+
+정책 전체가 바뀌므로 한 회차 뒤 관문 · 허니팟의 업로드와 관문 보고가 이어지는지 본다(끊겼으면 보관한 정책을 `put-bucket-policy` 로 다시 넣는다).
+
+### 2. 키 넣기 (방화벽)
+
+키는 Terraform 으로 만들지 않는다. CLI 로 발급한 출력을 ssh 파이프로 바로 넘겨 방화벽에서 파일로 쓴다('CTI 원본 보관' 2단계와 같은 방식).
+
+```bash
+ssh -F ~/.ssh/config.opsloop fw 'sudo -n install -d -m 0750 /etc/opsloop && echo "  준비됨"'
+aws iam create-access-key --user-name opsloop-fw-sync --query 'AccessKey.[AccessKeyId,SecretAccessKey]' --output text \
+  | ssh -F ~/.ssh/config.opsloop fw 'read -r id secret && test -n "$secret" && printf "AWS_ACCESS_KEY_ID=%s\nAWS_SECRET_ACCESS_KEY=%s\n" "$id" "$secret" | sudo -n install -m 600 -o root -g root /dev/stdin /etc/opsloop/block-sync.env && echo "  썼다"'
+ssh -F ~/.ssh/config.opsloop fw 'sudo -n ls -l /etc/opsloop/block-sync.env'   # -rw------- root root. 내용은 보지 않는다
+```
+
+### 3. 검증 (실제 주체로)
+
+동기화의 `--dry-run` 이 목록을 읽고(`목록 확인`), 한 회차가 보고를 올린다(`aws s3 cp s3://…/hb/v1/host=fw-opsloop-block/latest.json -`).
+같은 키로 원장(`raw/…`) · 관문 보고 키에 쓰면 AccessDenied 여야 한다. 시험 객체가 남지 않게 거부될 쓰기만 해 본다.
+
+### 4. 되돌리기
+
+```bash
+aws iam list-access-keys --user-name opsloop-fw-sync --query 'AccessKeyMetadata[].AccessKeyId' --output text
+aws iam delete-access-key --user-name opsloop-fw-sync --access-key-id <위 ID>     # 사용자를 지우기 전에 키를 먼저 지운다
+git revert <이 변경 커밋> && terraform plan && terraform apply                       # 삭제 2 · 변경 1
+```
 
 ## 남은 과제
 

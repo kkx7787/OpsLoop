@@ -10,6 +10,10 @@
                 · 진입점은 클라이언트가 보낸 X-Forwarded-For 를 지우고 HAProxy 가 본 주소 하나만 싣는다
   - 콘솔 compose FORWARDED_ALLOW_IPS 기본값 = 방화벽 서비스망 주소 = 호스트 가드가 8000 에 들이는 유일한 주소
   - nftables    mgmt · tailscale0 허용 포트는 22 · 8443 뿐 · 8404 는 어디에도 없음 · input 정책 drop
+                · 차단 집합 opsloop_block(관문과 같은 꼴) 과 forward 의 fw-block-drop 기록 · drop 이 허용 규칙 앞 (이슈 #51)
+                · 외부 역할 세그먼트(ext)는 web-01 80 만 forward, input 은 핑 · NTP 만
+  - 외부 세그먼트  create-networks.sh vmnet5 · fw.yaml.template ext · configure.sh MAC · clone.sh 5번째 랜카드 · attacker.yaml · chrony allow
+  - verify.sh   7장: 차단 집합 · 타이머 · 공격자 → web-01 80 만 통과, 그 밖은 실패 · 정상 출발지 유지 · 차단 뒤 fw-block-drop
   - 검증 스크립트 verify.sh 는 방화벽 안 통계 페이지를 통과로, 관리망 직접 접근을 실패로 기대 · bash -n
   - README      SSH 터널 안내가 있고 관리망에서 바로 연다는 문구가 없음 · '콘솔 B 운용' 절(켜는 · 끄는 절차 · reload 주의)
 """
@@ -28,6 +32,12 @@ README = os.path.join(HERE, "README.md")
 COMPOSE = os.path.join(HERE, "compose", "console.yml")
 GUARD = os.path.join(HERE, "..", "ansible", "files", "console-guard.nft")
 FW_NETPLAN = os.path.join(HERE, "netplan", "fw.yaml.template")
+ATTACKER_NETPLAN = os.path.join(HERE, "netplan", "attacker.yaml")
+NETWORKS = os.path.join(HERE, "scripts", "create-networks.sh")
+CLONE = os.path.join(HERE, "scripts", "clone.sh")
+ADD_NIC = os.path.join(HERE, "scripts", "fw-add-ext-nic.sh")
+CHRONY = os.path.join(HERE, "fw", "chrony-server.conf")
+GATEWAY_NFT = os.path.join(HERE, "..", "aws", "gateway", "nftables.conf")
 TUNNEL = "ssh -F ~/.ssh/config.opsloop -L 8404:127.0.0.1:8404 fw"
 
 
@@ -177,6 +187,54 @@ class Nftables(unittest.TestCase):
         self.assertIn("type filter hook input priority 0; policy drop;", self.input)
         self.assertIn('iif "lo" accept', self.input)
 
+    # ── 차단 집행 · 외부 역할 세그먼트 (이슈 #51) ──
+    def test_차단_집합은_관문과_같은_꼴이다(self):
+        want = ["set opsloop_block {", "type ipv4_addr", "flags timeout", "size 4096", "}"]
+        code = nft_code(self.text)
+        i = code.index("set opsloop_block {")
+        self.assertEqual(code[i:i + 5], want)
+        gw = nft_code(read(GATEWAY_NFT))
+        j = gw.index("set opsloop_block {")
+        self.assertEqual(gw[j:j + 5], want, "관문 집합과 같아야 같은 동기화 스크립트를 쓴다")
+
+    def test_forward_의_차단_규칙은_허용_규칙_앞에_있고_기록한다(self):
+        fwd = nft_chain(self.text, "forward")
+        log = 'ip saddr @opsloop_block limit rate 10/second log prefix "fw-block-drop "'
+        drop = "ip saddr @opsloop_block drop"
+        self.assertIn(log, fwd)
+        self.assertIn(drop, fwd)
+        self.assertEqual(fwd.index(drop), fwd.index(log) + 1, "기록 바로 뒤에 drop")
+        first_accept = next(i for i, ln in enumerate(fwd)
+                            if ln.endswith("accept") and not ln.startswith("ct state"))
+        self.assertLess(fwd.index(drop), first_accept, "차단이 어떤 허용 규칙보다 앞이어야 한다")
+        # 관문의 규칙 꼴과 접두만 다르다(gw- ↔ fw-)
+        self.assertIn(log.replace("fw-block-drop", "gw-block-drop"), nft_chain(read(GATEWAY_NFT), "forward"))
+
+    def test_외부_세그먼트는_web01_의_80_만_넘긴다(self):
+        fwd = nft_chain(self.text, "forward")
+        ext = [ln for ln in fwd if '"ext"' in ln]
+        self.assertEqual(ext, ['iifname "ext" ip saddr $EXT ip daddr $WEB01 tcp dport 80 accept',
+                               'iifname "ext" limit rate 10/minute log prefix "fw-forward-drop "',
+                               'iifname "ext" drop'])
+        # ext 를 끝내는 줄이 랜카드를 보지 않는 어떤 허용 줄보다 앞이다 (출발지를 꾸민 패킷이 거기에 닿지 않게)
+        end = fwd.index('iifname "ext" drop')
+        for i, ln in enumerate(fwd):
+            if ln.endswith("accept") and not ln.startswith(("ct state", "iifname")):
+                self.assertGreater(i, end, f"ext 를 끝내기 전의 랜카드 무관 허용: {ln}")
+        self.assertIn("define EXT      = 203.0.113.0/24", nft_code(self.text))
+        # ext → uplink(인터넷 · 허니팟) 허용은 없다. 시연 흐름은 web-01 만 친다
+        self.assertFalse(any('"ext"' in ln and "uplink" in ln for ln in fwd))
+
+    def test_외부_세그먼트에서_방화벽_자신에는_핑과_NTP_만(self):
+        ext = [ln for ln in self.input if '"ext"' in ln and "!=" not in ln]
+        self.assertEqual(ext, ['iifname "ext" icmp type echo-request accept', 'iifname "ext" udp dport 123 accept',
+                               'iifname "ext" limit rate 10/minute log prefix "fw-input-drop "', 'iifname "ext" drop'])
+        end = self.input.index('iifname "ext" drop')
+        for i, ln in enumerate(self.input):
+            if ln.endswith("accept") and not ln.startswith(("ct state", "iifname", "iif ")):
+                self.assertGreater(i, end, f"ext 를 끝내기 전의 랜카드 무관 허용: {ln}")
+        self.assertIn('iifname != "ext" udp dport 41641 accept', self.input)
+
     @unittest.skipUnless(shutil.which("nft") and hasattr(os, "geteuid") and os.geteuid() == 0,
                          "nft 가 없거나 root 가 아니다 (방화벽 VM 에서 nft -c -f 로 본다)")
     def test_nft_문법(self):
@@ -184,9 +242,44 @@ class Nftables(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
 
+class ExtSegment(unittest.TestCase):
+    """외부 역할 세그먼트(vmnet5 · 203.0.113.0/24)를 만드는 파일들이 서로 맞는가 (이슈 #51)."""
+
+    def test_가상망_템플릿_MAC_이_서로_맞는다(self):
+        self.assertIn("add 5 203.0.113.0 no", read(NETWORKS))
+        fw = read(FW_NETPLAN)
+        self.assertIn('match: {macaddress: "__MAC_EXT__"}', fw)
+        self.assertIn("set-name: ext", fw)
+        self.assertIn("addresses: [203.0.113.1/24]", fw)
+        self.assertIn("'__MAC_EXT__':'00:50:56:20:01:04'", read(CONFIGURE))
+        self.assertIn("vmnet5,00:50:56:20:01:04", read(CLONE))
+        nic = read(ADD_NIC)
+        self.assertIn("VNET=vmnet5; MAC=00:50:56:20:01:04", nic)
+        self.assertIn("'__MAC_EXT__':'00:50:56:20:01:04'", nic)
+        self.assertIn('[ "${1:-}" = "--apply" ]', nic, "기본은 계획만")
+
+    def test_공격자_VM_주소와_경로(self):
+        a = read(ATTACKER_NETPLAN)
+        self.assertIn("addresses: [203.0.113.10/24]", a)
+        self.assertIn("via: 203.0.113.1", a)
+        self.assertNotIn("nameservers", a, "이름 해석 경로가 없다. 명령은 IP 로")
+        self.assertIn("allow 203.0.113.0/24", read(CHRONY))
+
+    def test_검증_스크립트_7장(self):
+        v = read(VERIFY)
+        sec = v.split("== 7.", 1)[1]
+        self.assertIn("A1=203.0.113.10", sec)
+        for s in ("opsloop_block", "opsloop-block-sync.timer", "fw-block-drop", "$(tcp $W1 80)", "$(tcp 1.1.1.1 443)",
+                  "정상 출발지 유지"):
+            self.assertIn(s, sec, f"없음: {s}")
+        # 차단 집합에 있으면 실패, 없으면 통과를 같은 줄로 본다
+        self.assertIn('exp=실패', sec)
+        self.assertIn('exp=통과', sec)
+
+
 class Scripts(unittest.TestCase):
     def test_셸_문법(self):
-        for path in (VERIFY, CONFIGURE):
+        for path in (VERIFY, CONFIGURE, NETWORKS, CLONE, ADD_NIC):
             r = subprocess.run(["bash", "-n", path], capture_output=True, text=True)
             self.assertEqual(r.returncode, 0, f"{path}: {r.stderr}")
 
@@ -235,6 +328,20 @@ class Readme(unittest.TestCase):
         self.assertTrue("maint 와 drain 은 서로를 푼다" in sec)
         self.assertTrue("| `state` | HAProxy 상태 (console-b 운영 0 · 관리 1" in sec)
         self.assertFalse(re.search(r"관리 9|합쳐 9", sec))
+
+    def test_내부_방화벽_차단_집행_절(self):
+        self.assertTrue("## 내부 방화벽 차단 집행 (이슈 #51)" in self.text)
+        sec = self.text.split("## 내부 방화벽 차단 집행 (이슈 #51)", 1)[1].split("\n## ", 1)[0]
+        for s in ("fw-add-ext-nic.sh --apply", "add-node.sh opsloop-attacker 512 1 vmnet5", "OPSLOOP_HOST=fw-opsloop",
+                  "MODE=nft", "/etc/opsloop/block-sync.env", "--selftest", "20260927_block_enforce.sql infra/migrations/20260929_block_points.sql",
+                  "OPSLOOP_FW_ID=fw-opsloop", "fw-block-drop", "### 시연 흐름", "### 장비 방화벽 연동 자리", "### 한계", "### 되돌리기",
+                  "exec 3<>/dev/tcp/192.168.50.21/80", "systemctl stop opsloop-block-sync.timer", "benign_positive"):
+            self.assertTrue(s in sec, f"없음: {s}")
+        # 커밋 변수는 처음 쓰기 전에 정한다
+        self.assertLess(sec.index("C=$(git rev-parse --short HEAD)"), sec.index('"$C:'))
+        # 관문 적용은 목록 전달 검증이고 실제 차단이 아니라는 구분 · 침해 성공이 아니라는 설명
+        self.assertTrue("목록 동기화와 실제 트래픽 차단은 다른 검증이다" in sec)
+        self.assertTrue("침해 성공을 확인한 것이 아니다" in sec)
 
     def test_nft_적용_뒤_tailscale_규칙을_되살린다(self):
         # flush ruleset 이 Tailscale 의 iptables-nft 규칙까지 지운다. 올리기 · 되돌리기 모두 tailscaled 를 다시 띄워야 한다

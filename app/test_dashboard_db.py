@@ -13,6 +13,22 @@ from unittest.mock import AsyncMock, patch
 from dashboard import dashboard_metrics
 
 
+async def with_test_source(conn):
+    """시험 출발지 판단 함수(is_test_source · 이슈 #51)를 이 연결에만 둔다. PostgreSQL 은 임시 스키마(pg_temp)에서 함수를
+    찾지 않으므로 무작위 스키마에 두고 search_path 맨 앞에 넣는다. 표는 그대로 임시 표다(스키마가 비어 pg_temp 에서 찾는다).
+    시험 대역은 203.0.113.0/24 만 둔다. 기존 시험의 192.0.2.x 사건은 그대로 집계된다. 지울 스키마 이름을 돌려준다"""
+    import secrets
+    schema = f"t51_{secrets.token_hex(4)}"
+    await conn.execute(f"""
+        CREATE TEMP TABLE test_ranges (cidr inet PRIMARY KEY, note text NOT NULL);
+        INSERT INTO test_ranges VALUES ('203.0.113.0/24', '시험');
+        CREATE SCHEMA {schema};
+        CREATE FUNCTION {schema}.is_test_source(ip inet) RETURNS boolean LANGUAGE sql STABLE
+            AS $$ SELECT EXISTS (SELECT 1 FROM pg_temp.test_ranges t WHERE ip <<= t.cidr) $$;
+        SET search_path TO {schema}, pg_temp;""")
+    return schema
+
+
 @unittest.skipUnless(os.environ.get("OPSLOOP_TEST_DATABASE_URL"), "PostgreSQL 시험 연결 미지정")
 class DashboardDatabaseTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -30,8 +46,10 @@ class DashboardDatabaseTests(unittest.IsolatedAsyncioTestCase):
                 action text, operator text, note text, created_at timestamptz DEFAULT now());
             CREATE TEMP TABLE blocklist (actor_ip inet PRIMARY KEY, reason text, incident_key text,
                 created_at timestamptz DEFAULT now(), expires_at timestamptz, released_at timestamptz,
-                requested_by text, method text, enforced_at timestamptz, enforce_note text, released_by text);
+                requested_by text, method text, enforced_at timestamptz, enforce_note text, released_by text,
+                enforcement jsonb);
         """)
+        self.schema = await with_test_source(self.conn)
         self.now = datetime(2026, 9, 23, 8, tzinfo=timezone.utc)
         self.pool = SimpleNamespace(acquire=self.acquire)
 
@@ -40,6 +58,7 @@ class DashboardDatabaseTests(unittest.IsolatedAsyncioTestCase):
         yield self.conn
 
     async def asyncTearDown(self):
+        await self.conn.execute(f"DROP SCHEMA IF EXISTS {self.schema} CASCADE")
         await self.conn.close()
 
     async def incident(self, key, seconds, rule="R001", severity="high", status="open"):
@@ -73,6 +92,28 @@ class DashboardDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((row["incidents"], row["judged_effective"], row["non_action"]), (4, 3, 2))
         self.assertEqual(float(row["non_action_rate"]), 66.7)
         self.assertEqual(data["pending"]["total"], 0)
+
+    async def test_rule_rates_exclude_test_sources(self):
+        # 시험 출발지(이슈 #51)의 사건은 규칙별 집계에서 빠지고, 판정 대기에는 그대로 남는다
+        await self.incident("real", 100)
+        await self.conn.execute("""INSERT INTO incidents (incident_key, rule_id, rule_name, rule_version, severity,
+            actor_ip, first_ts, status) VALUES ('lab', 'R001', '시험 규칙', 'v2', 'high', '203.0.113.10', $1, 'open')""",
+            self.now - timedelta(seconds=100))
+        data = await dashboard_metrics(self.conn, self.now)
+        self.assertEqual(data["rule_quality"][0]["incidents"], 1)
+        self.assertEqual(data["pending"]["total"], 2)
+
+    async def test_blocklist_enforcement_is_an_object(self):
+        # asyncpg 는 jsonb 를 글자로 준다. API 는 객체로 풀어 준다 (이슈 #51)
+        import main
+        await self.conn.execute("""INSERT INTO blocklist (actor_ip, expires_at, enforcement) VALUES
+            ('203.0.113.10', now() + interval '1 hour', '{"fw": {"state": "confirmed", "since": "2026-09-29T01:00:00Z",
+              "mode": "nft", "note": null}}'),
+            ('203.0.113.11', now() + interval '1 hour', NULL)""")
+        with patch.object(main.app.state, "pool", self.pool, create=True):
+            rows = {row["actor_ip"]: row for row in await main.blocklist(True)}
+        self.assertEqual(rows["203.0.113.10"]["enforcement"]["fw"]["state"], "confirmed")
+        self.assertIsNone(rows["203.0.113.11"]["enforcement"])
 
     async def test_zero_cases_preserve_null_rate(self):
         empty = await dashboard_metrics(self.conn, self.now)

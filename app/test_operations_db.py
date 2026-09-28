@@ -15,6 +15,22 @@ from unittest.mock import patch
 from fastapi import HTTPException, Response
 import operations as ops
 
+
+async def with_test_source(conn):
+    """시험 출발지 판단 함수(is_test_source · 이슈 #51)를 이 연결에만 둔다. PostgreSQL 은 임시 스키마(pg_temp)에서 함수를
+    찾지 않으므로 무작위 스키마에 두고 search_path 맨 앞에 넣는다. 표는 그대로 임시 표다(스키마가 비어 pg_temp 에서 찾는다).
+    시험 대역은 203.0.113.0/24 만 둔다. 기존 시험의 192.0.2.x 사건은 그대로 집계된다. 지울 스키마 이름을 돌려준다"""
+    import secrets
+    schema = f"t51_{secrets.token_hex(4)}"
+    await conn.execute(f"""
+        CREATE TEMP TABLE test_ranges (cidr inet PRIMARY KEY, note text NOT NULL);
+        INSERT INTO test_ranges VALUES ('203.0.113.0/24', '시험');
+        CREATE SCHEMA {schema};
+        CREATE FUNCTION {schema}.is_test_source(ip inet) RETURNS boolean LANGUAGE sql STABLE
+            AS $$ SELECT EXISTS (SELECT 1 FROM pg_temp.test_ranges t WHERE ip <<= t.cidr) $$;
+        SET search_path TO {schema}, pg_temp;""")
+    return schema
+
 @unittest.skipUnless(os.environ.get('OPSLOOP_TEST_DATABASE_URL'), 'PostgreSQL 시험 연결 미지정')
 class OperationsDatabaseTests(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -28,7 +44,7 @@ class OperationsDatabaseTests(unittest.IsolatedAsyncioTestCase):
             CREATE TEMP TABLE node_enrollments(id bigserial PRIMARY KEY,node_id text REFERENCES nodes(node_id),
                 token_hash text UNIQUE,issued_by text,issued_at timestamptz DEFAULT now(),expires_at timestamptz,
                 used_at timestamptz,canceled_at timestamptz);
-            CREATE TEMP TABLE incidents(incident_key text PRIMARY KEY,rule_id text,rule_version text,first_ts timestamptz);
+            CREATE TEMP TABLE incidents(incident_key text PRIMARY KEY,rule_id text,rule_version text,first_ts timestamptz,actor_ip inet);
             CREATE TEMP TABLE verdicts(id bigserial,incident_key text,verdict text,created_at timestamptz DEFAULT now());
             CREATE TEMP TABLE rule_versions(rule_version text,definition jsonb,reason text,created_at timestamptz DEFAULT now());
             CREATE TEMP TABLE detector_runs(id bigserial,rule_version text,since timestamptz,until timestamptz,
@@ -39,6 +55,7 @@ class OperationsDatabaseTests(unittest.IsolatedAsyncioTestCase):
         ''')
         migration=Path(__file__).resolve().parents[1]/'infra/migrations/20260923_console_ops.sql'
         await self.conn.execute(migration.read_text().replace('EXECUTE FUNCTION audit_append_only()', 'EXECUTE FUNCTION pg_temp.audit_append_only()'))
+        self.schema=await with_test_source(self.conn)
         self.request=SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(pool=SimpleNamespace(acquire=self.acquire))),
                                      state=SimpleNamespace(user={'u':'test-admin','r':'admin'}))
         self.body=ops.EnrollmentIn(node_id='test-node',hostname='test-node',addr='192.0.2.9',logs=['nginx'])
@@ -54,6 +71,7 @@ class OperationsDatabaseTests(unittest.IsolatedAsyncioTestCase):
 
     async def asyncTearDown(self):
         self.audit_patch.stop()
+        await self.conn.execute(f'DROP SCHEMA IF EXISTS {self.schema} CASCADE')
         await self.conn.close()
 
     async def issue(self):
@@ -138,6 +156,9 @@ class OperationsDatabaseTests(unittest.IsolatedAsyncioTestCase):
         scoped=await ops.quality(self.request,True,start,start+timedelta(days=1))
         self.assertEqual(scoped['rows'][0]['incidents'],1)
         self.assertEqual(scoped['rows'][0]['threats'],1)
+        # 시험 출발지(이슈 #51)의 사건은 규칙 화면 집계에서 빠진다
+        await self.conn.execute("INSERT INTO incidents VALUES ('lab','R001','v1','2026-09-23','203.0.113.10')")
+        self.assertEqual((await ops.quality(self.request,True))['rows'][0]['incidents'],3)
         self.assertEqual(scoped['versions'][0]['rules'][0]['name'],'시험')
 
     async def test_audit_target_actor_time_literal_filters_and_page(self):

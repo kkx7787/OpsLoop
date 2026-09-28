@@ -117,10 +117,12 @@ ROLES = {"opsloop": ("true", "true", "-1", "true"), "opsloop_backup": ("true", "
          "opsloop_detector": ("true", "false", "5", "false"), "opsloop_gate": ("true", "false", "10", "false"),
          "opsloop_ingest": ("true", "false", "5", "false"),
          "opsloop_enforcer": ("true", "false", "2", "false")}
-FUNCS = ("audit_append_only,audit_blocklist,audit_event,blocklist_guard,enroll_node,incidents_keep_judged,"
-         "node_first_receipt,note_block_expired,notify_incident")
-TRIGS = "blocklist_guard=O,trg_audit_append_only=O,trg_audit_blocklist=O,trg_incidents_keep_judged=O,trg_notify_incident=O"
-CATALOG = ("c|tables|24\nc|fk|15\nc|triggers|%s\nc|functions|%s\nc|views|audit_log,rule_quality,unjudged_incidents\n"
+# 이슈 #51 뒤: 함수 +2(blocklist_enforcement_guard · is_test_source) · 트리거 +1(blocklist_enforcement_guard) · 표 +1(test_ranges)
+FUNCS = ("audit_append_only,audit_blocklist,audit_event,blocklist_enforcement_guard,blocklist_guard,enroll_node,"
+         "incidents_keep_judged,is_test_source,node_first_receipt,note_block_expired,notify_incident")
+TRIGS = ("blocklist_enforcement_guard=O,blocklist_guard=O,trg_audit_append_only=O,trg_audit_blocklist=O,"
+         "trg_incidents_keep_judged=O,trg_notify_incident=O")
+CATALOG = ("c|tables|25\nc|fk|15\nc|triggers|%s\nc|functions|%s\nc|views|audit_log,rule_quality,unjudged_incidents\n"
            "c|sequences|7\nc|extensions|plpgsql\n" % (TRIGS, FUNCS))
 BASE = "b|judged_not_resolved|15\nb|verdict_operator_missing|810\nb|released_blocks|0\nb|released_audit|2\n"
 
@@ -991,7 +993,7 @@ class Metrics(unittest.TestCase):
         self.assertEqual(sorted(toc["tables"]), sorted(Q.TABLES))
         self.assertEqual((toc["counts"]["TABLE"], toc["counts"]["TABLE DATA"], toc["counts"]["FK CONSTRAINT"],
                           toc["counts"]["SEQUENCE"], toc["counts"]["SEQUENCE SET"], toc["counts"]["FUNCTION"],
-                          toc["counts"]["TRIGGER"], toc["counts"]["VIEW"]), (24, 24, 15, 7, 7, 9, 5, 3))
+                          toc["counts"]["TRIGGER"], toc["counts"]["VIEW"]), (25, 25, 15, 7, 7, 11, 6, 3))
         self.assertEqual(toc["archive_created"], {"at": "2026-09-26 07:27:40", "tz": "UTC"})
 
     def test_지문_차이(self):

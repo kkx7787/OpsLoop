@@ -1,0 +1,11 @@
+# attacker · 시연용 공격자 VM (이슈 #51). 외부 역할 세그먼트의 고정 주소. 기본 경로는 내부 방화벽의 ext 주소다.
+# 방화벽은 이 세그먼트에서 web-01 의 80 만 넘기고 인터넷 · DNS 는 열지 않는다. 명령은 전부 IP 로 친다 (이름 해석이 안 된다).
+network:
+  version: 2
+  ethernets:
+    primary:
+      match: {name: "e*"}
+      dhcp4: false
+      addresses: [203.0.113.10/24]
+      routes:
+        - {to: default, via: 203.0.113.1}

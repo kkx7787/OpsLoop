@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# 세그먼트용 가상 네트워크 3개를 만든다. sudo 로 실행한다.
+# 세그먼트용 가상 네트워크 4개를 만든다. sudo 로 실행한다.
 #   vmnet2 서비스망 192.168.50.0/24 (호스트 미연결)
 #   vmnet3 데이터망 192.168.60.0/24 (호스트 미연결)
 #   vmnet4 관리망   192.168.70.0/24 (호스트 연결 · Mac 이 작업자 단말)
-# DHCP 는 모두 끈다. 주소는 노드마다 고정으로 준다.
+#   vmnet5 외부 역할 203.0.113.0/24 (호스트 미연결 · 시연용 공격자 VM · 이슈 #51). 문서용 대역(RFC 5737)이라 차단 목록에 올릴 수 있다.
+#          Fusion 이 이 대역을 거부하면 같은 조건(어느 금지 목록에도 없음)인 198.51.100.0/24 로 바꾸고 fw/nftables.conf 의 EXT 도 함께 바꾼다
+# DHCP 는 모두 끈다. 주소는 노드마다 고정으로 준다. 이미 있는 망은 건너뛰므로 다시 돌려도 된다.
 set -euo pipefail
 [ "$(id -u)" = 0 ] || { echo "sudo 로 실행하세요"; exit 1; }
 CFG="/Library/Preferences/VMware Fusion/networking"
@@ -24,6 +26,7 @@ EOT
 add 2 192.168.50.0 no
 add 3 192.168.60.0 no
 add 4 192.168.70.0 yes
+add 5 203.0.113.0 no
 
 "$LIB/vmnet-cli" --configure
 "$LIB/vmnet-cli" --stop

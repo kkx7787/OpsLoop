@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ActorBlock, BehaviorRow, RawLine } from '@/api/incidents'
-import { BLOCK_STATE_LABEL, blockState, blockStateHint, decisionSeconds, formatRawLine, formatValue, isActiveBlock, mergeHistory, sampleColumns, summarizeBehavior } from './format'
+import { BLOCK_STATE_LABEL, blockState, blockStateHint, decisionSeconds, enforcementPoints, formatRawLine, formatValue, isActiveBlock, mergeHistory, sampleColumns, summarizeBehavior } from './format'
 
 function row(extra: Partial<BehaviorRow> = {}): BehaviorRow {
   return { ts: '2026-09-18T06:00:30+00:00', sensor: 'hp-01', eventid: 'x', session: null, username: null, input: null, url: null, shasum: null, http_method: null, http_status: null, ...extra }
@@ -109,5 +109,25 @@ describe('mergeHistory', () => {
     })
     expect(merged.map((e) => `${e.kind}:${e.label}`)).toEqual(['action:escalate', 'verdict:실제 위협', 'action:차단', 'action:확인'])
     expect(merged[1]).toMatchObject({ verdict: 'threat', note: '근거', observed_value: 3 })
+  })
+})
+
+describe('enforcementPoints (이슈 #51)', () => {
+  it('관문 → 내부 방화벽 순으로 알려진 지점 · 상태만 돌려준다', () => {
+    const rows = enforcementPoints({ enforcement: {
+      fw: { state: 'stale', since: '2026-09-29T01:05:00Z', mode: 'nft', note: '내부 방화벽 보고가 5분 넘게 멈춤' },
+      gateway: { state: 'confirmed', since: '2026-09-29T01:00:30Z', mode: 'fail2ban', note: null },
+    } })
+    expect(rows.map(r => [r.key, r.label, r.point.state])).toEqual([['gateway', 'AWS 관문', 'confirmed'], ['fw', '내부 방화벽', 'stale']])
+    expect(rows[1].point.note).toBe('내부 방화벽 보고가 5분 넘게 멈춤')
+  })
+
+  it('없거나 모양이 틀리면 빈 목록 · 모르는 상태와 글자가 아닌 값은 버린다', () => {
+    expect(enforcementPoints(null)).toEqual([])
+    expect(enforcementPoints({})).toEqual([])
+    expect(enforcementPoints({ enforcement: null })).toEqual([])
+    const bad = { enforcement: { gateway: { state: 'hacked' }, fw: { state: 'pending', since: 7, mode: ['nft'], note: {} }, other: { state: 'confirmed' } } }
+    expect(enforcementPoints(bad as never)).toEqual([{ key: 'fw', label: '내부 방화벽', point: { state: 'pending', since: null, mode: null, note: null } }])
+    expect(enforcementPoints({ enforcement: [] as never })).toEqual([])
   })
 })

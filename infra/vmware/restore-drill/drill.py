@@ -1582,7 +1582,7 @@ def step_verify(ctx):
                "triggers": len([x for x in (cat.get("triggers") or "").split(",") if x]),
                "functions": len([x for x in (cat.get("functions") or "").split(",") if x]),
                "views": len([x for x in (cat.get("views") or "").split(",") if x])}
-        ctx.check("구조 수치 = 계약 참고값 (표 23 · FK 15 · 트리거 4 · 함수 7 · 뷰 3)", got == Q.EXPECT,
+        ctx.check("구조 수치 = 계약 참고값 (" + " · ".join("%s %s" % kv for kv in sorted(Q.EXPECT.items())) + ")", got == Q.EXPECT,
                   " · ".join("%s %s" % kv for kv in sorted(got.items())), warn=True)
         seq_bad = []
         for f in seqs:

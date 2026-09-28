@@ -49,6 +49,7 @@ async def quality(request: Request, details: bool = False,
                       nullif(count(v.verdict) FILTER (WHERE v.verdict<>'undetermined'),0),1) AS non_action_rate
             FROM incidents i LEFT JOIN latest v USING (incident_key)
             WHERE ($1::timestamptz IS NULL OR i.first_ts >= $1) AND ($2::timestamptz IS NULL OR i.first_ts < $2)
+              AND NOT is_test_source(i.actor_ip)   -- 시험 출발지 제외 (이슈 #51)
             GROUP BY i.rule_id,i.rule_version ORDER BY i.rule_id,i.rule_version
         """, since, until)
         runs = await c.fetch("""SELECT id, rule_version, since, until, started_at, finished_at, incidents

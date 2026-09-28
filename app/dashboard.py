@@ -44,6 +44,7 @@ SELECT i.rule_id, i.rule_version, count(*) AS incidents,
     round(100.0 * count(*) FILTER (WHERE v.verdict IN ('non_actionable', 'false_positive', 'benign_positive'))
           / nullif(count(v.verdict) FILTER (WHERE v.verdict <> 'undetermined'), 0), 1) AS non_action_rate
 FROM incidents i LEFT JOIN latest v USING (incident_key)
+WHERE NOT is_test_source(i.actor_ip)   -- 시험 출발지 제외 (이슈 #51, rule_quality 뷰와 같다)
 GROUP BY i.rule_id, i.rule_version ORDER BY i.rule_id, i.rule_version
 """
 

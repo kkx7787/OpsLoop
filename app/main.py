@@ -241,11 +241,20 @@ async def shell(request: Request):
 <main><p>화면 구현 예정 (WBS 3.6.2~3.6.4)</p></main></body></html>"""
 
 
+# jsonb 열. asyncpg 는 코덱을 두지 않으면 글자로 준다. 화면이 객체로 받게 여기서 푼다 (이슈 #51 enforcement)
+JSON_COLUMNS = frozenset({"enforcement"})
+
+
 def row_to_dict(r: asyncpg.Record) -> dict:
     out = {}
     for k, v in dict(r).items():
         if isinstance(v, datetime):
             out[k] = v.astimezone(timezone.utc).isoformat()
+        elif k in JSON_COLUMNS and isinstance(v, str):
+            try:
+                out[k] = json.loads(v)
+            except ValueError:
+                out[k] = None
         else:
             out[k] = v
     return out
@@ -411,9 +420,10 @@ async def get_incident(incident_key: str):
             SELECT rule_id, count(*) AS incidents FROM incidents
             WHERE actor_ip = $1::inet GROUP BY rule_id ORDER BY incidents DESC""",
             actor) if actor else []
-        # 차단 행과 집행 결과(이슈 #47). 화면은 enforce_note · enforced_at · expires_at 으로 집행 상태를 가른다
+        # 차단 행과 집행 결과(이슈 #47). 화면은 enforce_note · enforced_at · expires_at 으로 집행 상태를 가르고,
+        # 지점별 결과(enforcement · 이슈 #51)가 있으면 관문 · 내부 방화벽 표를 그린다
         blocked = await c.fetchrow("""
-            SELECT reason, method, created_at, expires_at, released_at, enforced_at, enforce_note, requested_by
+            SELECT reason, method, created_at, expires_at, released_at, enforced_at, enforce_note, requested_by, enforcement
             FROM blocklist WHERE actor_ip = $1::inet""", actor) if actor else None
         # 이 출발지가 드는 차단 금지 대역(block_exempt). 있으면 화면이 차단 단추를 흐리고 사유를 보인다
         exempt = await exempt_of(c, actor) if actor else None
@@ -821,7 +831,7 @@ async def add_verdict(incident_key: str, body: VerdictIn, request: Request):
 async def blocklist(active_only: bool = True):
     q = """SELECT host(actor_ip) actor_ip, reason, incident_key,
                   created_at, expires_at, released_at, method, requested_by,
-                  enforced_at, enforce_note, released_by, now() AS checked_at
+                  enforced_at, enforce_note, enforcement, released_by, now() AS checked_at
            FROM blocklist {} ORDER BY created_at DESC, actor_ip"""
     q = q.format("WHERE released_at IS NULL AND (expires_at IS NULL OR expires_at > now())" if active_only else "")
     async with app.state.pool.acquire() as c:

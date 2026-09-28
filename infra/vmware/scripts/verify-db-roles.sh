@@ -128,6 +128,13 @@ p opsloop_console  "(SELECT prosecdef FROM pg_proc WHERE proname = 'blocklist_gu
 q opsloop_detector "SELECT count(*) FROM block_exempt" 거부
 p opsloop_detector "has_function_privilege('opsloop_detector', 'note_block_expired(inet, timestamptz)', 'EXECUTE')" f
 q opsloop_ingest   "SELECT count(*) FROM block_exempt" 거부
+# 집행 지점 (이슈 #51). 집행기는 지점별 결과 열(enforcement)도 쓴다. 콘솔은 시험 출발지 대역을 읽기만 하고,
+#   규칙별 집계는 표 권한 없이 is_test_source(SECURITY DEFINER · PUBLIC 실행)로 한다
+q opsloop_enforcer "UPDATE blocklist SET enforcement = enforcement WHERE false" 허용
+q opsloop_console  "SELECT cidr, note FROM test_ranges LIMIT 0" 허용
+q opsloop_console  "INSERT INTO test_ranges (cidr, note) VALUES ('192.0.2.0/24', 'x')" 거부
+q opsloop_detector "SELECT is_test_source('203.0.113.10'::inet)" 허용
+q opsloop_console  "SELECT is_test_source('203.0.113.10'::inet)" 허용
 
 echo "== 접속 한도 (이슈 #43. 콘솔 한 대 = 풀 10 + LISTEN 1 → 두 대 22 + triage.py)"
 #   20 이면 콘솔 B 를 켤 때 한도에 닿는다. 무제한(-1)도 기대와 다르다고 본다 (콘솔이 DB 접속을 다 써 버리지 않게 하는 울타리다)

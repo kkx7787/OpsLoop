@@ -1,5 +1,5 @@
 [Unit]
-Description=OpsLoop 관문 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)
+Description=OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)
 Wants=network-online.target
 After=network-online.target nftables.service fail2ban.service
 
@@ -8,6 +8,8 @@ Type=oneshot
 # nft 와 fail2ban-client(root 소켓)를 쓰므로 root 로 돈다. 대신 CAP_NET_ADMIN 밖의 권한을 걷고 쓸 곳을 좁힌다.
 # 입력(S3 목록)은 검사를 마친 IPv4 표준형만 명령에 넘기고 셸을 거치지 않는다
 EnvironmentFile=/etc/default/opsloop-block-sync
+# 내부 방화벽(OPSLOOP_HOST=fw-…)의 IAM 사용자 키. 관문에는 없다(인스턴스 역할). 0600 root. 없으면 건너뛴다(- 접두)
+EnvironmentFile=-/etc/opsloop/block-sync.env
 ExecStart=/usr/bin/python3 /usr/local/lib/opsloop/block-sync.py
 StateDirectory=opsloop-block-sync
 StateDirectoryMode=0700

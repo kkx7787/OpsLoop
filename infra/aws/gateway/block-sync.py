@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 """
-OpsLoop - 관문 차단 목록 동기화 (이슈 #47)
+OpsLoop - 관문 · 내부 방화벽 차단 목록 동기화 (이슈 #47 · #51)
 
-데이터 노드 집행기(enforcer/block_enforcer.py)가 원장 버킷에 올린 차단 목록을 1분마다 읽어 관문 nft 집합
-(inet filter opsloop_block)에 반영하고, 반영 결과를 관문 상태로 올린다. 집행기가 이 상태를 읽어 DB 의
-enforced_at · method · enforce_note 를 쓴다. 관문은 DB 에 닿지 않고 DB 비밀번호도 모른다.
+데이터 노드 집행기(enforcer/block_enforcer.py)가 원장 버킷에 올린 차단 목록을 1분마다 읽어 nft 집합
+(inet filter opsloop_block)에 반영하고, 반영 결과를 집행 지점의 상태로 올린다. 집행기가 이 상태를 읽어 DB 의
+집행 열을 쓴다. 집행 지점은 DB 에 닿지 않고 DB 비밀번호도 모른다.
+
+집행 지점 둘이 같은 스크립트를 쓴다 (OPSLOOP_HOST 로 가른다)
+  관문 (i-…)          AWS 인스턴스 역할로 S3 에 닿는다. fail2ban 또는 nft 모드. 허니팟 유입(DNAT 22 · 23 · 8080)을 막는다
+  내부 방화벽 (fw-…)  인스턴스가 아니라 IAM 사용자 키(/etc/opsloop/block-sync.env · 0600 root)로 S3 에 닿는다. nft 모드만.
+                     실서비스(web-01) 앞에서 외부 역할 세그먼트의 출발지를 막는다 (이슈 #51). 메타데이터(IMDS) 조회는 끈다.
 
   읽기  s3://<버킷>/block/v1/latest.json
         {"v":1,"generated_at":ISO,"entries":[{"ip":"a.b.c.d","until":ISO}],"digest":"<sha256 hex>"}
-  쓰기  s3://<버킷>/hb/v1/host=<관문 인스턴스 ID>-block/latest.json
+  쓰기  s3://<버킷>/hb/v1/host=<OPSLOOP_HOST>-block/latest.json   (관문: 인스턴스 ID · 내부 방화벽: fw-<이름>)
         {"v":1,"at":ISO,"mode":"fail2ban"|"nft","list_digest":..,"list_generated_at":..,"applied":n,
          "set_count":n,"rejected":[{"ip":..,"why":..}],"errors":[..],"selftest":"ok"|"fail:<사유>"|null}
 
@@ -42,8 +47,10 @@ digest
   다른 회차와 겹치지 않게 잠근다(겹치면 시험 주소가 목록 밖 원소로 빠진다)
 
 설정 (/etc/default/opsloop-block-sync)
-  MODE=fail2ban|nft  OPSLOOP_BUCKET=<버킷>  OPSLOOP_HOST=<관문 인스턴스 ID>  AWS_DEFAULT_REGION=ap-northeast-2
+  MODE=fail2ban|nft  OPSLOOP_BUCKET=<버킷>  OPSLOOP_HOST=<관문 인스턴스 ID 또는 fw-<이름>>  AWS_DEFAULT_REGION=ap-northeast-2
   OPSLOOP_BLOCK_STATE (기본 /var/lib/opsloop-block-sync)
+  내부 방화벽은 /etc/opsloop/block-sync.env (0600 root) 에 AWS_ACCESS_KEY_ID · AWS_SECRET_ACCESS_KEY 를 둔다
+  (systemd 단위가 EnvironmentFile 로 읽는다. 없으면 fw-… 설정은 시작에서 멈춘다)
 
 사용 (root)
   set -a; . /etc/default/opsloop-block-sync; set +a
@@ -82,7 +89,9 @@ SELFTEST_TIMEOUT = 60
 CMD_TIMEOUT = 60
 BAN_CHUNK = 200                   # fail2ban-client 한 번에 넘기는 주소 수
 DEFAULT_STATE = "/var/lib/opsloop-block-sync"
-HOST_RE = re.compile(r"i-[0-9a-f]{8,17}")
+# 관문은 EC2 인스턴스 ID, 내부 방화벽은 fw-<이름>(소문자 · 숫자 · 빼기). 상태 키(hb/v1/host=<값>-block)에 그대로 들어가고
+# 집행기(enforcer GATEWAY_ID_RE · FW_ID_RE)와 버킷 정책이 같은 값을 본다
+HOST_RE = re.compile(r"i-[0-9a-f]{8,17}|fw-[a-z0-9-]{1,40}")
 # nft list chain 이 찍는 차단 규칙. 카운터가 붙어 있어도 된다
 DROP_RULE_RE = re.compile(r"ip saddr @opsloop_block (?:counter packets \d+ bytes \d+ )?drop\b")
 
@@ -609,9 +618,34 @@ def config(env):
     if mode not in ("fail2ban", "nft"):
         raise SystemExit(f"MODE 는 fail2ban 또는 nft 다: {mode!r}")
     if not bucket or not HOST_RE.fullmatch(host):
-        raise SystemExit("OPSLOOP_BUCKET 과 OPSLOOP_HOST(관문 인스턴스 ID)가 필요하다")
-    return {"mode": mode, "bucket": bucket, "host": host,
+        raise SystemExit("OPSLOOP_BUCKET 과 OPSLOOP_HOST(관문 인스턴스 ID 또는 fw-<이름>)가 필요하다")
+    point = "fw" if host.startswith("fw-") else "gateway"
+    if point == "fw":
+        if mode != "nft":
+            raise SystemExit("내부 방화벽(fw-…)은 nft 모드만 쓴다 (fail2ban 을 두지 않는다)")
+        if not (env.get("AWS_ACCESS_KEY_ID") and env.get("AWS_SECRET_ACCESS_KEY")):
+            raise SystemExit("내부 방화벽(fw-…)은 인스턴스 역할이 없다. AWS_ACCESS_KEY_ID · AWS_SECRET_ACCESS_KEY 가 필요하다 "
+                             "(/etc/opsloop/block-sync.env)")
+    return {"mode": mode, "bucket": bucket, "host": host, "point": point,
             "state": env.get("OPSLOOP_BLOCK_STATE", DEFAULT_STATE)}
+
+
+def client_kwargs(cfg, env):
+    """boto3.client 인자. 관문은 인스턴스 역할(기본 자격 체인)이고, 내부 방화벽은 설정 파일의 키만 쓴다."""
+    kw = {"region_name": (env.get("AWS_DEFAULT_REGION") or "ap-northeast-2").strip()}
+    if cfg["point"] == "fw":
+        kw.update(aws_access_key_id=env["AWS_ACCESS_KEY_ID"].strip(), aws_secret_access_key=env["AWS_SECRET_ACCESS_KEY"].strip())
+    return kw
+
+
+def isolate_credentials(cfg, environ):
+    """내부 방화벽은 EC2 가 아니다. 키 오류 때 메타데이터(IMDS)를 기다리거나 ~/.aws 를 읽지 않게 한다 (집행기와 같은 선례).
+    관문은 인스턴스 역할이 메타데이터로 오므로 건드리지 않는다."""
+    if cfg["point"] != "fw":
+        return
+    for k in ("AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE"):
+        environ.setdefault(k, os.devnull)
+    environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
 
 
 def status_key(host):
@@ -650,11 +684,12 @@ def lock(state, wait=50):
 
 
 def main(argv=None, env=None, s3=None, nft=None, f2b=None):
-    ap = argparse.ArgumentParser(description="OpsLoop 관문 차단 목록 동기화 (S3 목록 → nft 집합)")
+    ap = argparse.ArgumentParser(description="OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합)")
     ap.add_argument("--selftest", action="store_true", help="문서용 주소로 반영 경로를 시험한 뒤 한 회차 돈다")
     ap.add_argument("--dry-run", action="store_true", help="읽고 계획만 찍는다. 아무것도 바꾸거나 올리지 않는다")
     args = ap.parse_args(argv)
-    cfg = config(os.environ if env is None else env)
+    env = os.environ if env is None else env
+    cfg = config(env)
     os.makedirs(cfg["state"], mode=0o700, exist_ok=True)
     lock_fd = lock(cfg["state"])
     nft, f2b = nft or Nft(), f2b or Fail2ban()
@@ -667,8 +702,9 @@ def main(argv=None, env=None, s3=None, nft=None, f2b=None):
         if s3 is None:
             import boto3
             from botocore.config import Config
-            s3 = boto3.client("s3", config=Config(connect_timeout=10, read_timeout=20,
-                                                  retries={"max_attempts": 3}))
+            isolate_credentials(cfg, os.environ)
+            s3 = boto3.client("s3", config=Config(connect_timeout=10, read_timeout=20, retries={"max_attempts": 3}),
+                              **client_kwargs(cfg, env))
         st, plan = sync(cfg, s3, nft, f2b, selftest=last_selftest(cfg["state"], cfg["mode"]),
                         dry_run=args.dry_run)
         for line in plan:

@@ -7,7 +7,8 @@ import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { Time } from '../../atoms/Time'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { DetailSection } from './DetailSection'
-import { BLOCK_STATE_LABEL, BLOCK_STATE_TONE, blockState, blockStateHint, incidentHref } from './format'
+import { BLOCK_STATE_LABEL, BLOCK_STATE_TONE, blockState, blockStateHint, enforcementPoints, incidentHref, LIVE_BLOCK_STATES } from './format'
+import { EnforcePointList } from './EnforcePointList'
 import { StatusBadge } from './StatusBadge'
 import { TABLE } from './table-styles'
 
@@ -77,7 +78,7 @@ export function ActorSection({ actor, related, actorIp, absorbed, className }: A
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <span className="text-xs text-ink-muted">차단 이력 · 요청과 AWS 관문의 집행 결과</span>
+            <span className="text-xs text-ink-muted">차단 이력 · 요청과 집행 지점의 결과</span>
             {blocked && state ? (
               <>
                 <dl className="m-0 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3" data-block-state={state}>
@@ -99,6 +100,7 @@ export function ActorSection({ actor, related, actorIp, absorbed, className }: A
                     집행 메모 <UntrustedText value={blocked.enforce_note} />
                   </p>
                 )}
+                {LIVE_BLOCK_STATES.includes(state) && <EnforcePointList points={enforcementPoints(blocked)} />}
               </>
             ) : (
               <span className="text-xs text-ink-muted">차단한 적 없음</span>

@@ -219,9 +219,11 @@ class Base(unittest.TestCase):
                                 dry_run=dry_run)
         return st
 
-    def main(self, *argv, mode=None):
-        env = {"MODE": mode or self.MODE, "OPSLOOP_BUCKET": "opsloop-archive-test", "OPSLOOP_HOST": HOST,
+    def main(self, *argv, mode=None, host=HOST):
+        env = {"MODE": mode or self.MODE, "OPSLOOP_BUCKET": "opsloop-archive-test", "OPSLOOP_HOST": host,
                "OPSLOOP_BLOCK_STATE": self.tmp}
+        if host.startswith("fw-"):
+            env.update(AWS_ACCESS_KEY_ID="AKIATEST", AWS_SECRET_ACCESS_KEY="secret-test")
         out = io.StringIO()
         old = sys.stdout, sys.stderr
         sys.stdout = sys.stderr = out
@@ -684,6 +686,46 @@ class StateTest(Base):
             with self.assertRaises(SystemExit):
                 bs.config(env)
         self.assertEqual(bs.config({"OPSLOOP_BUCKET": "b", "OPSLOOP_HOST": HOST})["mode"], "fail2ban")
+        self.assertEqual(bs.config({"OPSLOOP_BUCKET": "b", "OPSLOOP_HOST": HOST})["point"], "gateway")
+        # 내부 방화벽 (이슈 #51): fw-<이름> · nft 모드만 · 키가 있어야 한다
+        fw = {"MODE": "nft", "OPSLOOP_BUCKET": "b", "OPSLOOP_HOST": "fw-opsloop",
+              "AWS_ACCESS_KEY_ID": "AKIATEST", "AWS_SECRET_ACCESS_KEY": "s"}
+        self.assertEqual((bs.config(fw)["point"], bs.config(fw)["host"]), ("fw", "fw-opsloop"))
+        for bad in (dict(fw, MODE="fail2ban"), {k: v for k, v in fw.items() if k != "AWS_SECRET_ACCESS_KEY"},
+                    dict(fw, AWS_ACCESS_KEY_ID=""), dict(fw, OPSLOOP_HOST="fw-"), dict(fw, OPSLOOP_HOST="fw-Opsloop"),
+                    dict(fw, OPSLOOP_HOST="fw-" + "a" * 41), dict(fw, OPSLOOP_HOST="fw-op sloop")):
+            with self.assertRaises(SystemExit):
+                bs.config(bad)
+
+    def test_내부_방화벽은_키로만_S3_에_닿고_메타데이터를_끈다(self):
+        env = {"MODE": "nft", "OPSLOOP_BUCKET": "b", "OPSLOOP_HOST": "fw-opsloop",
+               "AWS_ACCESS_KEY_ID": "AKIATEST ", "AWS_SECRET_ACCESS_KEY": " s"}
+        fw = bs.config(env)
+        self.assertEqual(bs.client_kwargs(fw, env), {"region_name": "ap-northeast-2", "aws_access_key_id": "AKIATEST",
+                                                     "aws_secret_access_key": "s"})
+        gw_env = {"OPSLOOP_BUCKET": "b", "OPSLOOP_HOST": HOST, "AWS_DEFAULT_REGION": "us-east-1"}
+        gw = bs.config(gw_env)
+        self.assertEqual(bs.client_kwargs(gw, gw_env), {"region_name": "us-east-1"})   # 관문은 인스턴스 역할(기본 자격 체인)
+        environ = {}
+        bs.isolate_credentials(fw, environ)
+        self.assertEqual(environ, {"AWS_CONFIG_FILE": os.devnull, "AWS_SHARED_CREDENTIALS_FILE": os.devnull,
+                                   "AWS_EC2_METADATA_DISABLED": "true"})
+        environ = {"AWS_EC2_METADATA_DISABLED": "false"}
+        bs.isolate_credentials(fw, environ)
+        self.assertEqual(environ["AWS_EC2_METADATA_DISABLED"], "false")               # 이미 정한 값은 두지 않고 덮지 않는다
+        environ = {}
+        bs.isolate_credentials(gw, environ)
+        self.assertEqual(environ, {})
+
+    def test_내부_방화벽_상태는_fw_경로에_올린다(self):
+        self.put_list([{"ip": "203.0.113.10", "until": self.iso(3600)}])
+        rc, out = self.main(mode="nft", host="fw-opsloop")
+        self.assertEqual(rc, 0, out)
+        key = "hb/v1/host=fw-opsloop-block/latest.json"
+        self.assertEqual(self.s3.puts, [(key, "application/json")])
+        st = json.loads(self.s3.objects[key].decode("utf-8"))
+        self.assertEqual((st["mode"], st["applied"], st["list_digest"]), ("nft", 1, self.digest()))
+        self.assertEqual(self.fake.count("fail2ban-client"), 0)
 
     def test_nft_출력의_원소는_IPv4_표준형만_받는다(self):
         got = bs.parse_elems(["198.51.100.7", {"elem": {"val": "203.0.113.9", "timeout": 60, "expires": 59}},
@@ -820,6 +862,25 @@ class ConfigFilesTest(unittest.TestCase):
         self.assertEqual((bs.LIST_KEY, bs.status_key(HOST), bs.FAMILY, bs.TABLE, bs.SET, bs.JAIL),
                          ("block/v1/latest.json", "hb/v1/host=i-0ffeb29efad03546d-block/latest.json",
                           "inet", "filter", "opsloop_block", "opsloop-block"))
+        # 내부 방화벽 (이슈 #51). s3.tf 의 fw_sync_host · fw_sync_status_key 와 같아야 한다
+        self.assertEqual(bs.status_key("fw-opsloop"), "hb/v1/host=fw-opsloop-block/latest.json")
+        tf = self.read("..", "..", "terraform", "s3.tf")
+        self.assertIn('fw_sync_host       = "fw-opsloop"', tf)
+        self.assertIn('fw_sync_status_key = "hb/v1/host=${local.fw_sync_host}-block/latest.json"', tf)
+        for sid in ("OnlyFwSyncWritesFwHb", "aws_iam_user.fw_sync.arn]", "local.fw_sync_status_key}\",\n      ])"):
+            self.assertIn(sid, tf, sid)
+
+    def test_내부_방화벽_nftables_도_같은_집합과_규칙_꼴이다(self):
+        text = self.read("..", "..", "vmware", "fw", "nftables.conf")
+        body = [ln.strip() for ln in text.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+        i = body.index("set opsloop_block {")
+        self.assertEqual(body[i:i + 5], ["set opsloop_block {", "type ipv4_addr", "flags timeout",
+                                         f"size {bs.MAX_ENTRIES}", "}"])
+        start = body.index("chain forward {")
+        fwd = body[start:body.index("}", start)]
+        j = fwd.index("ip saddr @opsloop_block drop")
+        self.assertTrue(bs.DROP_RULE_RE.search(fwd[j]))
+        self.assertEqual(fwd[j - 1], 'ip saddr @opsloop_block limit rate 10/second log prefix "fw-block-drop "')
 
     def test_nftables_집합과_forward_규칙(self):
         text = self.read("nftables.conf")
@@ -846,7 +907,7 @@ class ConfigFilesTest(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stderr)
 
     def cfg(self, *path):
-        c = configparser.RawConfigParser()
+        c = configparser.RawConfigParser(strict=False)      # systemd 단위는 EnvironmentFile 을 두 번 쓴다
         c.read_string(self.read(*path))
         return c
 
@@ -883,7 +944,10 @@ class ConfigFilesTest(unittest.TestCase):
         svc = self.cfg("opsloop-block-sync.service")
         s = dict(svc.items("Service"))
         self.assertEqual(s["execstart"], "/usr/bin/python3 /usr/local/lib/opsloop/block-sync.py")
-        self.assertEqual(s["environmentfile"], "/etc/default/opsloop-block-sync")
+        raw = self.read("opsloop-block-sync.service").splitlines()
+        # 관문 설정 + 내부 방화벽 키 파일(없으면 건너뛴다 · 이슈 #51)
+        self.assertEqual([ln for ln in raw if ln.startswith("EnvironmentFile=")],
+                         ["EnvironmentFile=/etc/default/opsloop-block-sync", "EnvironmentFile=-/etc/opsloop/block-sync.env"])
         self.assertEqual("/var/lib/" + s["statedirectory"], bs.DEFAULT_STATE)
         self.assertEqual(s["capabilityboundingset"], "CAP_NET_ADMIN")
         self.assertIn("AF_NETLINK", s["restrictaddressfamilies"].split())

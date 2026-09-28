@@ -32,6 +32,7 @@ RULES_AUDIT = os.path.join(ROOT, "detector", "rules_audit.json")
 URL = os.environ.get("OPSLOOP_TEST_DATABASE_URL")
 
 HEADER = "-- 차단 집행 (이슈 #47)"
+NEXT_HEADER = "-- 차단 집행 지점 · 시험 출발지 (이슈 #51)"      # 이 블록 뒤에 오는 다음 블록(infra/test_block_points_db.py)
 AUDIT_START = "CREATE OR REPLACE FUNCTION audit_blocklist()"
 AUDIT_END = "EXECUTE FUNCTION audit_blocklist();"
 # 계약의 초기값. 문서용 대역은 시험 출발지로 쓰므로 넣지 않는다
@@ -97,9 +98,12 @@ CONSOLE_BLOCK = console_block_sql()
 
 
 def block47(text):
-    """'차단 집행 (이슈 #47)' 블록(머리 주석 · 표 · 초기값 · 트리거 · 함수 · 권한)을 그대로 떼어 낸다."""
+    """'차단 집행 (이슈 #47)' 블록(머리 주석 · 표 · 초기값 · 트리거 · 함수 · 권한)을 그대로 떼어 낸다.
+    뒤에 #51 블록이 있으면 그 앞까지다."""
     start = text.index(HEADER + "\n")
-    end = text.rindex("END\n$$;") + len("END\n$$;")
+    stop = text.find("\n" + NEXT_HEADER, start)
+    region = text if stop < 0 else text[:stop]
+    end = region.rindex("END\n$$;") + len("END\n$$;")
     return text[start:end]
 
 
@@ -137,9 +141,17 @@ def verify_lines():
     return [m.groups() for m in map(pat.match, read(VERIFY).splitlines()) if m]
 
 
+def verify_lines47():
+    """verify-db-roles.sh 에서 #51 절('# 집행 지점') 앞까지의 q · p 줄."""
+    text = read(VERIFY)
+    stop = text.find("# 집행 지점 (이슈 #51)")
+    pat = re.compile(r'^([qp]) (opsloop_[a-z]+) +"(.+)" (허용|거부|t|f)$')
+    return [m.groups() for m in map(pat.match, (text if stop < 0 else text[:stop]).splitlines()) if m]
+
+
 def block_verify_lines():
-    """집행 역할 줄과 금지 대역 · 만료 기록 함수를 건드리는 줄."""
-    return [ln for ln in verify_lines()
+    """집행 역할 줄과 금지 대역 · 만료 기록 함수를 건드리는 줄 (#47 절)."""
+    return [ln for ln in verify_lines47()
             if ln[1] == "opsloop_enforcer" or "block_exempt" in ln[2] or "note_block_expired" in ln[2]
             or "blocklist_guard" in ln[2]]
 
@@ -169,7 +181,10 @@ class BlockEnforceTextTest(unittest.TestCase):
         at = schema.index(block47(schema))
         self.assertGreater(at, schema.index("GRANT pg_read_all_data TO opsloop_backup"))
         self.assertGreater(at, schema.index("-- CVE · KEV 연계 (이슈 #39)"))
-        self.assertEqual(schema.rstrip("\n"), schema[:at] + block47(schema))
+        # 이 블록 뒤에는 #51 블록(집행 지점 · 시험 출발지)만 온다
+        rest = schema[at + len(block47(schema)):].strip("\n")
+        self.assertTrue(rest.startswith(NEXT_HEADER), rest[:80])
+        self.assertEqual(schema.count(HEADER + "\n"), 1)
 
     def test_금지_대역_초기값은_계약과_같고_문서용_대역은_없다(self):
         rows = seed(block47(read(SCHEMA)))
@@ -713,10 +728,13 @@ class BlockEnforceDatabaseTest(DbCase):
         definer = lambda role: {r[0] for r in self.q(   # noqa: E731
             "SELECT proname FROM pg_proc WHERE pronamespace = 'public'::regnamespace AND prosecdef"
             " AND has_function_privilege(%s, oid, 'EXECUTE')", (role,))}
-        self.assertEqual(definer(enforcer), {"note_block_expired"})
-        self.assertEqual(definer(console), set())
-        self.assertEqual(definer(self.roles["detector"]), set())
-        self.assertEqual(definer(self.roles["gate"]), {"enroll_node"})
+        # is_test_source(#51)는 시험 출발지 판단만 하는 PUBLIC 실행 함수라 모든 역할이 부른다 (infra/test_block_points_db.py)
+        public = {"is_test_source"}
+        self.assertEqual(definer(enforcer) - public, {"note_block_expired"})
+        self.assertEqual(definer(console) - public, set())
+        self.assertEqual(definer(self.roles["detector"]) - public, set())
+        self.assertEqual(definer(self.roles["gate"]) - public, {"enroll_node"})
+        self.assertTrue(public <= definer(console))
         # 콘솔은 금지 대역을 읽기만, 탐지 · 적재 · 관문 · CTI 는 보지 못한다. 백업은 전부 읽는다(pg_read_all_data)
         for key, want in (("console", {"SELECT"}), ("detector", set()), ("ingest", set()), ("gate", set()),
                           ("cti", set()), ("enforcer", {"SELECT"})):
@@ -784,7 +802,8 @@ class BlockEnforceDatabaseTest(DbCase):
                          sorted(EXEMPT))
         trg = dict(self.q("SELECT tgname, pg_get_triggerdef(oid) FROM pg_trigger"
                           " WHERE tgrelid = 'blocklist'::regclass AND NOT tgisinternal"))
-        self.assertEqual(sorted(trg), ["blocklist_guard", "trg_audit_blocklist"])
+        # blocklist_enforcement_guard 는 #51 블록(지점별 결과 열 보호)이 더한다. 시험은 infra/test_block_points_db.py
+        self.assertEqual(sorted(set(trg) - {"blocklist_enforcement_guard"}), ["blocklist_guard", "trg_audit_blocklist"])
         self.assertIn("BEFORE INSERT OR UPDATE OF actor_ip ON public.blocklist", trg["blocklist_guard"])
         self.assertIn("AFTER INSERT OR DELETE OR UPDATE OF released_at, expires_at, actor_ip, enforced_at ON public.blocklist",
                       trg["trg_audit_blocklist"])
