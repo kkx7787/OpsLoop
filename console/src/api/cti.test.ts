@@ -4,7 +4,26 @@ import { createElement, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { noRetryClient } from '@/test/render'
 import { assetDetailResult, assetsResult, CTI_AS_OF, CTI_KEY, incidentCti, watchResult } from '@/test/cti-fixtures'
-import { assetPath, BADGE_MAX_KEYS, badgeKeys, BADGES_PATH, ctiKeys, incidentCtiPath, lastVulnOffset, useAsset, useAssets, useCtiBadges, useIncidentCti, useWatch, WATCH_PATH, type VulnFilter } from './cti'
+import { SIGMA_URL } from '@/test/cti-fixtures'
+import {
+  assetPath,
+  BADGE_MAX_KEYS,
+  badgeKeys,
+  BADGES_PATH,
+  ctiKeys,
+  incidentCtiPath,
+  lastVulnOffset,
+  MAPPING_LABEL,
+  SIGNATURE_MAPPINGS,
+  sigmaHref,
+  useAsset,
+  useAssets,
+  useCtiBadges,
+  useIncidentCti,
+  useWatch,
+  WATCH_PATH,
+  type VulnFilter,
+} from './cti'
 import { incidentKeys } from './incidents'
 
 function json(body: unknown, status = 200): Response {
@@ -63,6 +82,37 @@ describe('CVE 연계 경로 · 쿼리 키', () => {
     expect(lastVulnOffset(1, 50)).toBe(0)
     expect(lastVulnOffset(0, 50)).toBe(0)
     expect(lastVulnOffset(10, 0)).toBe(0)
+  })
+})
+
+describe('공개 규칙(Sigma) 서명(#54)', () => {
+  it('대응 방식에 sigma 가 있고 이름은 Sigma 규칙이다', () => {
+    expect(SIGNATURE_MAPPINGS).toEqual(['explicit', 'analyst', 'sigma'])
+    expect(SIGNATURE_MAPPINGS.map((m) => MAPPING_LABEL[m])).toEqual(['명시 대응', '분석가 대응', 'Sigma 규칙'])
+  })
+
+  it('원본 위치는 SigmaHQ 저장소의 커밋 고정 규칙 파일 주소일 때만 링크 주소가 된다', () => {
+    expect(sigmaHref(SIGMA_URL)).toBe(SIGMA_URL)
+    expect(sigmaHref('https://github.com/SigmaHQ/sigma/blob/07ec293/rules/web/webserver_generic/web_path_traversal_exploitation_attempt.yaml')).not.toBeNull()
+    const commit = '07ec293a51695cb1131a2e05260247872b31e1e1'
+    const rejected = [
+      null,
+      undefined,
+      '',
+      'javascript:alert(1)',
+      `http://github.com/SigmaHQ/sigma/blob/${commit}/rules/web/a.yml`,
+      `https://github.com.attacker.test/SigmaHQ/sigma/blob/${commit}/rules/web/a.yml`,
+      `https://github.com/attacker/sigma/blob/${commit}/rules/web/a.yml`,
+      'https://github.com/SigmaHQ/sigma/blob/master/rules/web/a.yml',
+      `https://github.com/SigmaHQ/sigma/blob/${commit}/rules/web/a.yml?x=1`,
+      `https://github.com/SigmaHQ/sigma/blob/${commit}/rules/web/a.yml#L1`,
+      `https://github.com/SigmaHQ/sigma/blob/${commit}/rules/web/a.yml\n`,
+      `https://github.com/SigmaHQ/sigma/blob/${commit}/rules/web/a\u{202E}lmy.exe.yml`,
+      `https://github.com/SigmaHQ/sigma/blob/${commit}/rules/web/a.txt`,
+      ` ${SIGMA_URL}`,
+    ]
+    // 링크가 된 것만 남겨 실패 때 어느 주소인지 보인다
+    expect(rejected.filter((url) => sigmaHref(url) !== null)).toEqual([])
   })
 })
 

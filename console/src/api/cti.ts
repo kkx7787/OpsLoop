@@ -19,10 +19,24 @@ export const APPLICABILITY_STATUSES = ['affected', 'not_affected', 'unknown'] as
 export type ApplicabilityStatus = (typeof APPLICABILITY_STATUSES)[number]
 export const APPLICABILITY_LABEL: Record<ApplicabilityStatus, string> = { affected: '해당', not_affected: '비해당', unknown: '미확인' }
 
-/** 서명과 CVE 의 대응 근거. explicit 은 NVD 설명이 경로를 직접 적은 것, analyst 는 공개 PoC · 제품 경로로 분석가가 맞춘 것 */
-export const SIGNATURE_MAPPINGS = ['explicit', 'analyst'] as const
+/**
+ * 서명과 CVE 의 대응 근거. explicit 은 NVD 설명이 경로를 직접 적은 것, analyst 는 공개 PoC · 제품 경로로 분석가가 맞춘 것,
+ * sigma 는 공개 규칙(SigmaHQ)을 변환한 것(#54, R107). sigma 서명은 원본 규칙 출처(SignatureCti.sigma)를 함께 받는다
+ */
+export const SIGNATURE_MAPPINGS = ['explicit', 'analyst', 'sigma'] as const
 export type SignatureMapping = (typeof SIGNATURE_MAPPINGS)[number]
-export const MAPPING_LABEL: Record<SignatureMapping, string> = { explicit: '명시 대응', analyst: '분석가 대응' }
+export const MAPPING_LABEL: Record<SignatureMapping, string> = { explicit: '명시 대응', analyst: '분석가 대응', sigma: 'Sigma 규칙' }
+
+/**
+ * 원본 위치를 링크로 그려도 되는 주소: SigmaHQ 저장소의 커밋 고정 규칙 파일 주소만이다(#54).
+ * 글자는 영숫자 · '.' · '_' · '-' · '/' 뿐이라 숨은 문자가 들어갈 수 없다. 그 밖의 주소는 글자로만 보인다
+ */
+export const SIGMA_URL_PATTERN = /^https:\/\/github\.com\/SigmaHQ\/sigma\/blob\/[0-9a-f]{7,40}\/[A-Za-z0-9._/-]+\.ya?ml$/
+
+/** 원본 위치 링크 주소. SIGMA_URL_PATTERN 에 맞지 않으면 null(링크로 그리지 않는다) */
+export function sigmaHref(url: string | null | undefined): string | null {
+  return typeof url === 'string' && SIGMA_URL_PATTERN.test(url) ? url : null
+}
 
 /** 배포판 기준 수정 상태(asset_vulnerabilities.fix_state) */
 export const FIX_STATES = ['fix_available', 'reboot_pending', 'no_fix', 'unknown'] as const
@@ -110,6 +124,27 @@ export interface AssetApplicability {
   collected_at: string | null
 }
 
+/**
+ * 공개 규칙 서명의 원본 규칙 출처(#54, 서버 sigma_of). 글자 칸은 서버 규칙 정의에 문자열이 없으면 null 이고
+ * notes 는 늘 목록이다. 원본 경로 · 커밋은 url 안에 있다
+ */
+export interface SigmaSource {
+  /** 원본 규칙 id(uuid) */
+  id: string | null
+  title: string | null
+  /** 원본 위치(SigmaHQ 저장소의 커밋 고정 주소). 링크로 그릴지는 sigmaHref 로 정한다 */
+  url: string | null
+  author: string | null
+  /** 원본 규칙의 성숙도(stable · test · experimental …) */
+  status: string | null
+  /** 원본 규칙의 등급(critical · high · medium · low · informational) */
+  level: string | null
+  /** 원본 규칙의 라이선스(DRL-1.1) */
+  license: string | null
+  /** 변환에서 좁히거나 넓힌 것 · 옮기지 못한 조건 */
+  notes: string[]
+}
+
 /** 사건에 남은 서명 하나와 그 제품 · CVE · 적용 판정 */
 export interface SignatureCti {
   id: string
@@ -120,6 +155,10 @@ export interface SignatureCti {
   source: string
   /** 서명이 보는 HTTP 메서드. null 이면 모든 메서드 */
   methods: string[] | null
+  /** 서명이 보는 응답 코드(#54). null 이면 응답 코드를 보지 않는다. 이전 서버는 칸이 없다 */
+  statuses?: number[] | null
+  /** 원본 규칙 출처(mapping=sigma, #54). 공개 규칙 서명이 아니면 null. 이전 서버는 칸이 없다 */
+  sigma?: SigmaSource | null
   /** 서명에 적힌 CVE(R106). 제품 식별(R105)은 빈 목록 */
   cves: string[]
   /** kev_match 가 있는 서명만. 등재일 내림차순 */

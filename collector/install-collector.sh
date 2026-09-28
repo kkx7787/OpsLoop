@@ -89,9 +89,10 @@ mv "$APP/.collector.new" "$APP/collector"
 ls "$APP/collector" | sed 's/^/    /'
 app_ver=$(cat "$APP/VERSION" 2>/dev/null || echo 없음)
 [ "$app_ver" = "$VERSION" ] || echo "  경고: parser · detector 는 커밋 $app_ver 이다. 같은 커밋으로 install-ingest.sh 를 돌리고 이 스크립트를 다시 돌린다"
-# 다리가 돌리는 규칙 파일은 pull_loki.py RULESETS 와 같다 (s1 · w2 · a1 · i2 · c1)
+# 다리가 돌리는 규칙 파일은 pull_loki.py RULESETS 와 같다 (s1 · w2 · a1 · i2 · c1 · sg1)
 for f in parser/parse_agent.py parser/exclusions.txt detector/detect.py detector/rules_self.json \
-         detector/rules_w1.json detector/rules_audit.json detector/rules_infra.json detector/rules_cve.json; do
+         detector/rules_w1.json detector/rules_audit.json detector/rules_infra.json detector/rules_cve.json \
+         detector/rules_sigma.json; do
   [ -e "$APP/$f" ] || echo "  경고: $APP/$f 가 없다. 다리가 적재 · 탐지를 하지 못한다"
 done
 grep -q -- '--quiet' "$APP/detector/detect.py" 2>/dev/null || echo "  경고: detect.py 가 --quiet 를 모른다 (구판). 다리의 탐지가 실패한다"
@@ -101,6 +102,9 @@ grep -q -- '--quiet' "$APP/detector/detect.py" 2>/dev/null || echo "  경고: de
 grep -q 'split_on_gate_reject' "$APP/detector/detect.py" 2>/dev/null \
   || echo "  경고: detect.py 가 split_on_gate_reject 를 모른다 (구판). i2 R301 이 관문 거부 공백을 거르지 못한다"
 grep -q '"url_signature"' "$APP/detector/detect.py" 2>/dev/null || echo "  경고: detect.py 가 url_signature 를 모른다 (구판). 다리의 c1 탐지가 실패한다"
+# 구판은 서명의 mapping sigma · statuses · all_patterns · not_patterns 를 모르고 sg1 정의를 거절한다
+grep -q 'URL_SIGNATURE_EXT_SQL' "$APP/detector/detect.py" 2>/dev/null \
+  || echo "  경고: detect.py 가 공개 규칙(Sigma) 서명의 선택 조건을 모른다 (구판). 다리의 sg1 탐지가 실패한다"
 
 # ── DB 역할 · 접속 파일 (이슈 #31) ────────────────────────────────────────────
 # 역할마다 접속 파일 하나. 파일이 없으면 새 비밀번호로 만들고, 역할이 없거나 비밀번호가 파일과 다르면

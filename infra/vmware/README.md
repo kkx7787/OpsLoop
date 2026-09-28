@@ -964,7 +964,8 @@ Mac          collect-assets.sh (매일 05:10) ─ 노드마다 cti/probe.py ─�
 | 자산 수집 | Mac `scripts/collect-assets.sh` (SSH 다섯 대 · SSM 두 대) · `scripts/install-assets-agent.sh` (launchd `local.opsloop.assets`, 기록 `~/opsloop-assets/assets.log`) |
 | 주목 CVE 목록 | 저장소 `cti/watchlist.json` → 설치기가 `/opt/opsloop/cti/watchlist.json` 으로 함께 둔다 (아래 '주목 CVE 목록 바꾸기') |
 | 탐지 규칙 | `detector/rules_cve.json`(c1: R105 제품 식별 탐색 · R106 알려진 취약점 공격 시도). 1분 다리(`opsloop-agents`)가 s1 · w2 · a1 · i2 다음에 돌린다 |
-| 화면 | 사건 상세 '취약점 연계' 구역(R105 · R106 사건에만) · 자산 · 취약점 화면 `/inventory` (사이드 메뉴 '자산 · 취약점') |
+| Sigma 규칙 | `detector/rules_sigma.json`(sg1: R107 공개 규칙(Sigma) 웹 공격 요청, 이슈 #54). `detector/sigma_convert.py build` 가 `detector/sigma/`(원본 · 선정표 · 출처)에서 만든다. 1분 다리가 c1 다음에 돌린다 |
+| 화면 | 사건 상세 '취약점 연계' 구역(R105 · R106 · R107 사건에만. R107 은 'Sigma 규칙' 표지 · 원본 규칙 출처 · 변환 메모 · 응답 코드 조건도) · 자산 · 취약점 화면 `/inventory` (사이드 메뉴 '자산 · 취약점') |
 
 설치 순서 (Mac, 저장소 루트):
 
@@ -978,7 +979,8 @@ Mac          collect-assets.sh (매일 05:10) ─ 노드마다 cti/probe.py ─�
 C=$(git rev-parse --short HEAD)
 git archive "$C" collector parser detector puller infra | ssh -F ~/.ssh/config.opsloop data01 \
   "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo bash /tmp/ol/puller/install-ingest.sh $C && sudo bash /tmp/ol/collector/install-collector.sh $C"
-#    확인 (1 ~ 2분 뒤): 탐지 실행 기록에 c1 이 있고, 다리 기록에 '탐지 실패 rules_cve.json' 이 없다
+#    확인 (1 ~ 2분 뒤): 탐지 실행 기록에 c1 · sg1 이 있고, 다리 기록에 '탐지 실패 rules_cve.json' · '탐지 실패 rules_sigma.json' 이 없다.
+#    sg1 서명(mapping sigma · statuses · all_patterns · not_patterns)은 새 detect.py 만 읽으므로 규칙 파일과 detect.py 를 같은 커밋으로 올린다
 ssh -F ~/.ssh/config.opsloop data01 'sudo -n docker exec opsloop-db psql -U opsloop -d opsloop -Atc "SELECT rule_version, max(started_at) FROM detector_runs GROUP BY 1 ORDER BY 2 DESC LIMIT 8"'
 ssh -F ~/.ssh/config.opsloop data01 'sudo -n journalctl -u opsloop-agents --since -5min --no-pager | grep -c "탐지 실패"'   # 0
 #    c1 이 rule_versions 에 들어가야 수집기가 서명 CVE 를 EPSS · NVD 관심 집합에 넣는다. 그래서 수집기 첫 회차(5번)보다 먼저 한다
@@ -997,7 +999,7 @@ infra/vmware/scripts/collect-assets.sh --dry-run > /dev/null
 infra/vmware/scripts/collect-assets.sh
 infra/vmware/scripts/install-assets-agent.sh
 # 8. 콘솔 이미지 갱신 (app/cti.py · 화면). 3번의 마이그레이션이 먼저 들어가 있어야 한다.
-#    확인: 사이드 메뉴 '자산 · 취약점'(/inventory) 맨 위 '주목 CVE' 표와 자산 표, R105 · R106 사건 상세의 '취약점 연계' 구역
+#    확인: 사이드 메뉴 '자산 · 취약점'(/inventory) 맨 위 '주목 CVE' 표와 자산 표, R105 · R106 · R107 사건 상세의 '취약점 연계' 구역
 ```
 
 - 적재기는 받은 자산의 배포판 대조(OSV)를 바로 한다. 자산 CVE 의 NVD 정보는 다음 회차에 채워진다.

@@ -8,6 +8,7 @@ import type {
   CtiFreshness,
   CveCti,
   IncidentCtiDetail,
+  SigmaSource,
   SignatureCti,
   WatchAsset,
   WatchResult,
@@ -52,6 +53,40 @@ export function signature(extra: Partial<SignatureCti> = {}): SignatureCti {
     summary: 'not_affected',
     ...extra,
   }
+}
+
+/** 공개 규칙(Sigma) 서명의 원본 위치(#54). SigmaHQ 07ec293a 커밋의 CVE-2021-41773 규칙이다 */
+export const SIGMA_URL =
+  'https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-41773/web_cve_2021_41773_apache_path_traversal.yml'
+
+export function sigmaSource(extra: Partial<SigmaSource> = {}): SigmaSource {
+  return {
+    id: '3007fec6-e761-4319-91af-e32e20ac43f5',
+    title: 'CVE-2021-41773 Exploitation Attempt',
+    url: SIGMA_URL,
+    author: 'daffainfo, Florian Roth',
+    status: 'test',
+    level: 'high',
+    license: 'DRL-1.1',
+    notes: ['cs-uri-query 조건을 경로 · 질의를 합친 url 에 맞췄다(넓어짐).', '응답 코드 200 · 301 조건을 옮겼다. 디코이는 모르는 경로에 404 를 돌려주므로 맞지 않는다.'],
+    ...extra,
+  }
+}
+
+/** 공개 규칙(Sigma) 서명 하나(R107 sg1, #54). 자산 조건은 c1 짝(apache-path-traversal)을 옮긴 것이다 */
+export function sigmaSignature(extra: Partial<SignatureCti> = {}): SignatureCti {
+  return signature({
+    id: 'sg-cve-2021-41773-apache-path-traversal',
+    product: 'Apache HTTP Server',
+    vendor: 'Apache',
+    mapping: 'sigma',
+    source: "SigmaHQ 규칙 'CVE-2021-41773 Exploitation Attempt'(3007fec6-e761-4319-91af-e32e20ac43f5) · 작성 daffainfo, Florian Roth · test/high · DRL 1.1 로 배포된 것을 변환했다.",
+    statuses: [200, 301],
+    cves: ['CVE-2021-41773'],
+    kev_products: null,
+    sigma: sigmaSource(),
+    ...extra,
+  })
 }
 
 export function cve(extra: Partial<CveCti> = {}): CveCti {

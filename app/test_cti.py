@@ -14,6 +14,9 @@
      닿기 전에 422 · 표가 없으면 available=false · kev_match 가 PG 정규식으로 틀리면 그 서명만 kev_products=null
   6. CVE 배지(이슈 #52): 적용 세 값(해당 > 미확인 > 비해당) · 오래된 정보의 비해당은 미확인 · CVE · KEV 수 ·
      목록 배지 조회(키 1~100개 · 512자 · 빈 키는 DB 에 닿기 전에 422 · 같은 키는 한 번 · 서명 규칙 사건만 · 상세 badge 와 같은 값)
+  7. 공개 규칙(Sigma) 서명(이슈 #54): 응답 코드(statuses) · 원본 규칙 출처(sigma)는 정한 칸 · 형식만 내고 없으면 null ·
+     이상한 값에도 죽지 않는다 · c1 서명은 둘 다 null · 사건 응답의 서명 칸(mapping=sigma 그대로) ·
+     변환기 출력(detector/rules_sigma.json)이 있으면 그 서명 전부
 main 이 필요한 시험은 test_web 을 먼저 불러 asyncpg 가 없는 곳에서도 가짜를 넣는다(main 보다 먼저).
 """
 import asyncio
@@ -35,6 +38,7 @@ import cti
 NOW = datetime(2026, 9, 25, 3, 0, tzinfo=timezone.utc)
 UBUNTU = {"id": "ubuntu", "version_id": "24.04", "codename": "noble", "pretty": "Ubuntu 24.04.5 LTS"}
 RULES_CVE = Path(__file__).resolve().parents[1] / "detector" / "rules_cve.json"
+RULES_SIGMA = Path(__file__).resolve().parents[1] / "detector" / "rules_sigma.json"
 
 # 규칙 파일(rules_cve.json)의 서명과 같은 꼴
 GEOSERVER = {"id": "geoserver", "product": "GeoServer", "vendor": "OSGeo", "cves": [],
@@ -50,6 +54,27 @@ EXCHANGE = {"id": "exchange-owa", "product": "Exchange Server", "vendor": "Micro
             "asset_match": {"platforms": ["windows"], "packages": [], "images": []}}
 HIKVISION = {"id": "hikvision-weblanguage", "product": "Hikvision IP 카메라", "vendor": "Hikvision",
              "cves": ["CVE-2021-36260"], "asset_match": {"platforms": ["appliance"], "packages": [], "images": []}}
+# Sigma 공개 규칙에서 옮긴 서명(detector/rules_sigma.json 과 같은 꼴, 이슈 #54). 자산 조건은 c1 짝(APACHE)을 그대로 옮긴다
+SIGMA_COMMIT = "07ec293a51695cb1131a2e05260247872b31e1e1"
+SIGMA_PATH = "rules-emerging-threats/2021/Exploits/CVE-2021-41773/web_cve_2021_41773_apache_path_traversal.yml"
+SIGMA_URL = f"https://github.com/SigmaHQ/sigma/blob/{SIGMA_COMMIT}/{SIGMA_PATH}"
+SIGMA_NOTES = ["cs-uri-query 조건을 경로 · 질의를 합친 url 에 맞췄다(넓어짐)."]
+SIGMA_APACHE = {"id": "sg-cve-2021-41773-apache-path-traversal", "pattern": "^.*/cgi-bin/\\.%2e/.*$",
+                "statuses": [200, 301], "product": "Apache HTTP Server", "vendor": "Apache", "cves": ["CVE-2021-41773"],
+                "asset_match": APACHE["asset_match"], "mapping": "sigma",
+                "source": "SigmaHQ 규칙 'CVE-2021-41773 Exploitation Attempt'(3007fec6-e761-4319-91af-e32e20ac43f5) · "
+                          "작성 daffainfo, Florian Roth · test/high · DRL 1.1 로 배포된 것을 변환했다.",
+                "sigma": {"id": "3007fec6-e761-4319-91af-e32e20ac43f5", "title": "CVE-2021-41773 Exploitation Attempt",
+                          "path": SIGMA_PATH, "commit": SIGMA_COMMIT, "url": SIGMA_URL,
+                          "author": "daffainfo, Florian Roth", "status": "test", "level": "high",
+                          "license": "DRL-1.1", "notes": SIGMA_NOTES}}
+# 사건 응답에 나가는 출처(원본 경로 · 커밋은 url 안에 있어 따로 내지 않는다)
+SIGMA_OUT = {"id": "3007fec6-e761-4319-91af-e32e20ac43f5", "title": "CVE-2021-41773 Exploitation Attempt",
+             "url": SIGMA_URL, "author": "daffainfo, Florian Roth", "status": "test", "level": "high",
+             "license": "DRL-1.1", "notes": SIGMA_NOTES}
+# 사건 응답의 서명 한 개가 갖는 칸. c1 · Sigma 서명이 같다
+SIGNATURE_KEYS = {"id", "product", "vendor", "mapping", "source", "methods", "statuses", "sigma", "cves", "kev_products",
+                  "applicability", "summary"}
 
 
 def asset(asset_id="web-01", role="target", collected=NOW - timedelta(hours=1), os=UBUNTU, packages=(), images=(),
@@ -345,6 +370,66 @@ class BadgeTests(unittest.TestCase):
         # 해당 · 미확인은 그대로 둔다
         self.assertEqual(cti.badge_of(self.sigs("affected"), self.cves(True, True), 1)["applicability"], "affected")
         self.assertIs(cti.badge_of(self.sigs("affected"), [], 1)["stale"], True)
+
+
+class SigmaSourceTests(unittest.TestCase):
+    """공개 규칙(Sigma) 서명의 응답 코드 조건과 원본 규칙 출처(이슈 #54). 없으면 null 이고 c1 서명은 둘 다 null 이다."""
+
+    def test_응답_코드는_정수_100_599_만_내고_없으면_null_이다(self):
+        self.assertEqual(cti.statuses_of(SIGMA_APACHE), [200, 301])
+        for statuses in (None, [], "200", 200, {"200": 1}, ["200", True, 99, 600, 200.0]):
+            with self.subTest(statuses=statuses):
+                self.assertIsNone(cti.statuses_of(dict(APACHE, statuses=statuses)))
+        self.assertIsNone(cti.statuses_of(APACHE))
+        self.assertEqual(cti.statuses_of(dict(APACHE, statuses=[401, "x", False, 599, 100])), [401, 599, 100])
+
+    def test_원본_규칙_출처는_정한_칸만_낸다(self):
+        self.assertEqual(cti.sigma_of(SIGMA_APACHE), SIGMA_OUT)
+        # 원본을 바꾸지 않는다(notes 는 새 목록이다)
+        cti.sigma_of(SIGMA_APACHE)["notes"].append("x")
+        self.assertEqual(SIGMA_APACHE["sigma"]["notes"], SIGMA_NOTES)
+        self.assertEqual(len(SIGMA_NOTES), 1)
+
+    def test_출처_값이_이상해도_죽지_않는다(self):
+        for sigma in (None, "3007fec6", [SIGMA_OUT], 3):
+            with self.subTest(sigma=sigma):
+                self.assertIsNone(cti.sigma_of(dict(SIGMA_APACHE, sigma=sigma)))
+        odd = cti.sigma_of(dict(SIGMA_APACHE, sigma={"id": 3, "title": None, "url": ["x"], "license": "DRL-1.1",
+                                                     "notes": "한 줄"}))
+        self.assertEqual(odd, {"id": None, "title": None, "url": None, "author": None, "status": None, "level": None,
+                               "license": "DRL-1.1", "notes": []})
+        self.assertEqual(cti.sigma_of(dict(SIGMA_APACHE, sigma={"notes": [1, "가", None, {"x": 1}, "나"]}))["notes"],
+                         ["가", "나"])
+        json.dumps(odd)
+
+    def test_c1_서명은_응답_코드도_출처도_없다(self):
+        definition = json.loads(RULES_CVE.read_text())
+        sigs = [s for r in definition["rules"] if r["type"] == "url_signature" for s in r["params"]["signatures"]]
+        self.assertGreater(len(sigs), 10)
+        for sig in sigs:
+            with self.subTest(sig=sig["id"]):
+                self.assertEqual((cti.statuses_of(sig), cti.sigma_of(sig)), (None, None))
+                self.assertIn(sig["mapping"], ("explicit", "analyst"))
+
+    @unittest.skipUnless(RULES_SIGMA.exists(), "detector/rules_sigma.json 이 아직 없다(변환기 출력)")
+    def test_변환기가_만든_Sigma_규칙_파일의_모든_서명을_낼_수_있다(self):
+        definition = json.loads(RULES_SIGMA.read_text())
+        sigs = [s for r in definition["rules"] if r["type"] == "url_signature" for s in r["params"]["signatures"]]
+        self.assertGreater(len(sigs), 0)
+        assets = [asset("web-01"), asset("fw", "platform"), asset("console-b", "platform", collected=None)]
+        for sig in sigs:
+            with self.subTest(sig=sig["id"]):
+                self.assertEqual(sig["mapping"], "sigma")
+                sigma = cti.sigma_of(sig)
+                self.assertIsNotNone(sigma)
+                self.assertEqual(set(sigma), {*cti.SIGMA_FIELDS, "notes"})
+                self.assertTrue(isinstance(sigma["id"], str) and isinstance(sigma["title"], str), sigma)
+                self.assertTrue(sigma["url"].startswith("https://github.com/SigmaHQ/sigma/blob/"), sigma["url"])
+                self.assertEqual(sigma["license"], "DRL-1.1")
+                # 탐지기가 받은 응답 코드를 거르지 않고 그대로 낸다
+                self.assertEqual(cti.statuses_of(sig), sig.get("statuses") or None)
+                rows = cti.applicability(sig, ["decoy", "web-01"], assets, [], NOW)
+                self.assertIn(cti.summarize(rows), ("affected", "not_affected", "unknown"))
 
 
 class FreshnessTests(unittest.TestCase):
@@ -975,6 +1060,28 @@ class RouterContractTests(unittest.TestCase):
             {"id": "R105", "type": "url_signature", "params": {"signatures": [dict(GEOSERVER, kev_match=None)]}}))
         self.client.app.state.pool = self.pool
         self.assertIsNone(self.client.get(ENCODED).json()["signatures"][0]["kev_products"])
+
+    def test_Sigma_서명은_응답_코드와_원본_규칙_출처를_함께_낸다(self):
+        incident = dict(R105_INCIDENT, rule_id="R107", rule_version="sg1",
+                        evidence=json.dumps({"signatures": [SIGMA_APACHE["id"]], "sensors": ["decoy"]}))
+        rule = json.dumps({"id": "R107", "type": "url_signature", "params": {"signatures": [SIGMA_APACHE]}})
+        self.pool.kw = {"incident": incident, "rule": rule}
+        body = self.client.get(ENCODED).json()
+        self.assertEqual((body["applicable"], body["available"], body["rule_id"], body["rule_version"]),
+                         (True, True, "R107", "sg1"))
+        [sig] = body["signatures"]
+        self.assertEqual(set(sig), SIGNATURE_KEYS)
+        self.assertEqual((sig["id"], sig["mapping"], sig["statuses"], sig["sigma"], sig["cves"], sig["methods"]),
+                         (SIGMA_APACHE["id"], "sigma", [200, 301], SIGMA_OUT, ["CVE-2021-41773"], None))
+        self.assertEqual(sig["source"], SIGMA_APACHE["source"])
+        # 적용 판정은 다른 서명과 같다(디코이는 모의 서비스라 비해당)
+        self.assertEqual([(r["asset_id"], r["status"]) for r in sig["applicability"]], [("web-decoy", "not_affected")])
+        self.assertEqual(body["badge"], {"cves": 0, "kev": 0, "applicability": "unknown", "stale": True})
+        # c1 서명은 같은 칸을 갖고 두 칸이 null 이다
+        self.pool.kw = {"incident": R105_INCIDENT, "rule": R105_RULE}
+        [geo] = self.client.get(ENCODED).json()["signatures"]
+        self.assertEqual(set(geo), SIGNATURE_KEYS)
+        self.assertEqual((geo["mapping"], geo["statuses"], geo["sigma"]), ("analyst", None, None))
 
     def test_서명_규칙이_아니거나_서명_근거가_없으면_적용_대상이_아니다(self):
         cases = [(R105_INCIDENT, None),

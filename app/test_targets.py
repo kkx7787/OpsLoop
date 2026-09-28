@@ -164,7 +164,7 @@ class ResolveTests(unittest.TestCase):
             ("a1", "R201"): {("console", None)},
             ("s1", "R202"): {("data-node", None)},
         }
-        joins = {("w2", "R101"), ("w2", "R102"), ("w2", "R104"), ("c1", "R105"), ("c1", "R106")}
+        joins = {("w2", "R101"), ("w2", "R102"), ("w2", "R104"), ("c1", "R105"), ("c1", "R106"), ("sg1", "R107")}
         sessions = {"R002"}        # 발생원 조건 없는 세션 규칙: 대상은 AWS 센서, 나눔은 세션으로
         seen = set()
         for version, rule_id, s in file_rules():

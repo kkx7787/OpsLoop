@@ -106,8 +106,8 @@ class CircularTests(unittest.TestCase):
 class NonSshRuleTests(unittest.TestCase):
     """SSH 판정 기준(로그인 · 명령 · 파일 · 경유)은 cowrie 기록이라 다른 규칙의 판정 근거가 아니다. 콘솔과 같은 경계다."""
 
-    # 저장소 규칙 파일의 SSH 밖 규칙 전부. R105 · R106 은 CVE · KEV 연계(c1)다
-    OTHERS = ("R101", "R102", "R103", "R104", "R105", "R106", "R201", "R202", "R301")
+    # 저장소 규칙 파일의 SSH 밖 규칙 전부. R105 · R106 은 CVE · KEV 연계(c1), R107 은 공개 규칙(Sigma) 서명(sg1)이다
+    OTHERS = ("R101", "R102", "R103", "R104", "R105", "R106", "R107", "R201", "R202", "R301")
 
     def test_SSH_규칙_목록이_콘솔과_같다(self):
         sys.path.insert(0, os.path.join(HERE, "..", "app"))

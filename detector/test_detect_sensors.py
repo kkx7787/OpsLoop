@@ -31,6 +31,12 @@ OPSLOOP_TEST_DATABASE_URL 이 있으면 임시 표에 같은 표본을 넣고 Po
 KEV 조건(kev_match) · 자산 조건(asset_match)의 형식과, 서명 정규식이 두 엔진에서 같게 읽히는지(regex_gap)도 본다.
 DB 가 있으면 받는 정규식은 PostgreSQL 과 파이썬이 같은 답을, 거절하는 것은(정책으로 막는 것 밖) 실제로 다른 답을 내는지,
 늦게 들어온 더 이른 요청이 새 키 사건을 만들고 먼저 뜬 사건이 남는 구조적 한계(rules_cve.json note)를 본다.
+
+sg1(rules_sigma.json, 이슈 #54)은 서명에 선택 조건(all_patterns · not_patterns · statuses)과 mapping sigma · 원본 출처(sigma
+객체)를 더했다. 선택 조건을 쓰는 서명이 없는 규칙(c1)은 문장 · 인자가 전과 글자가 같고(옛 문장을 그대로 쓴다), 새 문장은 옛
+문장에 두 조건만 더한 것임을 글자로 본다. DB 가 있으면 c1 서명을 새 문장으로 맞춰도 신호가 같은지, 선택 조건의 뜻이 파이썬
+판(url_signature_fullmatch)과 같은지, sg1 을 함께 돌려도 c1 사건이 한 글자도 바뀌지 않는지 본다. 변환기와 규칙 파일 자체는
+detector/test_sigma_convert.py 가 본다.
 """
 import contextlib
 import copy
@@ -411,12 +417,13 @@ class SensorsTest(unittest.TestCase):
 
 class RuleFileTest(unittest.TestCase):
     """rules_self.json(s1) · rules_node.json(n1) · rules_w1.json(w2) · rules_audit.json(a1) · rules_infra.json(i2) ·
-    rules_cve.json(c1)."""
+    rules_cve.json(c1) · rules_sigma.json(sg1)."""
 
     def test_형식은_rules_json_과_같다(self):
         base = load("rules.json")
         for name, ver in (("rules_self.json", "s1"), ("rules_node.json", "n1"), ("rules_w1.json", "w2"),
-                          ("rules_audit.json", "a1"), ("rules_infra.json", "i2"), ("rules_cve.json", "c1")):
+                          ("rules_audit.json", "a1"), ("rules_infra.json", "i2"), ("rules_cve.json", "c1"),
+                          ("rules_sigma.json", "sg1")):
             with self.subTest(rules=name):
                 doc = load(name)
                 self.assertEqual(doc["rule_version"], ver)
@@ -453,7 +460,7 @@ class RuleFileTest(unittest.TestCase):
 
     def test_rule_versions_에_파일_그대로_등록(self):
         for name in ("rules_self.json", "rules_node.json", "rules.json", "rules_v2.json",
-                     "rules_w1.json", "rules_audit.json", "rules_infra.json", "rules_cve.json"):
+                     "rules_w1.json", "rules_audit.json", "rules_infra.json", "rules_cve.json", "rules_sigma.json"):
             with self.subTest(rules=name):
                 doc = load(name)
                 cur, _, _ = run_quiet(doc)
@@ -2956,6 +2963,8 @@ REGEX_GAPS = [
     r"[a&&b]", r"[a||b]", r"[a~~b]", r"[a--b]",
     r"geo{,2}", r"geo*+", r"geo++", r"geo?+", r"ge{2}+o", r"(geo)++", r"geo\z",
     r"(geo", r"geo)", r"geo\y", r"\mgeo", r"*geo", r"***=geo", r"[geo",
+    # 글자 번호 이스케이프(이슈 #54 검토): \x 뒤 16진 글자를 파이썬은 둘만, PostgreSQL 은 끝까지 읽는다 · \N{…} 은 파이썬만
+    r"\x2fetc", r"\x2f", r"\u002fetc", r"\U0000002f", r"\N{SOLIDUS}", r"geo\0",
 ]
 # 두 엔진이 같게 읽는 것. 위와 비슷해 보여도 받는다
 REGEX_SAME = [
@@ -3433,10 +3442,13 @@ class RegexGapDatabaseTest(unittest.TestCase):
               "Exchange Server", "Exchange", "OSGeo", "GeoServer", "JAI-EXT GeoServer", "Ivanti", "Pulse Secure",
               "Connect Secure", "Pulse Connect Secure", "Virtual Traffic Manager", "QNAP", "QNAP Systems", "QTS",
               "Network Attached Storage (NAS)", "Photo Station", "Samsung", "MagicINFO 9 Server", "httpd:2.4",
-              "library/httpd@sha256:ab", "atlassian/confluence:8", "kartoza/geoserver:2.24", "vtm", "zxtm:1", "nginx"]
+              "library/httpd@sha256:ab", "atlassian/confluence:8", "kartoza/geoserver:2.24", "vtm", "zxtm:1", "nginx",
+              "/etc", "\u2fect"]        # \x2fetc: 파이썬은 '/etc', PostgreSQL 은 U+2FEC + 't' 로 읽는다
     # 정책으로 막는 것. 두 엔진이 지금은 같은 답을 내기도 하지만 받는 범위 · 규칙이 달라 쓰지 않는다
     POLICY = {r"(?<=x)geo", r"(?<!x)geo", r"geo(?=x)", r"geo(?!x)", r"(?i)geo", r"(?m)^geo", r"(?#c)geo", r"(g)\1",
-              r"(g)(e)\2", r"[[a]geo", r"[a-z&&[^e]]", r"[a[]geo", r"[a&&b]", r"[a||b]", r"[a~~b]", r"[a--b]"}
+              r"(g)(e)\2", r"[[a]geo", r"[a-z&&[^e]]", r"[a[]geo", r"[a&&b]", r"[a||b]", r"[a~~b]", r"[a--b]",
+              # 글자 번호 이스케이프: 자리 수가 맞으면 두 엔진이 같은 글자로 읽지만 \x 뒤 16진 글자가 이어지면 갈린다(위 \x2fetc)
+              r"\x2f", r"\u002fetc", r"\U0000002f", r"geo\0"}
 
     @classmethod
     def setUpClass(cls):
@@ -3485,6 +3497,253 @@ class RegexGapDatabaseTest(unittest.TestCase):
             with self.subTest(pattern=pattern):
                 pg, py = self.pg(pattern), self.py(pattern)
                 self.assertTrue("오류" in (pg, py) or pg != py, (pg, py))
+
+
+# ----------------------------------------------------------------------
+#  공개 규칙(Sigma) 서명의 선택 조건 (이슈 #54): sg1 R107
+# ----------------------------------------------------------------------
+
+# 선택 조건(all_patterns · not_patterns · statuses)을 쓰는 규칙의 신호 질의. 엔진 상수를 쓰지 않고 글자 그대로 적는다
+URL_SIGNATURE_EXT_SQL = (
+    "SELECT e.ts, e.src_ip, e.session, e.eventid, e.sensor, e.http_method, e.url, e.http_status, "
+    "array_agg(s.sig_id ORDER BY s.sig_id COLLATE \"C\") "
+    "FROM events e JOIN unnest(%s::text[], %s::text[], %s::text[], %s::text[]) "
+    "AS s(sig_id, sig_pattern, sig_method, sig_status) "
+    "ON e.url ~* s.sig_pattern AND coalesce(e.http_method, '') ~* s.sig_method "
+    "AND coalesce(e.http_status::text, '') ~ s.sig_status "
+    "AND NOT EXISTS (SELECT 1 FROM unnest(%s::text[], %s::text[], %s::boolean[]) AS x(sid, pat, neg) "
+    "WHERE x.sid = s.sig_id AND (e.url ~* x.pat) = x.neg) "
+    "WHERE {w} AND eventid = ANY(%s) GROUP BY e.line_hash")
+EXT_STATUS = " AND coalesce(e.http_status::text, '') ~ s.sig_status"
+EXT_NOT_EXISTS = (" AND NOT EXISTS (SELECT 1 FROM unnest(%s::text[], %s::text[], %s::boolean[]) AS x(sid, pat, neg) "
+                  "WHERE x.sid = s.sig_id AND (e.url ~* x.pat) = x.neg)")
+SIGMA_COMMIT = "07ec293a51695cb1131a2e05260247872b31e1e1"
+SIGMA_PATH = "rules/web/webserver_generic/web_x.yml"
+DROP = object()     # sigma_obj 에서 그 키를 뺀다
+
+
+def sigma_obj(**kw):
+    """형식이 옳은 sigma 객체. 값을 DROP 으로 주면 그 키를 뺀다."""
+    base = {"id": "7745c2ea-24a5-4290-b680-04359cb84b35", "title": "시험 규칙", "path": SIGMA_PATH,
+            "commit": SIGMA_COMMIT, "url": f"https://github.com/SigmaHQ/sigma/blob/{SIGMA_COMMIT}/{SIGMA_PATH}",
+            "author": "시험", "status": "test", "level": "medium", "license": "DRL-1.1", "notes": ["시험 메모"]}
+    base.update(kw)
+    return {k: v for k, v in base.items() if v is not DROP}
+
+
+def ext_rows(rows):
+    """signals_url_signature 결과를 (시각, url, eventid) 순서로 정렬한다(같은 시각의 행이 있어도 순서가 정해진다)."""
+    return sorted(rows, key=lambda s: (s[0], s[3]["url"], s[3]["eventid"]))
+
+
+class UrlSignatureExtTest(unittest.TestCase):
+    """서명의 선택 조건(sg1). c1 은 문장 · 인자가 전과 같고, 선택 조건을 쓰는 규칙만 URL_SIGNATURE_EXT_SQL 로 간다."""
+
+    RULE = {"id": "U1", "type": "url_signature", "params": {"eventids": ["nginx.request"], "signatures": [
+        {"id": "a", "pattern": "^/a$", "methods": ["GET"], "statuses": [200, 301], "all_patterns": ["^.*x.*$"],
+         "not_patterns": ["^.*y.*$", "^.*z.*$"], "cves": [], "mapping": "sigma", "sigma": sigma_obj()},
+        {"id": "b", "pattern": "^/b$", "cves": [], "mapping": "analyst"},
+        {"id": "c", "pattern": "^/c(/.*)?$", "not_patterns": ["^/c/d$"], "cves": ["CVE-2021-41773"],
+         "mapping": "explicit"}]}}
+
+    def test_c1_은_선택_조건이_없어_옛_문장과_인자(self):
+        doc = load("rules_cve.json")
+        for rule in doc["rules"]:
+            with self.subTest(rule=rule["id"]):
+                sql, arrays, eids = detect.url_signature_args(rule)
+                self.assertIs(sql, detect.URL_SIGNATURE_SQL)
+                self.assertEqual(len(arrays), 3)
+                self.assertEqual(eids, WEB_EVENTIDS)
+                for s in rule["params"]["signatures"]:
+                    self.assertFalse(set(s) & {*detect.SIG_EXTRA_KEYS, "sigma"})
+                    self.assertIn(s["mapping"], ("explicit", "analyst"))
+        # 옛 글자 그대로의 문장(이 파일의 URL_SIGNATURE_SQL)이 엔진 상수와 같다
+        self.assertEqual(detect.URL_SIGNATURE_SQL.format(w="x"), URL_SIGNATURE_SQL.replace("{w}", "x"))
+
+    def test_선택_조건_문장과_인자(self):
+        for rng, where in (((None, None), "provenance = 'real'"),
+                           ((SINCE, UNTIL), "provenance = 'real' AND ts >= %s AND ts < %s")):
+            with self.subTest(rng=rng):
+                [(sql, prm)] = collect({"rule_version": "t1"}, self.RULE, *rng)
+                self.assertEqual(sql, URL_SIGNATURE_EXT_SQL.replace("{w}", where))
+                self.assertEqual(prm, [
+                    ["a", "b", "c"], ["^(?:^/a$)$", "^(?:^/b$)$", "^(?:^/c(/.*)?$)$"], ["^(GET)$", "^.*$", "^.*$"],
+                    ["^(200|301)$", "^.*$", "^.*$"],
+                    ["a", "a", "a", "c"], ["^(?:^.*x.*$)$", "^(?:^.*y.*$)$", "^(?:^.*z.*$)$", "^(?:^/c/d$)$"],
+                    [False, True, True, True]] + [x for x in rng if x] + [["nginx.request"]])
+                self.assertEqual(sql.count("%s"), len(prm))
+        self.assertEqual(detect.URL_SIGNATURE_EXT_SQL.format(w="x"), URL_SIGNATURE_EXT_SQL.replace("{w}", "x"))
+
+    def test_선택_조건_문장은_옛_문장에_두_조건만_더했다(self):
+        # 응답 코드 정규식 열 하나와 추가 패턴 NOT EXISTS 하나를 걷어 내면 c1 이 쓰는 옛 문장과 글자가 같다
+        stripped = (URL_SIGNATURE_EXT_SQL
+                    .replace("unnest(%s::text[], %s::text[], %s::text[], %s::text[]) "
+                             "AS s(sig_id, sig_pattern, sig_method, sig_status)",
+                             "unnest(%s::text[], %s::text[], %s::text[]) AS s(sig_id, sig_pattern, sig_method)")
+                    .replace(EXT_STATUS, "").replace(EXT_NOT_EXISTS, ""))
+        self.assertEqual(stripped, URL_SIGNATURE_SQL)
+
+    def test_선택_조건_하나만_있어도_새_문장(self):
+        for key, value in (("statuses", [404]), ("all_patterns", ["^.*$"]), ("not_patterns", ["^/x$"])):
+            with self.subTest(key=key):
+                [(sql, prm)] = collect({"rule_version": "t1"}, sig_rule(**{key: value}))
+                self.assertEqual(sql, URL_SIGNATURE_EXT_SQL.replace("{w}", "provenance = 'real'"))
+                self.assertEqual(len(prm), 8)
+
+    def test_파이썬_판(self):
+        f = detect.url_signature_fullmatch
+        sig = {"pattern": "^/a(/.*)?$", "all_patterns": ["^.*x=1.*$"], "not_patterns": ["^.*nessus.*$"],
+               "methods": ["GET"], "statuses": [200]}
+        for method, url, status, want in (
+                ("GET", "/a/?x=1", 200, True), ("get", "/A/?X=1", 200, True), ("GET", "/a/\n?x=1", 200, True),
+                ("GET", "/a/?x=1", 404, False), ("GET", "/a/?x=1", None, False), ("POST", "/a/?x=1", 200, False),
+                (None, "/a/?x=1", 200, False), ("GET", "/a/?x=1&nessus", 200, False), ("GET", "/a/", 200, False),
+                ("GET", "/ab?x=1", 200, False), ("GET", None, 200, False)):
+            with self.subTest(method=method, url=url, status=status):
+                self.assertIs(f(sig, method, url, status), want)
+        # 선택 조건이 없으면 메서드 · 응답 코드를 보지 않는다(없는 행도 맞는다)
+        self.assertTrue(f({"pattern": "^/a$"}, None, "/a", None))
+        # c1 서명에서는 이 파일의 sig_match 와 같은 답이다(응답 코드와 상관없다)
+        doc = load("rules_cve.json")
+        for method, url, _ in URL_SAMPLES:
+            for rule in doc["rules"]:
+                for status in (404, 200, None):
+                    got = sorted(s["id"] for s in rule["params"]["signatures"] if f(s, method, url, status))
+                    self.assertEqual(got, sig_match(rule, method, url), (method, url, status))
+
+    def test_선택_조건_옳은_형식은_받는다(self):
+        for sig in ({"statuses": [100, 599]}, {"statuses": [401]}, {"all_patterns": ["^.*a.*$", "^.*b.*$"]},
+                    {"not_patterns": ["^(?:x|y)$"]}, {"mapping": "sigma", "sigma": sigma_obj()},
+                    {"mapping": "sigma", "sigma": sigma_obj(notes=[], status="stable", level="critical")},
+                    {"mapping": "sigma", "sigma": sigma_obj(
+                        path="rules-emerging-threats/2021/Exploits/CVE-2021-41773/web_cve_2021_41773.yml",
+                        url=f"https://github.com/SigmaHQ/sigma/blob/{SIGMA_COMMIT}/rules-emerging-threats/2021/"
+                            "Exploits/CVE-2021-41773/web_cve_2021_41773.yml")}):
+            with self.subTest(sig=sig):
+                self.assertEqual(len(collect({"rule_version": "t1"}, sig_rule(**sig))), 1)
+
+    def test_선택_조건_형식이_틀리면_규칙_오류(self):
+        bad = []
+        for key in ("all_patterns", "not_patterns"):
+            bad += [{key: v} for v in (None, [], "^/a$", ["/a"], ["^/a"], ["^$"], [1], [""], ["^\\bx$"],
+                                       ["^(?i)x$"], ["^[[:alpha:]]$"])]
+        bad += [{"statuses": v} for v in (None, [], 200, [99], [600], ["200"], [True], [200, 200], [200.0], [None])]
+        other = f"https://github.com/SigmaHQ/sigma/blob/{'0' * 40}/{SIGMA_PATH}"
+        bad += [{"mapping": "sigma"}, {"mapping": "analyst", "sigma": sigma_obj()}]
+        bad += [{"mapping": "sigma", "sigma": v} for v in (
+            None, [], "x", {}, sigma_obj(notes=DROP), sigma_obj(extra="x"),
+            sigma_obj(id="7745C2EA-24a5-4290-b680-04359cb84b35"),
+            sigma_obj(id="x"), sigma_obj(commit="07ec293"), sigma_obj(url=other),
+            sigma_obj(url="https://evil.example/x"), sigma_obj(path="../x.yml"), sigma_obj(path="/x.yml"),
+            sigma_obj(path="rules/./x.yml"), sigma_obj(path="rules/x.yaml"), sigma_obj(license="MIT"),
+            sigma_obj(status="draft"), sigma_obj(level="severe"), sigma_obj(title=""), sigma_obj(author=1),
+            sigma_obj(author=None), sigma_obj(notes="x"), sigma_obj(notes=[""]), sigma_obj(notes=[1]))]
+        for sig in bad:
+            with self.subTest(sig=sig):
+                r = sig_rule()
+                r["params"]["signatures"][0].update(sig)                # None 도 값으로 넣는다
+                with self.assertRaisesRegex(ValueError, "^U1: 서명 a "):
+                    collect({"rule_version": "t1"}, r)
+
+    def test_정규식_오류는_자리를_알린다(self):
+        text = "^\\bx$"
+        for key in ("all_patterns", "not_patterns"):
+            with self.subTest(key=key):
+                with self.assertRaisesRegex(ValueError, f"^U1: 서명 a 의 {key} {re.escape(repr(text))}: "):
+                    collect({"rule_version": "t1"}, sig_rule(**{key: [text]}))
+
+
+@unittest.skipUnless(REAL_PG and os.environ.get("OPSLOOP_TEST_DATABASE_URL"), "PostgreSQL 시험 연결 미지정")
+class UrlSignatureExtDatabaseTest(unittest.TestCase):
+    """선택 조건 문장을 연결 전용 임시 표에 실제로 돌린다. c1 신호 · 사건이 한 글자도 바뀌지 않음을 보인다.
+
+    합성 URL 표본(URL_SAMPLES)을 web-01 · 디코이 요청으로 넣되 응답 코드를 404 · 200 · 없음 · 301 로 돌려 준다.
+    """
+
+    STATUSES = (404, 200, None, 301)
+
+    def setUp(self):
+        self.conn = psycopg2.connect(os.environ["OPSLOOP_TEST_DATABASE_URL"])
+        self.cur = self.conn.cursor()
+        self.cur.execute("SET search_path TO pg_temp")
+        self.cur.execute(URL_SIGNATURE_TEMP_TABLES)
+        self.rows = []
+        for i, (method, url, _) in enumerate(URL_SAMPLES):
+            status = self.STATUSES[i % len(self.STATUSES)]
+            self.rows += [(f"n{i}", at(i), "nginx.request", None, "192.0.2.10", url, "real", method, status, "web-01"),
+                          (f"d{i}", at(i) + timedelta(seconds=30), "decoy.request", f"s{i}", "192.0.2.20", url,
+                           "real", method, self.STATUSES[(i + 1) % len(self.STATUSES)], "decoy")]
+        self.cur.executemany("INSERT INTO events VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)", self.rows)
+
+    def tearDown(self):
+        self.conn.rollback()
+        self.conn.close()
+
+    def ext_signals(self, rule, statuses=None, extra=([], [], [])):
+        """c1 규칙을 선택 조건 문장으로 맞춘다. 상태 정규식 · 추가 패턴을 주지 않으면 조건이 빈 것과 같다."""
+        sql, arrays, eids = detect.url_signature_args(rule)
+        self.assertIs(sql, detect.URL_SIGNATURE_SQL)
+        n = len(arrays[0])
+        w, prm = detect.range_clause(None, None, "ts", None)
+        self.cur.execute(detect.URL_SIGNATURE_EXT_SQL.format(w=w),
+                         arrays + [statuses or ["^.*$"] * n] + [list(x) for x in extra] + prm + [eids])
+        return [(ts, ip, sess, {"eventid": ev, "sensor": sensor, "http_method": method, "url": url,
+                                "http_status": status, "signatures": list(got)})
+                for ts, ip, sess, ev, sensor, method, url, status, got in self.cur.fetchall()]
+
+    def test_c1_서명을_선택_조건_문장으로_맞춰도_신호가_같다(self):
+        for rid in ("R105", "R106"):
+            with self.subTest(rule=rid):
+                doc, rule = rule_of("rules_cve.json", rid)
+                rule = detect.prepare_rule(doc, copy.deepcopy(rule))
+                base = ext_rows(detect.signals_url_signature(self.cur, rule, None, None))
+                self.assertTrue(base)
+                self.assertEqual(ext_rows(self.ext_signals(rule)), base)
+
+    def test_선택_조건의_뜻이_파이썬과_같다(self):
+        # c1 서명에 응답 코드 · 추가 패턴을 붙여 본다. 파이썬 판(url_signature_fullmatch)과 같은 답이어야 한다
+        doc, rule = rule_of("rules_cve.json", "R105")
+        rule = detect.prepare_rule(doc, copy.deepcopy(rule))
+        sigs = copy.deepcopy(rule["params"]["signatures"])
+        extra = {"geoserver": {"statuses": [200, 301], "all_patterns": ["^.*/web(/.*)?$"]},
+                 "exchange-owa": {"not_patterns": ["^/owa/?$", "^.*\\?.*$"]},
+                 "dlink-hnap": {"statuses": [404]},
+                 "confluence": {"all_patterns": ["^.*manifest.*$", "^.*/rest/.*$"], "not_patterns": ["^.*/2\\.0/.*$"]}}
+        for s in sigs:
+            s.update(extra.get(s["id"], {}))
+        rule["params"]["signatures"] = sigs
+        sql, _, _ = detect.url_signature_args(rule)
+        self.assertIs(sql, detect.URL_SIGNATURE_EXT_SQL)
+        got = ext_rows(detect.signals_url_signature(self.cur, rule, None, None))
+        want = []
+        for _, ts, eventid, session, ip, url, _, method, status, sensor in self.rows:
+            ids = sorted(s["id"] for s in sigs if detect.url_signature_fullmatch(s, method, url, status))
+            if ids:
+                want.append((ts, ip, session, {"eventid": eventid, "sensor": sensor, "http_method": method,
+                                               "url": url, "http_status": status, "signatures": ids}))
+        self.assertEqual(got, ext_rows(want))
+        # 조건이 실제로 무언가를 걸렀다(표본이 조건의 양쪽을 다 지난다)
+        plain = self.ext_signals(detect.prepare_rule(*rule_of("rules_cve.json", "R105")))
+        plain = {(s[3]["url"], s[3]["eventid"]) for s in plain}
+        self.assertLess({(s[3]["url"], s[3]["eventid"]) for s in got}, plain)
+
+    def test_sg1_을_함께_돌려도_c1_사건은_그대로(self):
+        def c1_rows():
+            self.cur.execute("SELECT incident_key, rule_id, first_ts, last_ts, signal_count, session_count, "
+                             "evidence::text FROM incidents WHERE rule_version = 'c1' ORDER BY 1")
+            return self.cur.fetchall()
+        with mock.patch.object(detect, "execute_batch", psycopg2.extras.execute_batch):
+            detect.run(NoCommit(self.conn), load("rules_cve.json"), None, None, verbose=False)
+            before = c1_rows()
+            self.assertTrue(before)
+            detect.run(NoCommit(self.conn), load("rules_sigma.json"), None, None, verbose=False)
+            self.assertEqual(c1_rows(), before)
+            detect.run(NoCommit(self.conn), load("rules_cve.json"), None, None, verbose=False)
+            self.assertEqual(c1_rows(), before)
+        self.cur.execute("SELECT DISTINCT rule_id, rule_version FROM incidents ORDER BY 1")
+        self.assertEqual(self.cur.fetchall(), [("R105", "c1"), ("R106", "c1"), ("R107", "sg1")])
+        self.cur.execute("SELECT rule_version FROM rule_versions ORDER BY 1")
+        self.assertEqual(self.cur.fetchall(), [("c1",), ("sg1",)])
 
 
 if __name__ == "__main__":

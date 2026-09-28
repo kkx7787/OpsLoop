@@ -1,0 +1,54 @@
+{
+  "source": "https://github.com/SigmaHQ/sigma",
+  "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+  "commit_date": "2026-09-27",
+  "received": "2026-09-28",
+  "license": "DRL-1.1",
+  "note": "SigmaHQ/sigma 에서 받은 파일 가운데 sg1 선정 10개와 저장소 LICENSE 를 경로 그대로 둔 것이다. 받은 원본 119개(rules/web 45개 · rules-emerging-threats 의 web_*.yml 73개 · LICENSE)의 git blob sha1 을 저장소 기록과 대조했고, 여기에는 둔 파일만 적는다. blob_sha1 은 git hash-object 와 같은 값이다(시험이 파일과 대조한다). 규칙은 Detection Rule License(DRL) 1.1 로 배포된다. 내용을 고치지 않는다.",
+  "files": [
+    {
+      "path": "LICENSE",
+      "blob_sha1": "f816b6993cc0d9564fd4629823cbaac8bccaff17"
+    },
+    {
+      "path": "rules-emerging-threats/2021/Exploits/CVE-2021-41773/web_cve_2021_41773_apache_path_traversal.yml",
+      "blob_sha1": "0abef9538e24047af75f4ed5c01fcb4a0cf9bc10"
+    },
+    {
+      "path": "rules-emerging-threats/2021/Exploits/CVE-2021-44228/web_cve_2021_44228_log4j.yml",
+      "blob_sha1": "4ca92e77352a470ba7fe6a3b0e222a75cc85ad01"
+    },
+    {
+      "path": "rules-emerging-threats/2019/Exploits/CVE-2019-3398/web_cve_2019_3398_confluence.yml",
+      "blob_sha1": "f0e48ddee13760d4ac85d23a3762629568601dbb"
+    },
+    {
+      "path": "rules-emerging-threats/2023/Exploits/CVE-2023-22518/web_exploit_cve_2023_22518_confluence_auth_bypass.yml",
+      "blob_sha1": "36d9a19093ca787f8009253e2971f20d600052ff"
+    },
+    {
+      "path": "rules-emerging-threats/2020/Exploits/CVE-2020-0688/web_cve_2020_0688_msexchange.yml",
+      "blob_sha1": "5607d769f26f51c01bb5ca602ecaad5a277901e7"
+    },
+    {
+      "path": "rules-emerging-threats/2021/Exploits/ProxyShell-Exploit/web_exchange_proxyshell.yml",
+      "blob_sha1": "d26e16850ea2e0de0777c7fa7767a0a15e1538cc"
+    },
+    {
+      "path": "rules-emerging-threats/2023/Exploits/CVE-2023-25157/web_cve_2023_25157_geoserver_sql_injection.yml",
+      "blob_sha1": "50c0b08df2a0f7b42e62234fe2ff5ece5e72482d"
+    },
+    {
+      "path": "rules-emerging-threats/2019/Exploits/CVE-2019-11510/web_cve_2019_11510_pulsesecure_exploit.yml",
+      "blob_sha1": "6fd38afb8864dea5e9bd1441b390d718a2d4cdd3"
+    },
+    {
+      "path": "rules-emerging-threats/2021/Exploits/CVE-2021-22893/web_cve_2021_22893_pulse_secure_rce_exploit.yml",
+      "blob_sha1": "6c7eac62f44ce91722835e3899493ab409dd72b4"
+    },
+    {
+      "path": "rules/web/webserver_generic/web_path_traversal_exploitation_attempt.yml",
+      "blob_sha1": "3fba9d8e8e0ca7f677e65c6f4196e0b5c8587695"
+    }
+  ]
+}
