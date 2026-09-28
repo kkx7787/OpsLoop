@@ -4,6 +4,7 @@ import { cn } from '@/lib/cn'
 import { INCIDENT_STATUS_LABEL, INCIDENT_STATUSES, isSeverity, SEVERITIES } from '@/lib/domain'
 import { revealHidden } from '@/lib/untrusted'
 import { Button } from '../../atoms/Button'
+import { Chip } from '../../atoms/Chip'
 import { Label } from '../../atoms/Label'
 import { Select } from '../../atoms/Select'
 import { SegmentedControl, type SegmentOption } from '../../molecules/SegmentedControl'
@@ -32,7 +33,10 @@ function Field({ id, label, children }: { id: string; label: string; children: R
   )
 }
 
-/** 조건 띠: 상태 · 심각도 · 규칙 · 판정 여부. 값은 부르는 쪽이 주소에 둔다. */
+/**
+ * 조건 띠: 상태 · 심각도 · 규칙 · 판정 여부. 값은 부르는 쪽이 주소에 둔다.
+ * 출발지(actor_ip)는 고르는 칸 없이 출발지 분석(S-09)에서 넘어오므로 칩으로만 보이고 × 로 뺀다.
+ */
 export function IncidentFilterBar({ value, onChange, rules = [], className }: IncidentFilterBarProps) {
   const id = useId()
   const active = countFilters(value)
@@ -119,6 +123,13 @@ export function IncidentFilterBar({ value, onChange, rules = [], className }: In
           <option value="true">판정됨</option>
         </Select>
       </Field>
+
+      {value.actor_ip && (
+        // IPv6 는 39자(주소창에서 손으로 쓰면 45자)까지 길어 좁은 화면에서 칩이 띠 밖으로 나가지 않게 주소 안에서 줄을 바꾼다
+        <Chip onRemove={() => patch({ actor_ip: undefined })} removeLabel="출발지 조건 빼기" className="h-auto min-h-7 max-w-full py-0.5">
+          <span className="shrink-0">출발지</span> <span className="min-w-0 font-mono break-all">{value.actor_ip}</span>
+        </Chip>
+      )}
 
       {active > 0 && (
         <Button variant="ghost" size="sm" onClick={() => onChange(clearFilters(value))}>

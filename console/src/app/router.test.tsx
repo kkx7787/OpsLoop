@@ -8,7 +8,7 @@ function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 }
 
-/** /api/me 에 더해 목록 화면이 부르는 /api/incidents(0건) · /api/rules/quality(빈 배열)에 답한다 */
+/** /api/me 에 더해 목록 화면이 부르는 /api/incidents(0건) · /api/rules/quality(빈 배열) · /api/sources(0곳)에 답한다 */
 function stubIncidents(me: unknown) {
   const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
     const raw = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
@@ -19,6 +19,7 @@ function stubIncidents(me: unknown) {
     if (url.pathname === '/api/incidents') return json({ total: 0, limit: 50, offset: 0, items: [] }, 200)
     if (url.pathname === '/api/nodes') return json({ as_of: '', rows: [] }, 200)
     if (url.pathname === '/api/assets') return json({ as_of: '', available: false }, 200)
+    if (url.pathname === '/api/sources') return json({ as_of: '2026-09-29T00:00:00+00:00', total: 0, limit: 50, offset: 0, checkers: { gateway_stale: false, fw_stale: false }, items: [] }, 200)
     if (url.pathname === '/api/rules/quality') return json(url.searchParams.has('details') ? { rows: [], versions: [], runs: [] } : [], 200)
     return json({ detail: '없는 경로' }, 404)
   })
@@ -41,22 +42,11 @@ describe('경로표', () => {
     expect(screen.getByRole('navigation', { name: '주 메뉴' })).toBeInTheDocument()
   })
 
-  it.each([['/', '관제 현황'], ['/blocklist', '차단 목록'], ['/rules', '규칙 · 리플레이'], ['/nodes', '수집 노드'], ['/inventory', '자산 · 취약점']])('%s는 구현 화면이다', async (path, title) => {
+  it.each([['/', '관제 현황'], ['/blocklist', '차단 목록'], ['/rules', '규칙 · 리플레이'], ['/nodes', '수집 노드'], ['/inventory', '자산 · 취약점'], ['/sources', '출발지 분석'], ['/reports', '보고서']])('%s는 구현 화면이다', async (path, title) => {
     stubIncidents({ username: 'han', role: 'operator' })
     renderRoutes(routes, path)
     expect(await screen.findByRole('heading', { level: 1, name: title })).toBeInTheDocument()
     expect(screen.queryByText('구현 예정')).toBeNull()
-  })
-
-  it.each([
-    ['/sources', '출발지 분석', 'S-09'],
-    ['/reports', '보고서', 'S-11'],
-  ])('%s → %s (%s)', async (path, title, code) => {
-    stubMe({ username: 'han', role: 'operator' })
-    renderRoutes(routes, path)
-    expect(await screen.findByRole('heading', { level: 1, name: title })).toBeInTheDocument()
-    expect(screen.getByText(code)).toBeInTheDocument()
-    expect(screen.getByText('구현 예정')).toBeInTheDocument()
   })
 
   it('/incidents 는 목록 화면: 제목 · 조건 막대 · 0건 안내(자리 카드가 아니다)', async () => {

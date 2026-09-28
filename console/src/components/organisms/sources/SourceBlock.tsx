@@ -1,0 +1,100 @@
+import type { ReactNode } from 'react'
+import type { ActorBlock, BlockExempt } from '@/api/incidents'
+import type { BlockCheckers } from '@/api/sources'
+import { Badge } from '../../atoms/Badge'
+import { Time } from '../../atoms/Time'
+import { UntrustedText } from '../../atoms/UntrustedText'
+import { EnforcePointList } from '../incident-detail/EnforcePointList'
+import { BLOCK_STATE_LABEL, BLOCK_STATE_TONE, blockState, blockStateHint, LIVE_BLOCK_STATES } from '../incident-detail/format'
+import { CHECKER_UNKNOWN_NOTE, checkedPoints, checkersUnknown } from './model'
+
+/**
+ * 출발지의 지금 차단 상태(차단 목록 행 하나). 상태 나눔은 사건 상세 · 차단 목록과 같다(format.blockState).
+ * now 는 서버 기준 시각(as_of)이다. 브라우저 시계가 달라도 만료를 서버와 같게 가른다.
+ * 살아 있는 차단이면 지점별 결과를 붙이되, 집행기 확인이 멈춘 지점의 '적용 확인'은 '확인 지연'으로 보인다(model.checkedPoints)
+ */
+export function SourceBlockCell({ block, checkers, now }: { block: ActorBlock | null; checkers: BlockCheckers | undefined; now: number }) {
+  if (!block) return <span className="text-xs text-ink-muted">차단 없음</span>
+  const state = blockState(block, now)
+  const live = LIVE_BLOCK_STATES.includes(state)
+  return (
+    <div data-block-state={state} className="flex min-w-0 flex-col gap-1">
+      <Badge tone={BLOCK_STATE_TONE[state]} className="self-start">{BLOCK_STATE_LABEL[state]}</Badge>
+      {live && <EnforcePointList compact points={checkedPoints(block, checkers)} />}
+      {live && (
+        <span className="text-xs text-ink-muted">
+          {block.expires_at ? <>만료 <Time value={block.expires_at} format="short" className="whitespace-nowrap" /></> : '만료 없음'}
+        </span>
+      )}
+    </div>
+  )
+}
+
+export interface SourceBlockDetailProps {
+  block: ActorBlock | null
+  checkers: BlockCheckers | undefined
+  now: number
+  /** 금지 대역에 드는가(목록과 같은 판단: 코드 상수 + block_exempt · model.sourceExempt). 표를 읽을 수 없으면 null */
+  exempt: boolean | null
+  /** 드는 금지 대역(block_exempt 표의 행) */
+  exemptRange: BlockExempt | null
+}
+
+/** 상세의 차단 상태: 요청 · 집행 확인 · 만료(해제) · 사유 · 방식 · 집행 메모 · 지점별 결과 · 금지 대역 */
+export function SourceBlockDetail({ block, checkers, now, exempt, exemptRange }: SourceBlockDetailProps) {
+  const state = block ? blockState(block, now) : null
+  return (
+    <div className="flex flex-col gap-3">
+      {block && state ? (
+        <>
+          <dl className="m-0 grid grid-cols-2 gap-x-4 gap-y-2 text-sm" data-block-state={state}>
+            <Fact label="상태" value={<Badge tone={BLOCK_STATE_TONE[state]}>{BLOCK_STATE_LABEL[state]}</Badge>} />
+            <Fact label="요청" value={<Time value={block.created_at} format="datetime" />} />
+            <Fact
+              label={state === 'mismatch' ? '마지막 집행 확인' : '집행 확인'}
+              value={block.enforced_at && (state === 'enforced' || state === 'mismatch') ? <Time value={block.enforced_at} format="datetime" /> : blockStateHint(block, state)}
+            />
+            <Fact
+              label={block.released_at ? '해제' : '만료'}
+              value={block.released_at ? <Time value={block.released_at} format="datetime" /> : block.expires_at ? <Time value={block.expires_at} format="datetime" /> : '만료 없음'}
+            />
+            <Fact label="사유" value={<UntrustedText value={block.reason} fallback="—" />} />
+            <Fact label="방식" value={<UntrustedText value={block.method} max={64} fallback="—" />} />
+            <Fact label="요청자" value={<UntrustedText value={block.requested_by} max={64} fallback="미기록" />} />
+          </dl>
+          {block.enforce_note && (
+            <p className="m-0 text-xs break-words text-ink-muted">
+              집행 메모 <UntrustedText value={block.enforce_note} />
+            </p>
+          )}
+          {LIVE_BLOCK_STATES.includes(state) && <EnforcePointList points={checkedPoints(block, checkers)} />}
+        </>
+      ) : (
+        <span className="text-sm text-ink-muted">차단한 적 없음</span>
+      )}
+      {(exempt === true || exemptRange) && (
+        <p className="m-0 text-xs break-words text-ink-muted" data-block-exempt>
+          차단 금지 대역
+          {exemptRange && (
+            <>
+              {' '}
+              <span className="font-mono">{exemptRange.cidr}</span>(<UntrustedText value={exemptRange.note} max={64} />)
+            </>
+          )}{' '}
+          · 이 출발지는 차단하지 않습니다
+        </p>
+      )}
+      {exempt === null && <p className="m-0 text-xs text-warning">차단 금지 대역 표를 읽을 수 없어 금지 대역인지 확인할 수 없습니다</p>}
+      {checkersUnknown(checkers) && <p className="m-0 text-xs text-ink-muted">{CHECKER_UNKNOWN_NOTE}</p>}
+    </div>
+  )
+}
+
+function Fact({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-0.5">
+      <dt className="text-xs text-ink-muted">{label}</dt>
+      <dd className="m-0 min-w-0 font-medium break-words tabular-nums">{value}</dd>
+    </div>
+  )
+}

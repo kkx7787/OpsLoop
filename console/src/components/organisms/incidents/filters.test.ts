@@ -19,6 +19,15 @@ describe('filtersFromSearch', () => {
     expect(filtersFromSearch(params)).toEqual({})
     expect(filtersFromSearch(new URLSearchParams('judged=true'))).toEqual({ judged: true })
   })
+
+  it('출발지(actor_ip)는 주소 하나일 때만 읽고, 틀린 값은 서버에 넘기지 않게 버린다', () => {
+    expect(filtersFromSearch(new URLSearchParams('actor_ip=203.0.113.5'))).toEqual({ actor_ip: '203.0.113.5' })
+    expect(filtersFromSearch(new URLSearchParams('actor_ip=%202001:db8::1%20'))).toEqual({ actor_ip: '2001:db8::1' })
+    expect(filtersFromSearch(new URLSearchParams('actor_ip=::ffff:198.51.100.7'))).toEqual({ actor_ip: '::ffff:198.51.100.7' })
+    for (const bad of ['abc', '1.2.3', '256.1.1.1', '01.2.3.4', '203.0.113.0/24', 'fe80::1%25eth0', '1:::2', '1:2:3:4:5:6:7:8:9', "1.2.3.4'--", '']) {
+      expect(filtersFromSearch(new URLSearchParams({ actor_ip: bad }))).toEqual({})
+    }
+  })
 })
 
 describe('searchFromFilters', () => {
@@ -33,6 +42,14 @@ describe('searchFromFilters', () => {
   it('주소 → 조건 → 주소가 같다', () => {
     const search = 'status=acknowledged&severity=low&rule_id=R201&judged=false&sort=severity'
     expect(searchFromFilters(filtersFromSearch(new URLSearchParams(search))).toString()).toBe(search)
+    const withActor = 'judged=false&actor_ip=2001%3Adb8%3A%3A1&sort=recent'
+    expect(searchFromFilters(filtersFromSearch(new URLSearchParams(withActor))).toString()).toBe(withActor)
+  })
+
+  it('출발지 조건을 빼면 주소에서도 빠진다', () => {
+    const base = new URLSearchParams('actor_ip=203.0.113.5&page=2')
+    expect(searchFromFilters({}, base).toString()).toBe('page=2')
+    expect(searchFromFilters({ actor_ip: '203.0.113.5', judged: false }).toString()).toBe('judged=false&actor_ip=203.0.113.5')
   })
 })
 
@@ -43,6 +60,8 @@ describe('countFilters · clearFilters', () => {
     expect(countFilters({ status: 'open', judged: false, sort: 'recent' })).toBe(2)
     expect(clearFilters({ status: 'open', judged: false, sort: 'recent' })).toEqual({ sort: 'recent' })
     expect(clearFilters({ status: 'open' })).toEqual({})
+    expect(countFilters({ actor_ip: '203.0.113.5' })).toBe(1)
+    expect(clearFilters({ actor_ip: '203.0.113.5', sort: 'severity' })).toEqual({ sort: 'severity' })
   })
 })
 

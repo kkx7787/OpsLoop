@@ -40,13 +40,13 @@ export const SCREENS = {
   sources: {
     code: 'S-09',
     title: '출발지 분석',
-    description: '주소가 아니라 도구 지문 단위로 묶어 판정한다.',
+    description: '출발지 단위로 사건 · 판정 · 차단을 모으고, 같은 도구 지문을 쓰는 출발지를 묶어 본다.',
     wbs: '3.6.x (선택)',
   },
   reports: {
     code: 'S-11',
     title: '보고서',
-    description: '규칙 회차별 결과를 같은 형식으로 남긴다. 회차 비교 · 주간 자동 생성.',
+    description: '기간과 넣을 구역을 골라 한 장으로 모으고 브라우저 인쇄로 PDF 를 저장한다.',
     wbs: '3.6.10',
   },
   nodes: {
