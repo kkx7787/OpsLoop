@@ -47,7 +47,7 @@ export function AuditPage() {
     catch (e) { setError((e as Error).message) }
   }
   function reset() { setActor(''); setTarget(''); setStart(''); setEnd(''); setFilters(defaults); setError('') }
-  return <div className="flex min-w-0 flex-col gap-4">
+  return <div className="worklist-page flex min-w-0 flex-col gap-3">
     <PageHeader title="감사 기록" description="차단 변경, 노드 등록 토큰의 발급·취소, 알림 채널의 추가·변경 이력을 확인합니다." />
     {me.isPending ? <LoadingState /> : !allowed ? <ForbiddenState title="이 화면은 admin 만 볼 수 있습니다" requiredRoles="admin" currentRole={me.data?.role} /> : <>
       <MonitoringStatus updatedAt={query.dataUpdatedAt} error={query.data ? query.error : null} onRetry={() => void query.refetch()} busy={query.isFetching} />
@@ -59,14 +59,14 @@ export function AuditPage() {
         <div className="flex gap-2"><Button type="submit" variant="primary">조회</Button><Button onClick={reset}>초기화</Button></div>
       </form></Card>
       {error && <Banner tone="danger" title={error} />}
-      {query.isPending ? <LoadingState /> : !query.data ? <ApiErrorState error={query.error} onRetry={() => void query.refetch()} /> : <Card padding="none" className="min-w-0">
+      {query.isPending ? <LoadingState /> : !query.data ? <ApiErrorState error={query.error} onRetry={() => void query.refetch()} /> : <Card padding="none" className="worklist-panel flex min-w-0 flex-col overflow-hidden">
         <CardHeader title="변경 이력" aside={`${query.data.total.toLocaleString()}건`} />
-        <div className="overflow-x-auto" role="region" aria-label="감사 기록 표" tabIndex={0}><table className="w-full min-w-[720px] text-left text-sm">
-          <thead className="border-b border-line text-xs text-ink-muted"><tr>{['시각 (KST)','행위자','종류','대상','기록'].map(t => <th key={t} className={cell}>{t}</th>)}</tr></thead>
+        <div key={JSON.stringify(filters)} className="worklist-scroll overflow-auto" role="region" aria-label="감사 기록 표" tabIndex={0}><table className="responsive-table w-full text-left text-sm">
+          <thead className="sticky top-0 bg-surface border-b border-line text-xs text-ink-muted"><tr>{['시각 (KST)','행위자','종류','대상','기록'].map(t => <th key={t} className={cell}>{t}</th>)}</tr></thead>
           <tbody className="divide-y divide-line">{query.data.rows.map((r,i) => <tr key={`${r.ts}:${r.eventid}:${i}`}>
-            <td className={`${cell} whitespace-nowrap`}><Time value={r.ts} /></td><td className={cell}><UntrustedText value={r.actor} max={64} fallback="미기록" /></td>
-            <td className={`${cell} whitespace-nowrap`}>{EVENTS[r.eventid] ?? <UntrustedText value={r.eventid} max={64} />}</td><td className={`${cell} max-w-60 font-mono break-all`}><UntrustedText value={r.target} fallback="—" /></td>
-            <td className={`${cell} max-w-md`}><details><summary aria-label={`${r.target ? revealHidden(r.target) : '대상 미기록'} 감사 상세 보기`} className="cursor-pointer text-ink-muted">상세 보기</summary><p className="break-all font-mono text-xs leading-5"><UntrustedText value={r.detail} fallback="내용 미기록" /></p><p className="text-xs text-ink-muted">이벤트 <UntrustedText value={r.eventid} max={64} /><br />DB 연결 주소 <UntrustedText value={r.db_client} max={64} fallback="미기록" /></p></details></td>
+            <td className={`${cell} whitespace-nowrap`}><Time value={r.ts} /></td><td data-label="행위자" className={cell}><UntrustedText value={r.actor} max={64} fallback="미기록" /></td>
+            <td data-label="종류" className={`${cell} whitespace-nowrap`}>{EVENTS[r.eventid] ?? <UntrustedText value={r.eventid} max={64} />}</td><td data-label="대상" className={`${cell} max-w-60 font-mono break-all`}><UntrustedText value={r.target} fallback="—" /></td>
+            <td data-label="기록" className={`${cell} max-w-md`}><details><summary aria-label={`${r.target ? revealHidden(r.target) : '대상 미기록'} 감사 상세 보기`} className="cursor-pointer text-ink-muted">상세 보기</summary><p className="break-all font-mono text-xs leading-5"><UntrustedText value={r.detail} fallback="내용 미기록" /></p><p className="text-xs text-ink-muted">이벤트 <UntrustedText value={r.eventid} max={64} /><br />DB 연결 주소 <UntrustedText value={r.db_client} max={64} fallback="미기록" /></p></details></td>
           </tr>)}</tbody>
         </table></div>
         {!query.data.rows.length && <p className="p-4 text-sm text-ink-muted">조건에 맞는 감사 기록이 없습니다.</p>}

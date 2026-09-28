@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { createChannel, notifyKeys, testChannel, updateChannel, useChannels, useDeliveries, type ChannelInput, type DeliveryFilters, type NotifyChannel } from '@/api/notify'
 import { describeError } from '@/api/errors'
@@ -45,6 +45,16 @@ export function AlertsPage() {
   const [notice, setNotice] = useState<Notice | null>(null)
   const [saving, setSaving] = useState(false), [busyId, setBusyId] = useState<number | null>(null)
   const pending = useRef(false)
+  const pageRef = useRef<HTMLDivElement>(null)
+  const previousEditing = useRef<Editing>(null)
+  useEffect(() => {
+    const previous = previousEditing.current
+    previousEditing.current = editing
+    if (!editing && previous) {
+      const selector = previous === 'new' ? '[data-add-channel]' : `[data-channel-id="${previous.id}"] [data-edit-channel]`
+      pageRef.current?.querySelector<HTMLButtonElement>(selector)?.focus()
+    }
+  }, [editing])
 
   const refresh = () => client.invalidateQueries({ queryKey: notifyKeys.all })
 
@@ -79,17 +89,17 @@ export function AlertsPage() {
     finally { setBusyId(null); await refresh() }
   }
 
-  return <div className="flex min-w-0 flex-col gap-4">
-    <PageHeader title="알림 설정" description="Teams · 웹훅 채널과 메시지 틀을 관리하고 발송 이력을 확인합니다." aside={allowed && <Button variant="primary" disabled={editing !== null} title={editing !== null ? '열린 양식을 저장하거나 닫은 뒤 추가할 수 있습니다' : undefined} onClick={() => { setEditing('new'); setNotice(null) }}>채널 추가</Button>} />
+  return <div ref={pageRef} className="flex min-w-0 flex-col gap-4">
+    <PageHeader title="알림 설정" description="Teams · 웹훅 채널과 메시지 틀을 관리하고 발송 이력을 확인합니다." aside={allowed && <Button data-add-channel variant="primary" disabled={editing !== null} title={editing !== null ? '열린 양식을 저장하거나 닫은 뒤 추가할 수 있습니다' : undefined} onClick={() => { setEditing('new'); setNotice(null) }}>채널 추가</Button>} />
     {me.isPending ? <LoadingState /> : !allowed ? <ForbiddenState title="이 화면은 admin 만 볼 수 있습니다" requiredRoles="admin" currentRole={me.data?.role} /> : <>
       <MonitoringStatus updatedAt={updatedAt} error={staleError} onRetry={() => { void channels.refetch(); void deliveries.refetch() }} busy={channels.isFetching || deliveries.isFetching} />
       {notice && <Banner tone={notice.tone} title={notice.title} action={<Button size="sm" onClick={() => setNotice(null)}>닫기</Button>}>{notice.body}</Banner>}
       {editing && <ChannelForm key={editing === 'new' ? 'new' : editing.id} initial={editing === 'new' ? undefined : editing} busy={saving} onSubmit={save} onCancel={() => setEditing(null)} />}
-      {channels.isPending ? <LoadingState /> : !channels.data ? <ApiErrorState error={channels.error} onRetry={() => void channels.refetch()} /> : <>
+      {!editing && (channels.isPending ? <LoadingState /> : !channels.data ? <ApiErrorState error={channels.error} onRetry={() => void channels.refetch()} /> : <>
         <ChannelTable channels={channels.data} busyId={busyId} onEdit={(c) => { setEditing(c); setNotice(null) }} onToggle={(c) => void toggle(c)} onTest={(c) => void test(c)} />
         <DeliveryTable channels={channels.data} filters={filters} onFilters={setFilters} data={deliveries.data} pending={deliveries.isPending} fetching={deliveries.isFetching} error={deliveries.error} onRetry={() => void deliveries.refetch()} />
         <p className="m-0 text-xs leading-5 text-ink-muted">즉시 등급은 같은 종류의 첫 사건부터 묶음 시간 동안 모아 한 메시지로 보내고, 일일 요약은 매일 09:00 KST 에 미판정 현황을 보냅니다. 채널 주소는 저장 뒤 다시 볼 수 없으며 메시지에는 원문 로그 · 내부 주소를 넣지 않습니다. 30초마다 재조회</p>
-      </>}
+      </>)}
     </>}
   </div>
 }

@@ -40,6 +40,19 @@ describe('규칙 결과',()=>{
     expect(screen.getByText('서로 다른 두 버전과 동일한 시작·종료 구간을 선택해 주세요.')).toBeInTheDocument()
     expect(screen.getByRole('link',{name:'R001 · v2'})).toHaveAttribute('href','/incidents?rule_id=R001')
   })
+  it('최근 실행은 5회로 요약하고 나머지 이력도 펼쳐 확인한다', async () => {
+    vi.stubGlobal('fetch', vi.fn<typeof globalThis.fetch>(async input => {
+      if (String(input).startsWith('/api/rules/quality')) return json({ ...RULES, runs: Array.from({ length: 12 }, (_, i) => ({ ...RULES.runs[0], id: i + 1 })) })
+      return json({}, 404)
+    }))
+    renderRoutes([{ path: '/rules', element: <RulesPage /> }], '/rules', noRetryClient())
+    const runs = await screen.findByRole('region', { name: '최근 탐지 실행 표' })
+    expect(within(runs).getAllByRole('row')).toHaveLength(6)
+    fireEvent.click(screen.getByRole('button', { name: '실행 이력 모두 보기' }))
+    expect(within(runs).getAllByRole('row')).toHaveLength(13)
+    fireEvent.click(screen.getByRole('button', { name: '최근 5회만' }))
+    expect(within(runs).getAllByRole('row')).toHaveLength(6)
+  })
   it('순환 규칙(R006 포함)은 오탐률 대신 순환 규칙으로 표시한다',async()=>{
     setup('/rules')
     const row=(await screen.findByRole('link',{name:'R006 · v3'})).closest('tr')!
