@@ -10,6 +10,8 @@
 #   infra/migrations/20260927_block_enforce.sql 을 적용하고 enforcer/install-enforcer.sh 로 역할을 만든 뒤에 돌린다.
 #   관제 대상 상태판(이슈 #52)의 생존 신호 표(sensor_heartbeats) 권한 · 트리거와 콘솔의 노드 지표 읽기도 본다.
 #   infra/migrations/20260930_status_board.sql 을 적용한 뒤에 돌린다.
+#   콘솔 계정 관리(이슈 #59)의 계정 변경 함수(console_account_set) 실행 권한 · 도장 · 감사 트리거와 감사 조회 뷰 · 보호 트리거의
+#   계정 조건도 본다. infra/migrations/20261001_console_accounts.sql 을 적용한 뒤에 돌린다.
 # 사용 (Mac, 저장소 루트): infra/vmware/scripts/verify-db-roles.sh     종료 코드 0 = 전부 기대대로
 set -uo pipefail
 SSH=(ssh -F "$HOME/.ssh/config.opsloop" -o BatchMode=yes -o ConnectTimeout=10)
@@ -155,6 +157,27 @@ q opsloop_console  "UPDATE sensor_heartbeats SET problem = problem WHERE false" 
 q opsloop_console  "INSERT INTO node_metrics SELECT * FROM node_metrics WHERE false" 거부
 q opsloop_detector "SELECT count(*) FROM sensor_heartbeats" 거부
 p opsloop_ingest   "(SELECT tgenabled = 'O' FROM pg_trigger WHERE tgname = 'sensor_heartbeats_guard')" t
+
+echo "== 콘솔 계정 관리 (이슈 #59. 계정 변경 함수 · 도장 · 감사 트리거)"
+#   콘솔은 계정 표를 직접 고치지 못한다(UPDATE 는 last_login_at 열뿐. 위 역할별 문장의 role 갱신 · INSERT 거부 줄과 같다). 관제사 ↔ 조회자
+#   역할 변경 · 비활성 · 재활성은 console_account_set(SECURITY DEFINER)으로만 하고, 콘솔만 실행 권한을 받는다. 행위자가 없으면 아무것도
+#   바꾸지 않고 no_actor 를 돌려주므로 실행 줄은 데이터를 바꾸지 않는다. 역할 블록을 다시 적용해도 실행 권한은 남는다.
+#   감사 조회 뷰 · 추가만 되는 행 보호에 계정 감사(console.account.%)가 있어야 한다. 20260923_console_ops.sql · 20260924_notify.sql 을
+#   다시 적용하면 빠지므로 20261001_console_accounts.sql 도 다시 적용한다. infra/test_console_accounts_db.py 가 이 줄들을 시험 DB 에서 돌린다
+q opsloop_console  "UPDATE console_users SET disabled_at = now() WHERE false" 거부
+q opsloop_console  "UPDATE console_users SET updated_at = now() WHERE false" 거부
+q opsloop_console  "UPDATE console_users SET password_hash = password_hash WHERE false" 거부
+q opsloop_console  "DELETE FROM console_users WHERE false" 거부
+q opsloop_console  "UPDATE console_users SET last_login_at = last_login_at WHERE false" 허용
+q opsloop_console  "SELECT console_account_set(NULL, NULL, NULL)" 허용
+q opsloop_detector "SELECT console_account_set(NULL, NULL, NULL)" 거부
+p opsloop_console  "has_function_privilege('opsloop_console', 'console_account_set(text, text, boolean)', 'EXECUTE')" t
+p opsloop_detector "has_function_privilege('opsloop_detector', 'console_account_set(text, text, boolean)', 'EXECUTE')" f
+p opsloop_ingest   "has_function_privilege('opsloop_ingest', 'console_account_set(text, text, boolean)', 'EXECUTE')" f
+p opsloop_console  "(SELECT prosecdef FROM pg_proc WHERE proname = 'console_account_set')" t
+p opsloop_console  "(SELECT count(*) = 2 FROM pg_trigger WHERE tgname IN ('console_users_stamp', 'trg_audit_console_users') AND tgenabled = 'O')" t
+p opsloop_console  "(SELECT pg_get_viewdef('audit_log'::regclass) LIKE '%console.account.%')" t
+p opsloop_console  "(SELECT pg_get_triggerdef(oid) LIKE '%console.account.%' FROM pg_trigger WHERE tgname = 'trg_audit_append_only')" t
 
 echo "== 접속 한도 (이슈 #43. 콘솔 한 대 = 풀 10 + LISTEN 1 → 두 대 22 + triage.py)"
 #   20 이면 콘솔 B 를 켤 때 한도에 닿는다. 무제한(-1)도 기대와 다르다고 본다 (콘솔이 DB 접속을 다 써 버리지 않게 하는 울타리다)

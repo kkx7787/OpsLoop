@@ -30,6 +30,13 @@ const EVENTS: Record<string, string> = {
   'console.node.token.canceled': '등록 토큰 취소',
   'console.notify.channel.created': '알림 채널 추가',
   'console.notify.channel.changed': '알림 채널 변경',
+  // 계정 변경(#59). 화면 · 명령줄의 변경을 DB 트리거가 남긴다. 비밀번호는 바뀐 사실만
+  'console.account.created': '계정 추가',
+  'console.account.role.changed': '계정 역할 변경',
+  'console.account.disabled': '계정 비활성',
+  'console.account.enabled': '계정 재활성',
+  'console.account.password.changed': '계정 비밀번호 변경',
+  'console.account.deleted': '계정 삭제',
 }
 const defaults: AuditFilters = { actor: '', target: '', limit: 25, offset: 0 }
 const cell = 'px-4 py-3 align-top'
@@ -48,12 +55,12 @@ export function AuditPage() {
   }
   function reset() { setActor(''); setTarget(''); setStart(''); setEnd(''); setFilters(defaults); setError('') }
   return <div className="worklist-page flex min-w-0 flex-col gap-3">
-    <PageHeader title="감사 기록" description="차단 변경, 노드 등록 토큰의 발급·취소, 알림 채널의 추가·변경 이력을 확인합니다." />
+    <PageHeader title="감사 기록" description="차단 변경, 노드 등록 토큰의 발급·취소, 알림 채널의 추가·변경, 계정의 추가·역할·활성·비밀번호 변경 이력을 확인합니다." />
     {me.isPending ? <LoadingState /> : !allowed ? <ForbiddenState title="이 화면은 admin 만 볼 수 있습니다" requiredRoles="admin" currentRole={me.data?.role} /> : <>
       <MonitoringStatus updatedAt={query.dataUpdatedAt} error={query.data ? query.error : null} onRetry={() => void query.refetch()} busy={query.isFetching} />
       <Card><form className="grid gap-3 sm:flex sm:flex-wrap sm:items-end" onSubmit={submit}>
         <label htmlFor="audit-field-0" className="grid gap-1 text-xs">행위자<Input id="audit-field-0" value={actor} maxLength={128} placeholder="계정 이름" onChange={e => setActor(e.target.value)} /></label>
-        <label htmlFor="audit-field-1" className="grid gap-1 text-xs">대상<Input id="audit-field-1" value={target} maxLength={128} placeholder="노드 · IP · 채널 이름" onChange={e => setTarget(e.target.value)} /></label>
+        <label htmlFor="audit-field-1" className="grid gap-1 text-xs">대상<Input id="audit-field-1" value={target} maxLength={128} placeholder="노드 · IP · 채널 · 계정 이름" onChange={e => setTarget(e.target.value)} /></label>
         <label htmlFor="audit-field-2" className="grid gap-1 text-xs">시작 (KST)<Input id="audit-field-2" type="datetime-local" value={start} onChange={e => setStart(e.target.value)} /></label>
         <label htmlFor="audit-field-3" className="grid gap-1 text-xs">종료 (KST)<Input id="audit-field-3" type="datetime-local" value={end} onChange={e => setEnd(e.target.value)} /></label>
         <div className="flex gap-2"><Button type="submit" variant="primary">조회</Button><Button onClick={reset}>초기화</Button></div>

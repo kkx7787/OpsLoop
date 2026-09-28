@@ -7,10 +7,8 @@ import { IncidentsPage } from '@/pages/incidents'
 import { DashboardPage } from '@/pages/dashboard/DashboardPage'
 import { BlocklistPage } from '@/pages/blocklist/BlocklistPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
-import { PlaceholderPage } from '@/pages/PlaceholderPage'
 import { RootError, RouteError } from '@/pages/RouteError'
 import { NAV_GROUPS } from './nav'
-import { SCREENS } from './screens'
 
 /** 상세 경로는 짧게 표시한다. 전체 사건 키는 상세 머리글에서 펼쳐 본다. */
 const incidentHandle: RouteHandle = { crumb: () => '사건 상세' }
@@ -42,7 +40,7 @@ export const routes: RouteObject[] = [
           { path: 'inventory', lazy: async () => ({ Component: (await import('@/pages/assets/AssetsPage')).AssetsPage }) },
           { path: 'alerts', lazy: async () => ({ Component: (await import('@/pages/alerts/AlertsPage')).AlertsPage }) },
           { path: 'audit', lazy: async () => ({ Component: (await import('@/pages/audit/AuditPage')).AuditPage }) },
-          { path: 'accounts', element: <PlaceholderPage screen={SCREENS.accounts} /> },
+          { path: 'accounts', lazy: async () => ({ Component: (await import('@/pages/accounts/AccountsPage')).AccountsPage }) },
           ...(import.meta.env.DEV
             ? [
                 {

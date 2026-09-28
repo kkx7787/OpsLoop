@@ -300,6 +300,8 @@ ssh -F ~/.ssh/config.opsloop console-a "docker logs opsloop-api 2>&1 | grep '실
 | `summarize.py` | 감지 · 실패 구간 · 지연 · 전환 완료 · 좀비 · 재연결 · 401 · 복귀를 계산한다. 여러 회차는 중앙값 · 최댓값으로 묶는다 | `results.json` · `sha256.json` |
 
 프로브 쿠키: `python3 infra/vmware/failover/probe_http.py --mint-cookie console-a` 를 돌리면 콘솔 A 컨테이너 안에서 `auth.issue("failover-probe", "viewer")` 를 부른다. 비밀번호 없이 서버 비밀로 발급한 viewer 12시간 쿠키다. 이 쿠키는 `~/.config/opsloop/probe-cookie`(0600)에만 두고 화면 · 로그에는 찍지 않는다. 시험 뒤 `--drop-cookie` 로 지운다.
+콘솔이 요청마다 계정을 확인하므로(이슈 #59) 프로브 계정이 계정 표에 있어야 한다. 처음 한 번 조회자로 만든다(비밀번호는 쓰지 않는 긴 값):
+`auth.py add failover-probe viewer --by <이름>`('콘솔 계정' 절의 소유자 접속). 쿠키는 계정을 만든 뒤에 받는다 — 그 전에 받은 쿠키 · 계정을 비활성하거나 역할을 바꾸기 전에 받은 쿠키는 무효(HTTP 401 · 웹소켓 1008)다.
 
 회차 하나 (콘솔 B 를 켠 뒤. 터미널 넷, 저장소 루트, `R=~/opsloop-failover/r01-stop-a`):
 
@@ -332,6 +334,9 @@ python3 infra/vmware/failover/probe_http.py --drop-cookie
 
 - 남은 끊김: DOWN 판정 직전 1초 안에 보낸 요청 약 10건은 여전히 끊긴다(연결을 기다리던 세션을 `on-marked-down shutdown-sessions` 가 끊는다).
   DB 끊김 때의 5xx(50 ~ 60건)는 그 콘솔이 DB 에 닿지 못하는 동안 받은 요청이라 이번 변경과 무관하다(감지 전까지).
+  #59 부터 me 줄기(/api/me)도 요청마다 계정 행을 읽는다. 그래서 db-cut 에서는 me 요청도 감지 전까지 실패한다.
+  #56 측정(u04 ~ u06)의 db-cut 실패는 health 줄기뿐이었으므로 실패 수 · p99 를 그대로 견주지 말고 줄기별(by_stream) health 값만 견준다.
+  다음 db-cut 측정에서 새 기준값을 남긴다.
 - 통보가 다시 붙으면 풀 연결도 새 세대로 바꾸고(`pool.expire_connections`), `/health` 는 끊긴 연결 오류면 한 번 더 빌려 본다. 1분 넘게 끊겼다 돌아온 뒤
   DB 가 닫은 옛 연결을 처음 쓰는 요청이 실패하지 않게 하려는 것이다. DB 쪽 소켓의 keepalive 는 데이터 노드에서 아래로 본다(콘솔 연결에 30초 이하 타이머).
 
@@ -348,7 +353,7 @@ ssh -F ~/.ssh/config.opsloop console-a 'f=$(docker inspect -f "{{.LogPath}}" ops
 
 ## 데이터베이스 역할 (이슈 #31)
 
-구성요소마다 최소 권한 역할로 붙는다. 소유자 `opsloop` 는 스키마 적용 · `nodes.py` · `auth.py add` 에만 쓴다.
+구성요소마다 최소 권한 역할로 붙는다. 소유자 `opsloop` 는 스키마 적용 · `nodes.py` · `auth.py`(계정 명령줄) 에만 쓴다.
 권한은 `infra/schema.sql` 끝의 역할 블록이 주고(역할이 있을 때만, 여러 번 적용해도 같다), 역할과 비밀번호는 아래 스크립트가 만든다.
 
 | 역할 | 쓰는 곳 | 접속 파일 | 할 수 있는 것 |
@@ -356,10 +361,10 @@ ssh -F ~/.ssh/config.opsloop console-a 'f=$(docker inspect -f "{{.LogPath}}" ops
 | `opsloop_gate` | 수집 관문 | 데이터 노드 `/etc/opsloop/gate.env` | nodes 네 열 읽기 · `enroll_node` |
 | `opsloop_ingest` | 다리(pull_loki) · 파서 · 생존 신호 기록(record_heartbeats) | `/etc/opsloop/collector.env` | events · sessions · node_metrics 적재, nodes 수신 기록, 업로더 생존 신호(`sensor_heartbeats` 업로더 행, 이슈 #52) |
 | `opsloop_detector` | 탐지기(detect.py) | `/etc/opsloop/detector.env` | 규칙 입력 읽기, incidents 생성 · 억제 · 이어지는 사건 갱신(끝 시각 · 건수 · 근거 네 열), detector_runs |
-| `opsloop_console` | 콘솔 API · triage.py | 콘솔 `~/opsloop/.env` · 데이터 노드 `/etc/opsloop/triage.env` | 판정 · 조치 · 차단 · 등록 토큰 · 감사 · 로그인 기록 · CTI 표 읽기 · 생존 신호 · 노드 지표 읽기(이슈 #52). 토큰 해시 · 계정 역할은 못 본다/못 고친다 |
+| `opsloop_console` | 콘솔 API · triage.py | 콘솔 `~/opsloop/.env` · 데이터 노드 `/etc/opsloop/triage.env` | 판정 · 조치 · 차단 · 등록 토큰 · 감사 · 로그인 기록 · CTI 표 읽기 · 생존 신호 · 노드 지표 읽기(이슈 #52) · 계정 변경 함수 `console_account_set` 실행(관제사 ↔ 조회자 · 비활성 · 재활성, 이슈 #59). 토큰 해시는 못 본다. 계정 표는 로그인 기록 열 말고는 못 고친다 |
 | `opsloop_cti` | CTI 수집기(`opsloop-cti`: 공개 정보 갱신 · 자산 적재, 이슈 #39) | `/etc/opsloop/cti.env` | 공개 정보 · 자산 표(`cti_*` · `asset_*`) 쓰기(`cti_snapshots` 는 추가만), `rule_versions` 읽기. 이벤트 · 사건 · 판정은 못 본다 |
 | `opsloop_backup` | `backup-db.sh` 의 pg_dump · 역할 목록(pg_dumpall --globals-only --no-role-passwords) | 없음 (컨테이너 안 로컬 접속) | 읽기 전부 |
-| `opsloop` (소유자) | 스키마 · `nodes.py` · `auth.py add` | `/etc/opsloop/admin.env` (root 만) · compose `.env` | 전부 |
+| `opsloop` (소유자) | 스키마 · `nodes.py` · `auth.py`(계정 추가 · 비밀번호 · 관리자 부여 · 해제 · 비활성) | `/etc/opsloop/admin.env` (root 만) · compose `.env` | 전부 |
 
 절차 (Mac, 저장소 루트):
 
@@ -374,8 +379,7 @@ infra/vmware/scripts/db-console-role.sh console-a
 infra/vmware/scripts/verify-db-roles.sh
 ```
 
-- 계정 추가 · 역할 변경은 콘솔 역할로는 안 된다. 콘솔 노드에서 소유자 접속으로 돌린다:
-  `docker exec -it -e DATABASE_URL="postgresql://opsloop:<compose .env 의 POSTGRES_PASSWORD>@192.168.60.11:5432/opsloop" opsloop-api python3 auth.py add <아이디> <역할>`
+- 계정 추가 · 비밀번호 · 관리자 부여는 콘솔 역할로는 안 된다. 콘솔 노드에서 소유자 접속으로 돌린다(아래 '콘솔 계정 (이슈 #59)').
 - `detector/triage.py` 는 `set -a; . /etc/opsloop/triage.env; set +a` 뒤에 돌린다 (콘솔 역할).
 - 흡수 기록(`incident_absorbed`, 규칙 v3)을 읽는 콘솔 · triage 를 올리기 전에 `infra/migrations/20260925_round2.sql` 다음 `20260925_v3_absorbed.sql` 을 먼저 적용한다(흡수 기록 · 후속 차단 약속 `absorbed_blocks` 표). 표가 없으면 사건 상세와 triage 가 오류로 멈춘다. 알림 트리거 `infra/notify.sql` 도 다시 적용한다(`psql -1`).
 - 적재기는 규칙 파일을 `OPSLOOP_RULES`(기본 `rules_v3.json`, `/etc/default/opsloop-ingest` 로 바꾼다)로 탐지에 넘긴다. `puller/install-ingest.sh` 는 흡수 기록 표 · 탐지 역할 쓰기 권한이 없으면 코드를 바꾸지 않고 멈춘다. 전환은 다음 회차 뒤 `detector_runs` 의 최근 버전으로 확인한다.
@@ -384,6 +388,57 @@ infra/vmware/scripts/verify-db-roles.sh
   `db-console-role.sh` · `install-collector.sh` 는 30 으로 만들고, 이미 있는 역할은 마이그레이션으로 올린다(역할이 있을 때만 바꾸고
   여러 번 적용해도 같다. 붙어 있는 접속은 끊기지 않는다). `verify-db-roles.sh` 가 30 이상인지 본다. 콘솔 B 를 켜기 전에 한다.
   `ssh -F ~/.ssh/config.opsloop data01 'sudo -n docker exec -i opsloop-db psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -q' < infra/migrations/20260926_console_connlimit.sql`
+
+### 콘솔 계정 (이슈 #59)
+
+권한을 높이는 일은 명령줄(소유자 접속)에만 남긴다. 콘솔이 뚫려도 콘솔 스스로 관리자가 되지 못한다.
+
+| 어디서 | 할 수 있는 것 |
+|---|---|
+| 콘솔 화면 `/accounts` (관리자만) | 관제사 ↔ 조회자 역할 변경, 비활성 · 재활성. 관리자 계정과 본인 계정은 바꾸지 못한다 |
+| 명령줄 `auth.py` (소유자 접속) | 계정 추가, 비밀번호 재설정, 관리자 부여 · 해제, 관리자 계정 비활성 · 재활성, 목록 |
+
+- 콘솔 DB 역할(`opsloop_console`, triage.py 도 같다)은 계정 표를 고치지 못한다. UPDATE 는 로그인 기록(`last_login_at`) 열뿐이다. 화면의 변경은 DB 함수 `console_account_set`(SECURITY DEFINER, 콘솔만 실행)을 부른다. 함수가 관리자 대상 · 관리자로 올리기 · 자기 자신을 거부한다(`cli_only` · `self`).
+- 비활성 · 역할 변경 · 비밀번호 재설정은 그 계정의 열린 세션을 끊는다. 콘솔은 요청마다 계정 행을 읽고, 변경 시각(`updated_at`)보다 먼저 받은 쿠키를 무효로 본다. 다시 로그인하면 바뀐 역할로 들어온다. 실시간 연결은 30초 안에 끊긴다. 비활성 계정의 로그인은 틀린 비밀번호와 같은 응답이다.
+- 계정은 지우지 않고 비활성으로만 둔다. 판정 · 조치 기록이 계정에 귀속된다.
+- 변경은 모두 DB 트리거가 감사에 남긴다(`console.account.*`. 감사 화면에 보이고 고치거나 지울 수 없다). 명령줄 · psql 직접 변경도 남는다. 비밀번호는 바뀐 사실만 남고 해시는 싣지 않는다.
+
+명령줄. 콘솔 노드에서 소유자 접속으로 돌리고, 명령 앞부분은 모두 같다:
+`docker exec -it -e DATABASE_URL="postgresql://opsloop:<compose .env 의 POSTGRES_PASSWORD>@192.168.60.11:5432/opsloop" opsloop-api python3 auth.py <명령> …`
+
+| 명령 | 하는 일 |
+|---|---|
+| `add <아이디> <역할> [--by <이름>]` | 새 계정만 만든다. 이미 있으면 거부하고 `passwd` · `role` 을 안내한다. 비밀번호를 두 번 묻는다(12자 이상). 아이디는 영문 · 숫자 · `._-` 64자 이하. 역할은 `viewer` · `operator` · `admin` |
+| `passwd <아이디> [--by <이름>]` | 비밀번호 재설정(12자 이상, 두 번 입력). 그 계정의 열린 세션이 끊긴다 |
+| `role <아이디> <역할> [--by <이름>]` | 역할 변경. 관리자 부여 · 해제는 여기서만 한다 |
+| `disable <아이디> [--by <이름>]` · `enable <아이디> [--by <이름>]` | 비활성 · 재활성(관리자 계정 포함) |
+| `list` | 아이디 · 역할 · 상태 · 마지막 로그인. 해시는 찍지 않는다 |
+
+- `--by <이름>` 은 감사에 남는 행위자다(`cli:<이름>`, 없으면 `cli`). 컨테이너가 `app` 사용자로 돌아 OS 사용자 이름으로는 누가 했는지 가리지 못하므로 붙인다.
+- 마지막 활성 관리자는 `role` 로 낮추거나 `disable` 로 막지 못한다. 다른 관리자를 먼저 두고 한다.
+- 비밀번호는 명령줄 인자로 받지 않고 묻는다. 소유자 비밀번호가 `DATABASE_URL` 로 명령줄에 들어가는 것은 이전과 같다.
+
+적용 순서 (Mac, 저장소 루트). 새 콘솔은 로그인과 요청마다 계정 상태 열을 읽으므로 마이그레이션이 먼저다(없으면 로그인 · 로그인한 요청이 모두 오류로 막힌다):
+
+```bash
+# 1. 마이그레이션: 계정 열(disabled_at · updated_at) · 도장 트리거 · 변경 함수 · 감사 트리거 · 감사 조회 조건. 여러 번 적용해도 같다.
+#    옛 이미지는 새 열을 읽지 않으므로 먼저 적용해도 그대로 돈다. 기존 계정의 updated_at 은 만든 때로 채워 열린 세션을 끊지 않는다
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n docker exec -i opsloop-db psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -q' \
+  < infra/migrations/20261001_console_accounts.sql
+# 2. 검증: '콘솔 계정 관리' 절이 모두 ✔ 이고 종료 코드 0. 기존 계정 줄(role 갱신 · INSERT 거부)도 그대로 거부다
+infra/vmware/scripts/verify-db-roles.sh
+# 3. 콘솔 이미지: 화면(npm run build → app/static)과 API 를 콘솔 A 에 올린다 (이슈 #47 과 같은 절차 · 백업 먼저)
+# 4. 콘솔 B 는 꺼 둔다. 켜 둔 채라면 3번 전에 분배에서 빼 두고(옛 이미지가 요청을 받으면 비활성 · 역할 변경을 모른다.
+#    roundrobin 이라 요청의 절반), 3번 뒤 같은 이미지로 다시 넣는다. up 은 maint 를 요구하고 분배 복귀는 ready 단계다
+infra/vmware/scripts/console-join.sh --step maint --apply     # 3번 전
+infra/vmware/scripts/console-join.sh --from image --apply     # 3번 뒤: image · env · up · verify · ready · assets
+```
+
+- `20260923_console_ops.sql` · `20260924_notify.sql` 을 다시 적용하면 감사 조회 뷰와 보호 트리거가 계정 조건 없이 다시 만들어진다(계정 감사가 감사 화면에서 빠지고 지울 수 있게 된다). 그때는 `20261001_console_accounts.sql` 도 다시 적용한다. 역할 블록(`20260924_db_roles.sql`)은 표 권한만 거두므로 다시 적용해도 함수 실행 권한은 남는다.
+- 범위 밖: 화면에서 계정 추가 · 비밀번호 · 삭제, 로그인 실패 횟수에 따른 잠금. triage.py 는 콘솔 역할로 붙고 판정자 이름을 계정 표와 대조하지 않는다(비활성 계정 이름으로도 판정이 남는다).
+- 잔여 위험: 함수는 콘솔이 넘기는 행위자(`opsloop.actor`)를 그대로 믿는다(다른 감사와 같은 수준, `infra/schema.sql` T-8). 콘솔 역할 비밀번호(콘솔 `.env` · `triage.env`)가 새면 관제사 · 조회자 계정의 역할을 바꾸거나 비활성 · 재활성할 수는 있지만, 관리자로 올리거나 관리자 계정을 건드리지는 못한다.
+- 되돌리기: 마이그레이션은 그대로 두고 콘솔 이미지만 옛것으로 되돌려도 돈다. 다만 옛 이미지는 새 열을 읽지 않으므로 비활성 · 역할 변경 · 세션 무효화가 모두 무시된다(비활성 계정도 로그인되고, 쿠키는 12시간 동안 쿠키의 역할로 쓰인다).
+- 복원 훈련은 적용 뒤 첫 백업(04:30 · 16:30)이 생긴 다음에 한다. 그 전 백업을 복원하면 구조(트리거 · 함수 · 열)가 운영과 다르고 계정 지문이 새 열을 읽지 못해 `verify` 가 ✘ 다.
 
 ## DB 복원 (이슈 #45)
 
@@ -969,7 +1024,7 @@ infra/vmware/scripts/verify-db-roles.sh      # '관제 대상 상태판' 절
   ```
 - 되돌리기: 코드만 되돌리면 기록이 멈추고 줄은 남는다(콘솔은 멈춘 checked_at 을 '확인 중단' 으로 보인다). 표까지 지울 때는 소유자로
   `DROP TABLE sensor_heartbeats; DROP FUNCTION sensor_heartbeats_guard();` 를 돌리고, 복원 훈련 구조 기대값(`restore-drill/queries.py`
-  표 26 · 트리거 7 · 함수 12)도 함께 되돌린다.
+  의 표 · 트리거 · 함수 하나씩)도 함께 되돌린다.
 - 시험: `python3 infra/test_status_board_db.py` · `python3 puller/test_record_heartbeats.py` (시험 DB 가 있으면 트리거 · 권한까지)
 
 ## CVE · KEV 연계 (이슈 #39)
