@@ -361,6 +361,66 @@ class BoomPool(FakePool):
         raise RuntimeError("DB 연결 없음")
 
 
+class FlakyPool(FakePool):
+    """처음 fails 번은 빌린 연결의 질의가 끊긴 연결 오류로 터지는 풀. 끊긴 동안 DB 가 닫은 옛 연결이다(이슈 #56)."""
+
+    def __init__(self, fails, error=OSError):
+        super().__init__()
+        self.fails, self.error, self.acquired = fails, error, 0
+
+    def acquire(self):
+        pool = self
+        pool.acquired += 1
+        broken = pool.acquired <= pool.fails
+
+        class _Conn(FakeConn):
+            async def fetchval(self, sql, *args):
+                if broken:
+                    raise pool.error("connection was closed in the middle of operation")
+                return 1
+
+        class _Acquire:
+            async def __aenter__(self):
+                return _Conn(pool)
+
+            async def __aexit__(self, *_exc):
+                return False
+
+        return _Acquire()
+
+
+class HealthRetryTest(Base):
+    """헬스체크는 끊긴 연결 오류면 한 번 더 빌려 본다. 옛 연결 하나 때문에 복귀(rise 3)가 늦어지지 않게 한다(이슈 #56)."""
+
+    def get(self, pool):
+        main.app.state.pool = pool
+        client = TestClient(main.app, follow_redirects=False, raise_server_exceptions=False)
+        self.addCleanup(client.close)
+        return client.get("/health")
+
+    def test_옛_연결_하나면_다시_빌려_200(self):
+        pool = FlakyPool(1)
+        r = self.get(pool)
+        self.assertEqual((r.status_code, r.json(), pool.acquired), (200, {"status": "ok"}, 2))
+
+    def test_두_번_모두_실패하면_500(self):
+        pool = FlakyPool(5)
+        r = self.get(pool)
+        self.assertEqual((r.status_code, pool.acquired), (500, 2))
+
+    def test_연결_오류가_아니면_다시_하지_않는다(self):
+        pool = FlakyPool(1, error=ValueError)
+        r = self.get(pool)
+        self.assertEqual((r.status_code, pool.acquired), (500, 1))
+
+    def test_asyncpg_의_끊긴_연결_오류도_잡는다(self):
+        if not hasattr(main.asyncpg, "ConnectionDoesNotExistError"):
+            self.skipTest("asyncpg 가 없다(가짜 모듈)")
+        self.assertTrue(issubclass(main.asyncpg.ConnectionDoesNotExistError, main.STALE_CONNECTION_ERRORS))
+        pool = FlakyPool(1, error=main.asyncpg.ConnectionDoesNotExistError)
+        self.assertEqual((self.get(pool).status_code, pool.acquired), (200, 2))
+
+
 class ServerErrorTest(Base):
     def test_500_keeps_headers(self):
         main.app.state.pool = BoomPool()

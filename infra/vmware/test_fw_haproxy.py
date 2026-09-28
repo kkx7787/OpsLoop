@@ -116,7 +116,7 @@ class HAProxy(unittest.TestCase):
             "server console-b 192.168.50.12:8000 check",
         ])
         timeouts = [d for d in self.sec["defaults"] if d.startswith("timeout ")]
-        self.assertEqual(timeouts, ["timeout connect 5s", "timeout client 60s", "timeout server 60s", "timeout tunnel 1h"])
+        self.assertEqual(timeouts, ["timeout connect 1s", "timeout client 60s", "timeout server 60s", "timeout tunnel 1h"])
 
     def test_작업_프로세스는_root_가_아니고_chroot_안에서_돈다(self):
         g = self.sec["global"]
