@@ -1145,10 +1145,14 @@ class RouteOrderTests(unittest.TestCase):
         patcher = patch.object(self.main.app.state, "pool", self.pool, create=True)
         patcher.start()
         self.addCleanup(patcher.stop)
+        # 세션 검사의 계정 조회(auth.lookup)는 가짜 계정 표가 받는다. 가짜 풀의 질의 기록에 섞이지 않는다
+        self.accounts = test_web.FakeAccounts().patch(self)
+        self.account_row = test_web.account_row
         self.client = TestClient(self.main.app, follow_redirects=False)
         self.addCleanup(self.client.close)
 
     def login(self, role="viewer"):
+        self.accounts["han"] = self.account_row(role)
         self.client.cookies.set(self.auth.COOKIE, self.auth.issue("han", role))
 
     def first_route(self, path, method="GET"):

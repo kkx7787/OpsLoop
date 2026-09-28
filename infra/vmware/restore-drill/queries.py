@@ -36,7 +36,9 @@ TABLES = ("events", "sessions", "rule_versions", "incidents", "actions", "verdic
 # 이슈 #51 뒤: 표 +1(test_ranges) · 트리거 +1(blocklist_enforcement_guard) · 함수 +2(is_test_source · blocklist_enforcement_guard).
 #   FK · 뷰(rule_quality 는 교체) · 시퀀스(test_ranges 기본 키는 inet)는 그대로다
 # 이슈 #52 뒤: 표 +1(sensor_heartbeats) · 트리거 +1 · 함수 +1(sensor_heartbeats_guard). FK · 뷰 · 시퀀스(기본 키는 text)는 그대로다
-EXPECT = {"tables": 26, "fk": 15, "triggers": 7, "functions": 12, "views": 3}
+# 이슈 #59 뒤: 트리거 +2(console_users_stamp · trg_audit_console_users) · 함수 +3(console_users_stamp · console_account_set ·
+#   audit_console_users). 표(console_users 에 열만 더한다) · FK · 뷰(audit_log 는 교체) · 시퀀스는 그대로다
+EXPECT = {"tables": 26, "fk": 15, "triggers": 9, "functions": 15, "views": 3}
 S3_SENSORS = ("cowrie", "decoy", "gateway")      # opsloop-ingest SENSORS. 나머지 센서는 관제 대상 로그(Loki · 관문 · 관리 원장)
 DB_ONLY_SENSORS = ("audit", "console")           # DB 에만 있는 이벤트. 원장에서 다시 만들 수 없다
 
@@ -277,8 +279,9 @@ FINGERPRINTS = (
     ("node_enrollments", "id::text",
      "ROW(id, node_id, md5(token_hash), issued_by, issued_at, expires_at, used_at, used_from, canceled_at)",
      "greatest(issued_at, used_at, canceled_at)", "node_enrollments", ""),
-    ("console_users", "username", "ROW(username, role, created_at, md5(password_hash))", "created_at",
-     "console_users", ""),
+    # 역할 · 활성 · 비밀번호가 바뀌면 updated_at 이 찍힌다(이슈 #59 도장 트리거). 로그인 시각은 뺀다
+    ("console_users", "username", "ROW(username, role, created_at, disabled_at, md5(password_hash))",
+     "greatest(created_at, updated_at)", "console_users", ""),
     ("notify_channels", "id::text",
      "ROW(id, name, kind, grade, events, min_severity, batch_seconds, template_header, template_item, enabled,"
      " created_by, created_at, updated_by, updated_at, enabled_at)", "greatest(created_at, updated_at, enabled_at)",

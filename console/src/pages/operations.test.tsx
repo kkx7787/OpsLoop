@@ -147,6 +147,28 @@ describe('감사 기록',()=>{
     expect(await screen.findByText('이 화면은 admin 만 볼 수 있습니다')).toBeInTheDocument()
     expect(fetch.mock.calls.some(([u])=>String(u).startsWith('/api/audit'))).toBe(false)
   })
+  it('계정 변경(#59)을 한글 이름으로 보이고 대상 아이디로 찾는다', async () => {
+    const at = (eventid: string, detail: string) => ({ ...auditEntry(0), actor: eventid.endsWith('password.changed') ? 'cli:han' : 'root', target: 'kim', eventid, detail })
+    const rows = [
+      at('console.account.created', 'by=cli:han target=kim role=operator'), at('console.account.role.changed', 'by=root target=kim from=operator to=viewer'),
+      at('console.account.disabled', 'by=root target=kim'), at('console.account.enabled', 'by=root target=kim'),
+      at('console.account.password.changed', 'by=cli:han target=kim'), at('console.account.deleted', 'by=db:opsloop target=kim role=viewer'),
+    ]
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+      const url = new URL(String(input), 'http://localhost')
+      if (url.pathname === '/api/me') return json({ username: 'root', role: 'admin' })
+      if (url.pathname === '/api/audit') return json({ rows, total: rows.length, limit: 25, offset: 0 })
+      return json({}, 404)
+    })
+    vi.stubGlobal('fetch', fetch)
+    renderRoutes([{ path: '/audit', element: <AuditPage /> }], '/audit', noRetryClient())
+    const table = await screen.findByRole('region', { name: '감사 기록 표' })
+    expect(within(table).getAllByRole('row').slice(1).map(r => within(r).getAllByRole('cell')[2].textContent)).toEqual(['계정 추가', '계정 역할 변경', '계정 비활성', '계정 재활성', '계정 비밀번호 변경', '계정 삭제'])
+    expect(screen.getByText(/계정의 추가·역할·활성·비밀번호 변경 이력/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('대상'), { target: { value: 'kim' } })
+    fireEvent.click(screen.getByRole('button', { name: '조회' }))
+    await waitFor(() => expect(fetch.mock.calls.some(([raw]) => new URL(String(raw), 'http://localhost').searchParams.get('target') === 'kim')).toBe(true))
+  })
   it.each(['/rules','/nodes','/audit'])('%s 조회 실패를 빈 목록으로 숨기지 않는다',async path=>{
     setup(path,'admin',true)
     expect(await screen.findByText('일시 오류 (HTTP 503)')).toBeInTheDocument()

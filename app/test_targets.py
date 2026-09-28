@@ -478,6 +478,9 @@ class RouterTests(unittest.TestCase):
         patcher = patch.object(self.main.app.state, "pool", self.pool, create=True)
         patcher.start()
         self.addCleanup(patcher.stop)
+        # 세션 검사의 계정 조회(auth.lookup)는 가짜 계정 표가 받는다. 가짜 풀의 질의 기록에 섞이지 않는다
+        self.accounts = test_web.FakeAccounts().patch(self)
+        self.accounts["han"] = test_web.account_row("viewer")
         self.client = TestClient(self.main.app, follow_redirects=False)
         self.addCleanup(self.client.close)
 
@@ -489,6 +492,7 @@ class RouterTests(unittest.TestCase):
         response = self.client.get("/api/dashboard/targets")
         self.assertEqual((response.status_code, response.json()), (401, {"detail": "인증이 필요합니다"}))
         self.assertEqual(self.pool.calls, [])
+        self.assertEqual(self.accounts.calls, [], "세션이 없으면 계정도 조회하지 않는다")
 
     def test_표_권한이_없는_DB_에서도_미확인으로_답한다(self):
         self.client.cookies.set(self.auth.COOKIE, self.auth.issue("han", "viewer"))

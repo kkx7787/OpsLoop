@@ -7,30 +7,11 @@ from typing import Literal
 
 import asyncpg
 from fastapi import APIRouter, HTTPException, Query, Request, Response
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
-from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 import notifier
-from access import require_role
+from access import MaskedValidationRoute, require_role
 from operations import audit
-
-
-class MaskedValidationRoute(APIRoute):
-    """입력 검증 오류(422)에서 입력값(input · ctx)을 뺀다. 기본 처리기는 본문을 되돌려 주어 채널 주소가 응답에 실린다."""
-
-    def get_route_handler(self):
-        handler = super().get_route_handler()
-
-        async def masked(request: Request):
-            try:
-                return await handler(request)
-            except RequestValidationError as error:
-                detail = [{key: value for key, value in item.items() if key in ("type", "loc", "msg")}
-                          for item in error.errors()]
-                return JSONResponse({"detail": detail}, status_code=422, headers={"Cache-Control": "no-store"})
-        return masked
 
 
 router = APIRouter(route_class=MaskedValidationRoute)

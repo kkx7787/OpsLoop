@@ -3,6 +3,7 @@
   쿠키   프로브용 세션 쿠키를 0600 파일(~/.config/opsloop/probe-cookie)에서 읽는다.
          --mint-cookie <콘솔> 은 ssh 로 콘솔 컨테이너 안에서 auth.issue("failover-probe", "viewer") 를 불러 받아 그 파일에만 둔다.
          비밀번호 없이 서버 비밀(SESSION_SECRET)로 발급한 viewer 12시간 쿠키다. 두 콘솔이 같은 비밀을 쓰므로 어느 쪽에서 받아도 된다.
+         콘솔이 요청마다 계정을 확인하므로(이슈 #59) failover-probe 계정(조회자)이 계정 표에 있어야 하고, 쿠키는 계정을 만든 뒤에 받는다.
          화면 · 로그 · 기록 파일에 찍지 않는다. 시험이 끝나면 지운다(--drop-cookie 또는 rm).
   기록   JSONL 한 줄씩 쓴다. 스레드 여럿이 함께 써도 줄이 섞이지 않는다.
   시각   기록의 시각은 모두 Mac 벽시계(epoch ns)다. 지연은 단조 시계로 잰다.

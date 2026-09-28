@@ -15,6 +15,7 @@ OpsLoop API (WBS 3.1)
 두 콘솔의 화면이 모두 받는다. 듣기 · 다시 붙기 · 화면 목록은 live.py 에 있다(이슈 #43).
 """
 
+import asyncio
 import html
 import ipaddress
 import json
@@ -25,7 +26,7 @@ from typing import Literal, Optional
 
 import asyncpg
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 
 import auth
@@ -39,6 +40,7 @@ from cti import router as cti_router
 from targets import router as targets_router
 from sources import router as sources_router
 from reports import router as reports_router
+from accounts import router as accounts_router
 from notifier import Notifier
 import live
 from live import EVENT_CHANNEL, INCIDENT_CHANNEL, Listener, event_payload, hub
@@ -118,11 +120,15 @@ app.include_router(targets_router)
 # 출발지 분석 · 도구 지문 묶음 (sources.py) · 기간 보고서 (reports.py) · 이슈 #58
 app.include_router(sources_router)
 app.include_router(reports_router)
+# 계정 관리 (accounts.py · 이슈 #59). GET /api/accounts · POST /api/accounts/role · /api/accounts/active (admin)
+app.include_router(accounts_router)
 
 
 # 세션 없이 여는 경로. /health 는 HAProxy 헬스체크가 부르므로 상태 말고는 아무것도 내지 않는다.
 # /api/csp-report 는 브라우저의 CSP 위반 보고다(쿠키가 없을 수 있다. web.csp_report).
 OPEN_PATHS = ("/health", "/login", "/logout", web.CSP_REPORT_PATH)
+# 요청마다 하는 계정 확인(auth.lookup)이 DB 오류로 끝났을 때(503)
+ACCOUNT_CHECK_FAILED = "계정 상태를 확인하지 못했습니다. 잠시 뒤 다시 시도해 주세요"
 
 # 규칙 조건과 판정 근거가 겹치는 규칙. 여기서 나오는 위협 판정은 규칙의
 # 정확성을 증명하지 않는다. 같은 것을 두 번 센 것이다. detector/triage.py 와
@@ -184,12 +190,27 @@ async def require_session(request: Request, call_next):
     화면과 API 의 실패 방식을 나눈다. 화면은 로그인으로 보내고 API 는 401 을
     돌려준다. 화면에서 401 을 받으면 사용자는 아무것도 못 하고, API 가
     로그인 HTML 을 받으면 파싱에서 엉뚱한 곳이 깨진다.
+
+    쿠키의 서명 · 만료가 맞으면 계정 행을 한 번 읽어 확인한다(이슈 #59). 비활성 · 없는 계정 · 역할 등이 바뀌기 전에 받은
+    쿠키는 세션이 없는 것과 같다. 역할은 쿠키가 아니라 DB 값으로 덮는다. require_role · /api/me 가 모두 따라온다.
+    쿠키가 없거나 위조면 DB 를 보지 않는다(로그인하지 않은 요청이 DB 를 두드리지 못한다).
+    확인 중 DB 오류는 503 이다. 401 로 답하면 화면이 멀쩡한 세션을 로그인으로 보낸다.
     """
     path = request.url.path
     if path in OPEN_PATHS or path == "/ws" or path.startswith("/ws/"):
         return await call_next(request)
 
     session = auth.read(request.cookies.get(auth.COOKIE, ""))
+    if session is not None:
+        try:
+            row = await auth.lookup(request.app.state.pool, session["u"])
+        except Exception as exc:
+            print(f"[auth] 계정 확인 실패: {type(exc).__name__}: {exc}", flush=True)
+            if path.startswith("/api"):
+                return JSONResponse({"detail": ACCOUNT_CHECK_FAILED}, status_code=503)
+            return PlainTextResponse(ACCOUNT_CHECK_FAILED, status_code=503)
+        # 역할은 쿠키(발급 때 값)가 아니라 DB 값이다
+        session = {**session, "r": row["role"]} if auth.session_valid(session, row) else None
     if session is None:
         if path.startswith("/api"):
             return JSONResponse({"detail": "인증이 필요합니다"}, status_code=401)
@@ -212,7 +233,7 @@ async def login_form(request: Request):
 async def login(request: Request):
     form = await auth.form_fields(request)
     username = str(form.get("username", ""))[:128]
-    password = str(form.get("password", ""))[:256]
+    password = str(form.get("password", ""))[:auth.MAX_PASSWORD]
     # 로그인 뒤 돌아갈 곳. 같은 출처의 상대 경로만 받는다(열린 리디렉션 금지).
     next_path = web.safe_next(form.get("next"))
 
@@ -223,7 +244,8 @@ async def login(request: Request):
         return web.login_page(error=True, next_path=next_path, username=username,
                               status_code=401)
 
-    token = auth.issue(user["username"], user["role"])
+    # 발급 시각은 로그인 때 DB 가 찍은 시각이다(auth.authenticate). 계정 변경 시각과 같은 시계로 견준다
+    token = auth.issue(user["username"], user["role"], user["issued_at"])
     await auth.log_event(app.state.pool, request, "console.login.success",
                          username=user["username"], status=302, session=token[:17])
     response = RedirectResponse(next_path, status_code=302)
@@ -234,9 +256,11 @@ async def login(request: Request):
 
 @app.post("/logout")
 async def logout(request: Request):
-    user = getattr(request.state, "user", None)
+    # /logout 은 OPEN_PATHS 라 세션 검사를 거치지 않아 state.user 가 없다. 쿠키를 직접 읽어 누가 나갔는지 남긴다.
+    # 서명 · 만료만 본다. 나가는 길에 계정 확인(DB 조회)을 더하지 않는다
+    session = auth.read(request.cookies.get(auth.COOKIE, ""))
     await auth.log_event(app.state.pool, request, "console.logout",
-                         username=user["u"] if user else None, status=302)
+                         username=session["u"] if session else None, status=302)
     response = RedirectResponse("/login", status_code=302)
     response.delete_cookie(auth.COOKIE)
     return response
@@ -254,11 +278,8 @@ async def shell(request: Request):
 <main><p>화면 구현 예정 (WBS 3.6.2~3.6.4)</p></main></body></html>"""
 
 
-# 끊긴 동안 DB 가 닫은 연결을 처음 쓸 때 나는 오류. asyncpg 0.30 은 ConnectionResetError 를 ConnectionDoesNotExistError 로 감싸고,
-#   그 부모는 PostgresConnectionError(SQLSTATE 08 계열)다. 닫힌 연결을 다시 쓰면 InterfaceError, 소켓 오류는 OSError 다.
-#   시험의 가짜 asyncpg 모듈에는 없을 수 있어 있는 것만 모은다
-STALE_CONNECTION_ERRORS = tuple(e for e in (getattr(asyncpg, "PostgresConnectionError", None),
-                                            getattr(asyncpg, "InterfaceError", None), OSError) if isinstance(e, type))
+# 끊긴 동안 DB 가 닫은 연결을 처음 쓸 때 나는 오류. 정의는 auth.py 에 있다(계정 확인 auth.lookup 도 같은 기준으로 한 번 더 빌린다)
+STALE_CONNECTION_ERRORS = auth.STALE_CONNECTION_ERRORS
 
 # jsonb 열. asyncpg 는 코덱을 두지 않으면 글자로 준다. 화면이 객체로 받게 여기서 푼다 (이슈 #51 enforcement)
 JSON_COLUMNS = frozenset({"enforcement"})
@@ -887,18 +908,65 @@ async def blocklist(active_only: bool = True):
 #  실시간 통보
 # ----------------------------------------------------------------------
 
+# 열린 실시간 연결의 세션을 다시 보는 간격(초, 이슈 #59). 비활성 · 강등된 계정의 화면이 이 안에 끊긴다
+WS_RECHECK_SECONDS = 30
+# 닫힘 코드. 1008 은 세션이 없다는 뜻이라 화면(live.ts)이 다시 잇지 않고 로그인으로 간다. 1011(서버 오류)은 다시 잇는다
+WS_UNAUTHORIZED = 1008
+WS_SERVER_ERROR = 1011
+
+
+async def ws_session_valid(token: str) -> bool:
+    """웹소켓 쿠키가 지금도 유효한가(서명 · 만료 · 계정 상태). DB 오류는 그대로 던진다. 무효(1008)로 보지 않는다."""
+    session = auth.read(token)
+    if session is None:
+        return False
+    return auth.session_valid(session, await auth.lookup(app.state.pool, session["u"]))
+
+
+async def ws_recheck(ws: WebSocket, token: str):
+    """연결 하나의 점검 작업. WS_RECHECK_SECONDS 마다 쿠키 만료 · 계정 상태를 다시 보고 무효면 1008 로 닫는다.
+
+    DB 오류면 그 회차는 건너뛴다. 1008 로 닫으면 화면이 새로고침 전까지 다시 잇지 않으므로, DB 가 잠깐 흔들린 것으로
+    실시간을 끊지 않는다. 연결이 끝나면 ws_endpoint 가 이 작업을 취소한다.
+    """
+    while True:
+        await asyncio.sleep(WS_RECHECK_SECONDS)
+        try:
+            valid = await ws_session_valid(token)
+        except Exception as exc:
+            print(f"[ws] 세션 점검을 건너뜀 (DB 오류): {type(exc).__name__}: {exc}", flush=True)
+            continue
+        if not valid:
+            await hub.leave(ws)
+            try:
+                await ws.close(code=WS_UNAUTHORIZED)
+            except Exception:   # 그 사이 화면이 먼저 끊었다
+                pass
+            return
+
+
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
     # 실시간 보드도 인증 대상이다. 미들웨어는 웹소켓 연결을 거치지 않으므로
-    # 여기서 직접 본다.
+    # 여기서 직접 본다. 요청과 같이 계정 상태까지 보고(이슈 #59), 연결 뒤에도 ws_recheck 가 주기적으로 다시 본다.
     # 세션이 없으면 수락한 뒤 1008 로 닫는다(이슈 #43). 수락 전에 닫으면 핸드셰이크가 403 으로 끝나 브라우저는 1006 만
     # 받고, 화면(live.ts)의 1008 분기가 돌지 않아 로그인으로 가지 않고 다시 잇기만 되풀이한다(2026-09-25 74분 · 403 292번).
+    # 계정 확인 중 DB 오류면 1011 로 닫는다. 화면이 다시 잇는다. 1008 이면 세션이 멀쩡해도 실시간이 멈춘다.
     # 출처가 다른 핸드셰이크는 그대로 수락 전에 막는다(web.OriginCheck). 같은 출처 화면에는 생기지 않는 일이다.
-    if auth.read(ws.cookies.get(auth.COOKIE, "")) is None:
+    token = ws.cookies.get(auth.COOKIE, "")
+    try:
+        valid = await ws_session_valid(token)
+    except Exception as exc:
+        print(f"[ws] 계정 확인 실패: {type(exc).__name__}: {exc}", flush=True)
         await ws.accept()
-        await ws.close(code=1008)
+        await ws.close(code=WS_SERVER_ERROR)
+        return
+    if not valid:
+        await ws.accept()
+        await ws.close(code=WS_UNAUTHORIZED)
         return
     await hub.join(ws)
+    recheck = asyncio.create_task(ws_recheck(ws, token))
     try:
         # 어느 콘솔에 붙었는지 화면 연결 표시에 보인다(live.CONSOLE_NAME, 세션 뒤에서만 나간다).
         await ws.send_json({"type": "hello", "data": {"channel": NOTIFY_CHANNEL, "console": live.CONSOLE_NAME}})
@@ -908,4 +976,5 @@ async def ws_endpoint(ws: WebSocket):
     except WebSocketDisconnect:
         pass
     finally:
+        recheck.cancel()
         await hub.leave(ws)

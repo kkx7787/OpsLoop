@@ -222,10 +222,14 @@ class Base(unittest.TestCase):
         self.app.middleware("http")(self.main.require_session)
         self.app.include_router(s.router)
         self.app.state.pool = self.pool
+        # 세션 검사가 요청마다 계정을 다시 본다(이슈 #59). 계정 표는 가짜로 두고, 세션 없는 요청이 조회하지 않는지도 본다
+        self.accounts = test_web.FakeAccounts().patch(self)
         self.client = TestClient(self.app, follow_redirects=False)
         self.addCleanup(self.client.close)
 
     def login(self, role="viewer"):
+        import test_web
+        self.accounts["han"] = test_web.account_row(role)
         self.client.cookies.set(self.auth.COOKIE, self.auth.issue("han", role))
 
     def use(self, pool):
@@ -437,7 +441,7 @@ class RouterTests(Base):
             with self.subTest(path=path):
                 response = self.client.get(path, params={"ip": "198.51.100.7", "kind": "hassh"})
                 self.assertEqual((response.status_code, response.json()), (401, {"detail": "인증이 필요합니다"}))
-        self.assertEqual(self.pool.calls, [])
+        self.assertEqual((self.pool.calls, self.accounts.calls), ([], []))
 
     def test_읽기_조회라_모든_역할이_본다(self):
         for role in ("viewer", "operator", "admin"):
@@ -474,6 +478,7 @@ class MainTests(unittest.TestCase):
         self.addCleanup(patcher.stop)
         self.client = TestClient(self.main.app, follow_redirects=False)
         self.addCleanup(self.client.close)
+        test_web.FakeAccounts().patch(self)["han"] = test_web.account_row("viewer")
         self.client.cookies.set(self.auth.COOKIE, self.auth.issue("han", "viewer"))
 
     def listing(self):

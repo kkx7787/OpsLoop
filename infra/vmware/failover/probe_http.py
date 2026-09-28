@@ -10,6 +10,7 @@ hard 한도가 모자라면 동시 요청 한도를 낮추고 알린다. 넘친 
 
   health  GET /health?p=<회차>-<번호>  인증 없음. p 로 HAProxy 로그(fw-haproxy.log)에서 어느 콘솔이 받았는지 찾는다
   me      GET /api/me                 프로브 쿠키 · Origin. 응답의 console(콘솔 이름)을 기록한다
+          #59 부터 콘솔이 요청마다 계정 행을 읽으므로 DB 가 끊기면 me 도 감지 전까지 실패한다(health 만 견주려면 by_stream)
 
 기록: <회차 폴더>/http.jsonl 에 요청마다 한 줄 (덧붙인다. 같은 폴더에 다시 띄우면 번호를 이어 가 p 가 겹치지 않는다)
   {run, stream, seq, t_send_ns, t_recv_ns, status, latency_ms, error, console}
@@ -20,6 +21,7 @@ hard 한도가 모자라면 동시 요청 한도를 낮추고 알린다. 넘친 
   python3 infra/vmware/failover/probe_http.py --mint-cookie console-a
     ssh 로 콘솔 A 컨테이너 안에서 auth.issue("failover-probe", "viewer") 를 불러 ~/.config/opsloop/probe-cookie(0600)에만 둔다.
     비밀번호 없이 서버 비밀로 발급한 viewer 12시간 쿠키다. 화면 · 로그 · 기록에 찍지 않는다.
+    failover-probe 계정(조회자)이 먼저 있어야 한다(infra/vmware/README.md '콘솔 계정' 절의 auth.py add). 계정보다 먼저 받은 쿠키는 무효다.
   python3 infra/vmware/failover/probe_http.py --drop-cookie      시험 뒤 파일 삭제
 
 사용 (저장소 루트)

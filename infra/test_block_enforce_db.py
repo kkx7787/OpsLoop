@@ -733,7 +733,8 @@ class BlockEnforceDatabaseTest(DbCase):
         # is_test_source(#51)는 시험 출발지 판단만 하는 PUBLIC 실행 함수라 모든 역할이 부른다 (infra/test_block_points_db.py)
         public = {"is_test_source"}
         self.assertEqual(definer(enforcer) - public, {"note_block_expired"})
-        self.assertEqual(definer(console) - public, set())
+        # console_account_set(#59)은 콘솔의 계정 변경 통로다(관제사 ↔ 조회자 · 비활성 · 재활성. infra/test_console_accounts_db.py)
+        self.assertEqual(definer(console) - public, {"console_account_set"})
         self.assertEqual(definer(self.roles["detector"]) - public, set())
         self.assertEqual(definer(self.roles["gate"]) - public, {"enroll_node"})
         self.assertTrue(public <= definer(console))

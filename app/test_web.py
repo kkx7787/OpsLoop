@@ -2,7 +2,8 @@
 """콘솔 웹 계층(web.py) 시험.  python3 app/test_web.py
 
 main.app 을 FastAPI TestClient 로 그대로 부른다. lifespan 은 돌리지 않는다(TestClient 를 with 로 열지 않으면
-돌지 않는다). DB 풀은 가짜로 바꾸고 계정 확인(auth.authenticate)은 가짜로 대신한다. 인증 기록(auth.log_event)은
+돌지 않는다). DB 풀은 가짜로 바꾸고 계정 확인(auth.authenticate)과 요청마다 하는 계정 조회(auth.lookup)는 가짜로
+대신한다(FakeAccounts. 다른 시험 파일도 main.app 을 부를 때 가져다 쓴다). 인증 기록(auth.log_event)은
 진짜를 돌려 가짜 풀에 들어온 값으로 형식을 본다. asyncpg 가 없는 곳에서는 가짜 모듈을 넣는다.
 
 보는 것
@@ -15,6 +16,9 @@ main.app 을 FastAPI TestClient 로 그대로 부른다. lifespan 은 돌리지 
   3. CORS: CORS_ORIGINS 가 있을 때만 건다. 기본값(localhost:5173)은 없다
   4. /api/me: 세션이 있으면 아이디 · 역할 · 콘솔 이름(헤더로는 안 냄), 없거나 위조면 401
      /ws: 세션이 없으면 수락한 뒤 1008 로 닫는다(브라우저가 1008 을 받는다). hello 에 콘솔 이름(이슈 #43)
+     계정 상태(이슈 #59): 비활성 · 없는 계정 · 변경 전 쿠키는 401(화면은 로그인으로), 역할은 DB 값, 로그인한 새 쿠키는 유효,
+     세션이 없거나 위조면 계정 조회 0회, 조회 중 DB 오류는 503(401 아님). /ws 는 점검 주기 안에 1008, DB 오류로는 1008 을
+     내지 않는다(핸드셰이크는 1011 · 점검은 건너뜀). 로그아웃 기록에 사용자 이름
   5. 화면 서빙: 빌드가 없으면 자리표시 그대로. 있으면 화면 경로는 index.html(no-cache), /assets 는 파일,
      폴더 밖은 막고 제외 경로(/api · /health · /login · /docs …)는 그대로. 로그인 전에는 /login(next 포함)
   6. 로그인: 새 화면(스크립트 없음) · next 는 같은 출처 상대 경로만 · 기록(console.login.*) 형식 그대로.
@@ -36,9 +40,11 @@ import re
 import shutil
 import sys
 import tempfile
+import time
 import types
 import unittest
 from contextlib import redirect_stdout
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -129,10 +135,41 @@ class FakePool:
         return out
 
 
+# 가짜 로그인이 돌려주는 발급 시각(DB now() 자리). 쿠키의 i 가 이 값이면 main 이 authenticate 의 값을 쓴 것이다
+ISSUED_AT = 1790000000.25
+
+
 async def fake_authenticate(_pool, username, password):
     if username == "han" and password == PASSWORD:
-        return {"username": "han", "role": "operator"}
+        return {"username": "han", "role": "operator", "issued_at": ISSUED_AT}
     return None
+
+
+def account_row(role="operator", disabled_at=None, updated_at=None):
+    """auth.lookup 이 돌려주는 계정 행 모양."""
+    return {"role": role, "disabled_at": disabled_at, "updated_at": updated_at}
+
+
+class FakeAccounts(dict):
+    """auth.lookup 대신 쓰는 가짜 계정 표(아이디 → 행). 부른 아이디를 모으고, error 가 있으면 DB 오류처럼 던진다."""
+
+    def __init__(self):
+        super().__init__()
+        self.calls = []
+        self.error = None
+
+    async def lookup(self, _pool, username):
+        self.calls.append(username)
+        if self.error is not None:
+            raise self.error
+        return self.get(username)
+
+    def patch(self, case):
+        """case(unittest.TestCase) 동안 auth.lookup 을 이것으로 바꾼다."""
+        patcher = mock.patch.object(auth, "lookup", self.lookup)
+        patcher.start()
+        case.addCleanup(patcher.stop)
+        return self
 
 
 class Base(unittest.TestCase):
@@ -142,6 +179,7 @@ class Base(unittest.TestCase):
         patcher = mock.patch.object(auth, "authenticate", fake_authenticate)
         patcher.start()
         self.addCleanup(patcher.stop)
+        self.accounts = FakeAccounts().patch(self)
         # 저장소에 실제 빌드(app/static)가 있어도 시험이 흔들리지 않게 빈 폴더로 시작한다.
         self.tmp = Path(tempfile.mkdtemp(prefix="opsloop-web-"))
         self.addCleanup(shutil.rmtree, self.tmp, True)
@@ -152,6 +190,8 @@ class Base(unittest.TestCase):
         self.addCleanup(self.client.close)
 
     def login_as(self, username="han", role="operator"):
+        """쿠키를 넣고 가짜 계정 표에도 같은 역할의 활성 계정을 둔다."""
+        self.accounts[username] = account_row(role)
         self.client.cookies.set(auth.COOKIE, auth.issue(username, role))
 
     def build_console(self):
@@ -323,6 +363,9 @@ class ApiDocsTest(Base):
         for path in ("/docs", "/openapi.json"):
             r = client.get(path)
             self.assertEqual((r.status_code, r.headers["location"]), (302, "/login"), path)
+        # 세션 검사가 계정을 조회한다(이슈 #59). 다시 불러온 앱에도 가짜 풀을 둔다(조회 자체는 가짜 계정 표가 받는다)
+        docs_main.app.state.pool = self.pool
+        self.accounts["han"] = account_row("viewer")
         client.cookies.set(auth.COOKIE, auth.issue("han", "viewer"))
         r = client.get("/docs")
         self.assertEqual(r.status_code, 200)
@@ -426,6 +469,7 @@ class ServerErrorTest(Base):
         main.app.state.pool = BoomPool()
         client = TestClient(main.app, follow_redirects=False, raise_server_exceptions=False)
         self.addCleanup(client.close)
+        self.accounts["han"] = account_row("operator")
         client.cookies.set(auth.COOKIE, auth.issue("han", "operator"))
         for path, no_store in (("/health", False), ("/api/stats/summary", True)):
             with self.subTest(path=path):
@@ -493,7 +537,7 @@ class OriginCheckTest(Base):
         r = self.client.post("/logout", headers=SAME)
         self.assertEqual(r.status_code, 302)
         self.assertEqual(r.headers["location"], "/login")
-        self.assertEqual([e["eventid"] for e in self.pool.events()], ["console.logout"])
+        self.assertEqual([(e["eventid"], e["username"]) for e in self.pool.events()], [("console.logout", "han")])
 
     def test_api_post_checked_before_handler(self):
         self.login_as()
@@ -640,6 +684,7 @@ class WebSocketSessionTest(Base):
 
     def test_no_session(self):
         self.assert_closed_1008_after_accept()
+        self.assertEqual(self.accounts.calls, [], "세션이 없으면 계정을 조회하지 않는다")
 
     def test_forged_and_expired_session(self):
         token = auth.issue("han", "viewer")
@@ -657,6 +702,195 @@ class WebSocketSessionTest(Base):
             with self.client.websocket_connect("/ws", headers=self.WS) as ws:
                 self.assertEqual(ws.receive_json(), {"type": "hello", "data": {"channel": "opsloop_incident",
                                                                              "console": "opsloop-console-a"}})
+
+
+# 계정 변경 시각 · 비활성 시각으로 쓰는 값
+CHANGED = datetime(2026, 9, 29, 3, 0, tzinfo=timezone.utc)
+
+
+class AccountSessionTest(Base):
+    """요청마다 계정 상태를 본다(이슈 #59). 쿠키 서명 · 만료가 맞을 때만 조회하고, 역할은 DB 값이다."""
+
+    def test_세션이_없거나_위조면_계정을_조회하지_않는다(self):
+        self.assertEqual(self.client.get("/api/me").status_code, 401)
+        self.assertEqual(self.client.get("/incidents").status_code, 302)
+        token = auth.issue("han", "admin")
+        payload, _, sig = token.rpartition(".")
+        self.client.cookies.set(auth.COOKIE, payload + "." + ("0" * len(sig)))
+        self.assertEqual(self.client.get("/api/me").status_code, 401)
+        with mock.patch.object(auth.time, "time", return_value=0):
+            expired = auth.issue("han", "admin")
+        self.client.cookies.set(auth.COOKIE, expired)
+        self.assertEqual(self.client.get("/api/me").status_code, 401)
+        self.assertEqual(self.accounts.calls, [])
+
+    def test_비활성_계정은_401_이고_화면은_로그인으로(self):
+        self.build_console()
+        self.login_as()
+        self.assertEqual(self.client.get("/api/me").status_code, 200)
+        self.accounts["han"] = account_row("operator", disabled_at=CHANGED)
+        r = self.client.get("/api/me")
+        self.assertEqual((r.status_code, r.json()), (401, {"detail": "인증이 필요합니다"}))
+        r = self.client.get("/incidents/k1")
+        self.assertEqual((r.status_code, r.headers["location"]), (302, "/login?next=%2Fincidents%2Fk1"))
+        self.assertEqual(self.client.get("/assets/index-abc123.js").status_code, 302)
+        self.assertEqual(self.accounts.calls, ["han"] * 4)
+
+    def test_없는_계정은_401(self):
+        self.login_as()
+        del self.accounts["han"]
+        self.assertEqual(self.client.get("/api/me").status_code, 401)
+
+    def test_역할은_쿠키가_아니라_DB_값이다(self):
+        self.login_as("kim", "admin")
+        self.accounts["kim"] = account_row("viewer")
+        r = self.client.get("/api/me")
+        self.assertEqual((r.status_code, r.json()["role"]), (200, "viewer"))
+        for path in ("/api/audit", "/api/accounts", "/api/notify/channels"):
+            with self.subTest(path=path):
+                r = self.client.get(path)
+                self.assertEqual((r.status_code, r.json()["detail"]), (403, "권한이 없습니다 (viewer)"))
+        self.assertEqual(self.pool.executed, [], "403 은 DB 까지 가지 않는다")
+
+    def test_변경_전에_받은_쿠키는_무효이고_다시_로그인하면_유효(self):
+        before = CHANGED.timestamp() - 60
+        self.accounts["han"] = account_row("viewer", updated_at=CHANGED)
+        self.client.cookies.set(auth.COOKIE, auth.issue("han", "operator", before))
+        self.assertEqual(self.client.get("/api/me").status_code, 401)
+        # 바뀐 때와 같은 시각에 받은 쿠키는 유효하다(로그인 시각 · 변경 시각 모두 DB 시각이다)
+        self.client.cookies.set(auth.COOKIE, auth.issue("han", "operator", CHANGED.timestamp()))
+        self.assertEqual(self.client.get("/api/me").json()["role"], "viewer")
+        # 다시 로그인하면 새 쿠키의 발급 시각(ISSUED_AT)이 변경 뒤라 유효하고, 역할은 낮춘 역할이다
+        self.client.cookies.clear()
+        self.accounts["han"] = account_row("viewer", updated_at=datetime.fromtimestamp(ISSUED_AT - 1, timezone.utc))
+        r = self.client.post("/login", data={"username": "han", "password": PASSWORD}, headers=SAME)
+        self.assertEqual(r.status_code, 302)
+        self.client.cookies.set(auth.COOKIE, r.cookies.get(auth.COOKIE))
+        r = self.client.get("/api/me")
+        self.assertEqual((r.status_code, r.json()["role"]), (200, "viewer"))
+
+    def test_계정_조회_중_DB_오류는_503(self):
+        self.build_console()
+        self.login_as()
+        self.accounts.error = RuntimeError("DB 연결 없음")
+        with redirect_stdout(io.StringIO()) as out:
+            api = self.client.get("/api/me")
+            screen = self.client.get("/incidents")
+        self.assertEqual((api.status_code, api.json()), (503, {"detail": main.ACCOUNT_CHECK_FAILED}))
+        self.assertEqual(api.headers["cache-control"], "no-store")
+        self.assertEqual((screen.status_code, screen.text), (503, main.ACCOUNT_CHECK_FAILED))
+        self.assertEqual(screen.headers.get("x-frame-options"), "DENY")
+        self.assertIn("[auth] 계정 확인 실패: RuntimeError", out.getvalue())
+        # 헬스체크 · 로그인 화면은 계정 조회를 하지 않는다
+        self.assertEqual(self.client.get("/health").status_code, 200)
+        self.assertEqual(self.client.get("/login").status_code, 200)
+
+    def test_로그아웃은_계정을_조회하지_않는다(self):
+        self.login_as()
+        self.assertEqual(self.client.post("/logout", headers=SAME).status_code, 302)
+        self.assertEqual(self.accounts.calls, [])
+
+
+class WebSocketRecheckIntervalTest(unittest.TestCase):
+    def test_점검_간격은_30초_이하다(self):
+        # 완료 조건 '비활성 · 무효 세션의 실시간 연결은 30초 안에 끊는다'. 화면 · 운영 문서의 '30초 안' 문구와 같은 값이다.
+        # 0 이하면 연결마다 쉬지 않고 DB 를 두드린다
+        self.assertGreater(main.WS_RECHECK_SECONDS, 0)
+        self.assertLessEqual(main.WS_RECHECK_SECONDS, 30)
+
+
+class WebSocketAccountTest(Base):
+    """열린 실시간 연결도 계정 상태를 다시 본다(main.ws_recheck). 무효면 1008, DB 오류로는 1008 을 내지 않는다(화면이 다시
+    잇지 않는 코드라 DB 가 잠깐 흔들린 것으로 실시간이 멈춘다)."""
+    WS = {"origin": "http://testserver"}
+
+    def setUp(self):
+        super().setUp()
+        recheck = mock.patch.object(main, "WS_RECHECK_SECONDS", 0.02)
+        recheck.start()
+        self.addCleanup(recheck.stop)
+
+    def wait_calls(self, n):
+        deadline = time.monotonic() + 5
+        while len(self.accounts.calls) < n and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertGreaterEqual(len(self.accounts.calls), n)
+
+    def wait_closed(self):
+        """점검이 연결을 닫을 때까지(허브에서 빠질 때까지) 기다린다. 닫지 않는 잘못이면 receive 가 끝없이 기다리므로 먼저 본다."""
+        deadline = time.monotonic() + 5
+        while main.hub.clients and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertEqual(main.hub.clients, set(), "점검 주기 안에 닫혀야 한다")
+
+    def test_핸드셰이크에서_비활성_계정은_1008(self):
+        self.login_as()
+        self.accounts["han"] = account_row("operator", disabled_at=CHANGED)
+        with self.client.websocket_connect("/ws", headers=self.WS) as ws:
+            with self.assertRaises(WebSocketDisconnect) as caught:
+                ws.receive_json()
+        self.assertEqual(caught.exception.code, 1008)
+        self.assertEqual(main.hub.clients, set())
+
+    def test_연결_뒤_비활성되면_점검에서_1008(self):
+        self.login_as()
+        with self.client.websocket_connect("/ws", headers=self.WS) as ws:
+            self.assertEqual(ws.receive_json()["type"], "hello")
+            self.wait_calls(3)
+            self.assertEqual(len(main.hub.clients), 1, "유효한 동안은 그대로다")
+            self.accounts["han"] = account_row("operator", disabled_at=CHANGED)
+            self.wait_closed()
+            with self.assertRaises(WebSocketDisconnect) as caught:
+                ws.receive_json()
+        self.assertEqual(caught.exception.code, 1008)
+
+    def test_연결_뒤_역할이_바뀌면_옛_쿠키라_1008(self):
+        self.login_as()
+        with self.client.websocket_connect("/ws", headers=self.WS) as ws:
+            self.assertEqual(ws.receive_json()["type"], "hello")
+            self.accounts["han"] = account_row("viewer", updated_at=datetime.now(timezone.utc))
+            self.wait_closed()
+            with self.assertRaises(WebSocketDisconnect) as caught:
+                ws.receive_json()
+        self.assertEqual(caught.exception.code, 1008)
+
+    def test_점검_중_DB_오류는_연결을_끊지_않는다(self):
+        self.login_as()
+        with redirect_stdout(io.StringIO()) as out, self.client.websocket_connect("/ws", headers=self.WS) as ws:
+            self.assertEqual(ws.receive_json()["type"], "hello")
+            self.accounts.error = OSError("DB 없음")
+            start = len(self.accounts.calls)
+            self.wait_calls(start + 3)
+            self.assertEqual(len(main.hub.clients), 1, "DB 오류 회차는 건너뛴다")
+            # 오류가 걷히면 다음 회차가 다시 본다. 그 사이 닫혔다면 1008 이 아닌 다른 코드였거나 목록에서 빠졌다
+            self.accounts.error = None
+            self.accounts["han"] = account_row("operator", disabled_at=CHANGED)
+            self.wait_closed()
+            with self.assertRaises(WebSocketDisconnect) as caught:
+                ws.receive_json()
+        self.assertEqual(caught.exception.code, 1008)
+        self.assertIn("[ws] 세션 점검을 건너뜀 (DB 오류): OSError", out.getvalue())
+
+    def test_핸드셰이크_DB_오류는_다시_잇는_1011(self):
+        self.login_as()
+        self.accounts.error = RuntimeError("DB 없음")
+        with redirect_stdout(io.StringIO()):
+            with self.client.websocket_connect("/ws", headers=self.WS) as ws:
+                with self.assertRaises(WebSocketDisconnect) as caught:
+                    ws.receive_json()
+        self.assertEqual(caught.exception.code, 1011)
+        self.assertEqual(main.hub.clients, set())
+
+    def test_쿠키가_만료되면_점검에서_1008(self):
+        self.login_as()
+        with self.client.websocket_connect("/ws", headers=self.WS) as ws:
+            self.assertEqual(ws.receive_json()["type"], "hello")
+            # 계정은 그대로지만 쿠키의 만료(e)가 지났다
+            with mock.patch.object(auth.time, "time", return_value=time.time() + auth.SESSION_HOURS * 3600 + 1):
+                self.wait_closed()
+                with self.assertRaises(WebSocketDisconnect) as caught:
+                    ws.receive_json()
+        self.assertEqual(caught.exception.code, 1008)
 
 
 # ──────────────────────────────────────────────────────────────
@@ -801,6 +1035,8 @@ class LoginTest(Base):
         self.assertIn("samesite=lax", cookie.lower())
         token = r.cookies.get(auth.COOKIE) or cookie.split(auth.COOKIE + "=", 1)[1].split(";", 1)[0]
         self.assertEqual(auth.read(token)["u"], "han")
+        # 발급 시각은 authenticate 가 준 DB 시각이다(콘솔 시계가 아니다, 이슈 #59)
+        self.assertEqual(auth.read(token)["i"], ISSUED_AT)
 
         # 기록 형식은 그대로다: 같은 이벤트 · 필드 · 상태
         (event,) = self.pool.events()

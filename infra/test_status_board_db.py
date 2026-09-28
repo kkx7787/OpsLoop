@@ -2,9 +2,9 @@
 """관제 대상 상태판(이슈 #52) DB 시험.  python3 infra/test_status_board_db.py
 
 DB 없이 도는 글자 시험: 마이그레이션(infra/migrations/20260930_status_board.sql)이 schema.sql 의 '관제 대상 상태판 (이슈 #52)'
-블록을 글자 그대로 담는지, 블록이 #51 블록 뒤 파일 끝에 있는지, 표 정의가 계약(갈래 B 시험의 임시 표)과 같은지, 트리거 · 권한 줄이
-계약과 같은지, verify-db-roles.sh 에 #52 줄이 있는지, 적재기 · 집행기의 기록 문장이 쓰기 규칙(못 읽은 회차는 seen_at 을 둔다)을
-지키는지, 복원 훈련의 표 목록 · 구조 기대값에 새 표 · 트리거 · 함수가 들어 있는지 본다.
+블록을 글자 그대로 담는지, 블록이 #51 블록 뒤에 있는지(그 뒤에는 #59 블록만), 표 정의가 계약(갈래 B 시험의 임시 표)과
+같은지, 트리거 · 권한 줄이 계약과 같은지, verify-db-roles.sh 에 #52 줄이 있는지, 적재기 · 집행기의 기록 문장이 쓰기 규칙(못 읽은
+회차는 seen_at 을 둔다)을 지키는지, 복원 훈련의 표 목록 · 구조 기대값에 새 표 · 트리거 · 함수가 들어 있는지 본다.
 
 OPSLOOP_TEST_DATABASE_URL 이 슈퍼유저 연결이면 infra/test_block_enforce_db.py 와 같은 방식(무작위 데이터베이스 · 역할)으로
 schema.sql 과 마이그레이션을 두 번씩 적용하고, 트리거가 역할별로 행 종류를 막는지, 콘솔이 읽기만 되는지, 역할 블록 · #47 을 다시
@@ -27,6 +27,7 @@ BLOCK47 = os.path.join(ROOT, "infra", "test_block_enforce_db.py")
 
 HEADER = "-- 관제 대상 상태판 (이슈 #52)"
 HEADER51 = "-- 차단 집행 지점 · 시험 출발지 (이슈 #51)"
+NEXT_HEADER = "-- 콘솔 계정 관리 (이슈 #59)"      # 이 블록 뒤에 오는 다음 블록(infra/test_console_accounts_db.py)
 VERIFY_SECTION = 'echo "== 관제 대상 상태판 (이슈 #52'
 # 계약서 1장의 표 정의. 갈래 B(app/test_targets_db.py)는 이 글자를 그대로 임시 표로 쓴다
 DDL = """CREATE TABLE IF NOT EXISTS sensor_heartbeats (
@@ -82,9 +83,11 @@ MOD = load("block47_for_52", BLOCK47)
 
 
 def block52(text):
-    """'관제 대상 상태판 (이슈 #52)' 블록(머리 주석 · 표 · 트리거 · 권한)."""
+    """'관제 대상 상태판 (이슈 #52)' 블록(머리 주석 · 표 · 트리거 · 권한). 뒤에 #59 블록이 있으면 그 앞까지다."""
     start = text.index(HEADER + "\n")
-    end = text.index("END\n$$;", start) + len("END\n$$;")
+    stop = text.find("\n" + NEXT_HEADER, start)
+    region = text if stop < 0 else text[:stop]
+    end = region.rindex("END\n$$;") + len("END\n$$;")
     return text[start:end]
 
 
@@ -108,11 +111,12 @@ class StatusBoardTextTest(unittest.TestCase):
         self.assertTrue(all(ln.startswith("--") for ln in head.splitlines()))
         self.assertEqual(body.rstrip("\n"), block52(schema) + "\nCOMMIT;")
 
-    def test_블록은_51_블록_뒤_파일_끝에_있다(self):
+    def test_블록은_51_블록_뒤에_있고_그_뒤에는_59_블록만_온다(self):
         schema = read(SCHEMA)
         at = schema.index(HEADER + "\n")
         self.assertGreater(at, schema.index(HEADER51 + "\n"))
-        self.assertEqual(schema.rstrip("\n"), schema[:at] + block52(schema))
+        rest = schema[at + len(block52(schema)):].strip("\n")
+        self.assertTrue(rest.startswith(NEXT_HEADER), rest[:80])
         self.assertEqual(schema.count(HEADER + "\n"), 1)
         self.assertEqual(schema.count("CREATE TABLE IF NOT EXISTS sensor_heartbeats"), 1)
 
@@ -170,7 +174,8 @@ class StatusBoardTextTest(unittest.TestCase):
     def test_복원_훈련은_새_표를_백업_대상으로_세고_구조_기대값이_늘었다(self):
         self.assertIn("sensor_heartbeats", QUERIES.TABLES)
         self.assertEqual(len(QUERIES.TABLES), len(set(QUERIES.TABLES)))
-        self.assertEqual(QUERIES.EXPECT, {"tables": 26, "fk": 15, "triggers": 7, "functions": 12, "views": 3})
+        # #59 가 트리거 +2 · 함수 +3 을 더했다(infra/test_console_accounts_db.py 가 시험 DB 카탈로그와 대조한다)
+        self.assertEqual(QUERIES.EXPECT, {"tables": 26, "fk": 15, "triggers": 9, "functions": 15, "views": 3})
 
 
 @unittest.skipUnless(MOD.SKIP is True, str(MOD.SKIP))
