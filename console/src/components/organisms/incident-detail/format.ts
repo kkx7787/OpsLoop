@@ -233,6 +233,34 @@ export function enforcementPoints(block: Pick<ActorBlock, 'enforcement'> | null 
   return rows
 }
 
+/** 한 지점의 적용 확인 · 실패 · 미확인 수 */
+export interface PointTally {
+  applied: number
+  failed: number
+  unverified: number
+}
+
+/** 지점 수를 세는 행: 살아 있고 집행에 넘기는 요청(집행 제외 · 해제 · 만료는 뺀다) */
+const COUNTED_STATES: readonly BlockState[] = ['enforced', 'pending', 'mismatch']
+
+/**
+ * 차단 목록의 지점별 수(#72). 지점 결과가 적용 확인이면 적용, 실패면 실패, 그 밖(대기 · 확인 지연 · 기록 없음 · 모르는 값)은 미확인이다.
+ * 서버 BLOCKS_SQL(대시보드 · 대상 카드의 지점별 수)과 같은 정의다. 집행기 멈춤으로 합치지 않고 보고 상태 그대로 센다
+ */
+export function pointCounts(rows: readonly (BlockFields & Pick<ActorBlock, 'enforcement'>)[], now: number, point: 'gateway' | 'fw'): PointTally {
+  const tally: PointTally = { applied: 0, failed: 0, unverified: 0 }
+  for (const row of rows) {
+    if (!COUNTED_STATES.includes(blockState(row, now))) continue
+    const raw: unknown = row.enforcement
+    const item: unknown = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>)[point] : null
+    const state = item && typeof item === 'object' ? (item as Record<string, unknown>).state : null
+    if (state === 'confirmed') tally.applied += 1
+    else if (state === 'failed') tally.failed += 1
+    else tally.unverified += 1
+  }
+  return tally
+}
+
 /** 풀 수 있는 차단인가(해제 조치의 조건) */
 export function isActiveBlock(block: BlockFields | null, now: number = Date.now()): boolean {
   if (!block) return false

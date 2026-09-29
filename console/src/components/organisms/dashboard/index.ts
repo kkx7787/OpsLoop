@@ -1,26 +1,46 @@
 /**
- * 관제 현황(대시보드) 조각(#52). 페이지(pages/dashboard)가 조립한다.
- *  TargetBoard(관제 대상 상태판: 데스크톱 카드 그리드 · 모바일 접힌 요약) · TargetCard(대상 한 장)
- *  target-format(수집 상태 표기 · 대응 문구(숫자 0 없음) · 자원 지표 · 취약점 한 줄 · 카드 순서(고정 대상 뒤 등록 노드))
+ * 관제 현황(대시보드) 조각(#52 · #72). 페이지(pages/dashboard)가 조립만 한다.
+ *  ControlHealthBand(관제 이상 띠: 멈춤 · 탐지 경로 · 적용 실패 · 불일치 · 노드 수신, 조회 실패는 '관제 상태 확인 불가')
+ *  TargetBoard(보호 대상: 넓으면 카드 격자 · 좁으면 접힌 요약) · TargetCard(대상 한 장) · TargetSummaryList(대상마다 한 줄로 접은 목록)
+ *  SupportTargets(관측 센서 · 관제 시스템 접힌 줄) · DashboardMetrics(수치 네 칸 · 지점별 차단) · PendingQueue(먼저 처리할 사건) · AgeDistribution(경과 분포)
+ *  target-format(수집 상태 · 머리 배지 · 경고 배지 · 대응 문구(숫자 0 없음) · 자원 지표 · 취약점 한 줄 · 무리 나누기 · 카드 순서 · 미판정 목록 주소)
+ *  dashboard-layout(카드 · 접힌 요약 폭 판정 · 최근 사건 CVE 배지 고르기)
  */
+export { AgeDistribution } from './AgeDistribution'
+export type { AgeDistributionProps } from './AgeDistribution'
+export { ControlHealthBand } from './ControlHealthBand'
+export type { ControlHealthBandProps } from './ControlHealthBand'
+export { DashboardMetrics } from './DashboardMetrics'
+export type { DashboardMetricsProps } from './DashboardMetrics'
+export { PendingQueue } from './PendingQueue'
+export type { PendingQueueProps } from './PendingQueue'
+export { SupportTargets } from './SupportTargets'
+export type { SupportTargetsProps } from './SupportTargets'
 export { TargetBoard } from './TargetBoard'
 export type { TargetBoardProps } from './TargetBoard'
 export { TargetCard } from './TargetCard'
 export type { TargetCardProps } from './TargetCard'
+export { TargetSummaryList } from './TargetSummaryList'
+export type { TargetSummaryListProps } from './TargetSummaryList'
+export { badgeOf, latestKeys, useWide } from './dashboard-layout'
 export {
   assetHref,
   COLLECTION_LABEL,
   COLLECTION_TONE,
   collectionState,
   formatPct,
+  groupTargets,
+  headBadge,
   LABEL_MAX,
   latestLog,
   metricsText,
   orderTargets,
+  pendingHref,
   pendingText,
   responseParts,
+  summaryFlags,
   SYSTEM_TEXT,
   systemText,
   vulnText,
 } from './target-format'
-export type { ResponsePart } from './target-format'
+export type { ResponsePart, SummaryFlag, TargetGroups } from './target-format'

@@ -1,0 +1,123 @@
+import { QueryClientProvider } from '@tanstack/react-query'
+import { act, renderHook, waitFor } from '@testing-library/react'
+import { createElement, type ReactNode } from 'react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { noRetryClient } from '@/test/render'
+import { MONITOR, controlHealth, json } from '@/test/monitoring-fixtures'
+import { isApiError } from './errors'
+import { controlHealthView, fetchControlHealth, HEALTH_PATH, monitorItemHref, monitorItemText, opsAnomalies, useControlHealth } from './health'
+import { monitoringKeys } from './monitoring-keys'
+
+function stubFetch(route: (url: string) => Response | undefined) {
+  const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    return route(url) ?? json({ detail: 'Not Found' }, 404)
+  })
+  vi.stubGlobal('fetch', fetch)
+  return fetch
+}
+
+function wrapper(client = noRetryClient()) {
+  return { client, wrapper: ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children) }
+}
+
+describe('관제 상태 API(#72)', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('GET /api/dashboard/monitor 를 받아 그대로 돌려준다', async () => {
+    const body = controlHealth({ items: [MONITOR.loader] })
+    const fetch = stubFetch((url) => (url === '/api/dashboard/monitor' ? json(body) : undefined))
+    expect(HEALTH_PATH).toBe('/api/dashboard/monitor')
+    expect(await fetchControlHealth()).toEqual(body)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('items 가 목록이 아니면 이상 없음으로 꾸미지 않고 해석 오류로 던진다', async () => {
+    for (const body of [{ as_of: '', detect_paths: [] }, { items: null }, [], null]) {
+      stubFetch(() => json(body))
+      const error = await fetchControlHealth().catch((e: unknown) => e)
+      expect(isApiError(error) && error.kind).toBe('parse')
+    }
+  })
+
+  it('detect_paths 가 없으면 빈 목록으로 채운다', async () => {
+    stubFetch(() => json({ as_of: 'x', items: [] }))
+    expect((await fetchControlHealth()).detect_paths).toEqual([])
+  })
+
+  it('404(이전 서버) · 5xx 는 그대로 넘긴다(띠 · 사이드바는 확인 불가)', async () => {
+    stubFetch(() => undefined)
+    expect(await fetchControlHealth().catch((e: unknown) => isApiError(e) && e.status)).toBe(404)
+    stubFetch(() => json({ detail: 'DB unavailable' }, 503))
+    expect(await fetchControlHealth().catch((e: unknown) => isApiError(e) && e.status)).toBe(503)
+  })
+
+  it('useControlHealth 는 대시보드 · 관제 이상 키로 받고, enabled=false 면 묻지 않는다', async () => {
+    const fetch = stubFetch((url) => (url === HEALTH_PATH ? json(controlHealth()) : undefined))
+    const off = wrapper()
+    const idle = renderHook(() => useControlHealth(false), { wrapper: off.wrapper })
+    expect(idle.result.current.isPending).toBe(true)
+    expect(controlHealthView(idle.result.current)).toEqual({ state: 'pending' })
+    expect(fetch).not.toHaveBeenCalled()
+
+    const on = wrapper()
+    const { result } = renderHook(() => useControlHealth(), { wrapper: on.wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(monitoringKeys.health).toEqual(['dashboard', 'monitor'])
+    expect(on.client.getQueryData(monitoringKeys.health)).toEqual(controlHealth())
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('한 번도 받지 못한 채 다시 조회하는 동안에도 확인 불가다(react-query 가 pending 으로 되돌려도 조회 전으로 바뀌지 않는다)', async () => {
+    let calls = 0
+    let hold: ((response: Response) => void) | undefined
+    vi.stubGlobal('fetch', vi.fn<typeof globalThis.fetch>(async () => {
+      calls += 1
+      if (calls === 1) return json({ detail: 'DB unavailable' }, 503)
+      return new Promise<Response>((resolve) => { hold = resolve })
+    }))
+    const { result } = renderHook(() => useControlHealth(), { wrapper: wrapper().wrapper })
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    act(() => void result.current.refetch())          // 30초 재조회 · 창 초점 · 재접속 resync 와 같은 다시 조회
+    await waitFor(() => expect(result.current.fetchStatus).toBe('fetching'))
+    expect([result.current.isError, result.current.data]).toEqual([false, undefined])
+    expect(controlHealthView(result.current)).toEqual({ state: 'error' })
+    act(() => hold?.(json(controlHealth({ items: [MONITOR.loader] }))))
+    await waitFor(() => expect(controlHealthView(result.current)).toEqual({ state: 'ok', alerts: [MONITOR.loader], unknowns: [] }))
+  })
+})
+
+describe('관제 이상 판정(#72)', () => {
+  it('opsAnomalies: 이상 · 모름을 서버 순서로 나누고, 모르는 level 은 모름 · 항목이 아닌 값은 뺀다', () => {
+    const odd = { ...MONITOR.nodes, key: 'future', level: 'warn' as never }
+    const items = [MONITOR.heartbeats, MONITOR.loader, null as never, odd, MONITOR.mismatch, { level: 'alert' } as never]
+    const { alerts, unknowns } = opsAnomalies(controlHealth({ items }))
+    expect(alerts.map((i) => i.key)).toEqual(['loader', 'gateway_mismatch'])
+    expect(unknowns.map((i) => i.key)).toEqual(['heartbeats', 'future'])
+    expect(opsAnomalies(undefined)).toEqual({ alerts: [], unknowns: [] })
+    expect(opsAnomalies(controlHealth())).toEqual({ alerts: [], unknowns: [] })
+  })
+
+  it('controlHealthView: 실패를 받은 값보다 먼저 본다(이전 항목이 있어도 확인 불가)', () => {
+    const data = controlHealth({ items: [MONITOR.loader, MONITOR.nodes] })
+    expect(controlHealthView({ data: undefined, isError: false })).toEqual({ state: 'pending' })
+    expect(controlHealthView({ data: undefined, isError: true })).toEqual({ state: 'error' })
+    expect(controlHealthView({ data, isError: true })).toEqual({ state: 'error' })
+    expect(controlHealthView({ data, isError: false })).toEqual({ state: 'ok', alerts: [MONITOR.loader], unknowns: [MONITOR.nodes] })
+    expect(controlHealthView({ data: controlHealth(), isError: false })).toEqual({ state: 'ok', alerts: [], unknowns: [] })
+    // 마지막으로 끝난 조회가 실패면(다시 조회 중이라 isError 가 꺼져도) 확인 불가, 그 뒤 받으면 받은 값
+    expect(controlHealthView({ data: undefined, isError: false, errorUpdatedAt: 5, dataUpdatedAt: 0 })).toEqual({ state: 'error' })
+    expect(controlHealthView({ data, isError: false, errorUpdatedAt: 5, dataUpdatedAt: 9 })).toEqual({ state: 'ok', alerts: [MONITOR.loader], unknowns: [MONITOR.nodes] })
+  })
+
+  it('항목 글은 까닭, 없으면 건수. 링크는 차단 집행 쪽 → 차단 목록, 노드 수신 → 수집 노드', () => {
+    expect(monitorItemText(MONITOR.loader)).toBe('적재기 확인 중단 · 마지막 45분 전')
+    expect(monitorItemText(MONITOR.failedGateway)).toBe('2건')
+    expect(monitorItemText({ reason: null, count: 1234 })).toBe('1,234건')
+    expect(monitorItemText(MONITOR.nodesSilent)).toBe('활성 노드 2대 모두 10분 넘게 수신 없음')
+    expect(monitorItemText({ reason: null, count: null })).toBeNull()
+    expect(['enforcer:gateway', 'enforcer:fw', 'block_failed:fw', 'gateway_mismatch'].map(monitorItemHref)).toEqual(['/blocklist', '/blocklist', '/blocklist', '/blocklist'])
+    expect(['nodes_silent', 'nodes'].map(monitorItemHref)).toEqual(['/nodes', '/nodes'])
+    expect(['loader', 'detect:honeypot', 'detect:bridge', 'heartbeats', 'other'].map(monitorItemHref)).toEqual([null, null, null, null, null])
+  })
+})

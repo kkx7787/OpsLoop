@@ -30,13 +30,13 @@ describe('TopBar', () => {
 
   it('메뉴 단추는 열림 상태를 알리고 서랍을 연다', () => {
     const onOpenMenu = vi.fn<() => void>()
-    render(<TopBar now={NOW} onOpenMenu={onOpenMenu} menuOpen={false} sensor={<span>센서 3/3</span>} />)
+    render(<TopBar now={NOW} onOpenMenu={onOpenMenu} menuOpen={false} ops={<span>이상 2</span>} />)
     const button = screen.getByRole('button', { name: '메뉴 열기' })
     expect(button).toHaveAttribute('aria-expanded', 'false')
     expect(button).toHaveAttribute('aria-haspopup', 'dialog')
     fireEvent.click(button)
     expect(onOpenMenu).toHaveBeenCalledTimes(1)
-    expect(screen.getByText('센서 3/3')).toBeInTheDocument()
+    expect(screen.getByText('이상 2')).toBeInTheDocument()
   })
 
   it('경로가 없으면(없는 주소) 제품명을 보이고 메뉴 단추는 없다', () => {

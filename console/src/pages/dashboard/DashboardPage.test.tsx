@@ -3,9 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { DashboardPage } from './DashboardPage'
 import { LiveContext } from '@/api/live-context'
 import { applyLiveMessage } from '@/api/live'
+import type { MonitorItem } from '@/api/health'
 import { noRetryClient, renderRoutes } from '@/test/render'
-import { MONITORING_SUMMARY, json } from '@/test/monitoring-fixtures'
-import { LATEST_KEY, nodeTarget, targetsResult } from '@/test/targets-fixtures'
+import { BLOCKS_BY_POINT, MONITOR, MONITORING_SUMMARY, controlHealth, json } from '@/test/monitoring-fixtures'
+import { LATEST_KEY, awsSensor, consoleTarget, dataNodeStopped, device, nodeTarget, queueItem, targetsQueue, targetsResult, web01 } from '@/test/targets-fixtures'
 import { revealHidden } from '@/lib/untrusted'
 import { expectInertDom, expectMixedRevealed, HOSTILE, LONG, MIXED } from '@/test/hostile-fixtures'
 
@@ -13,13 +14,14 @@ afterEach(() => vi.unstubAllGlobals())
 function renderPage() { return renderRoutes([{ path: '/', element: <DashboardPage /> }], '/', noRetryClient()) }
 
 type Answer = unknown | (() => Response)
-/** 요약 · 대상 상태판 · CVE 배지에 답하는 fetch. 값 대신 함수를 주면 그 응답을 그대로 돌려준다 */
-function stubDashboard({ summary = MONITORING_SUMMARY as Answer, targets = targetsResult() as Answer, badges = { as_of: '', available: true, badges: {} } as Answer } = {}) {
+/** 요약 · 대상 상태판 · 관제 상태 · CVE 배지에 답하는 fetch. 값 대신 함수를 주면 그 응답을 그대로 돌려준다 */
+function stubDashboard({ summary = MONITORING_SUMMARY as Answer, targets = targetsResult() as Answer, health = controlHealth() as Answer, badges = { as_of: '', available: true, badges: {} } as Answer } = {}) {
   const answer = (value: Answer) => (typeof value === 'function' ? (value as () => Response)() : json(value))
   const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
     const url = new URL(String(input), 'http://localhost')
     if (url.pathname === '/api/stats/summary') return answer(summary)
     if (url.pathname === '/api/dashboard/targets') return answer(targets)
+    if (url.pathname === '/api/dashboard/monitor') return answer(health)
     if (url.pathname === '/api/cti/badges') return answer(badges)
     return json({ detail: '없는 경로' }, 404)
   })
@@ -27,9 +29,18 @@ function stubDashboard({ summary = MONITORING_SUMMARY as Answer, targets = targe
   return fetch
 }
 const paths = (fetch: ReturnType<typeof stubDashboard>) => fetch.mock.calls.map(([input]) => new URL(String(input), 'http://localhost').pathname)
+const narrow = () => vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} })))
+/** 접힌 목록의 한 줄 단추 글 */
+const rows = (name: string) => within(screen.getByRole('list', { name })).getAllByRole('button').map((b) => b.textContent)
+/** 접힌 목록에서 그 대상 줄을 펼치고 카드를 돌려준다 */
+function expand(list: string, target: string): HTMLElement {
+  const row = within(screen.getByRole('list', { name: list })).getAllByRole('button').find((b) => b.closest('li')?.dataset.targetSummary === target) as HTMLElement
+  fireEvent.click(row)
+  return row.closest('li')?.querySelector('[data-target]') as HTMLElement
+}
 
 describe('대시보드', () => {
-  it('요약 · 대상 상태판을 따로 조회해 경과 · 목표 초과를 표시하고 근거 사건으로 연결한다', async () => {
+  it('요약 · 대상 상태판 · 관제 상태를 따로 조회해 경과 · 목표 초과를 표시하고 근거 사건으로 연결한다', async () => {
     const fetch = stubDashboard()
     renderPage()
     expect(await screen.findByText('6시간 12분')).toBeInTheDocument()
@@ -40,20 +51,25 @@ describe('대시보드', () => {
     expect(target).toHaveAccessibleDescription(/critical 1시간 · high 4시간 · medium 12시간 · low 24시간이고, 관제 자기 탐지\(R2xx\) 사건은 1시간입니다\. 목표 임박은 목표 시간의 2\/3 를 넘긴 사건입니다/)
     expect(screen.getAllByText(/critical 1시간/)).toHaveLength(1)
     expect(screen.getByRole('link', { name: /악성코드 투하/ })).toHaveAttribute('href', '/incidents/R003%7Cv2%7C192.0.2.8')
-    expect(await screen.findByRole('region', { name: 'AWS 센서' })).toBeInTheDocument()
-    expect(new Set(paths(fetch))).toEqual(new Set(['/api/stats/summary', '/api/dashboard/targets', '/api/cti/badges']))
+    expect(await screen.findByRole('region', { name: 'web-01' })).toBeInTheDocument()
+    await waitFor(() => expect(new Set(paths(fetch))).toEqual(new Set(['/api/stats/summary', '/api/dashboard/targets', '/api/dashboard/monitor', '/api/cti/badges'])))
   })
 
-  it('제목은 관제 현황이고 대상 카드 → 수치 네 칸 → 먼저 확인할 사건 순서다', async () => {
-    stubDashboard()
+  it('제목은 관제 현황이고 관제 이상 띠 → 보호 대상 → 수치 → 먼저 처리할 사건 → 관측 센서 · 관제 시스템 순서다', async () => {
+    stubDashboard({ targets: targetsResult({ queue: targetsQueue() }), health: controlHealth({ items: [MONITOR.loader] }) })
     renderPage()
     expect(screen.getByRole('heading', { level: 1, name: '관제 현황' })).toBeInTheDocument()
-    const board = await screen.findByRole('heading', { level: 2, name: '관제 대상' })
+    const band = await screen.findByRole('region', { name: '관제 이상' })
+    const board = await screen.findByRole('heading', { level: 2, name: '보호 대상' })
     const metric = await screen.findByText('가장 오래된 미판정')
-    const queue = screen.getByRole('heading', { name: '먼저 확인할 사건' })
-    expect(board.compareDocumentPosition(metric) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    expect(metric.compareDocumentPosition(queue) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
-    for (const name of ['AWS 센서', 'web-01', '관제 콘솔', '데이터 노드']) expect(screen.getByRole('region', { name })).toBeInTheDocument()
+    const queue = screen.getByRole('heading', { level: 2, name: '먼저 처리할 사건' })
+    const sensors = screen.getByRole('heading', { level: 2, name: '관측 센서' })
+    const system = screen.getByRole('heading', { level: 2, name: '관제 시스템' })
+    const order = [band, board, metric, queue, sensors, system]
+    for (let i = 1; i < order.length; i++) expect(order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    // 넓은 화면의 카드는 보호 대상(web-01)뿐이고 AWS 센서 · 콘솔 · 데이터 노드는 접힌 줄이다
+    expect(screen.getByRole('region', { name: 'web-01' })).toBeInTheDocument()
+    for (const name of ['AWS 센서', '관제 콘솔', '데이터 노드']) expect(screen.queryByRole('region', { name })).toBeNull()
   })
 
   it('규칙별 비조치율 표는 규칙 화면으로 옮기고 여기서는 링크만 둔다', async () => {
@@ -67,36 +83,57 @@ describe('대시보드', () => {
     expect(screen.getByText(/최근 원문 수집/)).not.toHaveTextContent(/웹소켓|30초/)
   })
 
-  it('대상 카드 조회가 실패해도 수치 네 칸 · 판정 대기열은 그대로 보이고 카드 자리만 오류다', async () => {
+  it('대상 조회가 실패해도 수치 네 칸 · 대기열은 그대로 보이고 보호 대상 자리만 오류다(관측 센서 · 관제 시스템은 그리지 않는다)', async () => {
     stubDashboard({ targets: () => json({ detail: '상태판 집계 실패' }, 503) })
     renderPage()
     expect(await screen.findByText('6시간 12분')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /악성코드 투하/ })).toBeInTheDocument()
-    const board = screen.getByRole('region', { name: '관제 대상' })
+    const board = screen.getByRole('region', { name: '보호 대상' })
     const alert = await within(board).findByRole('alert')
     expect(alert).toHaveTextContent('상태판 집계 실패')
     expect(within(alert).getByRole('button', { name: '다시 시도' })).toBeInTheDocument()
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+    expect(screen.queryByRole('heading', { name: '관측 센서' })).toBeNull()
+    expect(screen.queryByRole('heading', { name: '관제 시스템' })).toBeNull()
   })
 
   it('상태판 API 가 없는 이전 서버(404)는 콘솔 API 배포 전으로 알린다', async () => {
     stubDashboard({ targets: () => json({ detail: 'Not Found' }, 404) })
     renderPage()
     expect(await screen.findByText(/콘솔 API 배포 전/)).toBeInTheDocument()
-    expect(within(screen.getByRole('region', { name: '관제 대상' })).queryByRole('alert')).toBeNull()
+    expect(within(screen.getByRole('region', { name: '보호 대상' })).queryByRole('alert')).toBeNull()
     expect(await screen.findByText('6시간 12분')).toBeInTheDocument()
   })
 
-  it('요약 조회가 실패해도 대상 카드는 보인다', async () => {
+  it('요약 조회가 실패해도 대상 카드는 보인다(queue 가 없으면 요약 오류 화면)', async () => {
     stubDashboard({ summary: () => json({ detail: 'DB unavailable' }, 503) })
     renderPage()
-    expect(await screen.findByRole('region', { name: 'AWS 센서' })).toBeInTheDocument()
+    expect(await screen.findByRole('region', { name: 'web-01' })).toBeInTheDocument()
     expect(await screen.findByText(/DB unavailable/)).toBeInTheDocument()
   })
 
-  it('최근 사건 줄의 CVE 배지는 네 카드의 키를 모아 한 번에 묻는다', async () => {
+  it('요약 500 · 대상 200(queue 있음)이면 먼저 처리할 사건이 보이고 요약 실패는 공통 띠가 알린다', async () => {
+    stubDashboard({ summary: () => json({ detail: 'DB unavailable' }, 503), targets: targetsResult({ queue: targetsQueue() }) })
+    renderPage()
+    const queue = await screen.findByRole('heading', { name: '먼저 처리할 사건' })
+    const card = queue.closest('[data-queue]') as HTMLElement
+    expect(card).toHaveAttribute('data-queue', 'lanes')
+    expect(within(card).getByRole('link', { name: /웹 경로 탐색/ })).toHaveAttribute('href', `/incidents/${encodeURIComponent(queueItem().incident_key)}`)
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('데이터를 갱신하지 못했습니다')
+    expect(alert).toHaveTextContent('DB unavailable')
+    // 요약에서 오는 수치 · 경과 분포 · 끝 줄은 없다
+    expect(screen.queryByText('가장 오래된 미판정')).toBeNull()
+    expect(screen.queryByRole('heading', { name: '미판정 경과 시간' })).toBeNull()
+    expect(screen.queryByText(/최근 원문 수집/)).toBeNull()
+  })
+
+  it('최근 사건 줄의 CVE 배지는 모든 대상의 키를 모아 페이지에서 한 번 묻고, 접힌 줄을 펼친 카드에도 보인다', async () => {
     const fetch = stubDashboard({ badges: { as_of: '', available: true, badges: { [LATEST_KEY]: { cves: 1, kev: 1, applicability: 'unknown', stale: true } } } })
     renderPage()
-    const aws = await screen.findByRole('region', { name: 'AWS 센서' })
+    await screen.findByRole('list', { name: '관측 센서 요약' })
+    await waitFor(() => expect(fetch.mock.calls.some(([input]) => String(input).startsWith('/api/cti/badges'))).toBe(true))
+    const aws = expand('관측 센서 요약', 'aws-sensor')
     expect(await within(aws).findByText('CVE 1 · KEV 1 · 자산 미확인')).toHaveAttribute('title', '공개 정보 48시간 넘음 · 우리 자산 해당 여부를 확정하지 않음')
     const calls = fetch.mock.calls.map(([input]) => String(input)).filter((url) => url.startsWith('/api/cti/badges'))
     expect(calls).toHaveLength(1)
@@ -106,51 +143,88 @@ describe('대시보드', () => {
   it('배지 조회가 실패해도 카드는 배지 없이 그린다', async () => {
     stubDashboard({ badges: () => json({ detail: '배지 실패' }, 503) })
     renderPage()
-    const aws = await screen.findByRole('region', { name: 'AWS 센서' })
+    await screen.findByRole('list', { name: '관측 센서 요약' })
+    const aws = expand('관측 센서 요약', 'aws-sensor')
     expect(within(aws).getByRole('link', { name: /R105/ })).toBeInTheDocument()
     expect(aws.querySelector('[data-cti-badge]')).toBeNull()
   })
 
-  it('카드 합이 전체와 다른 까닭은 관제 대상 제목 옆 도움말에, 대상 미분류 사건은 본문에 둔다', async () => {
+  it('카드 합이 전체와 다른 까닭은 보호 대상 제목 옆 도움말에, 장비 미확인 미판정은 그 목록으로 잇는다', async () => {
     stubDashboard({ targets: targetsResult({ unmapped: { incidents_1h: 2, pending: 5 } }) })
     const { container } = renderPage()
-    const tip = await screen.findByRole('button', { name: '관제 대상 설명' })
-    expect(tip).toHaveAccessibleDescription('카드 수치는 대상별입니다. 한 사건이 여러 대상에 걸칠 수 있어 합이 전체와 다릅니다.')
-    const board = screen.getByRole('region', { name: '관제 대상' })
+    const tip = await screen.findByRole('button', { name: '보호 대상 설명' })
+    expect(tip).toHaveAccessibleDescription('카드 수치는 대상별입니다. 한 사건이 여러 대상에 걸칠 수 있어 합이 전체와 다릅니다. 이벤트로 장비를 고르지 못한 사건은 장비 미확인으로 셉니다.')
+    const board = screen.getByRole('region', { name: '보호 대상' })
     expect(board).toContainElement(tip)
     expect(container.querySelector('[data-targets-note]')).toBeNull()
-    expect(screen.getByText('대상 미분류 사건: 최근 1시간 2 · 미판정 5')).toBeInTheDocument()
+    const link = within(board).getByRole('link', { name: '장비 미확인 미판정 5' })
+    expect(link).toHaveAttribute('href', '/incidents?judged=false&device=_unconfirmed')
+    expect(screen.queryByText(/대상 미분류/)).toBeNull()
   })
 
   it('대상 카드를 받지 못하면 카드 합 도움말을 두지 않는다', async () => {
     stubDashboard({ targets: () => json({ detail: '상태판 집계 실패' }, 503) })
     renderPage()
-    await within(screen.getByRole('region', { name: '관제 대상' })).findByRole('alert')
-    expect(screen.queryByRole('button', { name: '관제 대상 설명' })).toBeNull()
+    await within(screen.getByRole('region', { name: '보호 대상' })).findByRole('alert')
+    expect(screen.queryByRole('button', { name: '보호 대상 설명' })).toBeNull()
   })
 
-  it('미분류 사건이 없으면 그 줄을 그리지 않는다', async () => {
-    stubDashboard()
-    renderPage()
-    await screen.findByRole('region', { name: 'AWS 센서' })
-    expect(screen.queryByText(/대상 미분류 사건/)).toBeNull()
+  it('장비 미확인 미판정이 0 이면 그 줄을 그리지 않는다(최근 1시간 수만 있어도)', async () => {
+    stubDashboard({ targets: targetsResult({ unmapped: { incidents_1h: 3, pending: 0 } }) })
+    const { container } = renderPage()
+    const board = await screen.findByRole('region', { name: '보호 대상' })
+    await within(board).findByRole('region', { name: 'web-01' })
+    expect(container.querySelector('[data-unmapped]')).toBeNull()
+    expect(within(board).queryByRole('link', { name: /장비 미확인/ })).toBeNull()
   })
 
-  it('모바일(sm 미만)은 대상마다 한 줄로 접고 누르면 그 카드를 펼친다', async () => {
-    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} })))
+  it('모바일(sm 미만)은 보호 대상도 한 줄로 접고 누르면 그 카드를 펼친다', async () => {
+    narrow()
     stubDashboard()
     renderPage()
-    const list = await screen.findByRole('list', { name: '관제 대상 요약' })
-    const buttons = within(list).getAllByRole('button')
-    expect(buttons.map((b) => b.textContent)).toEqual(['▸AWS 센서정상미판정 12', '▸web-01요청 없음미판정 0', '▸관제 콘솔생존 상태 미확인미판정 1', '▸데이터 노드수신 없음미판정 0'])
+    await screen.findByRole('list', { name: '보호 대상 요약' })
+    expect(rows('보호 대상 요약')).toEqual(['▸web-01요청 없음미판정 0'])
+    expect(rows('관측 센서 요약')).toEqual(['▸AWS 센서정상미판정 12'])
+    expect(rows('관제 시스템 요약')).toEqual(['▸관제 콘솔생존 상태 미확인미판정 1', '▸데이터 노드수신 없음미판정 0'])
+    expect(screen.queryByRole('region', { name: 'web-01' })).toBeNull()
+    const button = within(screen.getByRole('list', { name: '보호 대상 요약' })).getByRole('button')
+    fireEvent.click(button)
+    expect(button).toHaveAttribute('aria-expanded', 'true')
+    const card = screen.getByRole('region', { name: 'web-01' })
+    expect(card).toHaveTextContent('내부 방화벽 집행 대상 차단 없음')
+    expect(button).toHaveAttribute('aria-controls', card.parentElement?.id)
+    fireEvent.click(button)
+    expect(screen.queryByRole('region', { name: 'web-01' })).toBeNull()
+  })
+
+  it('관측 센서 · 관제 시스템은 넓은 화면에서도 접혀 있고, 누르면 그 자리에 카드가 펼쳐진다', async () => {
+    stubDashboard()
+    renderPage()
+    await screen.findByRole('list', { name: '관측 센서 요약' })
     expect(screen.queryByRole('region', { name: 'AWS 센서' })).toBeNull()
-    fireEvent.click(buttons[0])
-    expect(buttons[0]).toHaveAttribute('aria-expanded', 'true')
-    const card = screen.getByRole('region', { name: 'AWS 센서' })
-    expect(card).toHaveTextContent('차단 적용 2 (AWS 관문)')
-    expect(buttons[0]).toHaveAttribute('aria-controls', card.parentElement?.id)
-    fireEvent.click(buttons[0])
-    expect(screen.queryByRole('region', { name: 'AWS 센서' })).toBeNull()
+    const aws = expand('관측 센서 요약', 'aws-sensor')
+    expect(aws).toHaveAttribute('data-target', 'aws-sensor')
+    expect(screen.getByRole('region', { name: 'AWS 센서' })).toBe(aws)
+    expect(aws).toHaveTextContent('차단 적용 2 (AWS 관문)')
+    // 펼친 카드 안에서만 링크를 둔다(줄 단추 안에는 링크가 없다)
+    expect(within(aws).getByRole('link', { name: '미판정 12' })).toHaveAttribute('href', '/incidents?judged=false&device=aws-sensor')
+    for (const button of within(screen.getByRole('list', { name: '관측 센서 요약' })).getAllByRole('button')) expect(button.querySelector('a')).toBeNull()
+    expect(rows('관제 시스템 요약')).toHaveLength(2)
+  })
+
+  it('접힌 줄은 머리 배지(데이터 노드 확인 멈춤은 주의)와 경고 배지(적용 실패 · 집행기 · 적재기 멈춤)를 보인다', async () => {
+    const aws = awsSensor({ response: { ...awsSensor().response, failed: 2, stalled: '집행기 확인 중단 · 마지막 확인 12분 전' } })
+    stubDashboard({ targets: targetsResult({ targets: [aws, web01(), consoleTarget(), dataNodeStopped()] }) })
+    renderPage()
+    await screen.findByRole('list', { name: '관제 시스템 요약' })
+    expect(rows('관측 센서 요약')).toEqual(['▸AWS 센서정상적용 실패 2집행기 멈춤미판정 12'])
+    expect(rows('관제 시스템 요약')).toEqual(['▸관제 콘솔생존 상태 미확인미판정 1', '▸데이터 노드주의적재기 멈춤집행기 멈춤미판정 0'])
+    const data = screen.getByRole('list', { name: '관제 시스템 요약' }).querySelector('[data-target-summary="data-node"]') as HTMLElement
+    expect(data.querySelector('[data-head-badge]')).toHaveClass('bg-warning-soft')
+    expect(data.querySelector('[data-summary-flag="loader"]')).toHaveClass('bg-warning-soft')
+    expect(screen.getByRole('list', { name: '관측 센서 요약' }).querySelector('[data-summary-flag="failed"]')).toHaveClass('bg-danger-soft')
+    // 펼친 카드의 수집 상태 표지는 서버 값(ok) 그대로다
+    expect(expand('관제 시스템 요약', 'data-node')).toHaveAttribute('data-collection', 'ok')
   })
 
   it('대상 카드 갱신이 실패하면 이전 카드를 유지하고 다시 조회를 둔다', async () => {
@@ -158,18 +232,48 @@ describe('대시보드', () => {
     stubDashboard({ targets: () => (fail ? json({ detail: '상태판 집계 실패' }, 503) : json(targetsResult())) })
     const client = noRetryClient()
     renderRoutes([{ path: '/', element: <DashboardPage /> }], '/', client)
-    await screen.findByRole('region', { name: 'AWS 센서' })
+    await screen.findByRole('region', { name: 'web-01' })
     fail = true
     await act(async () => { await client.invalidateQueries({ queryKey: ['dashboard', 'targets'] }) })
     const status = await screen.findByText('대상 카드를 갱신하지 못했습니다')
     expect(status.closest('[role="status"]')).toHaveTextContent('이전 결과 유지')
-    expect(screen.getByRole('region', { name: 'AWS 센서' })).toBeInTheDocument()
+    expect(screen.getByRole('region', { name: 'web-01' })).toBeInTheDocument()
+    // 관측 센서 · 관제 시스템도 이전 결과로 남는다
+    expect(screen.getByRole('list', { name: '관측 센서 요약' })).toBeInTheDocument()
     fail = false
     fireEvent.click(within(status.closest('[role="status"]') as HTMLElement).getByRole('button', { name: '다시 조회' }))
     await waitFor(() => expect(screen.queryByText('대상 카드를 갱신하지 못했습니다')).toBeNull())
   })
 
-  it('활성 차단 요청을 집행 확인 · 대기 · 제외로 나눠 막은 수로 읽히지 않게 한다(이슈 #47)', async () => {
+  it('활성 차단 요청을 지점별 두 줄(적용 · 실패 · 미확인)로 나누고, 집행 제외 · 불일치는 아래 줄에 둔다(#72)', async () => {
+    stubDashboard({ summary: { ...MONITORING_SUMMARY, blocked_ips: 16, blocks: { enforced: 2, pending: 0, excluded: 13, mismatch: 1 }, blocks_by_point: BLOCKS_BY_POINT } })
+    const { container } = renderPage()
+    expect(await screen.findByText('활성 차단 요청 16건')).toBeInTheDocument()
+    const gateway = container.querySelector('[data-block-point="gateway"]') as HTMLElement
+    const fw = container.querySelector('[data-block-point="fw"]') as HTMLElement
+    expect(gateway).toHaveTextContent(/^AWS 관문 적용 2 · 실패 0 · 미확인 1$/)
+    expect(fw).toHaveTextContent(/^내부 방화벽 적용 0 · 실패 0 · 미확인 3 · 집행기 멈춤$/)
+    // 두 줄은 차단 목록 링크 하나 안에 있고, 멈춤은 그 지점 줄 끝에 주의색으로 붙는다
+    const link = gateway.closest('a') as HTMLElement
+    expect(link).toHaveAttribute('href', '/blocklist')
+    expect(link).toContainElement(fw)
+    expect(fw.querySelector('[data-block-stalled]')).toHaveClass('text-warning')
+    expect(gateway.querySelector('[data-block-stalled]')).toBeNull()
+    // 요청 수(16)에는 집행 제외가 들어 있어 두 줄 합(3)과 다르다. 그 차이를 아래 줄 맨 앞에 둔다
+    expect(screen.getByText('집행 제외 13건 · 관문 불일치 1건')).toBeInTheDocument()
+    expect(screen.queryByText(/집행 확인 2/)).toBeNull()
+    expect(screen.queryByRole('link', { name: '16건' })).toBeNull()
+  })
+
+  it('집행 제외가 0 이면 아래 줄에 적지 않는다', async () => {
+    stubDashboard({ summary: { ...MONITORING_SUMMARY, blocks_by_point: [{ ...BLOCKS_BY_POINT[0], applied: 1, unverified: 1 }, { ...BLOCKS_BY_POINT[1], unverified: 2, stalled: null }] } })
+    const { container } = renderPage()
+    await screen.findByText('활성 차단 요청 2건')
+    expect(container.querySelector('[data-block-point="fw"]')).toHaveTextContent(/^내부 방화벽 적용 0 · 실패 0 · 미확인 2$/)
+    expect(screen.queryByText(/집행 제외/)).toBeNull()
+  })
+
+  it('지점별이 없는 이전 서버는 집행 확인 · 대기 · 제외 한 줄이다(이슈 #47)', async () => {
     stubDashboard({ summary: { ...MONITORING_SUMMARY, blocked_ips: 16, blocks: { enforced: 2, pending: 0, excluded: 13, mismatch: 1 } } })
     renderPage()
     expect(await screen.findByText('활성 차단 요청 16건')).toBeInTheDocument()
@@ -220,23 +324,23 @@ describe('대시보드', () => {
       summary: () => json({ ...MONITORING_SUMMARY, pending: { ...MONITORING_SUMMARY.pending, total } }),
       targets: () => {
         const result = targetsResult()
-        result.targets[0].security.pending = total
+        result.targets[1].security.pending = total
         return json(result)
       },
     })
     renderRoutes([{ path: '/', element: <DashboardPage /> }], '/', client)
     await screen.findByRole('link', { name: '12건' })
-    const aws = await screen.findByRole('region', { name: 'AWS 센서' })
-    expect(aws).toHaveTextContent('높음 이상 1 · 미판정 12')
+    const web = await screen.findByRole('region', { name: 'web-01' })
+    await waitFor(() => expect(web).toHaveTextContent('높음 이상 0 · 미판정 12'))
     total = 11
     act(() => applyLiveMessage(client, { type: 'verdict.created', data: { incident_key: 'k' } }))
     expect(await screen.findByRole('link', { name: '11건' })).toBeInTheDocument()
-    await waitFor(() => expect(screen.getByRole('region', { name: 'AWS 센서' })).toHaveTextContent('높음 이상 1 · 미판정 11'))
+    await waitFor(() => expect(screen.getByRole('region', { name: 'web-01' })).toHaveTextContent('높음 이상 0 · 미판정 11'))
   })
 
-  it('조회 실패 시 이전 수치를 유지하고 마지막 조회와 다시 시도를 표시한다', async () => {
+  it('조회 실패 시 이전 수치를 유지하고, 다시 조회는 요약 · 대상 · 관제 상태를 모두 다시 묻는다', async () => {
     let fail = false
-    stubDashboard({ summary: () => fail ? json({ detail: 'DB unavailable' }, 503) : json(MONITORING_SUMMARY) })
+    const fetch = stubDashboard({ summary: () => fail ? json({ detail: 'DB unavailable' }, 503) : json(MONITORING_SUMMARY) })
     const client = noRetryClient()
     renderRoutes([{ path: '/', element: <DashboardPage /> }], '/', client)
     await screen.findByText('6시간 12분')
@@ -246,8 +350,11 @@ describe('대시보드', () => {
     expect(alert).toHaveTextContent('이전 결과 유지')
     expect(screen.getByText('6시간 12분')).toBeInTheDocument()
     fail = false
+    const count = (path: string) => paths(fetch).filter((p) => p === path).length
+    const before = ['/api/stats/summary', '/api/dashboard/targets', '/api/dashboard/monitor'].map(count)
     fireEvent.click(within(alert).getByRole('button', { name: '다시 조회' }))
     await waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+    await waitFor(() => expect(['/api/stats/summary', '/api/dashboard/targets', '/api/dashboard/monitor'].map(count).every((n, i) => n > before[i])).toBe(true))
   })
 
   it('S-10은 실시간 끊김과 주기 조회를 안내하며 작성·조회 상태를 지우지 않는다', async () => {
@@ -259,8 +366,223 @@ describe('대시보드', () => {
   })
 })
 
+describe('대시보드 · 관제 이상 띠(#72)', () => {
+  it('이상이 없으면 띠를 그리지 않는다(받는 중에도 없다)', async () => {
+    const fetch = stubDashboard()
+    renderPage()
+    await screen.findByText('6시간 12분')
+    await waitFor(() => expect(paths(fetch)).toContain('/api/dashboard/monitor'))
+    await waitFor(() => expect(screen.queryByRole('region', { name: '관제 이상' })).toBeNull())
+    expect(screen.queryByText('관제 상태 확인 불가')).toBeNull()
+  })
+
+  it('관제 상태 조회가 실패하면 관제 상태 확인 불가 한 줄이다', async () => {
+    stubDashboard({ health: () => json({ detail: 'DB unavailable' }, 503) })
+    renderPage()
+    const band = await screen.findByRole('region', { name: '관제 이상' })
+    expect(within(band).getByRole('status')).toHaveTextContent(/^관제 상태 확인 불가$/)
+    expect(band.querySelectorAll('li')).toHaveLength(0)
+  })
+
+  it('이전 서버(404) · 모양이 다른 응답도 확인 불가다(이상 없음으로 꾸미지 않는다)', async () => {
+    stubDashboard({ health: { as_of: '', detect_paths: [] } })
+    renderPage()
+    expect(within(await screen.findByRole('region', { name: '관제 이상' })).getByRole('status')).toHaveTextContent('관제 상태 확인 불가')
+  })
+
+  it.each<[string, MonitorItem[], Array<[string, string, string | null]>]>([
+    ['적재기 · 집행기 멈춤', [MONITOR.loader, MONITOR.enforcerFw], [
+      ['loader', '적재기 · 적재기 확인 중단 · 마지막 45분 전', null],
+      ['enforcer:fw', '내부 방화벽 집행기 · 집행기 확인 중단 · 마지막 확인 12분 전', '/blocklist']]],
+    ['탐지 경로 멈춤', [MONITOR.detectBridge], [['detect:bridge', '노드 · 관제 탐지(1분) · w2 마지막 실행 16분 전', null]]],
+    ['적용 실패 · 관문 불일치', [MONITOR.failedGateway, MONITOR.mismatch], [
+      ['block_failed:gateway', 'AWS 관문 적용 실패 · 2건', '/blocklist'],
+      ['gateway_mismatch', '관문 불일치 · 1건', '/blocklist']]],
+    ['활성 노드 전부 수신 없음', [MONITOR.nodesSilent], [['nodes_silent', '노드 수신 · 활성 노드 2대 모두 10분 넘게 수신 없음', '/nodes']]],
+  ])('%s 를 띠에 항목마다 한 줄로 보이고 볼 화면으로 잇는다', async (_name, items, expected) => {
+    stubDashboard({ health: controlHealth({ items }) })
+    renderPage()
+    const band = await screen.findByRole('region', { name: '관제 이상' })
+    expect(band).toHaveAttribute('data-control-health', 'alert')
+    expect(band).toHaveClass('bg-warning-soft')
+    const lines = [...band.querySelectorAll<HTMLElement>('[data-monitor-item]')]
+    expect(lines.map((li) => [li.dataset.monitorItem, li.textContent, li.querySelector('a')?.getAttribute('href') ?? null])).toEqual(expected)
+    // 기준은 ⓘ 하나에 둔다
+    expect(within(band).getByRole('button', { name: '관제 이상 기준 설명' })).toHaveAccessibleDescription('적재기 30분 · 집행기 10분 · 탐지 15분 · 노드 10분 넘게 확인이 없으면 멈춤입니다.')
+    expect(within(band).getAllByRole('button')).toHaveLength(1)
+  })
+
+  it('이상 뒤에 모름(표를 읽을 수 없음)을 흐린 글로 두고, 모름만 있으면 주의색 띠가 아니다', async () => {
+    stubDashboard({ health: controlHealth({ items: [MONITOR.heartbeats, MONITOR.loader, MONITOR.nodes] }) })
+    const view = renderPage()
+    const band = await screen.findByRole('region', { name: '관제 이상' })
+    expect([...band.querySelectorAll<HTMLElement>('[data-monitor-item]')].map((li) => [li.dataset.monitorItem, li.dataset.monitorLevel])).toEqual([
+      ['loader', 'alert'], ['heartbeats', 'unknown'], ['nodes', 'unknown']])
+    expect(band.querySelector('[data-monitor-item="heartbeats"]')).toHaveClass('text-ink-muted')
+    expect(band.querySelector('[data-monitor-item="nodes"] a')).toHaveAttribute('href', '/nodes')
+    view.unmount()
+
+    stubDashboard({ health: controlHealth({ items: [MONITOR.heartbeats] }) })
+    renderPage()
+    const only = await screen.findByRole('region', { name: '관제 이상' })
+    expect(only).toHaveAttribute('data-control-health', 'unknown')
+    expect(only).not.toHaveClass('bg-warning-soft')
+    expect(only).toHaveTextContent('생존 신호 · 생존 신호 표를 읽을 수 없음')
+  })
+
+  it('이상 2건을 받은 뒤 다음 조회가 503 이면 이전 항목이 사라지고 관제 상태 확인 불가 한 줄만 남는다(Q14)', async () => {
+    let fail = false
+    stubDashboard({ health: () => (fail ? json({ detail: 'DB unavailable' }, 503) : json(controlHealth({ items: [MONITOR.loader, MONITOR.mismatch] }))) })
+    const client = noRetryClient()
+    renderRoutes([{ path: '/', element: <DashboardPage /> }], '/', client)
+    const band = await screen.findByRole('region', { name: '관제 이상' })
+    await waitFor(() => expect(band.querySelectorAll('[data-monitor-item]')).toHaveLength(2))
+    fail = true
+    await act(async () => { await client.invalidateQueries({ queryKey: ['dashboard', 'monitor'] }) })
+    await waitFor(() => expect(screen.getByRole('region', { name: '관제 이상' })).toHaveTextContent(/^관제 상태 확인 불가$/))
+    const after = screen.getByRole('region', { name: '관제 이상' })
+    expect(after.querySelectorAll('[data-monitor-item]')).toHaveLength(0)
+    expect(screen.queryByText(/적재기 확인 중단/)).toBeNull()
+    // 다시 받으면 항목이 돌아온다
+    fail = false
+    await act(async () => { await client.invalidateQueries({ queryKey: ['dashboard', 'monitor'] }) })
+    await waitFor(() => expect(screen.getByRole('region', { name: '관제 이상' }).querySelectorAll('[data-monitor-item]')).toHaveLength(2))
+  })
+
+  it('한 번도 받지 못한 채 다시 조회하는 동안에도 확인 불가를 유지한다(띠가 사라졌다 돌아오지 않는다)', async () => {
+    let calls = 0
+    let hold: ((response: Response) => void) | undefined
+    const held = () => new Promise<Response>((resolve) => { hold = resolve }) as unknown as Response
+    stubDashboard({ health: () => (++calls === 1 ? json({ detail: 'DB unavailable' }, 503) : held()) })
+    const client = noRetryClient()
+    renderRoutes([{ path: '/', element: <DashboardPage /> }], '/', client)
+    const status = within(await screen.findByRole('region', { name: '관제 이상' })).getByRole('status')
+    expect(status).toHaveTextContent('관제 상태 확인 불가')
+    act(() => void client.refetchQueries({ queryKey: ['dashboard', 'monitor'] }))   // 30초 재조회와 같은 다시 조회
+    await waitFor(() => expect(calls).toBe(2))
+    expect(client.getQueryState(['dashboard', 'monitor'])?.status).toBe('pending')
+    const band = screen.getByRole('region', { name: '관제 이상' })
+    expect(band).toHaveTextContent(/^관제 상태 확인 불가$/)
+    expect(within(band).getByRole('status')).toBe(status)
+    act(() => hold?.(json(controlHealth({ items: [MONITOR.loader] }))))
+    await waitFor(() => expect(screen.getByRole('region', { name: '관제 이상' }).querySelectorAll('[data-monitor-item]')).toHaveLength(1))
+  })
+
+  it('항목 글에 섞인 비신뢰 문자열은 표식으로 보이고 실행되지 않는다', async () => {
+    stubDashboard({ health: controlHealth({ items: [{ ...MONITOR.detectBridge, reason: `${MIXED} 마지막 실행 16분 전` }] }) })
+    const { container } = renderPage()
+    const band = await screen.findByRole('region', { name: '관제 이상' })
+    expectInertDom(container)
+    expectMixedRevealed(band)
+    expect(band.querySelector('[data-monitor-item] [title]')).toHaveAttribute('title', revealHidden(`${MIXED} 마지막 실행 16분 전`))
+    expect(within(band).getAllByRole('button')).toHaveLength(1)
+  })
+})
+
+describe('대시보드 · 먼저 처리할 사건(#72)', () => {
+  const queueCard = async () => (await screen.findByRole('heading', { name: '먼저 처리할 사건' })).closest('[data-queue]') as HTMLElement
+
+  it('앞 묶음 뒤에 허니팟 · 디코이 묶음을 서버 순서대로 두고, 한 줄에 관련 장비(보호 대상 먼저)를 보인다', async () => {
+    stubDashboard({ targets: targetsResult({ queue: targetsQueue() }) })
+    renderPage()
+    const card = await queueCard()
+    expect(card).toHaveAttribute('data-queue', 'lanes')
+    expect(card.querySelector('[data-queue-counts]')).toHaveTextContent(/^앞 21 · 허니팟 · 디코이 118$/)
+    const front = card.querySelector('ol[data-lane="front"]') as HTMLElement
+    const back = within(card).getByRole('list', { name: '허니팟 · 디코이' })
+    expect(back).toHaveAttribute('data-lane', 'back')
+    expect(within(card).getByRole('heading', { level: 3, name: '허니팟 · 디코이' }).compareDocumentPosition(back) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    const frontLinks = within(front).getAllByRole('link')
+    expect(frontLinks.map((a) => a.getAttribute('href'))).toEqual(targetsQueue().items.slice(0, 3).map((i) => `/incidents/${encodeURIComponent(i.incident_key)}`))
+    // 여러 장비: 서버가 디코이를 먼저 보내도 보호 대상(web-01)이 앞이다. 목록 행과 같은 '장비 · 로그 종류' 배지
+    const devices = [...frontLinks[0].querySelectorAll<HTMLElement>('[data-device]')]
+    expect(devices.map((d) => d.dataset.device)).toEqual(['web-01', 'aws-sensor'])
+    expect(devices[0]).toHaveTextContent('web-01 · 웹 접근')
+    expect(devices[1]).toHaveTextContent('웹 디코이 · 웹 요청')
+    // 규칙 범위도 같은 모양(근거 글자는 상세에만)
+    expect(frontLinks[1].querySelector('[data-device="data-node"]')).toHaveAttribute('data-device-basis', 'rule_scope')
+    expect(frontLinks[1]).toHaveTextContent('데이터 노드 · 수집 관문 · 원장 가져오기')
+    expect(frontLinks[1]).not.toHaveTextContent('규칙 범위')
+    // 대체 추정만 있으면 장비 미확인이고 추정 이름은 없다
+    expect(frontLinks[2].querySelector('[data-device-unknown]')).toHaveTextContent('장비 미확인')
+    expect(frontLinks[2]).not.toHaveTextContent('Cowrie')
+    expect(card.querySelector('[data-device-basis="fallback"]')).toBeNull()
+    // 뒤 묶음
+    const backLink = within(back).getByRole('link')
+    expect(backLink).toHaveTextContent('SSH 무차별 대입')
+    expect(backLink.querySelector('[data-device]')).toHaveTextContent('Cowrie · SSH 세션')
+    // 링크 안에는 단추가 없다(#41). 요약의 옛 대기열은 그리지 않는다
+    for (const link of within(card).getAllByRole('link')) expect(link.querySelector('button')).toBeNull()
+    expect(screen.queryByRole('link', { name: /악성코드 투하/ })).toBeNull()
+    expect(within(card).queryByText(/· 허니팟$/)).toBeNull()
+  })
+
+  it('정렬 기준 · 최대 8건은 제목 옆 도움말(ⓘ)에 두고 끝 줄로 적지 않는다', async () => {
+    stubDashboard({ targets: targetsResult({ queue: targetsQueue() }) })
+    renderPage()
+    const card = await queueCard()
+    expect(within(card).getByRole('button', { name: '먼저 처리할 사건 설명' })).toHaveAccessibleDescription(
+      '보호 대상 · 관제 시스템 · 장비 미확인 사건을 먼저, 허니팟 · 디코이 사건을 뒤에 두고 각각 오래된 순입니다. 최대 8건 · 전체 규칙 버전.')
+    expect(within(card).getByRole('link', { name: '미판정 전체 보기 →' })).toHaveAttribute('href', '/incidents?judged=false')
+    expect(screen.queryByText('오래된 순 · 최대 8건 · 전체 규칙 버전')).toBeNull()
+  })
+
+  it('앞 묶음이 8건을 채워 뒤 묶음 항목이 없어도 뒤 수를 보인다(front 9 · back 3)', async () => {
+    const items = Array.from({ length: 8 }, (_, i) => queueItem({ incident_key: `R101|w2|198.51.100.${i}|x`, actor_ip: `198.51.100.${i}` }))
+    stubDashboard({ targets: targetsResult({ queue: targetsQueue({ total: 12, front: 9, back: 3, unconfirmed: 0, overdue: 0, items }) }) })
+    renderPage()
+    const card = await queueCard()
+    expect(card.querySelector('[data-queue-counts]')).toHaveTextContent(/^앞 9 · 허니팟 · 디코이 3$/)
+    expect(within(card.querySelector('ol[data-lane="front"]') as HTMLElement).getAllByRole('link')).toHaveLength(8)
+    expect(within(card).queryByRole('heading', { level: 3 })).toBeNull()
+    expect(card.querySelector('[data-queue-back]')).toHaveTextContent(/^허니팟 · 디코이 3건$/)
+    // 목록 끝이다
+    const frontList = card.querySelector('ol[data-lane="front"]') as HTMLElement
+    expect(frontList.compareDocumentPosition(card.querySelector('[data-queue-back]') as HTMLElement) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
+  it('뒤 묶음 항목이 목록에 있으면 끝 줄을 두지 않는다 · 뒤 묶음뿐이면 묶음 제목부터', async () => {
+    stubDashboard({ targets: targetsResult({ queue: targetsQueue({ total: 1, front: 0, back: 1, items: [targetsQueue().items[3]] }) }) })
+    renderPage()
+    const card = await queueCard()
+    expect(card.querySelector('ol[data-lane="front"]')).toBeNull()
+    expect(within(card).getByRole('heading', { level: 3, name: '허니팟 · 디코이' })).not.toHaveClass('border-t')
+    expect(card.querySelector('[data-queue-back]')).toBeNull()
+  })
+
+  it('queue 가 없으면(이전 서버 · 상태판 실패) 요약의 오래된 미판정을 발생원 표기로 그린다', async () => {
+    stubDashboard()
+    renderPage()
+    const card = await queueCard()
+    expect(card).toHaveAttribute('data-queue', 'oldest')
+    expect(await within(card).findByRole('link', { name: /악성코드 투하/ })).toHaveTextContent('192.0.2.8· 허니팟')
+    expect(card.querySelector('[data-queue-counts]')).toBeNull()
+    expect(card.querySelector('[data-device], [data-device-unknown]')).toBeNull()
+    expect(within(card).getByRole('button', { name: '먼저 처리할 사건 설명' })).toHaveAccessibleDescription('오래된 순입니다. 최대 8건 · 전체 규칙 버전.')
+  })
+
+  it('미판정이 없으면 수집 시각도 확인하라고 적는다', async () => {
+    stubDashboard({ targets: targetsResult({ queue: targetsQueue({ total: 0, front: 0, back: 0, unconfirmed: 0, overdue: 0, items: [] }) }) })
+    renderPage()
+    const card = await queueCard()
+    expect(card).toHaveTextContent('미판정 사건이 없습니다. 최근 수집 시각도 함께 확인해 주세요.')
+    expect(card.querySelector('[data-queue-counts]')).toHaveTextContent('앞 0 · 허니팟 · 디코이 0')
+  })
+
+  it('등록 노드 이름(hostname)이 장비 배지에 오면 표식으로 보이고 실행되지 않는다', async () => {
+    const hostile = queueItem({ devices: [device({ id: 'web-02', label: MIXED, logs: ['SSH 인증'] })] })
+    stubDashboard({ targets: targetsResult({ queue: targetsQueue({ items: [hostile] }) }) })
+    const { container } = renderPage()
+    const card = await queueCard()
+    const badge = card.querySelector('[data-device="web-02"]') as HTMLElement
+    expect(badge).toHaveAttribute('title', revealHidden(`${MIXED} · SSH 인증`))
+    expectInertDom(container)
+    expect(badge.closest('a')?.querySelector('button')).toBeNull()
+  })
+})
+
 describe('대시보드 · 비신뢰 문자열(#41)', () => {
-  it('먼저 확인할 사건의 대상은 표식으로 바꾼 뒤 한 줄로 자르고 링크 안에 단추를 두지 않는다', async () => {
+  it('먼저 처리할 사건의 대상은 표식으로 바꾼 뒤 한 줄로 자르고 링크 안에 단추를 두지 않는다', async () => {
     const base = MONITORING_SUMMARY.oldest_pending[0]
     const oldest = [
       { ...base, incident_key: `R201|v2|user:${MIXED}|x`, rule_id: 'R201', actor_ip: null, target: `user:${MIXED}` },
@@ -277,7 +599,22 @@ describe('대시보드 · 비신뢰 문자열(#41)', () => {
     expect(long.closest('a')?.querySelector('button')).toBeNull()
   })
 
-  it('먼저 확인할 사건의 긴 규칙 이름도 링크 안에서 단추 없이 잘리고 전체는 말풍선으로 본다', async () => {
+  it('queue 의 대상 · 규칙 이름도 같게 자르고 전체는 말풍선으로 본다', async () => {
+    const items = [
+      queueItem({ incident_key: 'a', actor_ip: null, target: `user:${MIXED}`, rule_name: LONG }),
+      queueItem({ incident_key: 'b', actor_ip: null, target: `user:${LONG}`, lane: 'back' }),
+    ]
+    stubDashboard({ targets: targetsResult({ queue: targetsQueue({ items }) }) })
+    const { container } = renderPage()
+    const first = await screen.findByTitle(revealHidden(`user:${MIXED}`))
+    expect(first).toHaveClass('truncate')
+    expect(screen.getByTitle(LONG).textContent).toBe(`R102${'L'.repeat(500)}…`)
+    expect(screen.getByTitle(`user:${LONG}`).textContent).toBe(`user:${'L'.repeat(495)}…`)
+    expectInertDom(container)
+    expectMixedRevealed(container)
+  })
+
+  it('먼저 처리할 사건의 긴 규칙 이름도 링크 안에서 단추 없이 잘리고 전체는 말풍선으로 본다', async () => {
     const base = MONITORING_SUMMARY.oldest_pending[0]
     stubDashboard({ summary: { ...MONITORING_SUMMARY, oldest_pending: [{ ...base, rule_name: LONG }] } })
     renderPage()
@@ -292,34 +629,32 @@ describe('대시보드 · 비신뢰 문자열(#41)', () => {
 describe('대시보드 · 등록 노드 카드(#64)', () => {
   /** 고정 네 대상 뒤에 등록 노드 n 개 */
   const withNodes = (...ids: string[]) => targetsResult({ targets: [...targetsResult().targets, ...ids.map((id) => nodeTarget(id))] })
-  const narrow = () => vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} })))
 
   it.each([
-    ['5개', ['web-02']],
-    ['6개', ['web-02', 'web-03']],
-  ])('카드 %s: 등록 노드는 고정 네 대상 뒤에 붙고 격자는 폭에 따라 최대 4 · 최소 2 열이다', async (_name, ids) => {
+    ['2장', ['web-02']],
+    ['3장', ['web-02', 'web-03']],
+  ])('보호 대상 카드 %s: 등록 노드는 web-01 뒤에 붙고 격자는 카드 최소 22rem 로 채운다', async (_name, ids) => {
     stubDashboard({ targets: withNodes(...ids) })
     renderPage()
-    const board = await screen.findByRole('region', { name: '관제 대상' })
+    const board = await screen.findByRole('region', { name: '보호 대상' })
     await within(board).findByRole('region', { name: 'opsloop-web-02' })
     const cards = [...board.querySelectorAll<HTMLElement>('[data-target]')]
-    expect(cards.map((c) => c.dataset.target)).toEqual(['aws-sensor', 'web-01', 'console', 'data-node', ...ids])
-    expect(cards.map((c) => c.dataset.targetKind)).toEqual(['fixed', 'fixed', 'fixed', 'fixed', ...ids.map(() => 'node')])
-    // 카드는 모두 한 그리드의 칸이다. 넘치는 카드는 다음 줄로 간다(가로 스크롤 없음)
+    expect(cards.map((c) => c.dataset.target)).toEqual(['web-01', ...ids])
+    expect(cards.map((c) => c.dataset.targetKind)).toEqual(['fixed', ...ids.map(() => 'node')])
+    // 카드는 모두 한 그리드의 칸이다. 빈 칸은 접혀(auto-fit) 1장이면 폭 전체다. jsdom 은 배치를 계산하지 않아 규칙만 본다
     const grid = cards[0].parentElement as HTMLElement
-    // 열 수는 격자 폭으로 정한다(카드 최소 18.75rem · 한 줄 최대 4개 · 카드가 보이면 최소 2개). jsdom 은 배치를 계산하지 않아 규칙만 본다
     expect(grid).toHaveClass('grid', 'gap-3')
-    expect(grid.className).toContain('grid-cols-[repeat(auto-fill,minmax(max(15rem,min(18.75rem,calc((100%_-_0.75rem)/2)),calc((100%_-_2.25rem)/4)),1fr))]')
+    expect(grid.className).toContain('grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))]')
     expect(cards.every((c) => c.parentElement === grid)).toBe(true)
   })
 
-  it('서버가 섞어 보내도 고정 대상이 앞이다', async () => {
+  it('서버가 섞어 보내도 web-01 이 등록 노드 앞이다', async () => {
     const [aws, web, con, data] = targetsResult().targets
     stubDashboard({ targets: targetsResult({ targets: [nodeTarget('web-02'), aws, web, con, data] }) })
     renderPage()
-    const board = await screen.findByRole('region', { name: '관제 대상' })
+    const board = await screen.findByRole('region', { name: '보호 대상' })
     await within(board).findByRole('region', { name: 'opsloop-web-02' })
-    expect([...board.querySelectorAll<HTMLElement>('[data-target]')].map((c) => c.dataset.target)).toEqual(['aws-sensor', 'web-01', 'console', 'data-node', 'web-02'])
+    expect([...board.querySelectorAll<HTMLElement>('[data-target]')].map((c) => c.dataset.target)).toEqual(['web-01', 'web-02'])
   })
 
   it('최근 사건의 CVE 배지는 등록 노드 카드의 키도 한 번에 묻는다', async () => {
@@ -332,21 +667,19 @@ describe('대시보드 · 등록 노드 카드(#64)', () => {
     expect(new URL(calls[0], 'http://localhost').searchParams.getAll('key').toSorted()).toEqual(['R101|v3|198.51.100.9|web-02', LATEST_KEY, 'R201|v2|user:root|x'])
   })
 
-  it('모바일은 등록 노드도 한 줄로 접히고(6줄) 누르면 그 카드를 펼친다', async () => {
+  it('모바일은 등록 노드도 보호 대상 요약에 한 줄로 접히고 누르면 그 카드를 펼친다', async () => {
     narrow()
     stubDashboard({ targets: withNodes('web-02', 'web-03') })
     renderPage()
-    const list = await screen.findByRole('list', { name: '관제 대상 요약' })
+    const list = await screen.findByRole('list', { name: '보호 대상 요약' })
     const buttons = within(list).getAllByRole('button')
-    expect(buttons.map((b) => b.textContent)).toEqual([
-      '▸AWS 센서정상미판정 12', '▸web-01요청 없음미판정 0', '▸관제 콘솔생존 상태 미확인미판정 1', '▸데이터 노드수신 없음미판정 0',
-      '▸opsloop-web-02정상미판정 3', '▸opsloop-web-03정상미판정 3'])
+    expect(buttons.map((b) => b.textContent)).toEqual(['▸web-01요청 없음미판정 0', '▸opsloop-web-02정상미판정 3', '▸opsloop-web-03정상미판정 3'])
     expect(screen.queryByRole('region', { name: 'opsloop-web-02' })).toBeNull()
-    fireEvent.click(buttons[4])
+    fireEvent.click(buttons[1])
     const card = screen.getByRole('region', { name: 'opsloop-web-02' })
     expect(card).toHaveTextContent('등록 노드 · web-02')
     expect(card).toHaveTextContent('차단 적용 여부 미확인')
-    expect(buttons[4]).toHaveAttribute('aria-controls', card.parentElement?.id)
+    expect(buttons[1]).toHaveAttribute('aria-controls', card.parentElement?.id)
     // 요소 id 에는 노드 id 가 아니라 순번이 들어간다
     expect(card.parentElement?.id).not.toContain('web-02')
     expect(screen.queryByRole('region', { name: 'opsloop-web-03' })).toBeNull()
@@ -356,18 +689,18 @@ describe('대시보드 · 등록 노드 카드(#64)', () => {
     const hostile = nodeTarget('web-02', { label: MIXED })
     stubDashboard({ targets: targetsResult({ targets: [...targetsResult().targets, hostile], unmapped: { incidents_1h: 1, pending: 1 } }) })
     const wide = renderPage()
-    const board = await screen.findByRole('region', { name: '관제 대상' })
+    const board = await screen.findByRole('region', { name: '보호 대상' })
     await waitFor(() => expect(board.querySelector('[data-target="web-02"]')).not.toBeNull())
     const title = board.querySelector('[data-target="web-02"] h3') as HTMLElement
     expect(title).toHaveAttribute('title', revealHidden(MIXED))
     expect(title).toHaveTextContent(/^<img src=\/\/a\.attacker\.test/)
     expectInertDom(wide.container)
-    expect(screen.getByText('대상 미분류 사건: 최근 1시간 1 · 미판정 1')).toBeInTheDocument()
+    expect(within(board).getByRole('link', { name: '장비 미확인 미판정 1' })).toBeInTheDocument()
     wide.unmount()
 
     narrow()
     const folded = renderPage()
-    const list = await screen.findByRole('list', { name: '관제 대상 요약' })
+    const list = await screen.findByRole('list', { name: '보호 대상 요약' })
     const row = within(list).getAllByRole('button').at(-1) as HTMLElement
     expect(row.querySelector('[title]')).toHaveAttribute('title', revealHidden(MIXED))
     // 253자에서 자르고(펼치기 단추 없음) 전체는 말풍선으로 본다
@@ -382,7 +715,7 @@ describe('대시보드 · 등록 노드 카드(#64)', () => {
     const label = `${HOSTILE.rlo}${HOSTILE.zwsp}${HOSTILE.bom}`
     stubDashboard({ targets: targetsResult({ targets: [...targetsResult().targets, nodeTarget('web-02', { label })] }) })
     const { container } = renderPage()
-    const list = await screen.findByRole('list', { name: '관제 대상 요약' })
+    const list = await screen.findByRole('list', { name: '보호 대상 요약' })
     expect(within(list).getAllByRole('button').at(-1)).toHaveTextContent('admin⟨U+202E⟩gnp.exead⟨U+200B⟩min⟨U+FEFF⟩')
     expectInertDom(container)
   })

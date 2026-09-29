@@ -1,13 +1,15 @@
-import type { Incident, IncidentFilters, IncidentSort, IncidentRule } from '@/api/incidents'
+import { UNCONFIRMED_DEVICE, type DeviceOption, type Incident, type IncidentFilters, type IncidentSort, type IncidentRule } from '@/api/incidents'
 import { isIpAddress } from '@/api/sources'
 import { isSeverity } from '@/lib/domain'
+import { DEVICE_UNKNOWN_LABEL, isDeviceId } from '../../molecules/device-format'
 import { isIncidentStatus } from './model'
 
 /**
  * 목록 조건과 URL 검색 매개변수의 짝. 새로고침 · 공유해도 같은 목록이 보이도록 조건은 주소에 둔다.
- *   /incidents?status=open&severity=critical&rule_id=R003&judged=false&actor_ip=203.0.113.5&sort=recent
+ *   /incidents?status=open&severity=critical&rule_id=R003&judged=false&actor_ip=203.0.113.5&device=web-01&sort=recent
  * 모르는 값은 버린다(주소를 손으로 고쳐도 화면이 깨지지 않는다). 기본 정렬(pending)은 붙이지 않는다.
  * actor_ip 는 출발지 분석(S-09)에서 넘어오는 조건이다. 주소 하나(IPv4 · IPv6)가 아니면 버려 서버에 넘기지 않는다.
+ * device 는 관련 장비 id 또는 '_unconfirmed'(장비 미확인)다. 대시보드 카드 '미판정 N' 에서도 넘어온다. 형식 밖이면 버린다.
  */
 
 export const SORTS = ['pending', 'severity', 'recent'] as const satisfies readonly IncidentSort[]
@@ -26,7 +28,7 @@ export function isSort(value: unknown): value is IncidentSort {
 }
 
 /** 이 화면이 주소에 두는 칸. 이 순서로 붙인다. */
-export const FILTER_PARAMS = ['status', 'severity', 'rule_id', 'judged', 'actor_ip', 'sort'] as const
+export const FILTER_PARAMS = ['status', 'severity', 'rule_id', 'judged', 'actor_ip', 'device', 'sort'] as const
 
 export type ListFilters = Pick<IncidentFilters, (typeof FILTER_PARAMS)[number]>
 
@@ -44,6 +46,8 @@ export function filtersFromSearch(params: URLSearchParams): ListFilters {
   else if (judged === 'false') out.judged = false
   const actorIp = params.get('actor_ip')?.trim()
   if (actorIp && isIpAddress(actorIp)) out.actor_ip = actorIp
+  const device = params.get('device')?.trim()
+  if (isDeviceId(device)) out.device = device
   const sort = params.get('sort')
   if (isSort(sort) && sort !== DEFAULT_SORT) out.sort = sort
   return out
@@ -58,6 +62,7 @@ export function searchFromFilters(filters: ListFilters, base?: URLSearchParams):
   if (filters.rule_id) params.set('rule_id', filters.rule_id)
   if (filters.judged !== undefined) params.set('judged', String(filters.judged))
   if (filters.actor_ip) params.set('actor_ip', filters.actor_ip)
+  if (filters.device) params.set('device', filters.device)
   if (filters.sort && filters.sort !== DEFAULT_SORT) params.set('sort', filters.sort)
   return params
 }
@@ -70,6 +75,7 @@ export function countFilters(filters: ListFilters): number {
   if (filters.rule_id) n++
   if (filters.judged !== undefined) n++
   if (filters.actor_ip) n++
+  if (filters.device) n++
   return n
 }
 
@@ -97,4 +103,19 @@ export function ruleOptionsOf(rules: readonly IncidentRule[] | undefined, items:
   for (const row of rules ?? []) ids.add(row.rule_id)
   for (const id of names.keys()) ids.add(id)
   return [...ids].sort().map((id) => ({ id, name: names.get(id) }))
+}
+
+/** 장비 선택지 한 줄. 등록 노드의 label 은 hostname 이라 비신뢰다(선택지 글자는 revealHidden) */
+export type DeviceChoice = Pick<DeviceOption, 'id' | 'label'>
+
+/**
+ * 목록 API 의 장비 선택지(서버 순서) 뒤에 '장비 미확인' 을 둔다. 주소의 장비가 선택지에 없으면(이전 서버 · 폐기된 노드)
+ * id 를 이름으로 앞에 붙여 고른 값이 보이게 한다. 형식 밖 id 는 버리고, 이름이 비면 id 를 쓴다.
+ */
+export function deviceOptionsOf(options: readonly DeviceOption[] | undefined, current?: string): DeviceChoice[] {
+  const list: DeviceChoice[] = (Array.isArray(options) ? options : [])
+    .filter((option) => !!option && isDeviceId(option.id) && option.id !== UNCONFIRMED_DEVICE)
+    .map(({ id, label }) => ({ id, label: typeof label === 'string' && label ? label : id }))
+  list.push({ id: UNCONFIRMED_DEVICE, label: DEVICE_UNKNOWN_LABEL })
+  return current && !list.some((option) => option.id === current) ? [{ id: current, label: current }, ...list] : list
 }

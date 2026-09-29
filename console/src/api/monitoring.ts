@@ -30,6 +30,11 @@ export interface Summary {
    */
   blocks?: BlockCounts
   /**
+   * 집행 지점별 적용 결과(#72, 관문 · 내부 방화벽 순). 카드 대응(response_block)과 같은 정의라 집행기 확인이 멈추면(stalled)
+   * 적용 · 실패를 미확인에 합친다. 지점별 합은 blocked_ips − blocks.excluded 다. 이전 서버는 생략한다
+   */
+  blocks_by_point?: PointCounts[]
+  /**
    * 첫 사건을 위협으로 판정한 뒤에 같은 페이로드로 흡수됐는데 차단이 없는 출발지(규칙 v3). 흡수는 알림이 없어
    * 여기서만 드러난다. 흡수 기록 표가 없는 서버는 생략한다. first_key 는 그런 첫 사건 하나(바로 가기)
    */
@@ -42,6 +47,16 @@ export interface BlockCounts {
   pending: number
   excluded: number
   mismatch: number
+}
+
+/** 한 집행 지점의 살아 있는 차단(만료 없음 · 집행 제외 뺌). stalled 는 집행기 확인이 멈춘 까닭 글, 정상이면 null */
+export interface PointCounts {
+  point: 'gateway' | 'fw'
+  label: string
+  applied: number
+  failed: number
+  unverified: number
+  stalled: string | null
 }
 
 export interface BlockEntry extends ActorBlock {

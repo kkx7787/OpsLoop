@@ -11,10 +11,13 @@ export interface LiveIndicatorProps extends Omit<ComponentProps<'span'>, 'childr
   live: LiveState
 }
 
-/** 연결 상태별 점 색과 글. 끊김은 눈에 띄어야 하고 이어져 있으면 조용해야 한다 */
+/**
+ * 연결 상태별 점 색과 글. 끊김은 눈에 띄어야 하고 이어져 있으면 조용해야 한다.
+ * 이어져 있음은 웹소켓 연결만 뜻한다(센서 · 노드 수신이 아니다). 그래서 정상 색 대신 idle 로 둔다
+ */
 const VIEW: Record<LiveStatus, { signal: Signal; label: string }> = {
   connecting: { signal: 'idle', label: '실시간 연결 중' },
-  connected: { signal: 'ok', label: '실시간 수신 중' },
+  connected: { signal: 'idle', label: '실시간 통보 연결' },
   reconnecting: { signal: 'warn', label: '실시간 끊김 · 다시 연결 중' },
   closed: { signal: 'bad', label: '실시간 끊김 · 다시 로그인 필요' },
 }

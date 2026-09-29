@@ -1,5 +1,5 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ctiKeys } from './cti'
 import { incidentKeys, ruleKeys } from './incidents'
 import { nodeKey, auditKey } from './operations'
@@ -14,6 +14,7 @@ import { sourceKeys } from './sources'
  *  resync                          → 전부 다시 조회(서버의 DB 통보 연결이 끊겼다 다시 붙었다. 끊긴 동안의 통보는 오지 않는다)
  * 판정 · 조치 통보는 DB(pg_notify)를 거쳐 모든 콘솔이 보낸다. 어느 콘솔에 붙어도 같은 통보를 받는다.
  * 같은 출처 쿠키로 인증한다. 끊기면 지수 백오프(1초 → 2배 → 최대 30초)로 다시 잇고, 다시 이어지면 resync 와 같이 전부 다시 조회한다.
+ * 무효화 뒤에 onMessage 로 통보를 넘긴다(새 사건 알림 #72). hello · 해석 실패 · 옛 소켓의 통보는 넘기지 않는다.
  * 세션이 없으면 서버가 연결을 받은 뒤 1008 로 닫는다. 다시 잇지 않고 /api/me 를 다시 물어 401 이면 로그인으로 보낸다.
  */
 
@@ -53,6 +54,8 @@ export interface LiveOptions {
   url?: string
   socket?: LiveSocketFactory
   onState?: (state: LiveState) => void
+  /** 무효화한 뒤 받은 통보를 넘긴다. hello · 해석 실패 · 옛 소켓의 통보는 넘기지 않는다 */
+  onMessage?: (message: LiveMessage) => void
   baseDelayMs?: number
   maxDelayMs?: number
 }
@@ -70,6 +73,7 @@ const ME_KEY = ['me'] as const
  * 재접속 · resync 때 다시 조회하는 쿼리. 끊긴 동안의 통보는 다시 오지 않으므로 현재 상태를 통째로 다시 받는다.
  * CVE · KEV 연계(ctiKeys)는 통보가 없고 하루 단위로 바뀌지만, 오래 끊겼다 이어진 뒤에는 신선도를 다시 맞춘다.
  * 출발지 분석(sourceKeys)도 통보가 없어 30초 주기로 받지만, 끊긴 동안 쌓인 사건 · 차단을 바로 맞춘다.
+ * 관제 이상(monitoringKeys.health)도 통보가 없어 30초 주기로 받지만, 끊긴 동안 멈춘 확인을 바로 맞춘다.
  * /api/me 는 끊긴 동안 세션이 끝났으면 401 을 받아 로그인으로 보내려고 넣는다.
  */
 export const RESYNC_KEYS = [
@@ -78,6 +82,7 @@ export const RESYNC_KEYS = [
   monitoringKeys.summary,
   monitoringKeys.blocklist,
   monitoringKeys.targets,
+  monitoringKeys.health,
   nodeKey,
   auditKey,
   ctiKeys.all,
@@ -213,6 +218,7 @@ export function connectLive(queryClient: QueryClient, options: LiveOptions = {})
         return
       }
       applyLiveMessage(queryClient, message)
+      options.onMessage?.(message)
     })
     current.addEventListener('close', (ev) => {
       if (!mine()) return
@@ -245,13 +251,22 @@ export function connectLive(queryClient: QueryClient, options: LiveOptions = {})
 /**
  * 실시간 통보를 한 번 연결해 쿼리를 무효화한다. 화면 틀(AppLayout)이 한 번 부른다.
  * 돌려주는 상태로 상단바가 연결 표시(끊김 배지 · S-10 · 붙은 콘솔)를 그린다.
+ * onMessage 는 최신 것을 ref 로 들고 부른다. 콜백이 바뀌어도 소켓을 다시 열지 않는다.
  */
-export function useLiveUpdates(options: Pick<LiveOptions, 'url' | 'socket'> = {}): LiveState {
+export function useLiveUpdates(options: Pick<LiveOptions, 'url' | 'socket' | 'onMessage'> = {}): LiveState {
   const queryClient = useQueryClient()
-  const { url, socket } = options
+  const { url, socket, onMessage } = options
   const [state, setState] = useState<LiveState>({ status: 'connecting', retries: 0 })
+  const onMessageRef = useRef(onMessage)
 
-  useEffect(() => connectLive(queryClient, { url, socket, onState: setState }), [queryClient, url, socket])
+  useEffect(() => {
+    onMessageRef.current = onMessage
+  }, [onMessage])
+
+  useEffect(
+    () => connectLive(queryClient, { url, socket, onState: setState, onMessage: (message) => onMessageRef.current?.(message) }),
+    [queryClient, url, socket],
+  )
 
   return state
 }

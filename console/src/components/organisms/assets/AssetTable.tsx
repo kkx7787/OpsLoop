@@ -46,7 +46,7 @@ export function AssetTable({ rows, selected, onSelect }: AssetTableProps) {
                 {checked ? <><span className="font-semibold">{r.vuln_total}건</span><div className="mt-1 text-xs text-ink-muted">KEV {r.vuln_kev > 0 ? <Badge tone="danger">{r.vuln_kev}건</Badge> : '0건'}</div></> : <span className="text-ink-muted">대조 전</span>}
               </td>
               <td data-label="수정판 · EPSS" className={`${cell} text-xs tabular-nums`}>
-                {checked ? <><span>{r.vuln_fix_available}건</span>{r.vuln_reboot_pending > 0 && <span className="text-ink-muted"> · 재부팅 {r.vuln_reboot_pending}건</span>}</> : <span className="text-ink-muted">—</span>}
+                {checked ? <><span>{r.vuln_fix_available}건</span>{r.vuln_reboot_pending > 0 && <span className="text-ink-muted"> · 재부팅 {r.vuln_reboot_pending}건</span>}{(r.vuln_fix_unknown ?? 0) > 0 && <span className="text-ink-muted"> · 수정 여부 미확인 {r.vuln_fix_unknown}건</span>}</> : <span className="text-ink-muted">—</span>}
                 <div className="mt-1 text-ink-muted">최고 EPSS <span className="font-mono">{formatProbability(r.max_epss)}</span></div>
               </td>
               <td data-label="커널" className={`${cell} text-xs`}>

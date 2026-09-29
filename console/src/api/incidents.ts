@@ -11,12 +11,41 @@ import { monitoringKeys } from './monitoring-keys'
  *  조치  POST /api/incidents/{key}/actions       → ActionCreated (상태는 ACTION_STATUS)
  *  품질  GET  /api/rules/quality                 → RuleQuality[]
  * 시각은 전부 UTC ISO 8601 문자열. 화면은 lib/time 으로 KST 로 바꿔 보인다.
+ * 관련 장비(devices)는 서버가 조회 때 기존 근거로 계산해 싣는다(저장하지 않음). 대체 추정을 거르는 판단은 molecules/device-format 에만 둔다.
  */
 
 /** 한 번에 받는 목록 크기. 서버 기본값과 같다(최대 500). */
 export const PAGE_SIZE = 50
 
 // ---------------------------------------------------------------- 응답 자료형
+
+/** 사건과 장비를 이은 근거. 확인(대상 열 · 근거 발생원 · 이벤트) · 규칙 범위(규칙이 보는 장비) · 대체 추정(확인하지 않음) */
+export type DeviceBasis = 'confirmed' | 'rule_scope' | 'fallback'
+/** 장비 무리. 보호 대상(web-01 · 등록 노드) · 관측 센서(aws-sensor) · 관제 시스템(console · data-node) */
+export type DeviceGroup = 'protected' | 'sensor' | 'monitor'
+/** 사건의 장비 상태. devices 에 확인이 있으면 confirmed, 규칙 범위만 있으면 rule_scope, 없으면 unconfirmed('장비 미확인') */
+export type DeviceState = 'confirmed' | 'rule_scope' | 'unconfirmed'
+
+/** 관련 장비 하나. part 는 aws-sensor 의 나눔(Cowrie · 웹 디코이 · AWS 관문)에만 있다. 등록 노드의 label 은 hostname 이라 비신뢰다 */
+export interface IncidentDevice {
+  id: string
+  part: 'cowrie' | 'decoy' | 'gateway' | null
+  label: string
+  group: DeviceGroup
+  /** 로그 종류('웹 접근' · 'SSH 세션' …) */
+  logs: string[]
+  basis: DeviceBasis
+}
+
+/** 목록 장비 필터의 선택지. 등록 노드의 label 은 hostname 이라 비신뢰다 */
+export interface DeviceOption {
+  id: string
+  label: string
+  group: DeviceGroup
+}
+
+/** 목록 device 예약값: 장비를 확인하지 못한 사건. 노드 id 형식 밖이다 */
+export const UNCONFIRMED_DEVICE = '_unconfirmed'
 
 /** 목록 · 상세가 같이 갖는 사건 필드 */
 export interface IncidentBase {
@@ -35,6 +64,11 @@ export interface IncidentBase {
   session_count: number
   status: IncidentStatus
   created_at: string
+  /** 관련 장비(확인 · 규칙 범위, 보호 대상 먼저). 이전 서버에서는 생략된다 */
+  devices?: IncidentDevice[]
+  device_state?: DeviceState
+  /** 대체 추정 장비. 확정으로 보이지 않고 상세 ⓘ 에만 쓴다 */
+  device_fallback?: IncidentDevice[]
 }
 
 /** 목록 한 행. verdict 는 최근 판정 하나(재판정이 있어도 마지막 판단), pending_seconds 는 now - first_ts */
@@ -50,6 +84,8 @@ export interface IncidentPage {
   items: Incident[]
   /** 전체 사건의 규칙 선택지. 이전 서버에서는 생략된다. */
   rules?: IncidentRule[]
+  /** 장비 필터 선택지. 행과 관계없이 온다(등록 노드는 id 순). 이전 서버에서는 생략된다 */
+  device_options?: DeviceOption[]
 }
 
 export interface IncidentRule {
@@ -307,6 +343,8 @@ export interface IncidentFilters {
   sort?: IncidentSort
   actor_ip?: string
   target?: string
+  /** 관련 장비 id 또는 UNCONFIRMED_DEVICE. 서버가 쪽 나누기 전에 거른다 */
+  device?: string
   /** 기간(first_ts). ISO 8601 */
   since?: string
   until?: string

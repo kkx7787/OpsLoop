@@ -13,7 +13,7 @@ import { UntrustedText } from '../../atoms/UntrustedText'
 import { CtiBadge } from '../../molecules/CtiBadge'
 import { InfoTip } from '../../molecules/InfoTip'
 import { incidentHref } from '../incidents/model'
-import { assetHref, COLLECTION_LABEL, COLLECTION_TONE, collectionState, LABEL_MAX, latestLog, responseParts, systemText, vulnText } from './target-format'
+import { assetHref, collectionState, headBadge, LABEL_MAX, latestLog, pendingHref, responseParts, systemText, vulnText } from './target-format'
 
 export interface TargetCardProps {
   target: Target
@@ -37,12 +37,15 @@ export interface TargetCardProps {
  * 콘솔 카드의 현재 콘솔은 실시간 연결(hello)의 이름이다. REST 요청은 콘솔 두 대에 번갈아 가므로 응답의 콘솔 이름은 쓰지 않는다.
  * 등록 노드 카드(#64)는 web-01 카드와 같은 틀이다. 이름(hostname)은 노드가 적어 낸 값이라 비신뢰 문자열로 그리고,
  * 이름이 node_id 와 다르면 역할 옆에 node_id 를 붙여 수집 노드 화면과 맞춰 보게 한다.
+ * #72: 머리 배지는 headBadge(데이터 노드 확인 멈춤은 '주의', data-collection 은 서버 값 그대로), '미판정 N' 은 그 장비의 미판정 목록으로 잇는다.
+ * 카드가 넓으면(컨테이너 56rem 이상) 두 단(수집 · 보안 · 최근 사건 | 시스템 · 대응 · 취약점)이다. 인쇄는 폭과 관계없이 한 단이다.
  */
 export function TargetCard({ target, asOf, cti, variant = 'card', className }: TargetCardProps) {
   const titleId = useId()
   const state = collectionState(target.collection.state)
   const inline = variant === 'inline'
   const kind = targetKind(target)
+  const head = headBadge(target)
   return (
     <div
       role="region"
@@ -50,7 +53,7 @@ export function TargetCard({ target, asOf, cti, variant = 'card', className }: T
       data-target={target.id}
       data-target-kind={kind}
       data-collection={state}
-      className={cn('flex min-w-0 flex-col', !inline && 'rounded-card bg-surface shadow-card', className)}
+      className={cn('@container flex min-w-0 flex-col print:[container-type:normal]', !inline && 'rounded-card bg-surface shadow-card', className)}
     >
       <div className={cn('flex min-w-0 items-start justify-between gap-2', inline ? 'px-3 pt-1' : 'rounded-t-card border-b border-line bg-canvas/60 px-3 py-2')}>
         <div className="min-w-0">
@@ -70,28 +73,28 @@ export function TargetCard({ target, asOf, cti, variant = 'card', className }: T
           </p>
         </div>
         {!inline && (
-          <Badge tone={COLLECTION_TONE[state]} className="shrink-0" data-collection-badge="">
-            {COLLECTION_LABEL[state]}
+          <Badge tone={head.tone} className="shrink-0" data-collection-badge="">
+            {head.label}
           </Badge>
         )}
       </div>
-      <dl className="m-0 flex min-w-0 flex-col divide-y divide-line">
-        <Row title="수집" tip={collectionTip(target.collection)}>
+      <dl className="m-0 flex min-w-0 flex-col @4xl:grid @4xl:grid-flow-col @4xl:grid-cols-2 @4xl:grid-rows-[repeat(3,auto)]">
+        <Row title="수집" tip={collectionTip(target.collection)} className={EDGE[0]}>
           <CollectionFacts target={target} collection={target.collection} asOf={asOf} />
         </Row>
-        <Row title="보안">
+        <Row title="보안" className={EDGE[1]}>
           <SecurityFacts target={target} />
         </Row>
-        <Row title="최근 사건">
+        <Row title="최근 사건" className={EDGE[2]}>
           <LatestLine latest={target.security.latest} asOf={asOf} cti={cti} />
         </Row>
-        <Row title="시스템">
+        <Row title="시스템" className={EDGE[3]}>
           <SystemFacts system={target.system} asOf={asOf} />
         </Row>
-        <Row title="대응" tip={responseTip(target.response, asOf)}>
+        <Row title="대응" tip={responseTip(target.response, asOf)} className={EDGE[4]}>
           <ResponseFacts response={target.response} />
         </Row>
-        <Row title="취약점">
+        <Row title="취약점" className={EDGE[5]}>
           <VulnFacts vulns={target.vulns} asOf={asOf} />
         </Row>
       </dl>
@@ -105,10 +108,22 @@ interface RowTip {
   content: ReactNode
 }
 
+/**
+ * 구역 사이 선(칸 순서대로). 한 단이면 둘째 칸부터 위 선이고, 두 단이면 둘째 단(시스템 · 대응 · 취약점)은 왼쪽 선이며 그 첫 칸은 위 선이 없다
+ */
+const EDGE = [
+  '',
+  'border-t border-line',
+  'border-t border-line',
+  'border-t border-line @4xl:border-t-0 @4xl:border-l',
+  'border-t border-line @4xl:border-l',
+  'border-t border-line @4xl:border-l',
+] as const
+
 /** 구역 한 칸: 왼쪽 작은 제목 · 오른쪽 한 줄 요약. 도움말(ⓘ)은 제목 옆에 두고 설명은 요약 아래에 펼친다 */
-function Row({ title, tip, children }: { title: string; tip?: RowTip | null; children: ReactNode }) {
+function Row({ title, tip, className, children }: { title: string; tip?: RowTip | null; className?: string; children: ReactNode }) {
   const cells = (button?: ReactNode, panel?: ReactNode) => (
-    <div className="grid min-w-0 grid-cols-[3.25rem_minmax(0,1fr)] gap-x-2 px-3 py-1.5">
+    <div className={cn('grid min-w-0 grid-cols-[3.25rem_minmax(0,1fr)] gap-x-2 px-3 py-1.5', className)}>
       <dt className="pt-px text-2xs font-medium text-ink-muted">
         {title}
         {button && <> {button}</>}
@@ -252,13 +267,26 @@ function ConsoleLine({ name, connected }: { name: string | undefined; connected:
   )
 }
 
+/** 보안 구역. '미판정 N' 은 N>0 이면 그 장비의 미판정 목록(카드와 같은 기준)으로 잇는다. 0 은 글만 둔다(Q18) */
 function SecurityFacts({ target }: { target: Target }) {
   const s = target.security
+  const pending = (
+    <>
+      미판정 <strong className="font-semibold">{s.pending.toLocaleString('ko-KR')}</strong>
+    </>
+  )
   return (
     <>
       <span className="tabular-nums">
         최근 1시간 신규 <strong className="font-semibold">{s.incidents_1h.toLocaleString('ko-KR')}</strong> · 높음 이상{' '}
-        <strong className="font-semibold">{s.high_1h.toLocaleString('ko-KR')}</strong> · 미판정 <strong className="font-semibold">{s.pending.toLocaleString('ko-KR')}</strong>
+        <strong className="font-semibold">{s.high_1h.toLocaleString('ko-KR')}</strong> ·{' '}
+        {s.pending > 0 ? (
+          <Link to={pendingHref(target.id)} data-pending-link="">
+            {pending}
+          </Link>
+        ) : (
+          pending
+        )}
       </span>
       {s.parts.length > 0 && (
         <span className="text-ink-muted tabular-nums" title={s.parts.map((p) => `${p.label} 미판정 ${p.pending.toLocaleString('ko-KR')}`).join(' · ')}>

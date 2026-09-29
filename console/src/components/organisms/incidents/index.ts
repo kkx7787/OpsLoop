@@ -5,6 +5,7 @@ export {
   clearFilters,
   countFilters,
   DEFAULT_SORT,
+  deviceOptionsOf,
   FILTER_PARAMS,
   filtersFromSearch,
   isSort,
@@ -13,7 +14,7 @@ export {
   SORT_LABEL,
   SORTS,
 } from './filters'
-export type { ListFilters, RuleOption } from './filters'
+export type { DeviceChoice, ListFilters, RuleOption } from './filters'
 export { IncidentCard } from './IncidentCard'
 export type { IncidentCardProps } from './IncidentCard'
 export { IncidentFilterBar } from './IncidentFilterBar'

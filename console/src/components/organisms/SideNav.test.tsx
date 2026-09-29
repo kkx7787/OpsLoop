@@ -62,9 +62,9 @@ describe('SideNav', () => {
     expect(screen.getByRole('link', { name: '계정' })).toHaveAttribute('aria-current', 'page')
   })
 
-  it('아래 칸: 센서 수신 자리 · 사용자 · 역할 · 로그아웃 폼(POST /logout)', () => {
+  it('아래 칸: 관제 이상 요약 자리 · 사용자 · 역할 · 로그아웃 폼(POST /logout)', () => {
     const { container } = renderAt('/')
-    expect(screen.getByText('센서 수신 · 확인 전')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '관제 상태 조회 전' })).toHaveAttribute('href', '/')
     expect(screen.getByText('han')).toBeInTheDocument()
     expect(screen.getByText('operator')).toHaveAttribute('title', '관제사')
     const form = container.querySelector('form[action="/logout"]')

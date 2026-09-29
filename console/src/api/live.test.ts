@@ -18,12 +18,13 @@ import {
   RESYNC_KEYS,
   useLiveUpdates,
   wsUrl,
+  type LiveMessage,
   type LiveSocket,
   type LiveState,
 } from './live'
 
 /** 재접속 · resync 때 다시 받는 쿼리 전부. /api/me 는 세션이 끝났으면 로그인으로 보내려고 넣는다 */
-const ALL_KEYS = [incidentKeys.all, ruleKeys.all, monitoringKeys.summary, monitoringKeys.blocklist, monitoringKeys.targets, nodeKey, auditKey, ctiKeys.all, sourceKeys.all, ['me']]
+const ALL_KEYS = [incidentKeys.all, ruleKeys.all, monitoringKeys.summary, monitoringKeys.blocklist, monitoringKeys.targets, monitoringKeys.health, nodeKey, auditKey, ctiKeys.all, sourceKeys.all, ['me']]
 
 /** 서버 없이 여닫을 수 있는 가짜 WebSocket. 만들어진 순서대로 instances 에 남는다 */
 class FakeSocket extends EventTarget implements LiveSocket {
@@ -126,7 +127,7 @@ describe('applyLiveMessage', () => {
     expect(invalidate).not.toHaveBeenCalled()
   })
 
-  it('resync 는 재접속 때와 같이 사건 · 규칙 · 지표 · 차단 · 대상 상태판 · 노드 · 감사 · CVE 연계 · /api/me 를 전부 다시 조회한다', () => {
+  it('resync 는 재접속 때와 같이 사건 · 규칙 · 지표 · 차단 · 대상 상태판 · 관제 이상 · 노드 · 감사 · CVE 연계 · /api/me 를 전부 다시 조회한다', () => {
     const client = noRetryClient()
     const invalidate = vi.spyOn(client, 'invalidateQueries')
     applyLiveMessage(client, { type: 'resync' })
@@ -377,6 +378,52 @@ describe('connectLive', () => {
     stop()
   })
 
+  it('onMessage: 무효화한 뒤 통보를 넘긴다. hello · 해석 실패는 넘기지 않고 resync 는 넘긴다', () => {
+    const client = noRetryClient()
+    const order: string[] = []
+    vi.spyOn(client, 'invalidateQueries').mockImplementation(() => {
+      order.push('invalidate')
+      return Promise.resolve()
+    })
+    const onMessage = vi.fn<(m: LiveMessage) => void>((m) => void order.push(`message:${m.type}`))
+    const stop = connectLive(client, { url: 'ws://t/ws', socket: factory, onMessage })
+    FakeSocket.last().open()
+    FakeSocket.last().message({ type: 'hello', data: { channel: 'opsloop_incident', console: 'opsloop-console-a' } })
+    FakeSocket.last().message('깨진 JSON')
+    FakeSocket.last().message({ data: { incident_key: 'k' } })
+    expect(onMessage).not.toHaveBeenCalled()
+
+    FakeSocket.last().message({ type: 'incident.created', data: { incident_key: 'k', rule_name: '통보 글' } })
+    expect(onMessage).toHaveBeenCalledTimes(1)
+    expect(onMessage).toHaveBeenLastCalledWith({ type: 'incident.created', data: { incident_key: 'k', rule_name: '통보 글' } })
+    expect(order).toEqual(['invalidate', 'invalidate', 'invalidate', 'message:incident.created'])
+
+    FakeSocket.last().message({ type: 'resync' })
+    expect(onMessage).toHaveBeenLastCalledWith({ type: 'resync', data: undefined })
+    // 모르는 종류도 넘긴다(거르는 것은 받는 쪽이다)
+    FakeSocket.last().message({ type: 'whatever' })
+    expect(onMessage).toHaveBeenCalledTimes(3)
+    stop()
+  })
+
+  it('onMessage: 재접속의 open 만으로는 부르지 않고, 옛 소켓이 늦게 보낸 통보도 넘기지 않는다', () => {
+    const client = noRetryClient()
+    const onMessage = vi.fn<(m: LiveMessage) => void>()
+    const stop = connectLive(client, { url: 'ws://t/ws', socket: factory, onMessage })
+    const first = FakeSocket.last()
+    first.open()
+    first.drop()
+    vi.advanceTimersByTime(1_000)
+    FakeSocket.last().open()
+    expect(onMessage).not.toHaveBeenCalled()
+    first.message({ type: 'incident.created', data: { incident_key: 'old' } })
+    expect(onMessage).not.toHaveBeenCalled()
+    FakeSocket.last().message({ type: 'incident.created', data: { incident_key: 'new' } })
+    expect(onMessage).toHaveBeenCalledTimes(1)
+    expect(onMessage.mock.calls[0][0].data).toEqual({ incident_key: 'new' })
+    stop()
+  })
+
   it('멈추면 소켓을 닫고 타이머를 지우며, 늦게 온 close 로 다시 잇지 않는다', () => {
     const client = noRetryClient()
     const states: LiveState[] = []
@@ -428,5 +475,28 @@ describe('useLiveUpdates', () => {
 
     unmount()
     expect(FakeSocket.last().closed).toEqual([1000])
+  })
+
+  it('onMessage 를 새로 넘겨 다시 그려도 소켓은 하나이고, 통보는 최신 콜백이 받는다', () => {
+    const client = noRetryClient()
+    const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children)
+    const first = vi.fn<(m: LiveMessage) => void>()
+    const second = vi.fn<(m: LiveMessage) => void>()
+    const { rerender, unmount } = renderHook(({ onMessage }) => useLiveUpdates({ url: 'ws://t/ws', socket: factory, onMessage }), {
+      wrapper,
+      initialProps: { onMessage: first },
+    })
+    act(() => FakeSocket.last().open())
+    act(() => FakeSocket.last().message({ type: 'incident.created', data: { incident_key: 'a' } }))
+    expect(first).toHaveBeenCalledTimes(1)
+
+    rerender({ onMessage: second })
+    expect(FakeSocket.instances).toHaveLength(1)
+    expect(FakeSocket.last().closed).toEqual([])
+    act(() => FakeSocket.last().message({ type: 'incident.created', data: { incident_key: 'b' } }))
+    expect(first).toHaveBeenCalledTimes(1)
+    expect(second).toHaveBeenCalledTimes(1)
+    expect(second.mock.calls[0][0].data).toEqual({ incident_key: 'b' })
+    unmount()
   })
 })

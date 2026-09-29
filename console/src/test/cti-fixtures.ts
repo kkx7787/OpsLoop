@@ -142,6 +142,7 @@ export function assetRow(extra: Partial<AssetRow> = {}): AssetRow {
     vuln_kev: 0,
     vuln_fix_available: 0,
     vuln_reboot_pending: 0,
+    vuln_fix_unknown: 0,
     max_epss: 0.00431,
     ...extra,
   }
@@ -154,7 +155,7 @@ export function assetsResult(extra: Partial<AssetsResult> = {}): AssetsResult {
     freshness: freshness(),
     rows: [
       assetRow(),
-      assetRow({ asset_id: 'fw', role: 'platform', host: 'opsloop-fw', kernel_newest_version: '6.8.0-142.142', reboot_pending: true, vuln_total: 30, vuln_kev: 2, vuln_fix_available: 3, vuln_reboot_pending: 25, max_epss: 0.99506 }),
+      assetRow({ asset_id: 'fw', role: 'platform', host: 'opsloop-fw', kernel_newest_version: '6.8.0-142.142', reboot_pending: true, vuln_total: 30, vuln_kev: 2, vuln_fix_available: 3, vuln_reboot_pending: 25, vuln_fix_unknown: 2, max_epss: 0.99506 }),
       assetRow({ asset_id: 'console-b', role: 'platform', host: null, collected_at: null, stale: true, last_error: '연결 실패: ssh: connect to host console-b port 22: Operation timed out', checked_at: null, vuln_total: 0, max_epss: null }),
     ],
     ...extra,
