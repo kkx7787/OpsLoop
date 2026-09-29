@@ -888,6 +888,8 @@ async def cti_body(look: Lookup, evidence: dict, signatures: list, as_of) -> dic
 
 @router.get("/api/incidents/{incident_key:path}/cti")
 async def incident_cti(incident_key: str, request: Request):
+    if "\x00" in incident_key:  # 키에 NUL 은 없다. DB 에 넘기면 오류가 500 이 된다(이슈 #62)
+        raise HTTPException(404, "인시던트를 찾을 수 없습니다")
     async with request.app.state.pool.acquire() as c, c.transaction(isolation="repeatable_read", readonly=True):
         as_of = await c.fetchval("SELECT now()")
         inc = await c.fetchrow(INCIDENT_SQL, incident_key)
@@ -912,7 +914,7 @@ async def cti_badges(request: Request, key: list[str] = Query(...)):
 
     서명 규칙 사건(상세의 applicable=true)만 담는다. 값은 상세의 badge 와 같다(같은 함수 cti_body 로 계산한다).
     키는 1~100개 · 한 개 512자까지이고 같은 키는 한 번만 센다. 넘으면 DB 에 닿기 전에 422 다."""
-    if not 1 <= len(key) <= BADGE_KEYS_MAX or any(not k or len(k) > BADGE_KEY_LENGTH for k in key):
+    if not 1 <= len(key) <= BADGE_KEYS_MAX or any(not k or len(k) > BADGE_KEY_LENGTH or "\x00" in k for k in key):
         raise HTTPException(422, f"사건 키는 1~{BADGE_KEYS_MAX}개, 한 개 {BADGE_KEY_LENGTH}자까지 보낼 수 있습니다")
     keys = list(dict.fromkeys(key))
     async with request.app.state.pool.acquire() as c, c.transaction(isolation="repeatable_read", readonly=True):

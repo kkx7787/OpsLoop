@@ -161,6 +161,15 @@ class OperationsDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await ops.quality(self.request,True))['rows'][0]['incidents'],3)
         self.assertEqual(scoped['versions'][0]['rules'][0]['name'],'시험')
 
+    async def test_quality_details_skip_rule_items_that_are_not_objects(self):
+        # 손으로 넣은 규칙 정의에 객체가 아닌 항목 · id 없는 항목이 있어도 500 이 아니라 그 항목만 건너뛴다(이슈 #62)
+        await self.conn.execute("""INSERT INTO rule_versions(rule_version,definition,reason) VALUES
+            ('v1','{"rules":[1,"R9",null,["R8"],{"name":"id 없음"},{"id":"R001","name":"시험"}]}','초안'),
+            ('v2','{"rules":"R001"}','배열 아님'),('v3','[{"id":"R001"}]','객체 아님'),('v4','null','비어 있음');""")
+        details=await ops.quality(self.request,True)
+        self.assertEqual([(v['version'],[(r['id'],r['name']) for r in v['rules']]) for v in details['versions']],
+                         [('v1',[('R001','시험')]),('v2',[]),('v3',[]),('v4',[])])
+
     async def test_audit_target_actor_time_literal_filters_and_page(self):
         await self.conn.execute("""INSERT INTO events VALUES
             ('2026-09-22','console.block.released','Admin','192.0.2.1','by=Admin ip=192.0.2.8 reason=ok','audit'),
