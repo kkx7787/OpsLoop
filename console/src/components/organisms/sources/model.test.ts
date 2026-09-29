@@ -60,6 +60,8 @@ describe('경로', () => {
   it('대상 이름은 정해 둔 것만, 원형의 값은 읽지 않는다', () => {
     expect(targetLabel('aws-sensor')).toBe('AWS 센서')
     expect(targetLabel('toString')).toBeNull()
+    // 등록 노드(#64)는 정해 둔 이름이 없어 원문(node_id)으로 그린다
+    expect(targetLabel('web-02')).toBeNull()
   })
 })
 

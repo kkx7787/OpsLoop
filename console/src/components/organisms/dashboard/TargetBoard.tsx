@@ -1,15 +1,17 @@
 import { useId, useState, useSyncExternalStore } from 'react'
 import { useCtiBadges, type CtiBadge } from '@/api/cti'
 import { describeError } from '@/api/errors'
-import { isTargetsNotDeployed, type Target, type TargetId, type TargetsResult } from '@/api/targets'
+import { isTargetsNotDeployed, targetKind, type Target, type TargetId, type TargetsResult } from '@/api/targets'
 import { cn } from '@/lib/cn'
 import { toDate } from '@/lib/time'
+import { revealHidden } from '@/lib/untrusted'
 import { Badge } from '../../atoms/Badge'
 import { Button } from '../../atoms/Button'
 import { Time } from '../../atoms/Time'
+import { UntrustedText } from '../../atoms/UntrustedText'
 import { ApiErrorState } from '../states/ApiErrorState'
 import { LoadingState } from '../states/LoadingState'
-import { COLLECTION_LABEL, COLLECTION_TONE, collectionState, pendingText } from './target-format'
+import { COLLECTION_LABEL, COLLECTION_TONE, collectionState, LABEL_MAX, orderTargets, pendingText } from './target-format'
 import { TargetCard } from './TargetCard'
 
 export interface TargetBoardProps {
@@ -46,15 +48,17 @@ function useWide(): boolean {
 }
 
 /**
- * 관제 대상 상태판(#52). 대시보드 맨 위에 대상 네 곳(AWS 센서 · web-01 · 관제 콘솔 · 데이터 노드)을 둔다.
- * 데스크톱(sm 이상)은 카드 그리드, 모바일은 대상마다 한 줄(이름 · 수집 상태 · 미판정)로 접어 두고 누르면 카드를 펼친다.
+ * 관제 대상 상태판(#52). 대시보드 맨 위에 고정 대상 네 곳(AWS 센서 · web-01 · 관제 콘솔 · 데이터 노드)과
+ * 그 뒤에 등록 노드 카드(#64, 수집 노드 표에 등록한 노드)를 둔다.
+ * 데스크톱은 카드 그리드(sm 이상 두 개 · 2xl 이상 네 개씩, 카드가 늘면 다음 줄로), 모바일은 대상마다 한 줄(이름 · 수집 상태 · 미판정)로
+ * 접어 두고 누르면 카드를 펼친다. 등록 노드가 늘어도 접힌 줄만 늘어 가장 오래된 미판정이 첫 화면 가까이에 남는다.
  * 조회 실패는 이 자리만 오류로 보인다. 아래 수치 · 판정 대기열은 따로 조회하므로 막지 않는다.
- * 최근 사건의 CVE 배지는 목록과 같은 조회(useCtiBadges)로 네 줄을 한 번에 받는다.
+ * 최근 사건의 CVE 배지는 목록과 같은 조회(useCtiBadges)로 카드마다의 최근 사건을 한 번에 받는다.
  */
 export function TargetBoard({ data, pending, fetching, error, updatedAt, onRetry, className }: TargetBoardProps) {
   const titleId = useId()
   const wide = useWide()
-  const targets = data?.targets ?? []
+  const targets = orderTargets(data?.targets ?? [])
   const latestKeys = targets.flatMap((t) => (t.security?.latest ? [t.security.latest.incident_key] : []))
   const badges = useCtiBadges(latestKeys).data?.badges
   const asOf = toDate(data?.as_of)?.getTime() ?? updatedAt
@@ -129,10 +133,11 @@ function FoldedTargets({ targets, asOf, badges }: { targets: Target[]; asOf: num
     })
   return (
     <ul aria-label="관제 대상 요약" className="m-0 flex list-none flex-col divide-y divide-line rounded-card bg-surface p-0 shadow-card">
-      {targets.map((target) => {
+      {targets.map((target, index) => {
         const state = collectionState(target.collection.state)
         const expanded = open.has(target.id)
-        const panelId = `${baseId}-${target.id}`
+        // id 속성에는 순번을 쓴다(등록 노드 id 를 요소 id 에 넣지 않는다)
+        const panelId = `${baseId}-${index}`
         return (
           <li key={target.id} data-target-summary={target.id}>
             <button
@@ -145,7 +150,9 @@ function FoldedTargets({ targets, asOf, badges }: { targets: Target[]; asOf: num
               <span aria-hidden="true" className="inline-block w-3 shrink-0 text-ink-muted">
                 {expanded ? '▾' : '▸'}
               </span>
-              <span className="min-w-0 flex-1 truncate font-medium">{target.label}</span>
+              <span className="min-w-0 flex-1 truncate font-medium" title={targetKind(target) === 'node' ? revealHidden(target.label) : undefined}>
+                <UntrustedText value={target.label} max={LABEL_MAX} clip />
+              </span>
               <Badge tone={COLLECTION_TONE[state]} className="shrink-0">
                 {COLLECTION_LABEL[state]}
               </Badge>

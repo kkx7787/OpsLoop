@@ -15,6 +15,11 @@
     block_exempt) · 차단 보고 신호
   - 취약점: 자산별 수 · KEV · 오래됨(48시간) · 자산 없음 · CTI 표 없음
   - 표가 없는 DB: 생존 신호 표 없음 → heartbeats_available=false · 미확인. node_metrics 없음 → no_privilege
+  - 등록 노드(이슈 #64): 노드를 하나 더 등록하면 카드가 하나 늘고(고정 대상 뒤 · node_id 순, 폐기 노드는 없음) 고정 네 대상 ·
+    미분류는 그대로다. 그 노드의 이벤트(수집 · 로그) · 사건(발생원 · node:<id> · 노드 에이전트 이벤트)이 그 카드로 가고
+    미분류에서 빠진다. web-01 의 노드 에이전트 사건은 이벤트로 고르고 고르지 못해도 web-01 이다.
+    nodes 는 운영 콘솔처럼 열 권한만 있어도 읽고, 권한 · 표가 없으면 고정 네 대상만이다(web-01 수신은 미확인.
+    카드 열 hostname 만 없으면 web-01 은 그대로)
 """
 import json
 import os
@@ -239,6 +244,11 @@ class TargetsDatabaseTests(Base):
 
     def target(self, body, tid):
         return next(x for x in body["targets"] if x["id"] == tid)
+
+    async def node(self, node_id, status="active", hostname=None, sensor=None, registered=172800, seen=60):
+        await self.conn.execute("""INSERT INTO nodes (node_id, hostname, sensor, status, registered_at, last_seen_at,
+            last_loaded_at) VALUES ($1, $2, $3, $4, $5, $6, $6)""", node_id, hostname, sensor, status,
+            self.ago(registered) if registered is not None else None, self.ago(seen) if seen is not None else None)
 
     async def test_대상별_보안_집계와_붙이지_못한_사건(self):
         body = await self.view()
@@ -481,6 +491,131 @@ class TargetsDatabaseTests(Base):
         self.assertEqual((body["heartbeats_available"], body["metrics_available"]), (True, True))
         self.assertEqual((badges["available"], badges["badges"]), (False, {}))
 
+    async def test_노드를_하나_더_등록하면_카드가_늘고_고정_대상은_그대로다(self):
+        # web-01 의 노드 에이전트 사건(n1 R101): 한 창의 web-01 sshd 실패 다섯 건 · 이벤트가 없는 사건
+        w = self.window_at
+        await self.incident("n-web01", "R101", "n1", "medium", "198.51.100.40", w(10))
+        for off in (10, 20, 30, 40, 50):
+            await self.event(w(off), "sshd.login.failed", "web-01", "198.51.100.40")
+        await self.incident("n-bare", "R101", "n1", "low", "198.51.100.41", 900)
+        before = await self.view()
+        self.assertEqual(len(before["targets"]), 4)
+        await self.node("web-02", hostname="web02.lab", sensor="web-02")
+        await self.node("web-03", status="pending", registered=None, seen=None)
+        await self.node("probe-01", status="revoked", sensor="probe-01")
+        conn = Recorder(self.conn)
+        body = await self.view(conn)
+        self.assertEqual([(x["id"], x["kind"]) for x in body["targets"]],
+                         [("aws-sensor", "fixed"), ("web-01", "fixed"), ("console", "fixed"), ("data-node", "fixed"),
+                          ("web-02", "node"), ("web-03", "node")])
+        # 고정 네 대상(web-01 값 포함) · 미분류는 노드를 등록하기 전과 같다. n1 R101 은 이제 이벤트로 고르고(web-01),
+        #   이벤트가 없는 사건은 전처럼 web-01 이다
+        self.assertEqual(body["targets"][:4], before["targets"][:4])
+        self.assertEqual(body["unmapped"], before["unmapped"])
+        joins = [json.loads(args[0]) for sql, args in conn.fetched if sql == t.JOIN_SQL]
+        self.assertEqual(len(joins), 1)
+        self.assertEqual(sorted(i["k"] for i in joins[0]), ["n-bare", "n-web01", "w-mixed", "w-none", "w-upload"])
+        self.assertEqual(self.target(body, "web-01")["security"]["pending"], 4)      # 전의 2 + n-web01 · n-bare
+        web02 = self.target(body, "web-02")
+        self.assertEqual((web02["label"], web02["role"]), ("web02.lab", "등록 노드"))
+        self.assertEqual((web02["collection"]["state"], web02["collection"]["reason"]),
+                         ("quiet", "노드 수신 1분 전 · 최근 1시간 요청 없음"))
+        self.assertEqual(web02["collection"]["logs"], [{"key": "web-02", "label": "web02.lab 로그", "last_at": None}])
+        self.assertEqual(web02["collection"]["extra"], [{"label": "마지막 적재", "at": t.cti.iso(self.ago(60)), "note": None}])
+        # 지표를 보내는 노드(node_metrics 에 web-02 행이 있다)는 실값이다
+        self.assertEqual(web02["system"], {"state": "ok", "metrics": {"ts": t.cti.iso(self.ago(10)), "cpu_pct": 1.0,
+                                                                     "mem_used_pct": 41.5, "disk_root_pct": 73.5,
+                                                                     "load1": 0.5}})
+        self.assertEqual({k: web02["response"][k] for k in ("point", "applied", "failed", "unverified", "exempt")},
+                         {"point": None, "applied": None, "failed": None, "unverified": None, "exempt": 0})
+        self.assertEqual(web02["vulns"], {"available": True, "assets": []})
+        self.assertEqual(web02["security"], {"incidents_1h": 0, "high_1h": 0, "pending": 0, "parts": [], "latest": None})
+        web03 = self.target(body, "web-03")
+        self.assertEqual((web03["label"], web03["collection"]["state"], web03["collection"]["reason"], web03["system"]),
+                         ("web-03", "unknown", "노드 등록 대기 · 수신 전", {"state": "not_collected", "metrics": None}))
+        self.assertEqual(web03["collection"]["logs"][0]["key"], "web-03")          # 발생원이 없으면 node_id
+        # 같은 이름의 자산이 있으면 그 자산이다
+        await self.conn.execute("""INSERT INTO asset_inventory (asset_id, role, method, collected_at, checked_at)
+            VALUES ('web-02', 'target', 'ssh', $1, $1)""", self.ago(3600))
+        self.assertEqual([(a["asset_id"], a["missing"]) for a in self.target(await self.view(), "web-02")["vulns"]["assets"]],
+                         [("web-02", False)])
+        json.dumps(body)
+
+    async def test_등록_노드의_이벤트와_사건은_그_카드로_가고_미분류에서_빠진다(self):
+        await self.node("web-02", hostname="web02.lab", sensor="web-02")
+        w = self.window_at
+        # n1 R101: 한 창의 web-02 sshd 실패 다섯 건
+        await self.incident("n-web02", "R101", "n1", "high", "198.51.100.50", w(10))
+        for off in (10, 20, 30, 40, 50):
+            await self.event(w(off), "sshd.login.failed", "web-02", "198.51.100.50")
+        # url_signature: 근거의 발생원 · 차단 금지 대역(198.51.100.64/26) 출발지
+        await self.event(300, "nginx.request", "web-02", "198.51.100.71")
+        await self.incident("u-web02", "R106", "c1", "medium", "198.51.100.71", 300, None, None,
+                            {"signatures": ["apache-path-traversal"], "sensors": ["web-02"]})
+        await self.incident("s-web02", "R301", "i2", "high", None, 600, None, "node:web-02")
+        await self.incident("s-probe", "R301", "i2", "high", None, 600, None, "node:probe-01")   # 등록되지 않은 노드
+        body = await self.view()
+        web02 = self.target(body, "web-02")
+        self.assertEqual((web02["security"]["incidents_1h"], web02["security"]["high_1h"], web02["security"]["pending"]),
+                         (3, 2, 3))
+        self.assertEqual(web02["security"]["latest"]["incident_key"], "s-web02")
+        self.assertEqual(web02["response"]["exempt"], 1)
+        self.assertEqual((web02["collection"]["state"], web02["collection"]["logs"][0]["last_at"]),
+                         ("ok", t.cti.iso(self.ago(300))))
+        # web-01 은 web-02 의 sshd 사건을 가져가지 않는다(시험 자료의 web-01 값 그대로)
+        self.assertEqual((self.target(body, "web-01")["security"]["incidents_1h"],
+                          self.target(body, "web-01")["security"]["pending"]), (2, 2))
+        # 미분류: 시험 자료(w-none · nodef) + 등록되지 않은 노드(s-probe)
+        self.assertEqual(body["unmapped"], {"incidents_1h": 3, "pending": 3})
+        # 등록을 지우면 지금처럼: sshd 사건은 web-01, 근거 · node:<id> 로만 붙던 사건은 미분류다
+        await self.conn.execute("DELETE FROM nodes WHERE node_id = 'web-02'")
+        bare = await self.view()
+        self.assertEqual([x["id"] for x in bare["targets"]], ["aws-sensor", "web-01", "console", "data-node"])
+        self.assertEqual((self.target(bare, "web-01")["security"]["incidents_1h"],
+                          self.target(bare, "web-01")["security"]["high_1h"]), (3, 1))
+        self.assertEqual(bare["unmapped"], {"incidents_1h": 5, "pending": 5})
+
+    async def test_nodes_는_열_권한만_있어도_읽고_권한이_없으면_고정_네_대상만이다(self):
+        await self.node("web-02", hostname="web02.lab", sensor="web-02")
+        role = "opsloop_t64_nodes"
+        columns = ("node_id, hostname, role, sensor, addr, logs, status, registered_at, last_seen_at, first_loaded_at, "
+                   "last_loaded_at")       # 운영 콘솔의 열 권한(schema.sql, 임시 표에 없는 agent_fp · receipt 빼고)
+        await self.conn.execute(f"DROP ROLE IF EXISTS {role}")
+        await self.conn.execute(f"CREATE ROLE {role} NOLOGIN")
+        seen = {}
+        try:
+            for table in ("incidents", "verdicts", "rule_versions", "events", "detector_runs", "blocklist",
+                          "block_exempt", "node_metrics", "sensor_heartbeats"):
+                await self.conn.execute(f"GRANT SELECT ON pg_temp.{table} TO {role}")
+            for name, grant in [("columns", f"GRANT SELECT ({columns}) ON pg_temp.nodes TO {role}"),
+                                ("no_hostname", f"REVOKE SELECT (hostname) ON pg_temp.nodes FROM {role}"),
+                                ("none", f"REVOKE SELECT ({columns}) ON pg_temp.nodes FROM {role}")]:
+                await self.conn.execute(grant)
+                await self.conn.execute(f"SET ROLE {role}")
+                async with self.conn.transaction(isolation="repeatable_read", readonly=True):
+                    seen[name] = (await self.conn.fetchval("SELECT has_table_privilege('nodes', 'SELECT')"),
+                                  await self.view())
+                await self.conn.execute("RESET ROLE")
+        finally:
+            await self.conn.execute("RESET ROLE")
+            await self.conn.execute(f"DROP OWNED BY {role}")
+            await self.conn.execute(f"DROP ROLE {role}")
+        table_privilege, body = seen["columns"]
+        self.assertFalse(table_privilege)
+        self.assertEqual([x["id"] for x in body["targets"]], ["aws-sensor", "web-01", "console", "data-node", "web-02"])
+        self.assertEqual(self.target(body, "web-01")["collection"]["state"], "ok")
+        for name in ("no_hostname", "none"):
+            body = seen[name][1]
+            with self.subTest(grant=name):
+                self.assertEqual([x["id"] for x in body["targets"]], ["aws-sensor", "web-01", "console", "data-node"])
+                self.assertEqual(self.target(body, "aws-sensor")["security"],
+                                 self.target(seen["columns"][1], "aws-sensor")["security"])
+        # 카드 열(hostname)만 없으면 web-01 수신은 전처럼 읽는다. web-01 이 읽는 열까지 없으면 모른다
+        self.assertEqual(self.target(seen["no_hostname"][1], "web-01")["collection"],
+                         self.target(seen["columns"][1], "web-01")["collection"])
+        web = self.target(seen["none"][1], "web-01")["collection"]
+        self.assertEqual((web["state"], web["reason"]), ("unknown", "노드 표를 읽을 수 없음"))
+
     async def test_API_는_한_트랜잭션에서_DB_시각으로_답한다(self):
         body = await t.dashboard_targets(self.request)
         self.assertIsInstance(body["as_of"], str)
@@ -514,6 +649,13 @@ class TargetsWithoutTablesTests(Base):
         self.assertEqual([e["note"] for e in data["collection"]["extra"]], ["생존 신호 표를 읽을 수 없음"] * 2)
         self.assertEqual([x["vulns"] for x in body["targets"]], [{"available": False, "assets": []}] * 4)
         json.dumps(body)
+
+    async def test_nodes_표가_없으면_고정_네_대상만이다(self):
+        await self.conn.execute("DROP TABLE nodes")
+        body = await t.dashboard_targets(self.request)
+        self.assertEqual([x["id"] for x in body["targets"]], ["aws-sensor", "web-01", "console", "data-node"])
+        web = next(x for x in body["targets"] if x["id"] == "web-01")["collection"]
+        self.assertEqual((web["state"], web["reason"]), ("unknown", "노드 표를 읽을 수 없음"))
 
 
 if __name__ == "__main__":

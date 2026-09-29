@@ -3,7 +3,7 @@ import { Link } from 'react-router'
 import type { CtiBadge as CtiBadgeValue } from '@/api/cti'
 import { useLiveState } from '@/api/live-context'
 import { consoleLabel } from '@/api/live'
-import type { Target, TargetCollection, TargetLatest, TargetResponse, TargetSystem, TargetVulns } from '@/api/targets'
+import { targetKind, type Target, type TargetCollection, type TargetLatest, type TargetResponse, type TargetSystem, type TargetVulns } from '@/api/targets'
 import { cn } from '@/lib/cn'
 import { revealHidden } from '@/lib/untrusted'
 import { Badge } from '../../atoms/Badge'
@@ -12,7 +12,7 @@ import { Time } from '../../atoms/Time'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { CtiBadge } from '../../molecules/CtiBadge'
 import { incidentHref } from '../incidents/model'
-import { assetHref, COLLECTION_LABEL, COLLECTION_TONE, collectionState, latestLog, responseParts, systemText, vulnText } from './target-format'
+import { assetHref, COLLECTION_LABEL, COLLECTION_TONE, collectionState, LABEL_MAX, latestLog, responseParts, systemText, vulnText } from './target-format'
 
 export interface TargetCardProps {
   target: Target
@@ -32,25 +32,39 @@ export interface TargetCardProps {
  * 관제 대상 카드 한 장(#52): 머리(이름 · 역할 · 수집 상태) 아래에 수집 · 보안 · 최근 사건 · 시스템 · 대응 · 취약점을 한 줄 요약으로 쌓는다.
  * 수집 상태는 서버가 생존 신호로 정한다. 신호가 없는 대상은 마지막 로그 시각을 보이되 '생존 상태 미확인' 을 붙이고 색을 입히지 않는다.
  * 콘솔 카드의 현재 콘솔은 실시간 연결(hello)의 이름이다. REST 요청은 콘솔 두 대에 번갈아 가므로 응답의 콘솔 이름은 쓰지 않는다.
+ * 등록 노드 카드(#64)는 web-01 카드와 같은 틀이다. 이름(hostname)은 노드가 적어 낸 값이라 비신뢰 문자열로 그리고,
+ * 이름이 node_id 와 다르면 역할 옆에 node_id 를 붙여 수집 노드 화면과 맞춰 보게 한다.
  */
 export function TargetCard({ target, asOf, cti, variant = 'card', className }: TargetCardProps) {
   const titleId = useId()
   const state = collectionState(target.collection.state)
   const inline = variant === 'inline'
+  const kind = targetKind(target)
   return (
     <div
       role="region"
       aria-labelledby={titleId}
       data-target={target.id}
+      data-target-kind={kind}
       data-collection={state}
       className={cn('flex min-w-0 flex-col', !inline && 'rounded-card bg-surface shadow-card', className)}
     >
       <div className={cn('flex min-w-0 items-start justify-between gap-2', inline ? 'px-3 pt-1' : 'rounded-t-card border-b border-line bg-canvas/60 px-3 py-2')}>
         <div className="min-w-0">
-          <h3 id={titleId} className={cn('m-0 text-md font-semibold tracking-heading', inline && 'sr-only')}>
-            {target.label}
+          <h3 id={titleId} className={cn('m-0 truncate text-md font-semibold tracking-heading', inline && 'sr-only')} title={kind === 'node' ? revealHidden(target.label) : undefined}>
+            <UntrustedText value={target.label} max={LABEL_MAX} clip />
           </h3>
-          <p className="m-0 text-xs text-ink-muted">{target.role}</p>
+          <p className="m-0 break-words text-xs text-ink-muted">
+            {target.role}
+            {kind === 'node' && target.label !== target.id && (
+              <>
+                {' · '}
+                <span className="font-mono" data-node-id="">
+                  <UntrustedText value={target.id} max={64} clip />
+                </span>
+              </>
+            )}
+          </p>
         </div>
         {!inline && (
           <Badge tone={COLLECTION_TONE[state]} className="shrink-0" data-collection-badge="">
@@ -122,7 +136,7 @@ function CollectionFacts({ target, collection, asOf }: { target: Target; collect
           )}
           {/* 생존 신호가 없으면 마지막 로그 시각을 보이되 정상으로 읽히지 않게 미확인을 붙인다. 로그가 없는 대상(데이터 노드)은 줄을 두지 않는다 */}
           {(!signal || collection.logs.length > 0) && (
-            <span data-signal="none" title={last ? `${last.label} 기준` : undefined}>
+            <span data-signal="none" title={last ? `${revealHidden(last.label)} 기준` : undefined}>
               {last?.last_at ? <>마지막 로그 <Time value={last.last_at} format="relative" now={asOf} /></> : '로그 기록 없음'}
               {unknown && <span className="text-ink-muted"> · 생존 상태 미확인</span>}
             </span>
@@ -134,13 +148,14 @@ function CollectionFacts({ target, collection, asOf }: { target: Target; collect
           읽기 문제: <UntrustedText value={signal.problem} max={160} />
         </span>
       )}
-      {target.id === 'console' && <ConsoleLine name={live.console} connected={live.status === 'connected'} />}
+      {targetKind(target) === 'fixed' && target.id === 'console' && <ConsoleLine name={live.console} connected={live.status === 'connected'} />}
+      {/* 등록 노드의 로그 이름은 노드 이름(hostname)에서 온다. 비신뢰 문자열로 그린다 */}
       {logs.length > 0 && (
         <span className="text-ink-muted">
           {logs.map((log, i) => (
             <span key={log.key}>
               {i > 0 && ' · '}
-              {log.label} <Ago value={log.last_at} asOf={asOf} empty="없음" />
+              <UntrustedText value={log.label} max={80} clip /> <Ago value={log.last_at} asOf={asOf} empty="없음" />
             </span>
           ))}
         </span>

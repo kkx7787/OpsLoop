@@ -5,9 +5,9 @@ import { LiveContext } from '@/api/live-context'
 import { applyLiveMessage } from '@/api/live'
 import { noRetryClient, renderRoutes } from '@/test/render'
 import { MONITORING_SUMMARY, json } from '@/test/monitoring-fixtures'
-import { LATEST_KEY, targetsResult } from '@/test/targets-fixtures'
+import { LATEST_KEY, nodeTarget, targetsResult } from '@/test/targets-fixtures'
 import { revealHidden } from '@/lib/untrusted'
-import { expectInertDom, expectMixedRevealed, LONG, MIXED } from '@/test/hostile-fixtures'
+import { expectInertDom, expectMixedRevealed, HOSTILE, LONG, MIXED } from '@/test/hostile-fixtures'
 
 afterEach(() => vi.unstubAllGlobals())
 function renderPage() { return renderRoutes([{ path: '/', element: <DashboardPage /> }], '/', noRetryClient()) }
@@ -259,5 +259,102 @@ describe('대시보드 · 비신뢰 문자열(#41)', () => {
     const link = name.closest('a')
     expect(link).not.toBeNull()
     expect(link?.querySelector('button')).toBeNull()
+  })
+})
+
+describe('대시보드 · 등록 노드 카드(#64)', () => {
+  /** 고정 네 대상 뒤에 등록 노드 n 개 */
+  const withNodes = (...ids: string[]) => targetsResult({ targets: [...targetsResult().targets, ...ids.map((id) => nodeTarget(id))] })
+  const narrow = () => vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} })))
+
+  it.each([
+    ['5개', ['web-02']],
+    ['6개', ['web-02', 'web-03']],
+  ])('카드 %s: 등록 노드는 고정 네 대상 뒤에 붙고 그리드 규칙(sm 두 개 · 2xl 네 개씩)은 그대로다', async (_name, ids) => {
+    stubDashboard({ targets: withNodes(...ids) })
+    renderPage()
+    const board = await screen.findByRole('region', { name: '관제 대상' })
+    await within(board).findByRole('region', { name: 'opsloop-web-02' })
+    const cards = [...board.querySelectorAll<HTMLElement>('[data-target]')]
+    expect(cards.map((c) => c.dataset.target)).toEqual(['aws-sensor', 'web-01', 'console', 'data-node', ...ids])
+    expect(cards.map((c) => c.dataset.targetKind)).toEqual(['fixed', 'fixed', 'fixed', 'fixed', ...ids.map(() => 'node')])
+    // 카드는 모두 한 그리드의 칸이다. 넘치는 카드는 다음 줄로 간다(가로 스크롤 없음)
+    const grid = cards[0].parentElement as HTMLElement
+    expect(grid).toHaveClass('grid', 'sm:grid-cols-2', '2xl:grid-cols-4')
+    expect(cards.every((c) => c.parentElement === grid)).toBe(true)
+  })
+
+  it('서버가 섞어 보내도 고정 대상이 앞이다', async () => {
+    const [aws, web, con, data] = targetsResult().targets
+    stubDashboard({ targets: targetsResult({ targets: [nodeTarget('web-02'), aws, web, con, data] }) })
+    renderPage()
+    const board = await screen.findByRole('region', { name: '관제 대상' })
+    await within(board).findByRole('region', { name: 'opsloop-web-02' })
+    expect([...board.querySelectorAll<HTMLElement>('[data-target]')].map((c) => c.dataset.target)).toEqual(['aws-sensor', 'web-01', 'console', 'data-node', 'web-02'])
+  })
+
+  it('최근 사건의 CVE 배지는 등록 노드 카드의 키도 한 번에 묻는다', async () => {
+    const fetch = stubDashboard({ targets: withNodes('web-02') })
+    renderPage()
+    await screen.findByRole('region', { name: 'opsloop-web-02' })
+    await waitFor(() => expect(fetch.mock.calls.some(([input]) => String(input).startsWith('/api/cti/badges'))).toBe(true))
+    const calls = fetch.mock.calls.map(([input]) => String(input)).filter((url) => url.startsWith('/api/cti/badges'))
+    expect(calls).toHaveLength(1)
+    expect(new URL(calls[0], 'http://localhost').searchParams.getAll('key').toSorted()).toEqual(['R101|v3|198.51.100.9|web-02', LATEST_KEY, 'R201|v2|user:root|x'])
+  })
+
+  it('모바일은 등록 노드도 한 줄로 접히고(6줄) 누르면 그 카드를 펼친다', async () => {
+    narrow()
+    stubDashboard({ targets: withNodes('web-02', 'web-03') })
+    renderPage()
+    const list = await screen.findByRole('list', { name: '관제 대상 요약' })
+    const buttons = within(list).getAllByRole('button')
+    expect(buttons.map((b) => b.textContent)).toEqual([
+      '▸AWS 센서정상미판정 12', '▸web-01요청 없음미판정 0', '▸관제 콘솔생존 상태 미확인미판정 1', '▸데이터 노드수신 없음미판정 0',
+      '▸opsloop-web-02정상미판정 3', '▸opsloop-web-03정상미판정 3'])
+    expect(screen.queryByRole('region', { name: 'opsloop-web-02' })).toBeNull()
+    fireEvent.click(buttons[4])
+    const card = screen.getByRole('region', { name: 'opsloop-web-02' })
+    expect(card).toHaveTextContent('등록 노드 · web-02')
+    expect(card).toHaveTextContent('차단 적용 여부 미확인')
+    expect(buttons[4]).toHaveAttribute('aria-controls', card.parentElement?.id)
+    // 요소 id 에는 노드 id 가 아니라 순번이 들어간다
+    expect(card.parentElement?.id).not.toContain('web-02')
+    expect(screen.queryByRole('region', { name: 'opsloop-web-03' })).toBeNull()
+  })
+
+  it('악성 hostname 은 카드 · 접힌 줄 모두 표식으로 보이고 실행 · 외부 요청을 만들지 않는다', async () => {
+    const hostile = nodeTarget('web-02', { label: MIXED })
+    stubDashboard({ targets: targetsResult({ targets: [...targetsResult().targets, hostile], unmapped: { incidents_1h: 1, pending: 1 } }) })
+    const wide = renderPage()
+    const board = await screen.findByRole('region', { name: '관제 대상' })
+    await waitFor(() => expect(board.querySelector('[data-target="web-02"]')).not.toBeNull())
+    const title = board.querySelector('[data-target="web-02"] h3') as HTMLElement
+    expect(title).toHaveAttribute('title', revealHidden(MIXED))
+    expect(title).toHaveTextContent(/^<img src=\/\/a\.attacker\.test/)
+    expectInertDom(wide.container)
+    expect(screen.getByText('대상 미분류 사건: 최근 1시간 1 · 미판정 1')).toBeInTheDocument()
+    wide.unmount()
+
+    narrow()
+    const folded = renderPage()
+    const list = await screen.findByRole('list', { name: '관제 대상 요약' })
+    const row = within(list).getAllByRole('button').at(-1) as HTMLElement
+    expect(row.querySelector('[title]')).toHaveAttribute('title', revealHidden(MIXED))
+    // 253자에서 자르고(펼치기 단추 없음) 전체는 말풍선으로 본다
+    expect(row.textContent).toMatch(/^▸<img src=\/\/a\.attacker\.test\/p\.png onerror=alert\(1\)>.*…정상미판정 3$/)
+    fireEvent.click(row)
+    expect(row.querySelector('button')).toBeNull()
+    expectInertDom(folded.container)
+  })
+
+  it('짧은 악성 hostname 은 자르지 않고 모든 표식을 보인다', async () => {
+    narrow()
+    const label = `${HOSTILE.rlo}${HOSTILE.zwsp}${HOSTILE.bom}`
+    stubDashboard({ targets: targetsResult({ targets: [...targetsResult().targets, nodeTarget('web-02', { label })] }) })
+    const { container } = renderPage()
+    const list = await screen.findByRole('list', { name: '관제 대상 요약' })
+    expect(within(list).getAllByRole('button').at(-1)).toHaveTextContent('admin⟨U+202E⟩gnp.exead⟨U+200B⟩min⟨U+FEFF⟩')
+    expectInertDom(container)
   })
 })

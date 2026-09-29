@@ -13,7 +13,8 @@ import cti
 from access import require_role
 
 router = APIRouter()
-RESERVED = {"cowrie", "decoy", "gateway", "console", "collector", "puller"}
+# 발생원 · 상태판 대상 이름과 겹치면 그 노드의 사건 · 카드가 고정 대상으로 가거나 카드가 생기지 않는다(이슈 #64). collector/nodes.py 와 같다
+RESERVED = {"cowrie", "decoy", "gateway", "console", "collector", "puller", "audit", "aws-sensor", "data-node"}
 
 
 def interval(since, until):

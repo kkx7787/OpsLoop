@@ -110,7 +110,7 @@ export interface SourceSummary {
   /** 가장 높은 심각도(critical > high > medium > low) */
   severity: Severity
   rules: string[]
-  /** 노린 대상(aws-sensor · web-01 · console · data-node). 이벤트 발생원에서 고른다 */
+  /** 노린 대상(aws-sensor · web-01 · console · data-node 뒤에 등록 노드의 node_id, #64). 이벤트 발생원에서 고른다 */
   targets: string[]
   /** 첫 사건 · 마지막 사건 시각(사건 기준). 사건 뒤에도 이어진 이벤트는 last_seen 으로 본다 */
   first_ts: string
