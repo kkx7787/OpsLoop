@@ -156,6 +156,31 @@ class DashboardDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["blocked_ips"], 7)
         self.assertEqual(data["blocks"], {"enforced": 2, "pending": 1, "excluded": 3, "mismatch": 1})
 
+    async def test_summary_counts_active_blocks_by_point(self):
+        # 지점별 적용 확인 · 실패 · 미확인(이슈 #72). 상태판 카드 대응과 같은 정의(targets.point_counts)다.
+        # 해제 · 만료 · 만료 없음 · 집행 제외는 어느 지점에도 세지 않는다. 지점별 합 = blocked_ips − blocks.excluded
+        import main
+        await self.conn.execute("""INSERT INTO blocklist (actor_ip, expires_at, released_at, enforce_note, enforcement) VALUES
+            ('192.0.2.1', now() + interval '1 hour', NULL, NULL, '{"gateway": {"state": "confirmed"}, "fw": {"state": "confirmed"}}'),
+            ('192.0.2.2', now() + interval '1 hour', NULL, NULL, '{"gateway": {"state": "confirmed"}, "fw": {"state": "failed"}}'),
+            ('192.0.2.3', now() + interval '1 hour', NULL, NULL, '{"gateway": {"state": "pending"}}'),
+            ('192.0.2.4', now() + interval '1 hour', NULL, NULL, NULL),
+            ('192.0.2.5', now() + interval '1 hour', NULL, '관문 불일치 · 관문이 거부함',
+             '{"gateway": {"state": "failed"}, "fw": {"state": "stale"}}'),
+            ('192.0.2.6', now() + interval '1 hour', now(), NULL, '{"gateway": {"state": "confirmed"}}'),
+            ('192.0.2.7', now() - interval '1 second', NULL, NULL, '{"gateway": {"state": "confirmed"}}'),
+            ('192.0.2.8', NULL, NULL, NULL, '{"gateway": {"state": "confirmed"}}'),
+            ('192.0.2.9', now() + interval '1 hour', NULL, '집행 제외 · 금지 대역', '{"fw": {"state": "failed"}}')""")
+        with patch.object(main.app.state, "pool", self.pool, create=True):
+            data = await main.summary()
+        self.assertEqual(data["blocks_by_point"], [
+            {"point": "gateway", "label": "AWS 관문", "applied": 2, "failed": 1, "unverified": 2, "stalled": None},
+            {"point": "fw", "label": "내부 방화벽", "applied": 1, "failed": 1, "unverified": 3, "stalled": None}])
+        self.assertEqual((data["blocked_ips"], data["blocks"]["excluded"], data["blocks"]["mismatch"]), (7, 2, 1))
+        for point in data["blocks_by_point"]:
+            self.assertEqual(point["applied"] + point["failed"] + point["unverified"],
+                             data["blocked_ips"] - data["blocks"]["excluded"])
+
     async def test_release_once_and_reject_expired_changed_incident(self):
         import main
         await self.incident("a", 0)

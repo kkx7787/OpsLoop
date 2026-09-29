@@ -33,6 +33,12 @@ SELECT incident_key, rule_id, rule_name, severity, host(actor_ip) AS actor_ip, t
 FROM pending ORDER BY first_ts, incident_key LIMIT 8
 """
 
+# 미판정 전체(먼저 처리할 사건, targets.queue_of). 장비로 앞 · 뒤를 가른 뒤 자르므로 LIMIT 을 두지 않는다
+PENDING_ROWS = PENDING + """
+SELECT incident_key, rule_id, rule_version, rule_name, severity, host(actor_ip) AS actor_ip, target, first_ts,
+       age AS pending_seconds, target_seconds, age >= target_seconds AS overdue
+FROM pending ORDER BY first_ts, incident_key"""
+
 RULE_RATES = """
 WITH latest AS (
     SELECT DISTINCT ON (incident_key) incident_key, verdict

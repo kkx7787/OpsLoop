@@ -1,21 +1,23 @@
-"""관제 대상별 상태판 (이슈 #52 · #64). GET /api/dashboard/targets
+"""관제 대상별 상태판 (이슈 #52 · #64 · #72). GET /api/dashboard/targets · GET /api/dashboard/monitor(관제 이상)
 
 고정 카드 네 장(AWS 센서 · web-01 · 관제 콘솔 · 데이터 노드) 뒤에 등록 노드 카드(nodes 에서 폐기되지 않고 고정 대상과 겹치지
 않는 노드, node_id 순)를 붙여 수집 · 보안 · 시스템 · 대응 · 취약점을 대상별로 모은다. 등록 노드 카드는 web-01 카드와 같은 모양이다.
 반복 읽기 · 읽기 전용 트랜잭션 하나에서 읽는다(대시보드 summary 와 같다). 표 · 권한이 없는 것은 오류가 아니라
 선검사(to_regclass + has_table_privilege, 열 권한만 있는 nodes 는 has_column_privilege)로 갈라 '미확인' 으로 답한다.
 한 질의라도 실패하면 트랜잭션 전체가 멈추므로 예외로 가르지 않는다.
+사건의 관련 장비(목록 · 상세 · 먼저 처리할 사건)도 여기서 계산한다. 조회할 때마다 기존 근거로 계산하고 저장하지 않는다.
 
 정직한 표기
   - 수집: 생존 신호가 있는 대상만 신호 시각으로 정상 · 수신 없음을 가른다. 로그 시각만으로 정상 · 장애를 정하지 않는다
     (콘솔은 생존 신호가 없어 늘 '생존 상태 미확인' 이다). 신호는 정상인데 로그가 없으면 '요청 없음'(quiet)이다.
   - 대응: 그 지점(관문 · 내부 방화벽)이 적용을 확인한 것만 적용이다. 지점이 없는 대상은 수를 내지 않는다(null).
     0 이 '막지 못했다' 로 읽히지 않게 화면이 문구를 고른다.
-  - 사건 → 대상 매핑은 순수 함수(resolve)다. 한 사건이 여러 대상에 붙을 수 있어 카드 합은 전체와 다르다.
-    어느 대상에도 붙이지 못한 사건은 숨기지 않고 unmapped 로 센다.
+  - 사건 → 대상 매핑은 순수 함수(resolve_links)다. 붙인 곳마다 근거(확인 · 규칙 범위 · 대체 추정)를 단다. 한 사건이 여러 대상에
+    붙을 수 있어 카드 합은 전체와 다르다. 카드 수 · 장비 필터는 대체 추정을 뺀 곳(shown)으로 센다. 어느 대상에도 붙이지 못한 사건은
+    숨기지 않고 unmapped(화면 '장비 미확인')로 센다.
   - 등록 노드의 발생원(events.sensor = nodes.sensor)은 그 노드 카드로 잇는다. 노드 에이전트 이벤트(sshd. · nginx.)는 고정 web-01 과
     등록 노드가 함께 내므로 등록 노드가 있으면 실제 이벤트의 발생원으로 어느 노드의 사건인지 고른다. 등록 노드가 없으면 지금처럼
-    web-01 이고, 등록 노드가 있어도 web-01 의 값은 같다(고르지 못하면 전처럼 web-01).
+    web-01 이고, 등록 노드가 있는데 고르지 못하면 대체 추정(장비 미확인)이다.
 """
 import json
 from datetime import timedelta
@@ -24,6 +26,7 @@ from fastapi import APIRouter, Request
 
 import cti
 from absorbed import block_nets
+from dashboard import PENDING_ROWS
 
 router = APIRouter()
 
@@ -67,6 +70,7 @@ LOGS = {"aws-sensor": [("cowrie", "Cowrie"), ("decoy", "웹 디코이"), ("gatew
 ACTIVE_LOGS = {"aws-sensor": ("cowrie", "decoy"), "web-01": ("web-01",)}
 # 집행 지점(차단을 실제로 적용하는 곳)과 그 이름. 콘솔 · 데이터 노드 앞에는 차단 결과를 모으는 지점이 없다
 POINTS = {"aws-sensor": ("gateway", "AWS 관문"), "web-01": ("fw", "내부 방화벽")}
+POINT_LABELS = dict(POINTS.values())       # {지점: 이름}. 관문 먼저
 # 대상별 자산(asset_inventory.asset_id)
 TARGET_ASSETS = {"aws-sensor": ["honeypot-dmz", "gateway"], "web-01": ["web-01"],
                  "console": ["console-a", "console-b"], "data-node": ["data-01"]}
@@ -75,9 +79,29 @@ WEB_NODE = "web-01"
 NODE_PREFIXES = ("sshd.", "nginx.")
 NODE_ROLE = "등록 노드"        # 등록 노드 카드의 역할 설명
 
-# 집행기가 enforce_note 에 쓰는 '집행 제외' 말머리. main.ENFORCE_EXCLUDED 와 같다(test_targets 가 맞춰 본다).
-#   main 을 불러오면 순환이라 여기 둔다
+# 집행기가 enforce_note 에 쓰는 '집행 제외' · '관문 불일치' 말머리. main.ENFORCE_EXCLUDED · ENFORCE_MISMATCH 와 같다
+#   (test_targets 가 맞춰 본다). main 을 불러오면 순환이라 여기 둔다
 ENFORCE_EXCLUDED = "집행 제외"
+ENFORCE_MISMATCH = "관문 불일치"
+
+# 사건 → 장비 연결의 근거. 확인: 사건 자체(대상 열 · 근거 발생원 · 탐지와 같은 범위의 이벤트)가 가리킴. 규칙 범위: 규칙이 한 장비만
+#   봄. 대체 추정: 고르지 못해 규칙상 그럴 법한 곳으로 둔 것(카드 수 · 장비 필터 · 배지에 쓰지 않는다)
+CONFIRMED, RULE_SCOPE, FALLBACK = "confirmed", "rule_scope", "fallback"
+QUEUE_SIZE = 8                 # 먼저 처리할 사건(앞 · 뒤 합계)
+UNCONFIRMED = "_unconfirmed"   # 목록 device 예약값(장비 미확인). 노드 id 형식(operations.EnrollmentIn.node_id) 밖이다
+# 사건 근거에서 발생원 · 세션만 꺼낸다(목록 · 상태판 · 먼저 처리할 사건이 같은 값으로 장비를 계산한다)
+EVIDENCE_COLUMNS = """CASE WHEN jsonb_typeof(i.evidence -> 'sensors') = 'array' THEN i.evidence -> 'sensors' END AS sensors,
+           CASE WHEN jsonb_typeof(i.evidence -> 'sessions') = 'array' THEN i.evidence -> 'sessions' END AS sessions"""
+# 장비 표기의 로그 종류. 이벤트 이름 접두 · 발생원 → 사람이 읽는 이름
+PREFIX_KIND = {"sshd.": "SSH 인증", "nginx.": "웹 접근", "cowrie.": "SSH 세션", "decoy.": "웹 요청",
+               "gateway.": "관문 기록", "console.": "콘솔 기록"}
+SOURCE_KIND = {"cowrie": "SSH 세션", "decoy": "웹 요청", "gateway": "관문 기록", "console": "콘솔 기록",
+               "audit": "감사 기록", "collector": "수집 관문", "puller": "원장 가져오기"}
+# 장비 무리. 보호 대상(web-01 · 등록 노드) → 관측 센서 → 관제 시스템 순서로 늘어놓는다
+GROUP_ORDER = {"protected": 0, "sensor": 1, "monitor": 2}
+MONITOR_IDS = ("console", "data-node")
+DEVICE_RANK = {WEB_NODE: "", **{tid: str(i) for i, tid in enumerate(MONITOR_IDS)}}   # 무리 안 순서(나머지는 id 순)
+PART_ORDER = {None: 0, **{key: i + 1 for i, (key, _) in enumerate(AWS_PARTS)}}
 
 # 표가 있고 이 역할이 읽을 수 있는가. 표가 없으면 권한 함수가 오류를 내므로 먼저 본다(absorbed.EXEMPT_READABLE_SQL 과 같은 꼴)
 HEARTBEATS_READABLE_SQL = ("SELECT CASE WHEN to_regclass('sensor_heartbeats') IS NULL THEN false"
@@ -99,11 +123,10 @@ HEARTBEATS_SQL = "SELECT source, kind, role, host, seen_at, checked_at, problem 
 
 # 매핑 대상 사건: 최근 1시간에 시작했거나, 24시간 안에 이어졌거나, 판정 기록이 없는 것. 근거는 발생원(sensors)만 꺼낸다.
 #   시험 출발지를 빼지 않는다(대시보드 미판정 수와 같게). $1 기준 시각 · $2 창(초) · $3 최근 시간(시)
-INCIDENTS_SQL = """
+INCIDENTS_SQL = f"""
     SELECT i.incident_key, i.rule_id, i.rule_version, i.rule_name, i.severity, host(i.actor_ip) AS actor_ip, i.target,
            i.first_ts, i.last_ts,
-           CASE WHEN jsonb_typeof(i.evidence -> 'sensors') = 'array' THEN i.evidence -> 'sensors' END AS sensors,
-           CASE WHEN jsonb_typeof(i.evidence -> 'sessions') = 'array' THEN i.evidence -> 'sessions' END AS sessions,
+           {EVIDENCE_COLUMNS},
            EXISTS (SELECT 1 FROM verdicts v WHERE v.incident_key = i.incident_key) AS judged
     FROM incidents i
     WHERE i.first_ts >= $1::timestamptz - make_interval(secs => $2)
@@ -187,6 +210,19 @@ NODES_SQL = f"""
 
 DETECTOR_SQL = "SELECT max(started_at) FROM detector_runs"
 
+# 탐지 경로별 마지막 실행(24시간 안만 읽는다. 색인이 started_at 하나다). 규칙 id 가 모두 R0xx 인 버전은 허니팟 탐지(5분 풀러)이고
+#   나머지는 노드 · 관제 탐지(1분 다리)다. 규칙 정의가 없거나 모양이 틀리면 허니팟으로 보지 않는다. $1 기준 시각
+DETECT_PATHS_SQL = """
+    SELECT d.rule_version, max(d.started_at) AS last_at,
+           coalesce((SELECT bool_and(r ->> 'id' ~ '^R0[0-9]{2}([^0-9]|$)') FROM rule_versions rv
+                     CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(rv.definition -> 'rules') = 'array'
+                                                                  THEN rv.definition -> 'rules' ELSE '[]'::jsonb END) r
+                     WHERE rv.rule_version = d.rule_version AND jsonb_typeof(r) = 'object'), false) AS honeypot
+    FROM detector_runs d WHERE d.started_at >= $1::timestamptz - interval '24 hours'
+    GROUP BY d.rule_version ORDER BY d.rule_version"""
+# (키, 이름). 5분 풀러는 규칙 파일 하나만 돌아 경로 최댓값으로, 1분 다리는 규칙 파일마다 따로 돌아 버전마다 가른다
+DETECT_PATHS = (("honeypot", "허니팟 탐지(5분)"), ("bridge", "노드 · 관제 탐지(1분)"))
+
 # 노드별 최신 자원 지표 한 행. (node_id, ts) 색인(idx_node_metrics_node_ts)으로 노드마다 한 번 내려간다. $1 노드 id 들
 METRICS_SQL = """
     SELECT n AS node_id, m.ts, m.cpu_pct, m.mem_used_pct, m.disk_root_pct, m.load1
@@ -197,12 +233,14 @@ METRICS_SQL = """
 # 살아 있는 차단(해제 · 만료 안 됨, 만료 없는 옛 차단 · 집행 제외 아님)을 지점별로 적용 확인 · 실패 · 미확인으로 나눈다.
 #   실패는 그 지점이 거부했다고 보고한 것(failed)이다. 모르는 것이 아니라 알려진 미적용이라 미확인과 가른다.
 #   미확인은 그 밖(pending · stale · 기록 없음)이다.
-#   만료 없음 · 집행 제외는 main.BLOCK_STATES_SQL 의 excluded 와 같은 정의다. $1 기준 시각
+#   만료 없음 · 집행 제외는 main.BLOCK_STATES_SQL 의 excluded 와 같은 정의다. mismatch 는 그 BLOCK_STATES_SQL 의 mismatch 와 같은
+#   집합이다(집행 제외가 먼저라 여기서 빠진 행은 거기서도 불일치가 아니다). $1 기준 시각
 BLOCKS_SQL = "SELECT " + ", ".join(
     f"count(*) FILTER (WHERE enforcement -> '{p}' ->> 'state' = 'confirmed') AS {p}_applied, "
     f"count(*) FILTER (WHERE enforcement -> '{p}' ->> 'state' = 'failed') AS {p}_failed, "
     f"count(*) FILTER (WHERE coalesce(enforcement -> '{p}' ->> 'state', '') NOT IN ('confirmed', 'failed')) AS {p}_unverified"
-    for p, _ in POINTS.values()) + f"""
+    for p, _ in POINTS.values()) + f""",
+    count(*) FILTER (WHERE enforce_note LIKE '{ENFORCE_MISMATCH}%') AS mismatch
     FROM blocklist
     WHERE released_at IS NULL AND expires_at > $1
       AND (enforce_note IS NULL OR enforce_note NOT LIKE '{ENFORCE_EXCLUDED}%')"""
@@ -291,44 +329,180 @@ def attach(sources, nodes=None) -> set[tuple[str, str | None]]:
 EVENTS, SESSIONS = "events", "sessions"   # resolve 의 둘째 값: 무엇으로 발생원을 더 고르는가(없으면 False)
 
 
-def resolve(target, sensors, spec, nodes=None) -> tuple[set, str | bool]:
-    """사건 하나를 대상에 붙인다. (붙인 곳 {(대상, 나눔)}, 더 고를 방법: False · EVENTS · SESSIONS).
+def based(pairs, basis) -> dict:
+    """{(대상, 나눔)} → {(대상, 나눔): 근거}."""
+    return {pair: basis for pair in pairs}
+
+
+def resolve_links(target, sensors, spec, nodes=None) -> tuple[dict, str | bool]:
+    """사건 하나를 대상에 붙인다. (붙인 곳 {(대상, 나눔): 근거}, 더 고를 방법: False · EVENTS · SESSIONS).
     nodes 는 등록 노드 {발생원: 노드 id} 다(없으면 고정 대상만 본다).
 
     순서: (1) target 'node:<id>' → 등록 노드면 그 카드, 아니면 고정 발생원(web-01) (2) target 'user:…' → 콘솔
-    (3) 근거의 발생원(evidence.sensors) (4) 규칙의 발생원 후보.
-    후보의 대상이 하나면 그 대상이고, 대상이 둘 이상이면(발생원이 섞인 규칙) 이벤트로 고른다(붙인 곳 없음 · EVENTS).
+    (3) 근거의 발생원(evidence.sensors). 여기까지는 사건 자체가 가리켜 확인이다 (4) 규칙의 발생원 후보.
+    후보의 대상이 하나면 그 대상(규칙 범위)이고, 대상이 둘 이상이면(발생원이 섞인 규칙) 이벤트로 고른다(붙인 곳 없음 · EVENTS).
     등록 노드 발생원이 더해져서 둘 이상이 됐을 뿐이면(고정 발생원만으로는 하나, n1 R101 의 sshd.) 고르지 못할 때 등록 노드 없이
-    정한 값이다(n1 R101 은 web-01 · EVENTS).
-    대상은 하나인데 AWS 센서 발생원이 여럿이면 대상은 정하고 나눔만 이벤트로 고른다(대상만 붙인 곳 · EVENTS).
-    (5) 후보가 없는 세션 규칙(v3 R002)은 AWS 센서이고 나눔은 사건의 세션으로 고른다(대상만 붙인 곳 · SESSIONS).
-    고르지 못하면 Cowrie 다. (6) 후보가 없는 기준선 · 키 심기 규칙은 Cowrie (7) 그 밖은 붙이지 못한다.
+    정한 값을 대체 추정으로 둔다(n1 R101 은 web-01 대체 추정 · EVENTS).
+    대상은 하나인데 AWS 센서 발생원이 여럿이면 대상은 정하고(규칙 범위) 나눔만 이벤트로 고른다(EVENTS).
+    (5) 후보가 없는 세션 규칙(v3 R002)은 AWS 센서(규칙 범위)이고 나눔은 사건의 세션으로 고른다(SESSIONS).
+    (6) 후보가 없는 기준선 · 키 심기 규칙은 Cowrie 대체 추정이다. 기준선(R005)은 Cowrie · 디코이 · 콘솔을 함께 센다
+    (detector/detect.py BASELINE_SENSORS) (7) 그 밖은 붙이지 못한다.
     """
     if isinstance(target, str) and target.startswith("node:"):
         node_id = target[len("node:"):]
-        return ({(node_id, None)} if node_id in (nodes or {}).values() else attach([node_id])), False
+        return based({(node_id, None)} if node_id in (nodes or {}).values() else attach([node_id]), CONFIRMED), False
     if isinstance(target, str) and target.startswith("user:"):
-        return {("console", None)}, False
+        return {("console", None): CONFIRMED}, False
     evidence = _strings(sensors)
     if evidence:
-        return attach(evidence, nodes), False
+        return based(attach(evidence, nodes), CONFIRMED), False
     if spec is None:
-        return set(), False
+        return {}, False
     sources = candidate_sources(spec, nodes)
     if sources:
         pairs = attach(sources, nodes)
         targets = {t for t, _ in pairs}
         if len(targets) > 1:
-            # 고르지 못하면 등록 노드 없이 정한 값이다(고정 발생원만으로도 섞였으면 붙인 곳 없음, 나눔도 그대로)
-            return (resolve(target, sensors, spec)[0] if nodes else set()), EVENTS
+            # 고르지 못하면 등록 노드 없이 정한 값을 대체 추정으로 둔다(고정 발생원만으로도 섞였으면 붙인 곳 없음)
+            return (based(resolve_links(target, sensors, spec)[0], FALLBACK) if nodes else {}), EVENTS
         if len({p for _, p in pairs if p}) > 1:
-            return {(t, None) for t in targets}, EVENTS
-        return pairs, False
+            return based({(t, None) for t in targets}, RULE_SCOPE), EVENTS
+        return based(pairs, RULE_SCOPE), False
     if spec.get("type") in SESSION_TYPES:
-        return {("aws-sensor", None)}, SESSIONS
+        return {("aws-sensor", None): RULE_SCOPE}, SESSIONS
     if spec.get("type") in COWRIE_TYPES:
-        return {("aws-sensor", "cowrie")}, False
-    return set(), False
+        return {("aws-sensor", "cowrie"): FALLBACK}, False
+    return {}, False
+
+
+def resolve(target, sensors, spec, nodes=None) -> tuple[set, str | bool]:
+    """근거 없이 붙인 곳만(옛 모양). resolve_links 와 같은 판정이다."""
+    links, need = resolve_links(target, sensors, spec, nodes)
+    return set(links), need
+
+
+def _without_bare(pairs: set) -> set:
+    """같은 대상에 나눔 있는 짝이 있으면 (대상, None) 을 뺀다."""
+    parted = {t for t, p in pairs if p}
+    return {(t, p) for t, p in pairs if p or t not in parted}
+
+
+def legacy_pairs(links: dict) -> set:
+    """옛 attach_incidents 결과 모양. 세션으로 고르지 못한 R002 는 전처럼 Cowrie 다."""
+    return _without_bare(set(links))
+
+
+def shown(links: dict) -> set:
+    """카드 수 · 장비 필터 · 배지에 쓰는 짝: 대체 추정을 뺀 것."""
+    return _without_bare({pair for pair, basis in links.items() if basis != FALLBACK})
+
+
+def shown_targets(links: dict) -> set[str]:
+    return {t for t, _ in shown(links)}
+
+
+def device_group(target_id: str, cards) -> str:
+    """보호 대상(web-01 · 등록 노드 카드) · 관측 센서(aws-sensor) · 관제 시스템(콘솔 · 데이터 노드)."""
+    if target_id == "aws-sensor":
+        return "sensor"
+    return "monitor" if target_id in MONITOR_IDS else "protected"
+
+
+def log_kinds(target_id: str, part: str | None, spec: dict | None, cards) -> list[str]:
+    """이 장비에서 규칙이 본 로그 종류. 처음으로 비지 않는 단계에서 멈춘다: 규칙 정의 없음 → 없음, 노드 무응답 → 지표 수신,
+    규칙 발생원 → 이벤트 이름 접두 → 나눔 → 세션 규칙. 중복은 빼고 처음 나온 순서다."""
+    if spec is None:
+        return []
+    if spec.get("type") == "node_silence":
+        return ["지표 수신"]
+    group = device_group(target_id, cards)
+
+    def mine(source: str) -> bool:
+        return SENSOR_TARGET.get(source) == target_id and (part is None or source == part)
+
+    def unique(kinds):
+        return list(dict.fromkeys(k for k in kinds if k))
+
+    kinds = unique(SOURCE_KIND.get(s) for s in spec.get("sensors") or [] if mine(s))
+    if kinds:
+        return kinds
+    names = [*spec.get("eventids", []), *([spec["eventid_like"]] if spec.get("eventid_like") else [])]
+    kinds = unique(kind for name in names for prefix, kind in PREFIX_KIND.items()
+                   if name.startswith(prefix) and (mine(EVENT_PREFIXES[prefix])
+                                                   or (prefix in NODE_PREFIXES and group == "protected")))
+    if kinds:
+        return kinds
+    if part:
+        return [SOURCE_KIND[part]]
+    return ["세션 기록"] if spec.get("type") in SESSION_TYPES else []
+
+
+def device_label(target_id: str, part: str | None, cards) -> str:
+    """AWS 센서는 나눔 이름(나눔 없으면 'AWS 센서'), 고정 대상은 이름, 등록 노드는 카드 이름(hostname, 비신뢰)."""
+    if target_id == "aws-sensor" and part:
+        return dict(AWS_PARTS)[part]
+    fixed = {tid: label for tid, label, _ in TARGETS}
+    if target_id in fixed:
+        return fixed[target_id]
+    return next((card["label"] for card in cards if card["id"] == target_id), target_id)
+
+
+def device_sort_key(device: dict):
+    """보호 대상(web-01 → 노드 id 순) → 관측 센서(나눔 없음 → Cowrie → 디코이 → 관문) → 관제 시스템(콘솔 → 데이터 노드)."""
+    return (GROUP_ORDER[device["group"]], DEVICE_RANK.get(device["id"], device["id"]),
+            PART_ORDER.get(device["part"], len(PART_ORDER)))
+
+
+def devices_of(links: dict, spec: dict | None, cards) -> dict:
+    """사건 하나의 관련 장비. devices 는 확인 · 규칙 범위(shown), device_fallback 은 대체 추정(화면 ⓘ 에만 쓴다).
+    device_state: 확인이 하나라도 있으면 confirmed, 장비가 있으면 rule_scope, 없으면 unconfirmed(장비 미확인)."""
+    def one(pair, basis):
+        tid, part = pair
+        return {"id": tid, "part": part, "label": device_label(tid, part, cards), "group": device_group(tid, cards),
+                "logs": log_kinds(tid, part, spec, cards), "basis": basis}
+    devices = sorted((one(pair, links[pair]) for pair in shown(links)), key=device_sort_key)
+    fallback = sorted((one(pair, basis) for pair, basis in links.items() if basis == FALLBACK), key=device_sort_key)
+    state = ("confirmed" if any(d["basis"] == CONFIRMED for d in devices) else "rule_scope") if devices else "unconfirmed"
+    return {"devices": devices, "device_state": state, "device_fallback": fallback}
+
+
+def device_options(cards) -> list[dict]:
+    """목록 장비 필터의 선택지. 행과 관계없이 늘 싣는다: web-01 → 등록 노드(node_id 순) → AWS 센서 → 콘솔 → 데이터 노드."""
+    fixed = {tid: label for tid, label, _ in TARGETS}
+    ids = [WEB_NODE, *(card["id"] for card in cards), "aws-sensor", *MONITOR_IDS]
+    labels = fixed | {card["id"]: card["label"] for card in cards}
+    return [{"id": tid, "label": labels[tid], "group": device_group(tid, cards)} for tid in ids]
+
+
+def device_matches(device: str, links: dict) -> bool:
+    """목록 device 조건. 장비 미확인은 shown 이 빈 사건이다(카드 unmapped 와 같다)."""
+    targets = shown_targets(links)
+    return not targets if device == UNCONFIRMED else device in targets
+
+
+def lane_of(links: dict) -> str:
+    """먼저 처리할 사건의 묶음. 장비 미확인 · 보호 대상 · 관제 시스템이 하나라도 있으면 앞, AWS 센서뿐이면 뒤(허니팟 · 디코이).
+    규칙 번호로 가르지 않는다."""
+    return "back" if shown_targets(links) == {"aws-sensor"} else "front"
+
+
+def queue_of(rows: list, links: dict, specs: dict, cards, size=QUEUE_SIZE) -> dict:
+    """먼저 처리할 사건. rows 는 PENDING_ROWS(미판정 전체). 앞 묶음 먼저, 각 묶음 안은 오래된 순(첫 시각 · 키), 합계 size 건."""
+    entries = []
+    for row in rows:
+        link = links.get(row["incident_key"]) or {}
+        lane = lane_of(link)
+        entries.append(((lane != "front", row["first_ts"], row["incident_key"]), {
+            "incident_key": row["incident_key"], "rule_id": row["rule_id"], "rule_name": row["rule_name"],
+            "severity": row["severity"], "actor_ip": row["actor_ip"], "target": row["target"],
+            "first_ts": cti.iso(row["first_ts"]), "pending_seconds": float(row["pending_seconds"]),
+            "target_seconds": row["target_seconds"], "overdue": bool(row["overdue"]), "lane": lane,
+            **devices_of(link, specs.get((row["rule_version"], row["rule_id"])), cards)}))
+    items = [item for _, item in sorted(entries, key=lambda e: e[0])]
+    return {"total": len(items), "front": sum(x["lane"] == "front" for x in items),
+            "back": sum(x["lane"] == "back" for x in items),
+            "unconfirmed": sum(x["device_state"] == "unconfirmed" for x in items),
+            "overdue": sum(x["overdue"] for x in items), "items": items[:size]}
 
 
 def join_item(incident: dict, spec: dict) -> dict:
@@ -453,25 +627,50 @@ def console_collection(last: dict) -> dict:
     return collection("unknown", "생존 신호를 보내지 않음", None, logs_of("console", last))
 
 
-def data_collection(as_of, started, available: bool, heartbeats: list) -> dict:
-    """데이터 노드. 마지막 탐지 실행이 신호다. 적재기 · 집행기가 마지막으로 확인한 시각을 곁들인다."""
-    signal = signal_of("마지막 탐지 실행", HEARTBEAT_STALE, started)
-    extra = []
-    stopped = []
-    for label, kind, limit in (("적재기 확인", "uploader", CHECKER_STALE), ("집행기 확인", "block_report", BLOCK_CHECKER_STALE)):
+def checkers(as_of, available: bool, heartbeats: list) -> list[dict]:
+    """적재기 · 집행기가 마지막으로 확인한 시각(종류별 최신) [{key, label, at, note, stopped}].
+    note 는 없음 · '기록 없음' · '생존 신호 표를 읽을 수 없음' · '멈춤'(적재기 30분 · 집행기 10분 넘게 확인 없음),
+    stopped 는 멈췄을 때의 까닭 글이다."""
+    out = []
+    for key, label, kind, limit in (("loader", "적재기 확인", "uploader", CHECKER_STALE),
+                                    ("enforcer", "집행기 확인", "block_report", BLOCK_CHECKER_STALE)):
         times = [r["checked_at"] for r in heartbeats if r["kind"] == kind]
+        at = max(times) if times else None
         note = None if times else ("기록 없음" if available else "생존 신호 표를 읽을 수 없음")
-        if times and older(as_of, max(times), limit):
-            note = "멈춤"
-            stopped.append(f"{label} 중단 · 마지막 {ago(as_of, max(times))}")
-        extra.append({"label": label, "at": cti.iso(max(times)) if times else None, "note": note})
-    tail = "".join(f" · {x}" for x in stopped)
+        stopped = None
+        if times and older(as_of, at, limit):
+            note, stopped = "멈춤", f"{label} 중단 · 마지막 {ago(as_of, at)}"
+        out.append({"key": key, "label": label, "at": at, "note": note, "stopped": stopped})
+    return out
+
+
+def reports_of(heartbeats: list) -> dict:
+    """{지점: 차단 보고 신호 행(block:<지점>)}."""
+    return {r["source"][len("block:"):]: r for r in heartbeats
+            if r["kind"] == "block_report" and r["source"].startswith("block:")}
+
+
+def data_collection(as_of, started, available: bool, heartbeats: list) -> dict:
+    """데이터 노드. 마지막 탐지 실행이 신호다. 적재기 · 집행기가 마지막으로 확인한 시각을 곁들인다.
+    stopped 는 화면 '주의' 에 쓰는 구조 값이다(state 는 늘리지 않는다). 적재기는 확인 중단, 집행기는 지점 하나라도 확인이 없거나
+    멈춘 것이다(관제 이상 enforcer:* 와 같은 판정). 생존 신호 표를 읽을 수 없으면 비어 있다."""
+    signal = signal_of("마지막 탐지 실행", HEARTBEAT_STALE, started)
+    checks = checkers(as_of, available, heartbeats)
+    extra = [{"label": x["label"], "at": cti.iso(x["at"]), "note": x["note"]} for x in checks]
+    tail = "".join(f" · {x['stopped']}" for x in checks if x["stopped"])
+    stopped = ["loader"] if any(x["stopped"] for x in checks if x["key"] == "loader") else []
+    reports = reports_of(heartbeats)
+    if any(point_counts(p, None, reports.get(p), as_of, available)["stalled"] for p in POINT_LABELS):
+        stopped.append("enforcer")
+
+    def done(state, reason):
+        return collection(state, reason + tail, signal, [], extra) | {"stopped": stopped}
     if started is None:
-        return collection("unknown", "탐지 실행 기록 없음" + tail, signal, [], extra)
+        return done("unknown", "탐지 실행 기록 없음")
     head = f"마지막 탐지 실행 {ago(as_of, started)}"
     if older(as_of, started, HEARTBEAT_STALE):
-        return collection("no_signal", f"{head} · 15분 넘게 실행 없음" + tail, signal, [], extra)
-    return collection("ok", head + tail, signal, [], extra)
+        return done("no_signal", f"{head} · 15분 넘게 실행 없음")
+    return done("ok", head)
 
 
 def system_block(target_id: str, readable: bool, row, as_of, registered: bool = False) -> dict:
@@ -491,18 +690,12 @@ def system_block(target_id: str, readable: bool, row, as_of, registered: bool = 
     return {"state": "stale" if older(as_of, row["ts"], METRICS_STALE) else "ok", "metrics": metrics}
 
 
-def response_block(target_id: str, blocks, exempt: int, reports: dict, as_of=None, heartbeats_available=False) -> dict:
-    """대응. 지점이 있는 대상만 적용 확인 · 실패 · 미확인 수를 낸다. 지점이 없으면 수 대신 null 이다(0 이 아니다).
-    reports 는 {지점: 차단 보고 신호 행}(없으면 빈 사전).
+def point_counts(point: str, blocks, report, as_of, heartbeats_available) -> dict:
+    """한 지점의 적용 확인 · 실패 · 미확인 수(BLOCKS_SQL 한 행, 없으면 0). 카드 대응 · 요약(blocks_by_point) · 관제 이상이 같이 쓴다.
 
     지점 결과(enforcement)를 내리는 쪽은 집행기뿐이다. 집행기가 멈추면 옛 '적용 확인' 이 그대로 남으므로, 생존 신호 표를 읽을 수
     있는데 그 지점의 집행기 확인(block:<지점>.checked_at)이 없거나 10분 넘게 멈췄으면 적용 · 실패를 믿지 않고 모두 미확인으로 합친다.
     까닭은 stalled 에 적는다. 표를 읽을 수 없으면(마이그레이션 전) 멈춤을 판정할 수 없어 수를 그대로 둔다."""
-    point, label = POINTS.get(target_id, (None, None))
-    if point is None:
-        return {"point": None, "point_label": None, "applied": None, "failed": None, "unverified": None,
-                "exempt": exempt, "report": None, "stalled": None}
-    report = reports.get(point)
     applied = int(blocks[f"{point}_applied"]) if blocks else 0
     failed = int(blocks[f"{point}_failed"]) if blocks else 0
     unverified = int(blocks[f"{point}_unverified"]) if blocks else 0
@@ -514,15 +707,33 @@ def response_block(target_id: str, blocks, exempt: int, reports: dict, as_of=Non
             stalled = f"집행기 확인 중단 · 마지막 확인 {ago(as_of, report['checked_at'])}"
     if stalled:
         applied, failed, unverified = 0, 0, applied + failed + unverified
-    return {"point": point, "point_label": label, "applied": applied, "failed": failed, "unverified": unverified,
+    return {"point": point, "label": POINT_LABELS[point], "applied": applied, "failed": failed, "unverified": unverified,
+            "stalled": stalled}
+
+
+def response_block(target_id: str, blocks, exempt: int, reports: dict, as_of=None, heartbeats_available=False) -> dict:
+    """대응. 지점이 있는 대상만 적용 확인 · 실패 · 미확인 수(point_counts)를 낸다. 지점이 없으면 수 대신 null 이다(0 이 아니다).
+    reports 는 {지점: 차단 보고 신호 행}(없으면 빈 사전)."""
+    point, label = POINTS.get(target_id, (None, None))
+    if point is None:
+        return {"point": None, "point_label": None, "applied": None, "failed": None, "unverified": None,
+                "exempt": exempt, "report": None, "stalled": None}
+    report = reports.get(point)
+    counts = point_counts(point, blocks, report, as_of, heartbeats_available)
+    return {"point": point, "point_label": label,
+            **{k: counts[k] for k in ("applied", "failed", "unverified")},
             "exempt": exempt,
             "report": {"seen_at": cti.iso(report["seen_at"]), "checked_at": cti.iso(report["checked_at"]),
                        "problem": report["problem"]} if report else None,
-            "stalled": stalled}
+            "stalled": counts["stalled"]}
+
+
+VULN_COUNTS = ("vuln_total", "vuln_kev", "vuln_fix_available", "vuln_reboot_pending", "vuln_fix_unknown")
 
 
 def vulns_block(target_id: str, available: bool, assets: dict, as_of) -> dict:
     """취약점. 자산 표에 없는 자산은 수 0 · 오래됨 · missing 이다(없다고 '취약점 0' 으로 읽히지 않게).
+    수는 전체 · KEV · 수정판 있음 · 재부팅 대기 · 수정 여부 미확인(asset_vulnerabilities.fix_state)이다.
     등록 노드(TARGET_ASSETS 에 없는 대상)는 같은 이름(asset_id = node_id)의 자산이 있을 때만 잇고, 없으면 빈 목록(연결된 자산 없음)이다."""
     if not available:
         return {"available": False, "assets": []}
@@ -533,13 +744,75 @@ def vulns_block(target_id: str, available: bool, assets: dict, as_of) -> dict:
     for asset_id in ids:
         row = assets.get(asset_id)
         if row is None:
-            out.append({"asset_id": asset_id, "vuln_total": 0, "vuln_kev": 0, "collected_at": None,
+            out.append({"asset_id": asset_id, **{k: 0 for k in VULN_COUNTS}, "collected_at": None,
                         "checked_at": None, "stale": True, "missing": True})
             continue
-        out.append({"asset_id": asset_id, "vuln_total": int(row["vuln_total"]), "vuln_kev": int(row["vuln_kev"]),
+        out.append({"asset_id": asset_id, **{k: int(row[k]) for k in VULN_COUNTS},
                     "collected_at": cti.iso(row["collected_at"]), "checked_at": cti.iso(row["checked_at"]),
                     "stale": cti.is_stale(row["collected_at"], as_of), "missing": False})
     return {"available": True, "assets": out}
+
+
+def detect_paths(rows: list, as_of) -> list[dict]:
+    """탐지 경로별 마지막 실행(DETECT_PATHS_SQL 행). 허니팟(5분 풀러)은 규칙 파일 하나만 돌아 경로 최댓값으로 가르고 옛 버전은
+    경보하지 않는다. 노드 · 관제(1분 다리)는 규칙 파일마다 따로 돌아 버전 하나라도 15분 넘게 멈추면 멈춤이다.
+    24시간 안에 행이 없으면 멈춤이다. reason 은 멈췄을 때 관제 이상 항목에 쓰는 글이다(아니면 null)."""
+    out = []
+    for key, label in DETECT_PATHS:
+        mine = [r for r in rows if bool(r["honeypot"]) == (key == "honeypot")]
+        versions = [{"rule_version": r["rule_version"], "last_at": cti.iso(r["last_at"]),
+                     "stale": older(as_of, r["last_at"], HEARTBEAT_STALE)} for r in mine]
+        last = max((r["last_at"] for r in mine if r["last_at"] is not None), default=None)
+        late = [r for r in mine if older(as_of, r["last_at"], HEARTBEAT_STALE)]
+        stale = older(as_of, last, HEARTBEAT_STALE) if key == "honeypot" else (not mine or bool(late))
+        reason = None
+        if stale and not mine:
+            reason = "24시간 안 실행 기록 없음"
+        elif stale and key == "honeypot":
+            reason = f"마지막 실행 {ago(as_of, last)}"
+        elif stale:
+            names = " · ".join(r["rule_version"] or "버전 없음" for r in late)
+            reason = f"{names} 마지막 실행 {ago(as_of, max(r['last_at'] for r in late))}"
+        out.append({"key": key, "label": label, "last_at": cti.iso(last), "stale": stale, "reason": reason,
+                    "versions": versions})
+    return out
+
+
+def monitor_items(checks, points: dict, mismatch: int, node_rows, nodes_readable, paths, heartbeats_available) -> list[dict]:
+    """관제 이상 띠 · 사이드바 항목. 이상(alert) · 모름(unknown)만 이 순서로 싣는다: 생존 신호 표 → 적재기 → 집행기(지점별) →
+    탐지 경로 → 적용 실패(지점별) → 관문 불일치 → 노드 수신. 생존 신호 표를 읽을 수 없으면 적재기 · 집행기는 판정하지 않는다.
+    노드 수신은 활성(수신 정상 · 끊김) 노드가 하나 이상이고 모두 끊겼을 때만이다(등록 대기 · 폐기는 활성이 아니다)."""
+    items = []
+
+    def add(key, level, label, reason=None, at=None, count=None):
+        items.append({"key": key, "level": level, "label": label, "reason": reason, "at": at, "count": count})
+
+    if not heartbeats_available:
+        add("heartbeats", "unknown", "생존 신호", "생존 신호 표를 읽을 수 없음")
+    else:
+        loader = next(x for x in checks if x["key"] == "loader")
+        if loader["stopped"]:
+            add("loader", "alert", "적재기", loader["stopped"], cti.iso(loader["at"]))
+        elif loader["at"] is None:
+            add("loader", "unknown", "적재기", "적재기 확인 기록 없음")
+        for point, counts in points.items():
+            if counts["stalled"]:
+                add(f"enforcer:{point}", "alert", f"{counts['label']} 집행기", counts["stalled"])
+    for path in paths:
+        if path["stale"]:
+            add(f"detect:{path['key']}", "alert", path["label"], path["reason"], path["last_at"])
+    for point, counts in points.items():
+        if counts["failed"] > 0:
+            add(f"block_failed:{point}", "alert", f"{counts['label']} 적용 실패", count=counts["failed"])
+    if mismatch > 0:
+        add("gateway_mismatch", "alert", ENFORCE_MISMATCH, count=mismatch)
+    if not nodes_readable:
+        add("nodes", "unknown", "노드 수신", "노드 표를 읽을 수 없음")
+    else:
+        active = [r for r in node_rows if r["reception"] in ("normal", "silent")]
+        if active and all(r["reception"] == "silent" for r in active):
+            add("nodes_silent", "alert", "노드 수신", f"활성 노드 {len(active)}대 모두 10분 넘게 수신 없음", count=len(active))
+    return items
 
 
 def latest_of(incidents: list, as_of) -> dict | None:
@@ -621,42 +894,62 @@ async def read_nodes(c, as_of) -> tuple[bool, list[dict]]:
     return bool(await c.fetchval(NODES_READABLE_SQL, WEB_NODE_COLUMNS)), []
 
 
-async def attach_incidents(c, incidents: list, nodes=None) -> dict:
-    """{사건 키: {(대상, 나눔)}}. 규칙 정의는 쓰인 버전만 한 번에 읽고, 발생원이 섞인 규칙의 사건만 이벤트로 고른다.
-    nodes 는 등록 노드 {발생원: 노드 id} 다."""
-    versions = sorted({i["rule_version"] for i in incidents})
+async def link_incidents(c, incidents: list, nodes=None) -> tuple[dict, dict]:
+    """({사건 키: {(대상, 나눔): 근거}}, {(규칙 버전, 규칙 id): 규칙 정의}). 규칙 정의는 쓰인 버전만 한 번에 읽고, 발생원이 섞인
+    규칙의 사건만 이벤트로 고른다. 이벤트 · 세션으로 찾은 발생원은 확인이다. nodes 는 등록 노드 {발생원: 노드 id} 다.
+    incidents 행은 incident_key · rule_id · rule_version · actor_ip · target · first_ts · last_ts · sensors · sessions 를 쓴다."""
+    versions = sorted({v for v in (i["rule_version"] for i in incidents) if v})
     specs = {}
     for row in (await c.fetch(RULES_SQL, versions) if versions else []):
         specs.setdefault((row["rule_version"], row["rule_id"]), rule_spec(row))
-    attached, joins, by_session, fallback = {}, [], [], {}
+    links, joins, by_session, fallback = {}, [], [], {}
     for inc in incidents:
         spec = specs.get((inc["rule_version"], inc["rule_id"]))
-        pairs, need = resolve(inc["target"], inc["sensors"], spec, nodes)
-        attached[inc["incident_key"]] = pairs
+        found, need = resolve_links(inc["target"], inc["sensors"], spec, nodes)
+        links[inc["incident_key"]] = found
         if need == EVENTS and inc["actor_ip"]:
             joins.append(join_item(inc, spec))
-            fallback[inc["incident_key"]] = pairs
+            fallback[inc["incident_key"]] = found
         elif need == SESSIONS:
-            # 세션으로 고르지 못하면(근거에 세션 없음 · 이벤트 없음) 전처럼 Cowrie 로 둔다
-            attached[inc["incident_key"]] = fallback[inc["incident_key"]] = {("aws-sensor", "cowrie")}
+            # 세션으로 고르지 못하면(근거에 세션 없음 · 이벤트 없음) AWS 센서(규칙 범위)이고 나눔은 Cowrie 대체 추정이다
+            links[inc["incident_key"]] = fallback[inc["incident_key"]] = {("aws-sensor", None): RULE_SCOPE,
+                                                                          ("aws-sensor", "cowrie"): FALLBACK}
             item = session_item(inc)
             if item:
                 by_session.append(item)
-    found: dict[str, list] = {}
+    found_sources: dict[str, list] = {}
     if joins:
         for row in await c.fetch(JOIN_SQL, json.dumps(joins)):
-            found.setdefault(row["incident_key"], []).append(row["sensor"])
+            found_sources.setdefault(row["incident_key"], []).append(row["sensor"])
     if by_session:
         for row in await c.fetch(SESSION_JOIN_SQL, json.dumps(by_session), list(SESSION_SOURCES)):
-            found.setdefault(row["incident_key"], []).append(row["sensor"])
-    for key, sensors in found.items():
-        # 이벤트가 모르는 발생원뿐이면 앞서 정한 것(대상만 · Cowrie · 없음)을 둔다
-        attached[key] = attach(sensors, nodes) or fallback[key]
-    return attached
+            found_sources.setdefault(row["incident_key"], []).append(row["sensor"])
+    for key, sensors in found_sources.items():
+        # 이벤트가 모르는 발생원뿐이면 앞서 정한 것(대상만 · Cowrie · 없음)을 근거째 둔다
+        links[key] = based(attach(sensors, nodes), CONFIRMED) or fallback[key]
+    return links, specs
 
 
-async def targets_view(c, as_of) -> dict:
-    """상태판 본문. 부른 쪽이 반복 읽기 트랜잭션을 연다(시험은 기준 시각을 넘겨 경계를 본다)."""
+async def attach_incidents(c, incidents: list, nodes=None) -> dict:
+    """{사건 키: {(대상, 나눔)}}(옛 모양, legacy_pairs). 계산은 link_incidents 와 같다."""
+    links, _ = await link_incidents(c, incidents, nodes)
+    return {key: legacy_pairs(value) for key, value in links.items()}
+
+
+async def incident_devices(c, rows: list, as_of) -> tuple[dict, list]:
+    """사건 행들의 관련 장비 ({사건 키: devices_of 결과}, 등록 노드 카드). 행이 없으면 카드만 읽고 매핑 질의를 하지 않는다.
+    rows 는 link_incidents 와 같은 열(EVIDENCE_COLUMNS 포함)을 가진다."""
+    _, cards = await read_nodes(c, as_of)
+    if not rows:
+        return {}, cards
+    links, specs = await link_incidents(c, rows, node_sources(cards))
+    return {r["incident_key"]: devices_of(links[r["incident_key"]], specs.get((r["rule_version"], r["rule_id"])), cards)
+            for r in rows}, cards
+
+
+async def targets_view(c, as_of, queue: bool = False) -> dict:
+    """상태판 본문. 부른 쪽이 반복 읽기 트랜잭션을 연다(시험은 기준 시각을 넘겨 경계를 본다).
+    queue 면 먼저 처리할 사건(미판정 전체를 같은 매핑으로 앞 · 뒤로 가름)을 더한다. 보고서는 queue 없이 부른다."""
     heartbeats_available = bool(await c.fetchval(HEARTBEATS_READABLE_SQL))
     metrics_available = bool(await c.fetchval(METRICS_READABLE_SQL))
     heartbeats = [dict(r) for r in await c.fetch(HEARTBEATS_SQL)] if heartbeats_available else []
@@ -665,8 +958,10 @@ async def targets_view(c, as_of) -> dict:
     nodes = node_sources(cards)
 
     incidents = [dict(r) for r in await c.fetch(INCIDENTS_SQL, as_of, WINDOW_SECONDS, LATEST_HOURS)]
-    attached = await attach_incidents(c, incidents, nodes)
-    per, unmapped = tally(incidents, attached, as_of, [card["id"] for card in cards])
+    links, specs = await link_incidents(c, incidents, nodes)
+    # 카드 수는 대체 추정을 뺀 곳으로 센다(목록 장비 필터와 같은 기준). 대응의 금지 대역 수(exempt)도 같은 사건으로 센다
+    per, unmapped = tally(incidents, {key: shown(value) for key, value in links.items()}, as_of,
+                          [card["id"] for card in cards])
 
     logs = {card["id"]: [(card["sensor"], f"{card['label']} 로그")] for card in cards}
     sensors = sorted({key for rows in [*LOGS.values(), *logs.values()] for key, _ in rows})
@@ -676,8 +971,7 @@ async def targets_view(c, as_of) -> dict:
     metrics = {r["node_id"]: r for r in await c.fetch(METRICS_SQL, [WEB_NODE, *(card["id"] for card in cards)])} \
         if metrics_available else {}
     blocks = await c.fetchrow(BLOCKS_SQL, as_of)
-    reports = {r["source"][len("block:"):]: r for r in heartbeats
-               if r["kind"] == "block_report" and r["source"].startswith("block:")}
+    reports = reports_of(heartbeats)
 
     # 차단 금지 대역에 드는 출발지(대상별로 서로 다른 주소 수)
     ips = sorted({i["actor_ip"] for slot in per.values() for i in slot["rows"] if i["actor_ip"]})
@@ -708,9 +1002,34 @@ async def targets_view(c, as_of) -> dict:
             "response": response_block(tid, blocks, exempt, reports, as_of, heartbeats_available),
             "vulns": vulns_block(tid, cti_available, assets, as_of),
         })
-    return {"as_of": cti.iso(as_of), "window_seconds": WINDOW_SECONDS,
+    body = {"as_of": cti.iso(as_of), "window_seconds": WINDOW_SECONDS,
             "heartbeats_available": heartbeats_available, "metrics_available": metrics_available,
             "targets": targets, "unmapped": unmapped}
+    if queue:
+        body["queue"] = queue_of([dict(r) for r in await c.fetch(PENDING_ROWS, as_of)], links, specs, cards)
+    return body
+
+
+async def monitor_view(c, as_of) -> dict:
+    """관제 이상(띠 · 사이드바). 적재기 · 집행기 확인, 탐지 경로, 지점별 적용 실패 · 관문 불일치, 활성 노드 수신을 본다.
+    nodes 는 카드 열까지 읽을 수 있으면 전부(web-01 포함), web-01 이 읽는 열만 되면 web-01 한 행이고, 둘 다 안 되면 모른다."""
+    heartbeats_available = bool(await c.fetchval(HEARTBEATS_READABLE_SQL))
+    heartbeats = [dict(r) for r in await c.fetch(HEARTBEATS_SQL)] if heartbeats_available else []
+    if await c.fetchval(NODES_READABLE_SQL, NODE_COLUMNS):
+        nodes_readable, node_rows = True, list(await c.fetch(NODES_SQL, as_of))
+    elif await c.fetchval(NODES_READABLE_SQL, WEB_NODE_COLUMNS):
+        row = await c.fetchrow(NODE_SQL, WEB_NODE, as_of)
+        nodes_readable, node_rows = True, [row] if row else []
+    else:
+        nodes_readable, node_rows = False, []
+    blocks = await c.fetchrow(BLOCKS_SQL, as_of)
+    paths = detect_paths(await c.fetch(DETECT_PATHS_SQL, as_of), as_of)
+    reports = reports_of(heartbeats)
+    points = {p: point_counts(p, blocks, reports.get(p), as_of, heartbeats_available) for p in POINT_LABELS}
+    items = monitor_items(checkers(as_of, heartbeats_available, heartbeats), points,
+                          int(blocks["mismatch"]) if blocks else 0, node_rows, nodes_readable, paths,
+                          heartbeats_available)
+    return {"as_of": cti.iso(as_of), "items": items, "detect_paths": paths}
 
 
 @router.get("/api/dashboard/targets")
@@ -718,4 +1037,12 @@ async def dashboard_targets(request: Request):
     """관제 대상별 상태판. 읽기 조회라 역할 검사 없이 세션 미들웨어만 둔다."""
     async with request.app.state.pool.acquire() as c, c.transaction(isolation="repeatable_read", readonly=True):
         as_of = await c.fetchval("SELECT now()")
-        return await targets_view(c, as_of)
+        return await targets_view(c, as_of, queue=True)
+
+
+@router.get("/api/dashboard/monitor")
+async def dashboard_monitor(request: Request):
+    """관제 이상. 띠와 사이드바가 같은 조회를 쓴다. 읽기 조회라 역할 검사 없이 세션 미들웨어만 둔다."""
+    async with request.app.state.pool.acquire() as c, c.transaction(isolation="repeatable_read", readonly=True):
+        as_of = await c.fetchval("SELECT now()")
+        return await monitor_view(c, as_of)
