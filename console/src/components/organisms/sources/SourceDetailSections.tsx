@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { useId, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { FINGERPRINT_KINDS, FINGERPRINT_LABEL, type SourceDetail } from '@/api/sources'
 import { actionLabel } from '@/lib/domain'
@@ -7,13 +7,14 @@ import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { Time } from '../../atoms/Time'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { VerdictBadge } from '../../atoms/VerdictBadge'
+import { InfoTip } from '../../molecules/InfoTip'
 import { DetailSection } from '../incident-detail/DetailSection'
 import { incidentHref } from '../incident-detail/format'
 import { StatusBadge } from '../incident-detail/StatusBadge'
 import { TABLE } from '../incident-detail/table-styles'
 import { SourceBlockDetail } from './SourceBlock'
 import { TargetNames, VerdictMix } from './SourceBadges'
-import { fingerprintHref, incidentsOfHref, sourceExempt } from './model'
+import { fingerprintHref, incidentsOfHref, SAME_TOOL_NOTE, SAME_TOOL_REASON, sourceExempt } from './model'
 
 /**
  * 출발지 상세(S-09)의 구역들. 모양은 사건 상세의 구역(DetailSection · TABLE)을 따른다.
@@ -25,9 +26,22 @@ interface SectionProps {
   className?: string
 }
 
+const ABSORBED_TIP = '같은 페이로드 흡수로 지워진 사건 기록 수입니다. 흡수된 사건은 사건 수에 들지 않습니다.'
+
+/** 흡수 기록 항목. 표를 읽을 수 없으면 0 이 아니라 확인 불가 */
+function AbsorbedFact({ absorbed }: { absorbed: number | null }) {
+  return (
+    <Fact
+      label="흡수 기록"
+      tip={ABSORBED_TIP}
+      value={absorbed === null ? <span className="text-warning">확인 불가</span> : `${absorbed.toLocaleString('ko-KR')}건`}
+    />
+  )
+}
+
 /**
- * ① 요약: 사건 · 미판정 · 최고 심각도 · 첫/마지막 사건 · 마지막 관측 · 규칙 · 대상 · 판정 분포 · 흡수 기록.
- * 마지막 관측은 수집 이벤트 기준이라 사건 없는 출발지도 보인다(사건 뒤에도 이어졌는지 본다)
+ * ① 요약: 사건 · 미판정 · 최고 심각도 · 첫/마지막 사건 · 마지막 관측 · 규칙 · 대상 · 흡수 기록 · 판정 분포.
+ * 마지막 관측은 수집 이벤트 기준이라 사건 없는 출발지도 보인다(사건 뒤에도 이어졌는지 본다). 계산 기준은 항목 이름 옆 ⓘ
  */
 export function SourceSummarySection({ detail, className }: SectionProps) {
   const { summary } = detail
@@ -42,21 +56,18 @@ export function SourceSummarySection({ detail, className }: SectionProps) {
           <Fact label="마지막 관측" value={<Time value={detail.last_seen} format="datetime" />} />
           <Fact label="규칙" value={<span className="font-mono text-xs">{summary.rules.join(' · ') || '—'}</span>} />
           <Fact label="노린 대상" value={<TargetNames targets={summary.targets} />} />
-          <Fact label="판정 분포 · 사건마다 마지막 판정" value={<VerdictMix verdicts={summary.verdicts} />} wide />
+          <AbsorbedFact absorbed={detail.absorbed} />
+          <Fact label="판정 분포" tip="사건마다 마지막 판정입니다." value={<VerdictMix verdicts={summary.verdicts} />} wide />
         </dl>
       ) : (
         <>
-          <p className="m-0 text-sm text-ink-muted">사건이 없는 출발지입니다. 수집 이벤트만 있습니다.</p>
+          <p className="m-0 text-sm text-ink-muted">사건 없음 · 수집 이벤트만 있습니다</p>
           <dl className="m-0 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4">
             <Fact label="마지막 관측" value={<Time value={detail.last_seen} format="datetime" />} />
+            <AbsorbedFact absorbed={detail.absorbed} />
           </dl>
         </>
       )}
-      <p className="m-0 text-xs text-ink-muted">
-        {detail.absorbed === null
-          ? '같은 페이로드 흡수 기록을 읽을 수 없습니다 · 흡수된 사건은 위 사건 수에 들지 않습니다'
-          : `같은 페이로드 흡수로 지워진 사건 기록 ${detail.absorbed.toLocaleString('ko-KR')}건 · 흡수된 사건은 위 사건 수에 들지 않습니다`}
-      </p>
     </DetailSection>
   )
 }
@@ -67,7 +78,7 @@ export function SourceIncidentsSection({ detail, className }: SectionProps) {
   return (
     <DetailSection number="②" title="사건 흐름" padding="none" aside={`첫 시각 순 · ${total.toLocaleString('ko-KR')}건`} className={className}>
       {incidents.length === 0 ? (
-        <p className="m-0 p-4 text-sm text-ink-muted">이 출발지의 사건이 없습니다.</p>
+        <p className="m-0 p-4 text-sm text-ink-muted">사건이 없습니다.</p>
       ) : (
         <div className={`${TABLE.wrap} max-h-[420px]`}>
           <table className={`${TABLE.table} responsive-table`} aria-label="사건 흐름">
@@ -144,11 +155,26 @@ export function SourceEventsSection({ detail, className }: SectionProps) {
   )
 }
 
-/** ④ 도구 지문: 종류마다 많이 쓴 값. 값은 공격자가 보낸 글자다. 같은 지문을 쓴 다른 출발지로 이어 간다 */
+/**
+ * ④ 도구 지문: 종류마다 많이 쓴 값. 값은 공격자가 보낸 글자다. 같은 지문을 쓴 다른 출발지로 이어 간다.
+ * 같은 지문 주의는 머리 오른쪽 ⓘ 에 둔다(본문 한 줄은 지문 조건 목록의 띠 한 곳). 제목 안에 두면 구역 이름에 섞인다
+ */
 export function SourceFingerprintsSection({ detail, className }: SectionProps) {
   return (
-    <DetailSection number="④" title="도구 지문" aside="종류마다 최대 10개" className={className}>
-      <p className="m-0 text-xs text-ink-muted">같은 지문이 같은 행위자라는 뜻은 아닙니다. 흔한 라이브러리 · 도구는 지문이 겹칩니다.</p>
+    <InfoTip label="도구 지문" render={({ button, panel }) => (
+      <DetailSection number="④" title="도구 지문" aside={<span className="inline-flex items-center gap-1.5">종류마다 최대 10개 {button}</span>} className={className}>
+        {panel}
+        <FingerprintKinds detail={detail} />
+      </DetailSection>
+    )}>
+      {SAME_TOOL_NOTE}. {SAME_TOOL_REASON}
+    </InfoTip>
+  )
+}
+
+function FingerprintKinds({ detail }: { detail: SourceDetail }) {
+  return (
+    <>
       {FINGERPRINT_KINDS.map((kind) => {
         const rows = detail.fingerprints[kind] ?? []
         return (
@@ -170,14 +196,14 @@ export function SourceFingerprintsSection({ detail, className }: SectionProps) {
           </div>
         )
       })}
-    </DetailSection>
+    </>
   )
 }
 
 /** ⑤ 차단 상태: 지금 차단 목록 행 · 지점별 결과 · 금지 대역 */
 export function SourceBlockSection({ detail, className }: SectionProps) {
   return (
-    <DetailSection number="⑤" title="차단 상태" aside="요청과 집행 지점의 결과" className={className}>
+    <DetailSection number="⑤" title="차단 상태" className={className}>
       <SourceBlockDetail
         block={detail.block}
         checkers={detail.checkers}
@@ -226,11 +252,16 @@ export function SourceActionsSection({ detail, className }: SectionProps) {
   )
 }
 
-function Fact({ label, value, wide }: { label: string; value: ReactNode; wide?: boolean }) {
+/** 요약 항목 하나. tip(계산 기준)이 있으면 이름 옆 ⓘ 로 두고 값이 그 설명을 읽는다 */
+function Fact({ label, value, wide, tip }: { label: string; value: ReactNode; wide?: boolean; tip?: ReactNode }) {
+  const id = useId()
   return (
     <div className={wide ? 'col-span-2 flex min-w-0 flex-col gap-0.5 sm:col-span-4' : 'flex min-w-0 flex-col gap-0.5'}>
-      <dt className="text-xs text-ink-muted">{label}</dt>
-      <dd className="m-0 min-w-0 font-medium break-words tabular-nums">{value}</dd>
+      <dt className="text-xs text-ink-muted">
+        {label}
+        {tip && <>{' '}<InfoTip label={label} id={id}>{tip}</InfoTip></>}
+      </dt>
+      <dd className="m-0 min-w-0 font-medium break-words tabular-nums" aria-describedby={tip ? id : undefined}>{value}</dd>
     </div>
   )
 }

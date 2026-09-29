@@ -43,8 +43,9 @@ describe('차단 목록', () => {
     }))
     const { container } = renderRoutes([{ path: '/blocklist', element: <BlocklistPage /> }], '/blocklist', noRetryClient())
     expect(await screen.findByText('203.0.113.10')).toBeInTheDocument()
-    expect(screen.getByText(/집행 지점\(AWS 관문 · 내부 방화벽\)/)).toBeInTheDocument()
-    expect(screen.getByText(/AWS 관문이 허니팟 유입\(22 · 23 · 8080\), 내부 방화벽이 web-01 접근/)).toBeInTheDocument()
+    // 집행 수를 막은 수로 잘못 읽지 않게 하는 한 줄은 본문에, 용어 · 집행 범위는 ⓘ 에
+    expect(screen.getByText(/^집행 수는 AWS 관문 기준이며 내부 방화벽 결과는 행마다 봅니다/).closest('[data-infotip]')).toBeNull()
+    expect(screen.getByRole('button', { name: '집행 범위 설명' })).toHaveAccessibleDescription(/AWS 관문은 허니팟 유입\(22 · 23 · 8080\)을, 내부 방화벽은 web-01 접근을 막습니다/)
     const points = (ip: string) => [...screen.getByText(ip).closest('li')!.querySelectorAll('[data-enforce-point]')]
       .map(el => [el.getAttribute('data-enforce-point'), el.getAttribute('data-point-state')])
     expect(points('203.0.113.10')).toEqual([['gateway', 'confirmed'], ['fw', 'failed']])
@@ -64,6 +65,24 @@ describe('차단 목록', () => {
     fireEvent.click(screen.getByRole('button', { name: /^해제 / }))
     expect(await screen.findByText('203.0.113.12')).toBeInTheDocument()
     expect(points('203.0.113.12')).toEqual([])
+  })
+
+  it('지점이 보낸 확인 지연 까닭은 ⓘ 로 접지 않고 본문에 둔다(오류 안내)', async () => {
+    const note = 'AWS 관문 보고가 5분 넘게 멈춤 (마지막 2026-09-23T07:50:00Z)'
+    const rows = [blockEntry({ actor_ip: '203.0.113.20', enforcement: { gateway: { state: 'stale', since: '2026-09-23T07:59:00Z', mode: 'nft', note } } })]
+    vi.stubGlobal('fetch', vi.fn<typeof globalThis.fetch>(async (input) => {
+      const url = String(input)
+      if (url === '/api/me') return json({ username: 'tester', role: 'viewer' })
+      if (url.startsWith('/api/blocklist')) return json(rows)
+      return json({}, 404)
+    }))
+    renderRoutes([{ path: '/blocklist', element: <BlocklistPage /> }], '/blocklist', noRetryClient())
+    expect(await screen.findByText('203.0.113.20')).toBeInTheDocument()
+    const gateway = screen.getByText('203.0.113.20').closest('li')!.querySelector('[data-enforce-point="gateway"]')!
+    expect(gateway).toHaveAttribute('data-point-state', 'stale')
+    expect(within(gateway as HTMLElement).getByText('확인 지연')).toBeInTheDocument()
+    expect(within(gateway as HTMLElement).getByText(note).closest('[data-infotip]')).toBeNull()
+    expect(within(gateway as HTMLElement).queryByRole('button', { name: /설명$/ })).toBeNull()
   })
 
   it('서버 시각으로 활성·만료·해제를 구분하고 상태 탭을 주소에 보존한다', async () => {
@@ -113,7 +132,7 @@ describe('차단 목록', () => {
     expect(await screen.findByRole('link', { name: 'R006 · 첫 사건 보기' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '해제' }))
     const form = screen.getByRole('form', { name: '198.51.100.7 해제 확인' })
-    expect(within(form).getByText(/흡수 차단 한 곳만 해제할까요\? 첫 사건 출발지의 차단과 다른 흡수 차단은 그대로/)).toBeInTheDocument()
+    expect(within(form).getByText('198.51.100.7 의 흡수 차단 한 곳만 해제할까요? 이 출발지는 이후 후속 차단에서도 빠집니다.')).toBeInTheDocument()
     fireEvent.click(within(form).getByRole('button', { name: '해제 확정' }))
     expect(await screen.findByText('198.51.100.7 차단 해제를 기록했습니다')).toBeInTheDocument()
     const post = fetch.mock.calls.find(([, init]) => init?.method === 'POST')!

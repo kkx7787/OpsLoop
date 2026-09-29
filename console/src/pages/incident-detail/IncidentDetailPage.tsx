@@ -50,16 +50,17 @@ function IncidentDetailView({ incidentKey }: IncidentDetailViewProps) {
   if (query.isError) {
     const error = query.error
     if (isApiError(error) && error.status === 404) {
+      // 서버 설명이 제목과 같으면(없는 사건) 되풀이하지 않는다. 다르면(없는 경로 등) 앞에 붙인다
+      const title = '인시던트를 찾을 수 없습니다'
       return (
         <NotFoundState
           size="page"
           titleAs="h1"
-          eyebrow="S-04 · 404"
-          title="인시던트를 찾을 수 없습니다"
+          title={title}
           path={incidentKey}
           description={
             <>
-              {error.detail}. 키가 바뀌었거나 다른 콘솔의 사건일 수 있습니다.{' '}
+              {error.detail && error.detail !== title && `${error.detail}. `}키가 바뀌었거나 다른 콘솔의 사건일 수 있습니다.{' '}
               <code className="font-mono text-xs break-all text-ink">
                 <UntrustedText value={incidentKey} />
               </code>

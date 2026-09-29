@@ -57,6 +57,7 @@ describe('관제 대상 상태판 API(#52)', () => {
     expect(isApiError(error) && error.status).toBe(404)
     expect(isApiError(error) && error.detail).toBe(TARGETS_NOT_DEPLOYED)
     expect(TARGETS_NOT_DEPLOYED).toContain('콘솔 API 배포 전')
+    expect(TARGETS_NOT_DEPLOYED).not.toMatch(/이슈|#\d/)
     expect(isTargetsNotDeployed(error)).toBe(true)
   })
 

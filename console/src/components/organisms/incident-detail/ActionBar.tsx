@@ -1,4 +1,4 @@
-import { useId, useState, type FormEvent } from 'react'
+import { useId, useState, type FormEvent, type ReactNode } from 'react'
 import { useActionMutation, type ActionCreated, type ActionInput, type IncidentDetail } from '@/api/incidents'
 import { describeError } from '@/api/errors'
 import { useMe, usePermission } from '@/auth/useMe'
@@ -11,6 +11,7 @@ import { Select } from '../../atoms/Select'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { Banner } from '../../molecules/Banner'
 import { FormField } from '../../molecules/FormField'
+import { InfoTip } from '../../molecules/InfoTip'
 import { BLOCK_HOURS, DEFAULT_BLOCK_HOURS, hoursLabel, isActiveBlock } from './format'
 import { ackPermission } from './permissions'
 
@@ -35,6 +36,8 @@ type Confirmable = Exclude<IncidentAction, 'acknowledge'>
  * 차단은 요청이다. 데이터 노드 집행기가 AWS 관문에 넘기고 관문이 허니팟 유입을 막으면 '집행 확인' 으로 바뀐다(이슈 #47).
  * 이 출발지가 차단 금지 대역(actor.exempt)이면 차단 단추를 흐리고 까닭을 보인다. 서버도 400 과 같은 까닭으로 거부한다.
  * 결과는 useActionMutation 이 상세 캐시에 바로 반영한다(이력 추가 · 상태 전이).
+ * 확인 양식은 무엇을 하는지 한 문장과 안전 경고(집행 제외 · 대량 해제 알림 · 넣지 않을 곳)만 본문에 두고,
+ * 처리 과정 · 예외 · 사용 지침은 문장 끝 도움말(ⓘ)에 둔다.
  */
 export function ActionBar({ detail, className }: ActionBarProps) {
   const mutation = useActionMutation(detail.incident_key)
@@ -158,11 +161,17 @@ export function ActionBar({ detail, className }: ActionBarProps) {
         >
           {ACTION_LABEL.suppress_rule}
         </Button>}
-        {me.data?.role === 'viewer' && <p className="m-0 text-xs text-ink-muted">조회 전용 계정입니다. 조치는 operator · admin이 수행합니다.</p>}
+        {me.data?.role === 'viewer' && <p className="m-0 text-xs text-ink-muted">조회 전용 계정입니다. 조치 · 판정은 operator · admin 이 합니다.</p>}
       </div>
 
       {exempt && detail.actor_ip && block.allowed && (
-        <p className="m-0 text-xs text-ink-muted">{blockReason}. 인프라 · 사설 · 예약 주소는 막지 않습니다.</p>
+        <p className="m-0 text-xs text-ink-muted">
+          {blockReason}
+          <span className="whitespace-nowrap">
+            .{' '}
+            <InfoTip label="차단 금지 대역">인프라 · 사설 · 예약 주소는 막지 않습니다.</InfoTip>
+          </span>
+        </p>
       )}
 
       {pending && canConfirm && (
@@ -175,19 +184,29 @@ export function ActionBar({ detail, className }: ActionBarProps) {
           <p className="m-0 text-sm">
             {pending === 'block_ip' && !legacyBlock && (
               <>
-                출발지 <span className="font-mono font-medium">{detail.actor_ip}</span> 를 <strong>{hoursLabel(Number(hours))}</strong> 동안 차단합니다. 만료되면 저절로 풀립니다.
-                {activeBlock && ' 이미 살아 있는 차단이 있으면 만료를 앞당기지 않습니다.'}
-                {' 요청은 AWS 관문이 허니팟 유입에 반영하면 차단 목록에 집행 확인으로 바뀝니다.'}
+                출발지 <span className="font-mono font-medium">{detail.actor_ip}</span> 를 <strong>{hoursLabel(Number(hours))}</strong> 동안{' '}
+                {/* ⓘ 가 마지막 낱말과 떨어져 홀로 다음 줄로 가지 않게 묶는다 */}
+                <span className="whitespace-nowrap">
+                  차단합니다.{' '}
+                  <InfoTip label="차단">
+                    {activeBlock && '이미 살아 있는 차단이 있으면 만료를 앞당기지 않습니다. '}
+                    요청은 AWS 관문이 허니팟 유입에 반영하면 차단 목록에 집행 확인으로 바뀝니다.
+                  </InfoTip>
+                </span>
               </>
             )}
             {pending === 'block_ip' && legacyBlock && (
               <>
-                출발지 <span className="font-mono font-medium">{detail.actor_ip}</span> 에는 만료 없는 옛 차단이 살아 있습니다. 다시 걸어도 만료를 앞당기지 않으므로 만료가 그대로 없고 관문 집행에서 빠집니다(집행 제외). 이 요청은 사유 · 요청자만 바꿉니다. 관문에서 막으려면 admin 이 해제한 뒤 다시 차단합니다.
+                출발지 <span className="font-mono font-medium">{detail.actor_ip}</span> 에는 만료 없는 옛 차단이 살아 있어 관문 집행에서 빠집니다(집행 제외). 이 요청은 사유 · 요청자만 바꿉니다. 관문에서 막으려면 admin 이 해제한 뒤 다시{' '}
+                <span className="whitespace-nowrap">
+                  차단합니다.{' '}
+                  <InfoTip label="옛 차단">살아 있는 차단의 만료는 앞당기지 않아, 다시 걸어도 만료가 그대로 없습니다.</InfoTip>
+                </span>
               </>
             )}
             {pending === 'unblock_ip' && !absorbedOnlyRelease && (
               <>
-                출발지 <span className="font-mono font-medium">{detail.actor_ip}</span> 의 차단을 지금 풉니다. 되돌리려면 다시 차단해야 합니다.
+                출발지 <span className="font-mono font-medium">{detail.actor_ip}</span> 의 차단을 지금 풉니다.
               </>
             )}
             {pending === 'unblock_ip' && absorbedOnlyRelease && (
@@ -197,7 +216,7 @@ export function ActionBar({ detail, className }: ActionBarProps) {
             )}
             {pending === 'suppress_rule' && (
               <>
-                규칙 <span className="font-mono font-medium">{detail.rule_id} {detail.rule_version}</span> 을 억제하고 이 사건을 억제 상태로 닫습니다. 기준을 바꾸는 행위라 감사 기록에 남습니다.
+                규칙 <span className="font-mono font-medium">{detail.rule_id} {detail.rule_version}</span> 을 억제하고 이 사건을 억제 상태로 닫습니다.
               </>
             )}
           </p>
@@ -207,6 +226,7 @@ export function ActionBar({ detail, className }: ActionBarProps) {
               onChange={setWithAbsorbed}
               label={absorbedSources > 0 ? `흡수된 출발지 ${absorbedSources}곳도 함께 차단` : '앞으로 흡수되는 출발지도 함께 차단'}
               hint={blockHint(detail.absorbed)}
+              tip="같은 페이로드로 이 사건에 묶인 출발지를 같은 만료로 올리고, 만료 전까지 새로 흡수되는 출발지도 같은 만료로 올립니다(첫 사건의 마지막 판정이 위협일 때만). 다른 사건으로 살아 있는 차단은 그 사건 것으로 두고 만료도 바꾸지 않습니다."
             />
           )}
           {pending === 'unblock_ip' && absorbedRelease && (
@@ -215,9 +235,10 @@ export function ActionBar({ detail, className }: ActionBarProps) {
               disabled={absorbedOnlyRelease}
               onChange={setWithAbsorbed}
               label={`흡수 차단 ${absorbedBlocked}곳도 함께 해제${follow ? ' · 후속 차단 중지' : ''}`}
-              hint={
+              hint={absorbedBlocked >= 3 ? '3곳 이상을 한꺼번에 풀면 차단 대량 해제(R201) 알림이 뜹니다.' : undefined}
+              tip={
                 absorbedBlocked >= 3
-                  ? '3곳 이상을 한꺼번에 풀면 차단 대량 해제(R201) 알림이 뜹니다. 의도된 감사입니다. 흡수 판단 전체가 틀렸을 때만 쓰고, 평소에는 만료로 풀리게 둡니다.'
+                  ? 'R201 알림은 의도된 감사입니다. 흡수 판단 전체가 틀렸을 때만 쓰고, 평소에는 만료로 풀리게 둡니다.'
                   : '흡수 판단 전체가 틀렸을 때만 씁니다. 평소에는 만료로 풀리게 둡니다.'
               }
             />
@@ -236,7 +257,7 @@ export function ActionBar({ detail, className }: ActionBarProps) {
                 )}
               </FormField>
             )}
-            <FormField label="메모" hint="선택. 이력에 남습니다" className={pending !== 'block_ip' ? 'sm:col-span-2' : undefined}>
+            <FormField label="메모 (선택)" className={pending !== 'block_ip' ? 'sm:col-span-2' : undefined}>
               {(f) => <Input {...f} value={note} maxLength={1000} onChange={(e) => setNote(e.target.value)} placeholder="예: 세션 3개에서 명령 실행 확인" />}
             </FormField>
           </div>
@@ -271,35 +292,59 @@ interface AbsorbedCheckProps {
   disabled?: boolean
   onChange: (checked: boolean) => void
   label: string
-  hint: string
+  /** 늘 보이는 안내(넣지 않을 곳 · 대량 해제 알림). 없으면 줄을 두지 않는다 */
+  hint?: string
+  /** 동작 규칙 · 사용 지침. 선택 옆 도움말(ⓘ)로 펼친다 */
+  tip: ReactNode
 }
 
-/** 흡수 출발지를 함께 다루는 선택. 기본은 꺼져 있어 이 출발지만 다룬다 */
-function AbsorbedCheck({ checked, disabled, onChange, label, hint }: AbsorbedCheckProps) {
+/** 흡수 출발지를 함께 다루는 선택. 기본은 꺼져 있어 이 출발지만 다룬다. ⓘ 는 label 밖에 둔다(선택 이름에 섞이지 않게) */
+function AbsorbedCheck({ checked, disabled, onChange, label, hint, tip }: AbsorbedCheckProps) {
   const hintId = useId()
+  const tipId = useId()
   return (
-    <div className="flex flex-col gap-1">
-      <label className="flex items-center gap-2 text-sm font-medium">
-        <input type="checkbox" checked={checked} disabled={disabled} aria-describedby={hintId} onChange={(e) => onChange(e.target.checked)} />
-        {label}
-      </label>
-      <p id={hintId} className="m-0 text-xs text-ink-muted">
-        {hint}
-      </p>
-    </div>
+    <InfoTip
+      label={label}
+      id={tipId}
+      render={({ button, panel }) => (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1.5">
+            <label className="flex items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={disabled}
+                aria-describedby={[hint ? hintId : null, tipId].filter(Boolean).join(' ')}
+                onChange={(e) => onChange(e.target.checked)}
+              />
+              {label}
+            </label>
+            {button}
+          </div>
+          {panel}
+          {hint && (
+            <p id={hintId} className="m-0 text-xs text-ink-muted">
+              {hint}
+            </p>
+          )}
+        </div>
+      )}
+    >
+      {tip}
+    </InfoTip>
   )
 }
 
-/** 함께 차단 확인의 안내. 넣지 않을 곳(사람이 푼 곳 · 차단 금지 대역)을 미리 밝힌다 */
-function blockHint(absorbed: IncidentDetail['absorbed']): string {
-  const parts = ['같은 페이로드로 이 사건에 묶인 출발지를 같은 만료로 올리고, 만료 전까지 새로 흡수되는 출발지도 같은 만료로 올립니다(첫 사건의 마지막 판정이 위협일 때만). 다른 사건으로 살아 있는 차단은 그 사건 것으로 두고 만료도 바꾸지 않습니다.']
+/** 함께 차단 확인의 늘 보이는 안내: 넣지 않을 곳(사람이 푼 곳 · 차단 금지 대역). 없으면 undefined */
+function blockHint(absorbed: IncidentDetail['absorbed']): string | undefined {
+  const parts: string[] = []
   const skipped = absorbed?.skipped_total ?? 0
   if (skipped > 0) {
     const list = (absorbed?.skipped ?? []).join(', ')
     parts.push(`사람이 푼 ${skipped}곳(${list}${skipped > (absorbed?.skipped?.length ?? 0) ? ' …' : ''})은 다시 걸지 않습니다.`)
   }
   if (absorbed?.unblockable) parts.push(`차단 금지 대역(사설 · 예약 · 인프라 주소) ${absorbed.unblockable}곳은 넣지 않습니다.`)
-  return parts.join(' ')
+  return parts.length ? parts.join(' ') : undefined
 }
 
 /** 흡수 출발지를 함께 다룬 결과 한 줄(서버 응답의 absorbed) */

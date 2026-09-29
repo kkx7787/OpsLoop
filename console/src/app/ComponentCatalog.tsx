@@ -15,6 +15,7 @@ import {
   FormField,
   Gated,
   IconDatabaseOff,
+  InfoTip,
   Input,
   Kbd,
   LoadingState,
@@ -151,6 +152,11 @@ export function ComponentCatalog() {
           <CtiBadge badge={{ cves: 3, kev: 0, applicability: 'not_affected', stale: false }} />
           <CtiBadge badge={{ cves: 1, kev: 1, applicability: 'unknown', stale: true }} />
           <CtiBadge badge={{ cves: 0, kev: 0, applicability: 'unknown', stale: false }} />
+        </Row>
+        {/* 도움말(ⓘ): 누르면 바로 아래에 펼친다 · '기준 보기' 는 인쇄에 펼쳐 찍힌다 */}
+        <Row>
+          <span className="text-sm">정탐률 <InfoTip label="정탐률">최근 30일 판정 가운데 위협으로 판정한 비율</InfoTip></span>
+          <div><InfoTip variant="text" label="판정 품질" print="expand" panelAs="div">제안이 없던 판정은 뒤집힘으로 세지 않는다</InfoTip></div>
         </Row>
       </Section>
 

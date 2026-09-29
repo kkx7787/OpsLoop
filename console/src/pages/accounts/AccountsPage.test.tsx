@@ -123,6 +123,10 @@ describe('계정', () => {
     expect(within(cli).getByText('python3 auth.py passwd <아이디> --by <내 이름>')).toBeInTheDocument()
     expect(within(cli).getByText('python3 auth.py disable <아이디> --by <내 이름>')).toBeInTheDocument()
     expect(cli.textContent).not.toMatch(/postgresql:\/\/|POSTGRES_PASSWORD/)
+    // 설계 근거 · 예외는 카드 머리 ⓘ 로 접는다(닫혀 있어도 단추가 설명으로 읽는다)
+    expect(within(cli).getByRole('button', { name: '명령줄에서 하는 일 설명' })).toHaveAccessibleDescription(/스스로 관리자가 될 수 없게.*마지막 활성 관리자는 낮추거나 비활성할 수 없습니다/)
+    expect(screen.getByRole('button', { name: '콘솔 계정 설명' })).toHaveAccessibleDescription(/변경 시각은 역할 · 활성 · 비밀번호가 마지막으로 바뀐 때이며.*삭제는 판정 · 조치 · 로그인 기록이 없는 계정만/)
+    expect(screen.getByRole('link', { name: '감사 기록' })).toHaveAttribute('href', '/audit')
   })
 
   it('서버가 잠금을 주지 않아도 관리자 계정에는 버튼을 두지 않는다', async () => {
@@ -140,13 +144,17 @@ describe('계정', () => {
     const form = screen.getByRole('form', { name: 'han 조회자로 낮추기 확인' })
     expect(within(han).getByRole('button', { name: 'han 조회자로 낮추기' })).toHaveAttribute('aria-expanded', 'true')
     expect(form).toHaveTextContent('han 의 역할을 조회자로 낮춥니다')
-    expect(form).toHaveTextContent('열린 세션은 끊겨 다시 로그인해야 합니다(실시간 연결은 30초 안에 끊깁니다)')
-    expect(form).toHaveTextContent('감사 기록에 남습니다')
+    expect(form).toHaveTextContent('그 계정의 열린 세션은 끊겨 다시 로그인해야 합니다. 변경은 감사 기록에 남습니다.')
+    // 실시간 연결이 끊기는 시간은 양식의 ⓘ 로 접는다
+    expect(within(form).getByRole('button', { name: '세션 끊김 설명' })).toHaveAccessibleDescription('실시간 연결은 30초 안에 끊깁니다.')
     expect(calls(fetch, 'POST', '/api/accounts/role')).toHaveLength(0)
     const before = calls(fetch, 'GET', '/api/accounts').length
     fireEvent.click(within(form).getByRole('button', { name: '조회자로 낮추기 확정' }))
     await waitFor(() => expect(bodies(fetch, '/api/accounts/role')).toEqual([{ username: 'han', role: 'viewer' }]))
-    expect(await screen.findByRole('status')).toHaveTextContent('han 의 역할을 조회자로 바꿨습니다 · 그 계정의 열린 세션은 다시 로그인해야 합니다.')
+    const done = await screen.findByRole('status')
+    expect(done).toHaveTextContent('han 의 역할을 조회자로 바꿨습니다')
+    // 세션 끊김은 확인 양식에서 읽었으므로 결과 띠에서 되풀이하지 않는다
+    expect(done).not.toHaveTextContent('로그인')
     expect(screen.queryByRole('form', { name: 'han 조회자로 낮추기 확인' })).toBeNull()
     expect(calls(fetch, 'GET', '/api/accounts').length).toBeGreaterThan(before)
     expect(invalidate).toHaveBeenCalledWith({ queryKey: accountKeys.all })
@@ -158,7 +166,7 @@ describe('계정', () => {
 
   it.each([
     ['han', '비활성', '/api/accounts/active', { username: 'han', active: false }, 'han 계정을 비활성했습니다', '로그인할 수 없게 되며'],
-    ['kim', '재활성', '/api/accounts/active', { username: 'kim', active: true }, 'kim 계정을 재활성했습니다', '비활성 전에 받은 세션은 되살아나지 않아'],
+    ['kim', '재활성', '/api/accounts/active', { username: 'kim', active: true }, 'kim 계정을 재활성했습니다', '계정을 다시 활성합니다. 새로 로그인해야 쓸 수 있습니다.'],
     ['kim', '관제사로 바꾸기', '/api/accounts/role', { username: 'kim', role: 'operator' }, 'kim 의 역할을 관제사로 바꿨습니다', '판정 · 차단 요청을 할 수 있게 됩니다'],
   ])('%s %s → %s', async (name, label, path, body, done, sentence) => {
     const { fetch } = setup()
@@ -258,7 +266,7 @@ describe('계정', () => {
     const [han] = await rows()
     fireEvent.click(within(han).getByRole('button', { name: 'han 조회자로 낮추기' }))
     fireEvent.click(screen.getByRole('button', { name: '조회자로 낮추기 확정' }))
-    expect(await screen.findByRole('status')).toHaveTextContent('han 은(는) 이미 조회자 상태입니다 · 바뀐 것이 없어 감사 기록도 남지 않았습니다.')
+    expect(await screen.findByRole('status')).toHaveTextContent('han 은(는) 이미 조회자 상태입니다')
   })
 
   it('취소하면 보내지 않고 양식을 닫아 연 버튼으로 초점을 돌린다', async () => {
@@ -410,7 +418,8 @@ describe('계정 추가 · 비밀번호 재설정 · 삭제(#63)', () => {
     const [han] = await rows()
     fireEvent.click(within(han).getByRole('button', { name: 'han 비밀번호 재설정' }))
     const form = screen.getByRole('form', { name: 'han 비밀번호 재설정 확인' })
-    expect(form).toHaveTextContent('han 의 비밀번호를 바꿉니다. 그 계정의 열린 세션은 끊겨 다시 로그인해야 합니다(실시간 연결은 30초 안에 끊깁니다).')
+    expect(form).toHaveTextContent('han 의 비밀번호를 바꿉니다. 그 계정의 열린 세션은 끊겨 다시 로그인해야 합니다. 변경은 감사 기록에 남습니다.')
+    expect(within(form).getByRole('button', { name: '세션 끊김 설명' })).toHaveAccessibleDescription('실시간 연결은 30초 안에 끊깁니다.')
     expect(field(form, '새 비밀번호')).toHaveFocus()
     for (const label of ['새 비밀번호', '새 비밀번호 확인']) {
       expect(field(form, label)).toHaveAttribute('type', 'password')
@@ -422,7 +431,7 @@ describe('계정 추가 · 비밀번호 재설정 · 삭제(#63)', () => {
     type(field(form, '새 비밀번호 확인'), TEST_PASSWORD)
     fireEvent.click(within(form).getByRole('button', { name: '비밀번호 재설정 확정' }))
     await waitFor(() => expect(bodies(fetch, '/api/accounts/password')).toEqual([{ username: 'han', password: TEST_PASSWORD }]))
-    expect(await screen.findByRole('status')).toHaveTextContent('han 의 비밀번호를 바꿨습니다 · 그 계정의 열린 세션은 새 비밀번호로 다시 로그인해야 합니다.')
+    expect(await screen.findByRole('status')).toHaveTextContent('han 의 비밀번호를 바꿨습니다')
     expect(screen.queryByRole('form', { name: 'han 비밀번호 재설정 확인' })).toBeNull()
     await waitFor(() => expect(within(han).getByRole('button', { name: 'han 비밀번호 재설정' })).toHaveFocus())
     // 다시 열면 빈 칸이다
@@ -499,7 +508,9 @@ describe('계정 추가 · 비밀번호 재설정 · 삭제(#63)', () => {
     expect(all.flatMap((r) => within(r).queryAllByRole('button', { name: / 삭제$/ })).map((b) => b.getAttribute('aria-label'))).toEqual(['kim 삭제'])
     fireEvent.click(screen.getByRole('button', { name: 'kim 삭제' }))
     const form = screen.getByRole('form', { name: 'kim 삭제 확인' })
-    expect(form).toHaveTextContent('kim 계정을 지웁니다. 되돌릴 수 없고, 판정 · 조치 · 로그인 기록이 있으면 서버가 거부합니다.')
+    expect(form).toHaveTextContent('kim 계정을 지웁니다. 되돌릴 수 없습니다. 변경은 감사 기록에 남습니다.')
+    // 세션을 끊지 않는 변경에는 세션 끊김 ⓘ 가 없다
+    expect(within(form).queryByRole('button', { name: '세션 끊김 설명' })).toBeNull()
     const confirm = within(form).getByRole('button', { name: '삭제 확정' })
     expect(confirm.className).toMatch(/danger/)
     fireEvent.click(confirm)

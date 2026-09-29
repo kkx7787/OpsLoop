@@ -12,6 +12,7 @@ import { Card } from '@/components/atoms/Card'
 import { Time } from '@/components/atoms/Time'
 import { UntrustedText } from '@/components/atoms/UntrustedText'
 import { Banner } from '@/components/molecules/Banner'
+import { InfoTip } from '@/components/molecules/InfoTip'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { ReportSectionCard } from '@/components/organisms/reports/ReportSections'
 import { ApiErrorState } from '@/components/organisms/states/ApiErrorState'
@@ -62,7 +63,7 @@ export function ReportsPage() {
   }
 
   let body: ReactNode
-  if (!request) body = <Card className="print:hidden"><p className="m-0 text-sm text-ink-muted">기간과 실을 구역을 고른 뒤 '보고서 만들기' 를 누르세요. 만든 보고서는 '인쇄 · PDF 저장' 으로 내보냅니다.</p></Card>
+  if (!request) body = <Card className="print:hidden"><p className="m-0 text-sm text-ink-muted">기간과 실을 구역을 고른 뒤 '보고서 만들기' 를 누르세요.</p></Card>
   else if (report.isPending) body = <LoadingState title="보고서를 만드는 중입니다" lines={4} />
   else if (!data) body = <ApiErrorState error={report.error} onRetry={() => void report.refetch()} retrying={report.isFetching} />
   else body = <>
@@ -85,7 +86,7 @@ export function ReportsPage() {
   </div>
 }
 
-/** 조건 양식. 주소가 바뀌면(뒤로 가기 포함) 새로 그려 주소의 조건으로 돌아간다 */
+/** 조건 양식. 주소가 바뀌면(뒤로 가기 포함) 새로 그려 주소의 조건으로 돌아간다. 동작 · 계산 설명은 ⓘ(양식은 종이에 찍히지 않는다) */
 function ReportForm({ initial, visible, admin, busy, onSubmit }: {
   initial: ReportRequest; visible: readonly ReportSection[]; admin: boolean; busy: boolean
   onSubmit: (period: ReportPeriod, sections: readonly ReportSection[]) => void
@@ -97,17 +98,23 @@ function ReportForm({ initial, visible, admin, busy, onSubmit }: {
     if (sections.length) onSubmit(period, visible.filter(name => sections.includes(name)))
   }
   return <Card className="print:hidden"><form aria-label="보고서 조건" onSubmit={submit} className="flex flex-col gap-4">
-    <fieldset className="m-0 border-0 p-0"><legend className="mb-2 p-0 text-sm font-medium">기간 <span className="font-normal text-ink-muted">· 끝 = 출력 시각</span></legend>
-      <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">{REPORT_PERIODS.map(p => <label key={p} className="flex cursor-pointer items-center gap-2"><input type="radio" name="report-period" value={p} checked={period === p} onChange={() => setPeriod(p)} className="size-3.5 accent-primary" />{PERIOD_LABEL[p]}</label>)}</div>
+    <fieldset className="m-0 border-0 p-0"><legend className="mb-2 p-0 text-sm font-medium">기간</legend>
+      <InfoTip label="기간" panelClassName="mt-2" render={({ button, panel }) => <>
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">{REPORT_PERIODS.map(p => <label key={p} className="flex cursor-pointer items-center gap-2"><input type="radio" name="report-period" value={p} checked={period === p} onChange={() => setPeriod(p)} className="size-3.5 accent-primary" />{PERIOD_LABEL[p]}</label>)}{button}</div>
+        {panel}
+      </>}>기간 끝은 보고서를 만든 시각(출력 시각)입니다. 끝 시각은 기간에 들지 않습니다.</InfoTip>
     </fieldset>
     <fieldset className="m-0 border-0 p-0"><legend className="mb-2 p-0 text-sm font-medium">실을 구역</legend>
       <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">{visible.map(name => <label key={name} className="flex cursor-pointer items-center gap-2"><input type="checkbox" checked={sections.includes(name)} onChange={e => setSections(e.target.checked ? [...sections, name] : sections.filter(v => v !== name))} className="size-3.5 accent-primary" />{SECTION_LABEL[name]}</label>)}</div>
-      {!admin && <p className="m-0 mt-2 text-xs text-ink-muted">운영 기록(감사 · 알림 발송)은 관리자만 실을 수 있습니다.</p>}
+      {!admin && <p className="m-0 mt-2 text-xs text-ink-muted">운영 기록은 관리자만 실을 수 있습니다.</p>}
     </fieldset>
-    <div className="flex flex-wrap items-center gap-3">
-      <Button type="submit" variant="primary" loading={busy} disabled={!sections.length} disabledReason="구역을 하나 이상 고르세요">보고서 만들기</Button>
-      <span className="text-xs text-ink-muted">만든 뒤에는 저절로 다시 조회하지 않습니다. 같은 조건으로 다시 누르면 새로 만듭니다.</span>
-    </div>
+    <InfoTip label="보고서 만들기" panelClassName="-mt-2" render={({ button, panel }) => <>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <Button type="submit" variant="primary" loading={busy} disabled={!sections.length} disabledReason="구역을 하나 이상 고르세요">보고서 만들기</Button>
+        {button}
+      </div>
+      {panel}
+    </>}>만든 뒤에는 저절로 다시 조회하지 않습니다. 같은 조건으로 다시 누르면 새로 만듭니다.</InfoTip>
   </form></Card>
 }
 

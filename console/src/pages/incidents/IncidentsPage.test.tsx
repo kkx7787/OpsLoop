@@ -201,6 +201,8 @@ describe('IncidentsPage', () => {
     const { router } = renderRoutes(routes(), '/incidents?status=open&judged=false')
 
     expect(await screen.findByRole('heading', { name: '조건에 맞는 인시던트가 없습니다' })).toBeInTheDocument()
+    // 화면 설계 번호(S-03) 같은 내부 표기는 보이지 않는다
+    expect(screen.queryByText(/S-03/)).toBeNull()
     expect(screen.getByText(/2개 조건 적용 중/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '수집 노드 보기' })).toHaveAttribute('href', '/nodes')
     expect(screen.getByText(/총/)).toHaveTextContent('총 0건')

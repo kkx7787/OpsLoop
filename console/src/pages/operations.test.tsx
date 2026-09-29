@@ -36,8 +36,14 @@ describe('규칙 결과',()=>{
     setup('/rules')
     expect(await screen.findByText('50.0%')).toBeInTheDocument()
     expect(screen.getByText(/사건별 마지막 판정 기준/)).toBeInTheDocument()
+    // 비조치율 산식 · 분모는 캡션 줄 ⓘ 로 접고, 열 머리도 같은 설명을 읽는다
+    const rate = /비조치 = 무시 가능 \+ 오탐 \+ 양성 정탐\. 분모는 미결을 뺀 유효 판정입니다/
+    expect(screen.getByRole('button',{name:'비조치율 설명'})).toHaveAccessibleDescription(rate)
+    expect(screen.getByRole('columnheader',{name:/^비조치율/})).toHaveAccessibleDescription(rate)
     expect(screen.getByText('최근 30회 · 신규 생성 수')).toBeInTheDocument()
-    expect(screen.getByText('서로 다른 두 버전과 동일한 시작·종료 구간을 선택해 주세요.')).toBeInTheDocument()
+    expect(screen.getByText('구간을 조회하고 서로 다른 두 버전을 고르세요.')).toBeInTheDocument()
+    // 규칙 정의의 활성 여부는 배지('정의상 활성')가 말한다. 되풀이하던 문단은 뺐다
+    expect(screen.queryByText(/현재 실행 중인 버전이라는 뜻은 아닙니다/)).toBeNull()
     expect(screen.getByRole('link',{name:'R001 · v2'})).toHaveAttribute('href','/incidents?rule_id=R001')
     // 대시보드에서 옮긴 비조치 · 유효 판정 수(#52). 미결은 분모에서 빠진다
     expect(screen.getByText('비조치 1 / 유효 판정 2')).toBeInTheDocument()
@@ -59,8 +65,15 @@ describe('규칙 결과',()=>{
     setup('/rules')
     const row=(await screen.findByRole('link',{name:'R006 · v3'})).closest('tr')!
     expect(within(row).getByText('순환 규칙')).toBeInTheDocument()
+    // 마우스 올림 말풍선(title) 대신 누르면 펼치는 ⓘ. 터치 · 키보드로도 까닭을 본다
+    const tip=within(row).getByRole('button',{name:'순환 규칙 설명'})
+    expect(tip).toHaveAccessibleDescription(/규칙 조건과 판정 근거가 겹쳐 오탐률을 정확도 지표로 쓰지 않습니다/)
+    expect(within(row).getByText('순환 규칙')).not.toHaveAttribute('title')
+    fireEvent.click(tip)
+    expect(tip).toHaveAttribute('aria-expanded','true')
     const plain=screen.getByRole('link',{name:'R001 · v2'}).closest('tr')!
     expect(within(plain).queryByText('순환 규칙')).toBeNull()
+    expect(within(plain).queryByRole('button',{name:'순환 규칙 설명'})).toBeNull()
   })
   it('KST 구간을 UTC로 전달하고 한쪽만 입력하면 조회하지 않는다',async()=>{
     const {fetch}=setup('/rules')
@@ -71,7 +84,11 @@ describe('규칙 결과',()=>{
     fireEvent.change(screen.getByLabelText('종료 (KST)'),{target:{value:'2026-09-23T09:00'}})
     fireEvent.click(screen.getByRole('button',{name:'구간 조회'}))
     await waitFor(()=>expect(fetch.mock.calls.some(([url])=>String(url).includes('since=2026-09-22T00%3A00%3A00.000Z'))).toBe(true))
-    expect(await screen.findByText(/원문을 다시 실행하지 않습니다/)).toBeInTheDocument()
+    // 구간이 정해지면 비교 표가 나오고, 해석 주의는 카드 머리 '저장된 사건 기준' 옆 ⓘ 에 있다
+    expect(await screen.findByRole('columnheader',{name:'증감'})).toBeInTheDocument()
+    expect(screen.queryByText('구간을 조회하고 서로 다른 두 버전을 고르세요.')).toBeNull()
+    expect(screen.getByRole('button',{name:'저장된 사건 기준 설명'})).toHaveAccessibleDescription(/원문을 다시 실행하지 않고 저장된 결과만 비교합니다/)
+    expect(screen.getByRole('button',{name:'조회 구간 설명'})).toHaveAccessibleDescription(/구간을 고르면 사건 시작 시각으로 셉니다/)
   })
   it('판정 통보는 확장 규칙 조회도 다시 불러온다',async()=>{
     const {fetch,client}=setup('/rules');await screen.findByText('50.0%')
@@ -87,6 +104,10 @@ describe('노드와 토큰',()=>{
     const region=screen.getByRole('region',{name:'수집 노드 표'})
     expect(within(region).getByText('침묵')).toBeInTheDocument()
     expect(within(region).getByText('대기')).toBeInTheDocument()
+    // 상태 기준 · 해석은 '상태' 열 머리 ⓘ (이 표는 좁은 화면에서도 머리를 보인다). 조회 시각은 카드 머리
+    expect(within(region).getByRole('columnheader',{name:/^상태/})).toHaveAccessibleDescription(/침묵: 등록 또는 마지막 수신 뒤 10분 넘게 없음.*서버 장애를 확정하지 않습니다/)
+    expect(screen.getByRole('heading',{name:'등록 노드 3개'}).parentElement).toHaveTextContent(/KST 기준/)
+    expect(screen.queryByText(/기준 · 30초마다 재조회/)).toBeNull()
     fireEvent.change(screen.getByRole('textbox'),{target:{value:'quiet'}})
     expect(screen.queryByText('web-01')).toBeNull()
     expect(screen.getByText('quiet-01')).toBeInTheDocument()
@@ -107,6 +128,11 @@ describe('노드와 토큰',()=>{
     fireEvent.click(await screen.findByRole('button',{name:'등록 토큰 다시 발급'}))
     const input=await screen.findByLabelText('등록 토큰')
     expect(input).toHaveAttribute('type','password')
+    // 보안 경고는 본문에 그대로 둔다
+    expect(screen.getByText('이 화면을 나가면 토큰 원문을 다시 조회할 수 없습니다.').closest('[data-infotip]')).toBeNull()
+    expect(screen.getByText(/다시 발급하면 쓰지 않은 이전 토큰은 취소됩니다/).closest('[data-infotip]')).toBeNull()
+    expect(screen.getByRole('button',{name:'재발급 설명'})).toHaveAccessibleDescription('이미 등록된 에이전트의 키는 그대로 둡니다.')
+    expect(screen.getByRole('button',{name:'등록 · 첫 수신 확인 설명'})).toHaveAccessibleDescription(/재등록한 노드는 과거 수신 기록이 남아 있을 수 있습니다/)
     fireEvent.click(screen.getByRole('button',{name:'토큰 보기'}))
     expect(input).toHaveValue(TOKEN)
     expect(JSON.stringify(client.getQueryCache().getAll().map(q=>q.state.data))).not.toContain(TOKEN)
@@ -117,6 +143,13 @@ describe('노드와 토큰',()=>{
     expect(await screen.findByText('등록 토큰을 취소했습니다.')).toBeInTheDocument()
     expect(screen.queryByLabelText('등록 토큰')).toBeNull()
     expect(fetch.mock.calls.some(([u])=>String(u)==='/api/nodes/web-01/enrollments/1/cancel')).toBe(true)
+  })
+  it('새 노드 화면은 재발급 설명 없이 토큰 수명만 적는다',async()=>{
+    setup('/nodes/new')
+    expect(await screen.findByRole('button',{name:'등록 토큰 발급'})).toBeInTheDocument()
+    expect(screen.getByText('등록 토큰은 1시간 · 1회용입니다.')).toBeInTheDocument()
+    expect(screen.queryByText(/이전 토큰은 취소됩니다/)).toBeNull()
+    expect(screen.queryByRole('button',{name:'재발급 설명'})).toBeNull()
   })
   it('페이지를 떠났다 돌아와도 토큰 원문을 복구하지 않는다',async()=>{
     const {router}=setup('/nodes/new?node=web-01')
@@ -164,7 +197,7 @@ describe('감사 기록',()=>{
     renderRoutes([{ path: '/audit', element: <AuditPage /> }], '/audit', noRetryClient())
     const table = await screen.findByRole('region', { name: '감사 기록 표' })
     expect(within(table).getAllByRole('row').slice(1).map(r => within(r).getAllByRole('cell')[2].textContent)).toEqual(['계정 추가', '계정 역할 변경', '계정 비활성', '계정 재활성', '계정 비밀번호 변경', '계정 삭제'])
-    expect(screen.getByText(/계정의 추가·역할·활성·비밀번호 변경 이력/)).toBeInTheDocument()
+    expect(screen.getByText(/차단 · 노드 토큰 · 알림 채널 · 계정의 변경 이력입니다/)).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('대상'), { target: { value: 'kim' } })
     fireEvent.click(screen.getByRole('button', { name: '조회' }))
     await waitFor(() => expect(fetch.mock.calls.some(([raw]) => new URL(String(raw), 'http://localhost').searchParams.get('target') === 'kim')).toBe(true))

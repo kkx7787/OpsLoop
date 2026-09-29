@@ -11,6 +11,7 @@ import { Input } from '@/components/atoms/Input'
 import { Time } from '@/components/atoms/Time'
 import { UntrustedText } from '@/components/atoms/UntrustedText'
 import { Banner } from '@/components/molecules/Banner'
+import { InfoTip } from '@/components/molecules/InfoTip'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { MonitoringStatus } from '@/components/organisms/MonitoringStatus'
 import { IncidentPagination } from '@/components/organisms/incidents/IncidentPagination'
@@ -54,13 +55,14 @@ export function BlocklistPage() {
   const shown = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
 
   return <div className="worklist-page flex min-w-0 flex-col gap-3">
-    <PageHeader title="차단 목록" description="차단 요청과 집행 지점(AWS 관문 · 내부 방화벽)의 결과를 함께 확인합니다." aside={<span className="text-xs text-ink-muted">해제 권한: admin</span>} />
+    <PageHeader title="차단 목록" description="차단 요청과 집행 지점의 결과를 함께 확인합니다." aside={<span className="text-xs text-ink-muted">해제 권한: admin</span>} />
     <MonitoringStatus updatedAt={query.dataUpdatedAt} error={query.data ? query.error : null} onRetry={() => void query.refetch()} busy={query.isFetching} />
     {notice && <Banner tone={notice.tone} title={notice.message} action={<Button size="sm" onClick={() => setNotice(null)}>닫기</Button>} />}
     {query.isPending ? <LoadingState title="차단 목록을 불러오는 중입니다" /> : !query.data ? <ApiErrorState error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} /> : <>
       <Card padding="none" className="grid grid-cols-3 divide-x divide-line xl:grid-cols-6">
         <Count label="활성 요청" value={groups.active.length} /><Count label="AWS 집행 확인" value={live.enforced} /><Count label="AWS 집행 대기" value={live.pending} warning /><Count label="관문 불일치" value={live.mismatch} warning /><Count label="집행 제외" value={live.excluded} /><Count label="24시간 내 만료" value={groups.active.filter(entry => entry.expires_at && Date.parse(entry.expires_at) <= now + 86_400_000).length} />
       </Card>
+      <p className="m-0 text-xs text-ink-muted">집행 수는 AWS 관문 기준이며 내부 방화벽 결과는 행마다 봅니다. <InfoTip label="집행 범위">활성은 만료 · 해제 전 요청입니다. AWS 관문은 허니팟 유입(22 · 23 · 8080)을, 내부 방화벽은 web-01 접근을 막습니다.</InfoTip></p>
       <Card padding="none" className="worklist-panel flex min-w-0 flex-col overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2">
           <div role="group" aria-label="차단 상태" className="flex gap-5">{TABS.map(([value, label]) => <button key={value} type="button" aria-pressed={tab === value} className={cn('min-h-9 cursor-pointer border-b-2 px-0.5 text-sm', tab === value ? 'border-primary font-semibold text-primary' : 'border-transparent text-ink-muted')} onClick={() => { const next = new URLSearchParams(params); next.set('tab', value); setParams(next); setPage(1) }}>{label} <span className="tabular-nums">{groups[value].length}</span></button>)}</div>
@@ -71,7 +73,6 @@ export function BlocklistPage() {
         {!shown.length && <p className="m-0 px-4 py-10 text-center text-ink-muted">{search ? '검색 조건에 맞는 차단이 없습니다.' : `${TABS.find(([value]) => value === tab)?.[1]} 항목이 없습니다.`}</p>}</div>
         <IncidentPagination label="차단 목록 페이지" page={currentPage} pageSize={pageSize} total={filtered.length} busy={query.isPending} onPage={setPage} onPageSize={size => { setPageSize(size); setPage(1) }} />
       </Card>
-      <p className="m-0 text-xs text-ink-muted">활성은 만료·해제 전 요청입니다. 집행 범위는 AWS 관문이 허니팟 유입(22 · 23 · 8080), 내부 방화벽이 web-01 접근입니다. 상단 집행 수는 AWS 관문 기준이며, 내부 방화벽 결과는 각 행에서 확인합니다.</p>
     </>}
   </div>
 }
@@ -134,8 +135,8 @@ function BlockRow({ entry, now, allowed, stale, onNotice, refresh }: { entry: Bl
     <div className="col-span-2 justify-self-end lg:col-span-1 lg:justify-self-start">{allowed && live ? <Button size="sm" disabled={!canRelease || mutation.isPending} disabledReason={stale ? '최신 목록을 확인한 뒤 해제해 주세요' : '연결된 근거 사건이 없어 해제할 수 없습니다'} onClick={() => setConfirming(!confirming)} aria-expanded={confirming}>해제</Button> : <span className="text-xs text-ink-muted">{live ? 'admin만' : '—'}</span>}</div>
     {confirming && live && <form className="col-span-2 flex flex-col gap-2 rounded-panel border border-line bg-canvas p-3 lg:col-span-6" aria-label={`${entry.actor_ip} 해제 확인`} onSubmit={release}>
       <p className="m-0 text-sm">{absorbed
-        ? `${entry.actor_ip} 의 흡수 차단 한 곳만 해제할까요? 첫 사건 출발지의 차단과 다른 흡수 차단은 그대로 두고, 이 출발지는 이후 후속 차단에서도 빠집니다. 요청은 첫 사건의 조치·감사 이력에 남습니다.`
-        : `${entry.actor_ip} 차단을 해제할까요? 요청은 조치·감사 이력에 남습니다.`}</p>
+        ? `${entry.actor_ip} 의 흡수 차단 한 곳만 해제할까요? 이 출발지는 이후 후속 차단에서도 빠집니다.`
+        : `${entry.actor_ip} 차단을 해제할까요?`}</p>
       <Input aria-label="해제 사유" maxLength={1000} placeholder="해제 사유 (선택)" value={note} onChange={event => setNote(event.target.value)} />
       <div className="flex gap-2"><Button type="submit" variant="primary" loading={mutation.isPending} disabled={!canRelease}>해제 확정</Button><Button onClick={() => setConfirming(false)} disabled={mutation.isPending}>취소</Button></div>
     </form>}

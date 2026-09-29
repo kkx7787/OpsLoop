@@ -16,6 +16,7 @@ export interface RawLogSectionProps {
  * ④ 원문 로그: 판단 근거가 된 원본 줄. 요약이 아니라 원문이다. 비밀번호 원문은 서버가 주지 않는다.
  * 필드마다 UntrustedText 로 격리한다. 값 안의 줄바꿈은 ↵ 로 보여 한 줄(li)이 가짜 로그 줄을 만들지 못한다.
  * 긴 줄이 접혀 넘어간 부분은 들여 써서(내어쓰기), 줄 머리(시각)에서 시작하는 것만 진짜 원문 줄로 읽히게 한다
+ * 접혀 있으면 본문 없이 머리(n줄 · 펼치기)만 보인다
  */
 export function RawLogSection({ raw, defaultOpen = false, className }: RawLogSectionProps) {
   const [open, setOpen] = useState(defaultOpen)
@@ -35,14 +36,12 @@ export function RawLogSection({ raw, defaultOpen = false, className }: RawLogSec
           )}
         </>
       }
-      padding={open && shown.length > 0 ? 'none' : 'md'}
+      padding={raw.length > 0 ? 'none' : 'md'}
       className={className}
     >
       {raw.length === 0 ? (
         <p className="m-0 text-xs text-ink-muted">이 구간에 이 출발지의 원문 줄이 없습니다.</p>
-      ) : !open ? (
-        <p className="m-0 text-xs text-ink-muted">접혀 있습니다. 펼치면 시각 · 센서 · 이벤트 · 필드가 한 줄씩 보입니다.</p>
-      ) : (
+      ) : !open ? null : (
         <>
           <ol id={listId} className="m-0 max-h-[480px] list-none overflow-auto bg-canvas p-3 font-mono text-2xs leading-4 text-ink" aria-label="원문 로그 줄">
             {shown.map((row, i) => (

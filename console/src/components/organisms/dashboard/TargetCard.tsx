@@ -11,6 +11,7 @@ import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { Time } from '../../atoms/Time'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { CtiBadge } from '../../molecules/CtiBadge'
+import { InfoTip } from '../../molecules/InfoTip'
 import { incidentHref } from '../incidents/model'
 import { assetHref, COLLECTION_LABEL, COLLECTION_TONE, collectionState, LABEL_MAX, latestLog, responseParts, systemText, vulnText } from './target-format'
 
@@ -30,7 +31,9 @@ export interface TargetCardProps {
 
 /**
  * 관제 대상 카드 한 장(#52): 머리(이름 · 역할 · 수집 상태) 아래에 수집 · 보안 · 최근 사건 · 시스템 · 대응 · 취약점을 한 줄 요약으로 쌓는다.
- * 수집 상태는 서버가 생존 신호로 정한다. 신호가 없는 대상은 마지막 로그 시각을 보이되 '생존 상태 미확인' 을 붙이고 색을 입히지 않는다.
+ * 수집 상태는 서버가 생존 신호로 정한다. 신호가 없는 대상은 마지막 로그 시각을 보이되 색을 입히지 않는다('생존 상태 미확인' 은 배지가 말한다).
+ * 판정 근거(수신 없음 기준 · 정상일 때 서버의 까닭 · 정상 보고 시각)는 구역 제목 옆 도움말(ⓘ)에 두고,
+ * 수신 없음 · 미확인의 까닭과 보고 문제 · 집행기 멈춤은 본문에 둔다.
  * 콘솔 카드의 현재 콘솔은 실시간 연결(hello)의 이름이다. REST 요청은 콘솔 두 대에 번갈아 가므로 응답의 콘솔 이름은 쓰지 않는다.
  * 등록 노드 카드(#64)는 web-01 카드와 같은 틀이다. 이름(hostname)은 노드가 적어 낸 값이라 비신뢰 문자열로 그리고,
  * 이름이 node_id 와 다르면 역할 옆에 node_id 를 붙여 수집 노드 화면과 맞춰 보게 한다.
@@ -73,7 +76,7 @@ export function TargetCard({ target, asOf, cti, variant = 'card', className }: T
         )}
       </div>
       <dl className="m-0 flex min-w-0 flex-col divide-y divide-line">
-        <Row title="수집">
+        <Row title="수집" tip={collectionTip(target.collection)}>
           <CollectionFacts target={target} collection={target.collection} asOf={asOf} />
         </Row>
         <Row title="보안">
@@ -85,8 +88,8 @@ export function TargetCard({ target, asOf, cti, variant = 'card', className }: T
         <Row title="시스템">
           <SystemFacts system={target.system} asOf={asOf} />
         </Row>
-        <Row title="대응">
-          <ResponseFacts response={target.response} asOf={asOf} />
+        <Row title="대응" tip={responseTip(target.response, asOf)}>
+          <ResponseFacts response={target.response} />
         </Row>
         <Row title="취약점">
           <VulnFacts vulns={target.vulns} asOf={asOf} />
@@ -96,14 +99,70 @@ export function TargetCard({ target, asOf, cti, variant = 'card', className }: T
   )
 }
 
-/** 구역 한 칸: 왼쪽 작은 제목 · 오른쪽 한 줄 요약 */
-function Row({ title, children }: { title: string; children: ReactNode }) {
-  return (
+interface RowTip {
+  /** 단추 낭독 이름('{label} 설명') */
+  label: string
+  content: ReactNode
+}
+
+/** 구역 한 칸: 왼쪽 작은 제목 · 오른쪽 한 줄 요약. 도움말(ⓘ)은 제목 옆에 두고 설명은 요약 아래에 펼친다 */
+function Row({ title, tip, children }: { title: string; tip?: RowTip | null; children: ReactNode }) {
+  const cells = (button?: ReactNode, panel?: ReactNode) => (
     <div className="grid min-w-0 grid-cols-[3.25rem_minmax(0,1fr)] gap-x-2 px-3 py-1.5">
-      <dt className="pt-px text-2xs font-medium text-ink-muted">{title}</dt>
-      <dd className="m-0 flex min-w-0 flex-col gap-0.5 text-xs">{children}</dd>
+      <dt className="pt-px text-2xs font-medium text-ink-muted">
+        {title}
+        {button && <> {button}</>}
+      </dt>
+      <dd className="m-0 flex min-w-0 flex-col gap-0.5 text-xs">
+        {children}
+        {panel}
+      </dd>
     </div>
   )
+  if (!tip) return cells()
+  return <InfoTip label={tip.label} render={({ button, panel }) => cells(button, panel)}>{tip.content}</InfoTip>
+}
+
+/** 서버가 정상 · 요청 없음으로 판정했다(까닭이 배지 · 신호 줄과 같은 말이라 도움말로 보낸다) */
+function settled(collection: TargetCollection): boolean {
+  const state = collectionState(collection.state)
+  return state === 'ok' || state === 'quiet'
+}
+
+/** 수집 구역 도움말: 수신 없음 기준과, 정상 · 요청 없음일 때의 서버 까닭. 둘 다 없으면 단추를 두지 않는다 */
+function collectionTip(collection: TargetCollection): RowTip | null {
+  const signal = collection.signal
+  const reason = settled(collection) && collection.reason ? collection.reason : null
+  if (!signal && !reason) return null
+  return {
+    label: '수집 상태',
+    content: (
+      <>
+        {signal && <span className="block">{Math.round(signal.stale_after_seconds / 60)}분 넘게 새 신호가 없으면 수신 없음입니다.</span>}
+        {signal && reason && ' '}
+        {/* 까닭에는 기록한 쪽이 남긴 읽기 문제가 섞일 수 있어 비신뢰 문자열로 그린다 */}
+        {reason && (
+          <span className="block" data-collection-reason="">
+            <UntrustedText value={reason} max={200} />
+          </span>
+        )}
+      </>
+    ),
+  }
+}
+
+/** 대응 구역 도움말: 집행 지점이 문제없이 보고한 시각. 보고 문제 · 기록 없음은 본문에 남는다 */
+function responseTip(response: TargetResponse, asOf: number): RowTip | null {
+  const report = response.report
+  if (!response.point || !report || report.problem || !report.seen_at) return null
+  return {
+    label: '집행 지점 보고',
+    content: (
+      <span data-report="">
+        {response.point_label ?? response.point} 보고 <Time value={report.seen_at} format="relative" now={asOf} />
+      </span>
+    ),
+  }
 }
 
 /** 상대 시각(기준 as_of) · 없으면 대신 보일 글 */
@@ -117,12 +176,12 @@ function CollectionFacts({ target, collection, asOf }: { target: Target; collect
   const signal = collection.signal
   const last = latestLog(collection.logs)
   const logs = signal?.seen_at || collection.logs.length > 1 ? collection.logs : []
-  // 서버가 수신 없음으로 판정했으면 그 판정을 따른다. 미확인은 신호로 가를 수 없는 경우다
-  const unknown = collectionState(collection.state) !== 'no_signal'
+  // 신호 없이 마지막 로그만 보일 때 정상으로 읽히지 않게 미확인을 붙인다. 배지가 이미 미확인 · 수신 없음이면 되풀이하지 않는다
+  const mark = settled(collection)
   return (
     <>
       {signal?.seen_at ? (
-        <span data-signal="" title={`${Math.round(signal.stale_after_seconds / 60)}분 넘게 새 신호가 없으면 수신 없음`}>
+        <span data-signal="">
           {signal.label} <Time value={signal.seen_at} format="relative" now={asOf} className="font-medium" />
           <span className="text-ink-muted"> · <Time value={signal.seen_at} format="short" /></span>
         </span>
@@ -131,14 +190,14 @@ function CollectionFacts({ target, collection, asOf }: { target: Target; collect
           {signal && (
             <span data-signal={collection.logs.length ? undefined : 'none'}>
               {signal.label} 기록 없음
-              {!collection.logs.length && unknown && <span className="text-ink-muted"> · 생존 상태 미확인</span>}
+              {!collection.logs.length && mark && <span className="text-ink-muted"> · 생존 상태 미확인</span>}
             </span>
           )}
-          {/* 생존 신호가 없으면 마지막 로그 시각을 보이되 정상으로 읽히지 않게 미확인을 붙인다. 로그가 없는 대상(데이터 노드)은 줄을 두지 않는다 */}
+          {/* 생존 신호가 없으면 마지막 로그 시각을 보인다. 로그가 없는 대상(데이터 노드)은 줄을 두지 않는다 */}
           {(!signal || collection.logs.length > 0) && (
             <span data-signal="none" title={last ? `${revealHidden(last.label)} 기준` : undefined}>
               {last?.last_at ? <>마지막 로그 <Time value={last.last_at} format="relative" now={asOf} /></> : '로그 기록 없음'}
-              {unknown && <span className="text-ink-muted"> · 생존 상태 미확인</span>}
+              {mark && <span className="text-ink-muted"> · 생존 상태 미확인</span>}
             </span>
           )}
         </>
@@ -171,8 +230,8 @@ function CollectionFacts({ target, collection, asOf }: { target: Target; collect
           ))}
         </span>
       )}
-      {/* 까닭에는 기록한 쪽이 남긴 읽기 문제가 섞일 수 있어 비신뢰 문자열로 그린다 */}
-      {collection.reason && (
+      {/* 까닭에는 기록한 쪽이 남긴 읽기 문제가 섞일 수 있어 비신뢰 문자열로 그린다. 정상 · 요청 없음의 까닭은 도움말에 있다 */}
+      {collection.reason && !settled(collection) && (
         <span className="text-2xs text-ink-muted">
           <UntrustedText value={collection.reason} max={200} />
         </span>
@@ -269,8 +328,8 @@ function SystemFacts({ system, asOf }: { system: TargetSystem; asOf: number }) {
   )
 }
 
-/** 대응 구역. 숫자 0 을 그리지 않는다(responseParts). 차단 목록으로 잇는다 */
-function ResponseFacts({ response, asOf }: { response: TargetResponse; asOf: number }) {
+/** 대응 구역. 숫자 0 을 그리지 않는다(responseParts). 차단 목록으로 잇는다. 정상 보고 시각은 도움말(responseTip)에 있다 */
+function ResponseFacts({ response }: { response: TargetResponse }) {
   const parts = responseParts(response)
   const report = response.report
   const pointLabel = response.point_label ?? response.point ?? ''
@@ -293,15 +352,11 @@ function ResponseFacts({ response, asOf }: { response: TargetResponse; asOf: num
           →
         </span>
       </Link>
-      {report && response.point && (
+      {report && response.point && (report.problem || !report.seen_at) && (
         <span className="text-2xs text-ink-muted" data-report="">
           {report.problem ? (
             <>
               {pointLabel} 보고: <UntrustedText value={report.problem} max={120} />
-            </>
-          ) : report.seen_at ? (
-            <>
-              {pointLabel} 보고 <Time value={report.seen_at} format="relative" now={asOf} />
             </>
           ) : (
             `${pointLabel} 보고 기록 없음`

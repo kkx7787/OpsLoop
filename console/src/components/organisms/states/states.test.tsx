@@ -27,6 +27,7 @@ describe('상태 화면', () => {
     render(<ForbiddenState requiredRoles="admin" currentRole="operator" onBack={onBack} />)
     expect(screen.getByRole('heading', { name: '이 동작은 admin 만 할 수 있습니다' })).toBeInTheDocument()
     expect(screen.getByText(/현재 역할 operator/)).toBeInTheDocument()
+    expect(screen.getByText('403')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '돌아가기' }))
     expect(onBack).toHaveBeenCalledTimes(1)
   })
@@ -35,6 +36,10 @@ describe('상태 화면', () => {
     window.history.replaceState(null, '', '/audit')
     render(<SessionExpiredState />)
     expect(screen.getByRole('link', { name: '로그인' })).toHaveAttribute('href', '/login?next=%2Faudit')
+    expect(screen.getByText('세션 만료')).toBeInTheDocument()
+    expect(screen.getByText(/세션이 끝났습니다/)).toBeInTheDocument()
+    // 끝나는 기준은 ⓘ 로 접는다(닫혀 있어도 단추가 설명으로 읽는다)
+    expect(screen.getByRole('button', { name: '세션 만료 설명' })).toHaveAccessibleDescription(/로그인 후 12시간이 지나거나 계정의 역할 · 활성 · 비밀번호가 바뀌면/)
     window.history.replaceState(null, '', '/')
   })
 

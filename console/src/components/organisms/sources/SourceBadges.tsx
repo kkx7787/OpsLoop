@@ -3,19 +3,26 @@ import type { VerdictCounts } from '@/api/sources'
 import { Badge } from '../../atoms/Badge'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { VerdictBadge } from '../../atoms/VerdictBadge'
+import { InfoTip } from '../../molecules/InfoTip'
 import { targetLabel } from './model'
 
 /**
- * 주소 옆 표지: 시험 대역 · 차단 금지 대역. 금지 대역 표를 읽을 수 없으면(exempt null) '금지 대역 확인 불가'.
- * 금지 대역은 사설 · 예약 · 인프라 주소라 차단하지 않는다(관리망 주소가 R101 등으로 목록에 들어온다)
+ * 주소 옆 표지: 시험 대역 · 차단 금지 대역. 금지 대역 표를 읽을 수 없으면(exempt null) '금지 대역 확인 불가'(경고라 본문에 두고, 까닭만 ⓘ).
+ * 금지 대역은 사설 · 예약 · 인프라 주소라 차단하지 않는다(관리망 주소가 R101 등으로 목록에 들어온다).
+ * 목록 행 안의 ⓘ 는 누름을 막아(InfoTip preventDefault) 행 이동으로 번지지 않는다
  */
 export function SourceMarks({ testSource, exempt }: { testSource: boolean | undefined; exempt: boolean | null | undefined }) {
   if (!testSource && exempt === false) return null
   return (
-    <span className="inline-flex flex-wrap gap-1">
+    <span className="inline-flex flex-wrap items-center gap-1">
       {testSource && <Badge tone="violet">시험 대역</Badge>}
       {exempt === true && <Badge>차단 금지 대역</Badge>}
-      {exempt === null && <Badge tone="warning" title="차단 금지 대역 표를 읽을 수 없습니다">금지 대역 확인 불가</Badge>}
+      {exempt === null && (
+        <>
+          <Badge tone="warning">금지 대역 확인 불가</Badge>
+          <InfoTip label="금지 대역 확인 불가" panelClassName="basis-full">차단 금지 대역 표를 읽을 수 없어 이 주소가 금지 대역인지 모릅니다.</InfoTip>
+        </>
+      )}
     </span>
   )
 }

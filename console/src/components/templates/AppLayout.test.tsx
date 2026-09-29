@@ -117,7 +117,9 @@ describe('AppLayout', () => {
     renderRoutes(layoutRoutes(), '/')
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('콘솔 서버가 로그인 정보를 주지 않습니다')
-    expect(alert).toHaveTextContent('/api/me')
+    expect(alert).toHaveTextContent('콘솔 서버 버전이 화면과 맞지 않습니다. 배포를 확인해 주세요.')
+    // 소스 파일 이름 · '공통' 분류는 보이지 않는다
+    expect(alert).not.toHaveTextContent(/app\/web\.py|공통/)
     expect(within(alert).getByRole('link', { name: '로그인' })).toHaveAttribute('href', expect.stringMatching(/^\/login/))
     expect(within(alert).getByRole('button', { name: '다시 시도' })).toBeInTheDocument()
   })

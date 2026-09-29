@@ -189,7 +189,7 @@ export interface TargetsResult {
 export const TARGETS_PATH = '/api/dashboard/targets'
 
 /** 상태판 API 가 없는 서버(404)의 안내. 화면은 이 글로 '배포 전'을 알린다 */
-export const TARGETS_NOT_DEPLOYED = '관제 대상 상태판 API 가 없습니다. 콘솔 API 배포 전일 수 있습니다(이슈 #52).'
+export const TARGETS_NOT_DEPLOYED = '관제 대상 상태판 API 가 없습니다. 콘솔 API 배포 전일 수 있습니다.'
 
 export function isTargetsNotDeployed(error: unknown): boolean {
   return isApiError(error) && error.status === 404

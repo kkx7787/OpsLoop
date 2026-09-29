@@ -27,11 +27,9 @@ export function BehaviorSection({ rows, actorIp, className }: BehaviorSectionPro
       className={className}
     >
       {actorIp === null ? (
-        <p className="m-0 text-xs text-ink-muted">출발지가 없는 사건이라 같은 출발지의 행위를 모을 수 없습니다.</p>
+        <p className="m-0 text-xs text-ink-muted">출발지가 없어 같은 출발지의 행위를 모을 수 없습니다.</p>
       ) : shown.length === 0 ? (
-        <p className="m-0 text-xs text-ink-muted">
-          이 구간에서 추가 행위 기록을 찾지 못했습니다. 수집 누락이나 관측 범위 밖의 행위가 없는지는 별도로 확인하세요.
-        </p>
+        <p className="m-0 text-xs text-ink-muted">이 구간에 추가 행위 기록이 없습니다. 수집 누락이 아닌지 확인하세요.</p>
       ) : (
         <>
           <div className={`${TABLE.wrap} max-h-[420px]`}>

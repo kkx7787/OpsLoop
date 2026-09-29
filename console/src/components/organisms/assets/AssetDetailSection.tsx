@@ -107,7 +107,7 @@ function AssetFacts({ asset }: { asset: AssetDetail }) {
     </div>
 
     <div className="flex flex-col gap-1.5">
-      <span className="text-xs text-ink-muted">도는 컨테이너 {asset.images.length}개 · 이미지 안의 패키지는 조사하지 않아 취약점 대조에 들어가지 않습니다(미확인)</span>
+      <span className="text-xs text-ink-muted">도는 컨테이너 {asset.images.length}개 · 이미지 안 패키지는 대조 안 함(미확인)</span>
       {asset.images.length === 0 ? <span className="text-xs text-ink-muted">없음</span> : (
         <ul className="m-0 flex list-none flex-col gap-1 p-0 text-xs" aria-label="컨테이너 이미지">
           {asset.images.map((img, i) => <li key={`${i}-${img.container}-${img.image}`} className="break-all">
@@ -118,7 +118,7 @@ function AssetFacts({ asset }: { asset: AssetDetail }) {
     </div>
 
     {asset.probe_errors.length > 0 && <div className="flex flex-col gap-1.5">
-      <span className="text-xs text-ink-muted">조사 중 못 읽은 항목 · 이 항목은 미확인으로 둡니다</span>
+      <span className="text-xs text-ink-muted">못 읽은 항목 (미확인)</span>
       <ul className="m-0 flex list-none flex-col gap-1 p-0 font-mono text-xs text-warning">
         {asset.probe_errors.map((e, i) => <li key={i} className="break-all"><UntrustedText value={e} /></li>)}
       </ul>
@@ -180,7 +180,7 @@ function VulnTable({ page, checked, filter, offset, fetching, onFilter, onOffset
       </table>
     </div>}
     {pageEmpty && <div className="flex flex-wrap items-center gap-2 px-4 pb-4 text-sm text-ink-muted">
-      <p className="m-0">이 쪽에는 행이 없습니다. 전체 {total.toLocaleString()}건 · 그사이 목록이 바뀌었을 수 있습니다.</p>
+      <p className="m-0">이 쪽에는 행이 없습니다 · 전체 {total.toLocaleString()}건</p>
       {shown !== lastOffset && <Button size="sm" disabled={fetching} onClick={() => onOffset(lastOffset)}>마지막 쪽 보기</Button>}
     </div>}
     {rows.length === 0 && total === 0 && <p className="m-0 px-4 pb-4 text-sm text-ink-muted">{checked ? EMPTY[filter] : '배포판 취약점 대조 전입니다. 비해당으로 읽지 않습니다.'}</p>}

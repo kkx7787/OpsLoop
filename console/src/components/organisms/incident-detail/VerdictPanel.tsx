@@ -3,7 +3,7 @@ import { useVerdictMutation, type IncidentDetail, type VerdictInput } from '@/ap
 import { describeError } from '@/api/errors'
 import { usePermission } from '@/auth/useMe'
 import { cn } from '@/lib/cn'
-import { VERDICT_DESCRIPTION, VERDICT_LABEL, VERDICTS, type Verdict } from '@/lib/domain'
+import { VERDICT_DESCRIPTION, VERDICT_EXAMPLE, VERDICT_LABEL, VERDICTS, type Verdict } from '@/lib/domain'
 import { formatDuration } from '@/lib/time'
 import { useNow } from '@/lib/useNow'
 import { Button } from '../../atoms/Button'
@@ -13,6 +13,7 @@ import { UntrustedText } from '../../atoms/UntrustedText'
 import { VerdictBadge } from '../../atoms/VerdictBadge'
 import { Banner } from '../../molecules/Banner'
 import { FormField } from '../../molecules/FormField'
+import { InfoTip } from '../../molecules/InfoTip'
 import { Gated } from '../../molecules/Gated'
 import { decisionSeconds } from './format'
 
@@ -34,9 +35,11 @@ export interface VerdictPanelProps {
 
 /**
  * 판정 패널(S-05). 판정값 다섯 개(판정 기준 2장) · 사유 · 관측값(자동) · 소요 시간.
- * 사유는 강제하지 않는다. 비어 있으면 경고만 하고 기록한다 — 억지로 채운 사유는 없는 사유보다 나쁘다.
+ * 판정값은 뜻 한 줄만 늘 보이고, 예 · 지표에서 세는 법은 선택지 옆 도움말(ⓘ)에 둔다.
+ * 사유는 강제하지 않는다. 판정값을 고른 뒤 비어 있으면 경고만 하고 기록한다 — 억지로 채운 사유는 없는 사유보다 나쁘다.
  * 이미 판정된 사건은 재판정이다. 목록에는 마지막 판단이 보인다.
- * 권한(incident.verdict)이 없으면 패널을 숨기지 않고 흐리게 둔다.
+ * 권한(incident.verdict)이 없으면 패널을 숨기지 않고 흐리게 둔다. 까닭 글은 조치 바의 조회 전용 안내 한 곳에 두고,
+ * 여기서는 마우스 올림 · 낭독(Gated 기본)으로만 알린다.
  */
 export function VerdictPanel({ detail, openedAt, className }: VerdictPanelProps) {
   const gate = usePermission('incident.verdict')
@@ -76,7 +79,7 @@ export function VerdictPanel({ detail, openedAt, className }: VerdictPanelProps)
   }
 
   return (
-    <Gated {...gate} showReason className={cn('flex w-full flex-col', className)}>
+    <Gated {...gate} className={cn('flex w-full flex-col', className)}>
       <form onSubmit={submit} aria-labelledby={headingId} className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 id={headingId} className="m-0 text-base font-semibold tracking-heading">
@@ -102,7 +105,7 @@ export function VerdictPanel({ detail, openedAt, className }: VerdictPanelProps)
           </ul>
           {proposal?.verdict && verdict && (
             <p role="status" className="mb-0 mt-2 font-medium">
-              {proposal.verdict === verdict ? '제안 수락' : '제안 뒤집힘'} · 최종 선택은 담당자가 기록합니다.
+              {proposal.verdict === verdict ? '제안 수락' : '제안 뒤집힘'}
             </p>
           )}
         </div>
@@ -112,27 +115,41 @@ export function VerdictPanel({ detail, openedAt, className }: VerdictPanelProps)
           {VERDICTS.map((value) => {
             const selected = verdict === value
             return (
-              <label
+              // ⓘ 는 label 밖에 둔다(라디오 이름에 섞이지 않고, 누르면 판정값이 골라지지 않게)
+              <InfoTip
                 key={value}
-                className={cn(
-                  'grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] gap-x-2.5 gap-y-0.5 rounded-control border border-line px-3 py-2 transition-colors',
-                  selected ? 'border-primary bg-primary-soft' : 'hover:bg-canvas',
+                label={VERDICT_LABEL[value]}
+                className="absolute top-2.5 right-3"
+                panelClassName="mx-3 mt-0 mb-2"
+                render={({ button, panel }) => (
+                  <div
+                    className={cn(
+                      'relative rounded-control border border-line transition-colors',
+                      selected ? 'border-primary bg-primary-soft' : 'hover:bg-canvas',
+                    )}
+                  >
+                    <label className="grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] gap-x-2.5 gap-y-0.5 py-2 pr-9 pl-3">
+                      <input
+                        type="radio"
+                        name="verdict"
+                        value={value}
+                        checked={selected}
+                        onChange={() => {
+                          setVerdict(value)
+                          setMissing(false)
+                        }}
+                        className="mt-1 size-3.5 accent-primary"
+                      />
+                      <span className={cn('text-sm font-medium', selected && VERDICT_TEXT[value])}>{VERDICT_LABEL[value]}</span>
+                      <span className="col-start-2 text-xs text-ink-muted">{VERDICT_DESCRIPTION[value]}</span>
+                    </label>
+                    {button}
+                    {panel}
+                  </div>
                 )}
               >
-                <input
-                  type="radio"
-                  name="verdict"
-                  value={value}
-                  checked={selected}
-                  onChange={() => {
-                    setVerdict(value)
-                    setMissing(false)
-                  }}
-                  className="mt-1 size-3.5 accent-primary"
-                />
-                <span className={cn('text-sm font-medium', selected && VERDICT_TEXT[value])}>{VERDICT_LABEL[value]}</span>
-                <span className="col-start-2 text-xs text-ink-muted">{VERDICT_DESCRIPTION[value]}</span>
-              </label>
+                {VERDICT_EXAMPLE[value]}
+              </InfoTip>
             )
           })}
         </fieldset>
@@ -142,7 +159,7 @@ export function VerdictPanel({ detail, openedAt, className }: VerdictPanelProps)
           </p>
         )}
 
-        <FormField label="사유" hint="왜 그렇게 판단했는지. 근거가 된 행위(② 의 행)를 적으면 나중에 다시 볼 수 있습니다">
+        <FormField label="사유">
           {(f) => (
             <Textarea
               {...f}
@@ -154,9 +171,9 @@ export function VerdictPanel({ detail, openedAt, className }: VerdictPanelProps)
             />
           )}
         </FormField>
-        {emptyReason && (
+        {verdict && emptyReason && (
           <p className="m-0 text-xs text-warning" role="status">
-            사유가 비어 있습니다. 기록은 되지만 왜 그렇게 판단했는지 남지 않습니다.
+            사유 없이 기록됩니다.
           </p>
         )}
 

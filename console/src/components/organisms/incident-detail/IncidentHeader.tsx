@@ -5,6 +5,7 @@ import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { Time } from '../../atoms/Time'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { VerdictBadge } from '../../atoms/VerdictBadge'
+import { InfoTip } from '../../molecules/InfoTip'
 import { PageHeader } from '../../molecules/PageHeader'
 import { ElapsedClock } from './ElapsedClock'
 import { StatusBadge } from './StatusBadge'
@@ -14,10 +15,10 @@ export interface IncidentHeaderProps {
   className?: string
 }
 
-/** 발생원에 따른 기존 목표 시간의 설명. */
+/** 발생원의 뜻과 판정 목표를 가르는 까닭. 발생원 옆 도움말(ⓘ)로 펼친다 */
 const SENSOR_NOTE: Partial<Record<Sensor, string>> = {
-  허니팟: '노출을 의도한 자산에서 발생한 건 · 침해사고 신고 대상이 아니다',
-  '관제 자기 탐지': '관제 시스템 자신(콘솔 감사 기록 · 수집 경로)에서 발생한 건 · 침해사고 신고 기한이 걸려 critical 목표를 따른다',
+  허니팟: '노출을 의도한 자산에서 발생한 건입니다. 침해사고 신고 대상이 아닙니다.',
+  '관제 자기 탐지': '관제 시스템 자신(콘솔 감사 기록 · 수집 경로)에서 발생한 건입니다. 침해사고 신고 기한이 걸려 critical 목표를 따릅니다.',
 }
 
 /** 규칙·심각도를 먼저 읽고, 대상·발생 구간을 별도 줄에서 확인한다. 긴 사건 키는 펼쳐 본다. */
@@ -57,7 +58,21 @@ export function IncidentHeader({ detail, className }: IncidentHeaderProps) {
           </div>
           <div className="flex flex-col gap-1">
             <dt className="text-ink-muted">수집 정보</dt>
-            <dd className="m-0"><span title={SENSOR_NOTE[sensor]} data-sensor={sensor}>발생원 {sensor}</span> · {detail.rule_version}</dd>
+            {SENSOR_NOTE[sensor] ? (
+              <InfoTip
+                label={`발생원 ${sensor}`}
+                render={({ button, panel }) => (
+                  <dd className="m-0">
+                    <span data-sensor={sensor}>발생원 {sensor}</span> {button} · {detail.rule_version}
+                    {panel}
+                  </dd>
+                )}
+              >
+                {SENSOR_NOTE[sensor]}
+              </InfoTip>
+            ) : (
+              <dd className="m-0"><span data-sensor={sensor}>발생원 {sensor}</span> · {detail.rule_version}</dd>
+            )}
           </div>
         </dl>
         <details className="text-xs text-ink-muted">

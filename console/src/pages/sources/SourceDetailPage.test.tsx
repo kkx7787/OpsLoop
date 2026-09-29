@@ -50,7 +50,10 @@ describe('출발지 상세', () => {
     expect(within(summary).getByText('4건 · 미판정 1')).toBeInTheDocument()
     expect(within(summary).getByText('R001 · R003')).toBeInTheDocument()
     expect(within(summary).getByText('AWS 센서')).toBeInTheDocument()
-    expect(within(summary).getByText(/흡수로 지워진 사건 기록 3건/)).toBeInTheDocument()
+    // 흡수 기록은 요약 항목 하나, 계산 기준(사건 수에 들지 않음)은 이름 옆 ⓘ
+    expect(fact(summary, '흡수 기록')).toHaveTextContent('3건')
+    expect(within(summary).getByRole('button', { name: '흡수 기록 설명' })).toHaveAccessibleDescription(/흡수된 사건은 사건 수에 들지 않습니다/)
+    expect(fact(summary, '판정 분포')).toHaveAccessibleDescription('사건마다 마지막 판정입니다.')
     // 사건 시각(첫 · 마지막 사건)과 마지막 관측(이벤트)을 따로 적는다. 마지막 관측이 사건보다 늦을 수 있다
     expect(fact(summary, '첫 사건')).toHaveTextContent('2026-09-27 10:00:00')
     expect(fact(summary, '마지막 사건')).toHaveTextContent('2026-09-29 11:40:00')
@@ -72,7 +75,12 @@ describe('출발지 상세', () => {
     const prints = screen.getByRole('region', { name: '도구 지문' })
     expect(within(prints).getByText(HASSH)).toBeInTheDocument()
     expect(within(prints).getByText('SSH-2.0-Go')).toBeInTheDocument()
-    expect(within(prints).getByText(/같은 지문이 같은 행위자라는 뜻은 아닙니다/)).toBeInTheDocument()
+    // 같은 지문 주의는 구역 머리 ⓘ(구역 이름에는 섞이지 않는다)
+    const sameTool = within(prints).getByRole('button', { name: '도구 지문 설명' })
+    expect(sameTool).toHaveAccessibleDescription(/^같은 지문이 같은 행위자라는 뜻은 아닙니다/)
+    fireEvent.click(sameTool)
+    expect(sameTool).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('region', { name: '도구 지문' })).toBe(prints)
     expect(within(prints).getAllByRole('link', { name: '같은 지문 출발지' })[0]).toHaveAttribute('href', `/sources?include_test=true&fp_kind=hassh&fp=${HASSH}`)
 
     // 차단 상태: 사건 상세와 같은 나눔 · 지점별 결과(EnforcePointList)
@@ -103,13 +111,14 @@ describe('출발지 상세', () => {
 
   it('사건이 없는 출발지(이벤트만)는 요약 대신 안내를 보이고 사건 목록 링크를 두지 않는다', async () => {
     setup(`/sources/detail?ip=${IP}`, () => json(sourceDetail({ summary: null, incidents: [], incidents_total: 0, actions: [], block: null, absorbed: null, last_seen: '2026-09-28T07:20:34Z', exempt_flag: false })))
-    expect(await screen.findByText('사건이 없는 출발지입니다. 수집 이벤트만 있습니다.')).toBeInTheDocument()
+    expect(await screen.findByText('사건 없음 · 수집 이벤트만 있습니다')).toBeInTheDocument()
     expect(fact(screen.getByRole('region', { name: '요약' }), '마지막 관측')).toHaveTextContent('2026-09-28 16:20:34')
     // 금지 대역이 아니면(exempt_flag false) 표지를 두지 않는다
     expect(screen.queryByText('금지 대역 확인 불가')).toBeNull()
-    expect(screen.queryByText(/금지 대역인지 확인할 수 없습니다/)).toBeNull()
-    expect(screen.getByText(/같은 페이로드 흡수 기록을 읽을 수 없습니다/)).toBeInTheDocument()
-    expect(screen.getByText('이 출발지의 사건이 없습니다.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '금지 대역 확인 불가 설명' })).toBeNull()
+    // 흡수 기록을 읽을 수 없으면 0 이 아니라 확인 불가
+    expect(fact(screen.getByRole('region', { name: '요약' }), '흡수 기록')).toHaveTextContent(/^확인 불가$/)
+    expect(screen.getByText('사건이 없습니다.')).toBeInTheDocument()
     expect(screen.getByText('차단한 적 없음')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '사건 목록에서 보기' })).toBeNull()
   })
@@ -118,10 +127,12 @@ describe('출발지 상세', () => {
     const noIncidents = { summary: null, incidents: [], incidents_total: 0, actions: [], block: null }
     setup(`/sources/detail?ip=10.0.21.10`, () => json(sourceDetail({ ...noIncidents, ip: '10.0.21.10', exempt: null, exempt_flag: null })))
     await screen.findByRole('heading', { level: 1, name: '10.0.21.10' })
-    // block_exempt 를 읽을 수 없으면 '아님'으로 뭉개지 않는다
-    expect(screen.getByText('금지 대역 확인 불가')).toBeInTheDocument()
+    // block_exempt 를 읽을 수 없으면 '아님'으로 뭉개지 않는다. 경고는 머리 표지로 본문에, 까닭은 표지 옆 ⓘ
+    expect(screen.getByText('금지 대역 확인 불가').closest('[data-infotip]')).toBeNull()
+    expect(screen.getByRole('button', { name: '금지 대역 확인 불가 설명' })).toHaveAccessibleDescription(/차단 금지 대역 표를 읽을 수 없어 이 주소가 금지 대역인지 모릅니다/)
+    // 차단 상태 구역은 머리 표지를 되풀이하지 않는다
     const block = screen.getByRole('region', { name: '차단 상태' })
-    expect(within(block).getByText('차단 금지 대역 표를 읽을 수 없어 금지 대역인지 확인할 수 없습니다')).toBeInTheDocument()
+    expect(within(block).queryByText(/금지 대역/)).toBeNull()
     expect(block.querySelector('[data-block-exempt]')).toBeNull()
   })
 
@@ -131,7 +142,7 @@ describe('출발지 상세', () => {
     await screen.findByRole('heading', { level: 1, name: '10.0.21.10' })
     expect(screen.queryByText('금지 대역 확인 불가')).toBeNull()
     const block = screen.getByRole('region', { name: '차단 상태' })
-    expect(block.querySelector('[data-block-exempt]')).toHaveTextContent('차단 금지 대역 10.0.0.0/8(사설 대역) · 이 출발지는 차단하지 않습니다')
+    expect(block.querySelector('[data-block-exempt]')).toHaveTextContent(/^차단 금지 대역 10\.0\.0\.0\/8\(사설 대역\)$/)
     expect(screen.getAllByText('차단 금지 대역').length).toBeGreaterThan(0)
   })
 
@@ -145,9 +156,13 @@ describe('출발지 상세', () => {
     await screen.findByRole('heading', { level: 1, name: '10.0.3.7' })
     expect(screen.getAllByText('차단 금지 대역').length).toBeGreaterThan(0)
     const block = screen.getByRole('region', { name: '차단 상태' })
-    expect(block.querySelector('[data-block-exempt]')).toHaveTextContent('차단 금지 대역 10.0.0.0/8(사설 대역) · 이 출발지는 차단하지 않습니다')
+    expect(block.querySelector('[data-block-exempt]')).toHaveTextContent(/^차단 금지 대역 10\.0\.0\.0\/8\(사설 대역\)$/)
     expect(block.querySelector('[data-enforce-point="gateway"]')).toHaveAttribute('data-point-state', 'stale')
     expect(screen.getByText('집행기 확인이 멈췄습니다')).toBeInTheDocument()
+    // 멈춤 띠 · 금지 대역 줄은 경고라 도움말 안이 아니라 본문에 있다
+    expect(screen.getByText(/AWS 관문 · 10분 넘게 확인 없음$/).closest('[data-infotip]')).toBeNull()
+    expect(block.querySelector('[data-block-exempt]')!.closest('[data-infotip]')).toBeNull()
+    expect(within(block.querySelector<HTMLElement>('[data-enforce-point="gateway"]')!).getByRole('button', { name: /설명$/ })).toHaveAccessibleDescription(/마지막 적용 확인을 믿지 않습니다/)
   })
 
   it('기록이 없는 주소(404)는 없음 화면과 목록으로 돌아가는 링크를 보인다', async () => {

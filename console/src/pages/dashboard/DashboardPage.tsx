@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { useSummary, type BlockCounts } from '@/api/monitoring'
 import { useTargets } from '@/api/targets'
@@ -5,6 +6,7 @@ import { Card, CardHeader } from '@/components/atoms/Card'
 import { SeverityBadge } from '@/components/atoms/SeverityBadge'
 import { Time } from '@/components/atoms/Time'
 import { UntrustedText } from '@/components/atoms/UntrustedText'
+import { InfoTip } from '@/components/molecules/InfoTip'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { MonitoringStatus } from '@/components/organisms/MonitoringStatus'
 import { TargetBoard } from '@/components/organisms/dashboard/TargetBoard'
@@ -21,6 +23,7 @@ const AGE_LABELS = ['1시간 미만', '1–4시간', '4–12시간', '12–24시
  * 관제 현황(S-02). 위에서부터 관제 대상 상태판(#52) → 미판정 수치 네 칸 → 먼저 확인할 사건 · 경과 분포.
  * 상태판과 요약은 따로 조회한다. 한쪽이 실패해도 다른 쪽은 그대로 보인다.
  * 규칙별 비조치율은 규칙 화면(규칙별 판정 집계)에 있어 여기서는 그리로 잇기만 한다.
+ * 계산 기준(판정 목표 · 첫 사건 · 카드 합)은 값 옆 도움말(ⓘ)에 둔다. 갱신 방식은 공통 띠(MonitoringStatus)가 알린다.
  */
 export function DashboardPage() {
   const query = useSummary()
@@ -35,9 +38,11 @@ export function DashboardPage() {
         <dl className="m-0 grid grid-cols-2 divide-x divide-line md:grid-cols-4">
           <Metric label="가장 오래된 미판정" value={data.pending.total ? formatDuration(data.pending.oldest_seconds * 1000) : '없음'} warn={data.pending.overdue > 0} />
           <Metric label="미판정" value={`${data.pending.total.toLocaleString()}건`} href="/incidents?judged=false" />
-          <Metric label="판정 목표 초과" value={`${data.pending.overdue.toLocaleString()}건`} note={`목표 임박 ${data.pending.warning.toLocaleString()}건`} warn={data.pending.overdue > 0} />
+          <Metric label="판정 목표 초과" value={`${data.pending.overdue.toLocaleString()}건`} note={`목표 임박 ${data.pending.warning.toLocaleString()}건`} warn={data.pending.overdue > 0}
+            tip={{ at: 'label', label: '판정 목표', content: VERDICT_TARGET_NOTE }} />
           <Metric label={`활성 차단 요청 ${data.blocked_ips.toLocaleString()}건`} value={blocksValue(data.blocks, data.blocked_ips)} href="/blocklist" compact={!!data.blocks}
             note={[mismatchNote(data.blocks), absorbedNote(data.absorbed_unblocked)].filter(Boolean).join(' · ') || undefined}
+            tip={absorbedNote(data.absorbed_unblocked) ? { at: 'note', label: '첫 사건', content: FIRST_INCIDENT_NOTE } : undefined}
             warn={!!data.absorbed_unblocked?.sources || !!data.blocks?.mismatch} />
         </dl>
       </Card>
@@ -76,13 +81,10 @@ export function DashboardPage() {
               </li>
             })}
           </ul>
-          <div className="border-t border-line px-4 py-3 text-xs leading-5 text-ink-muted">판정 목표: critical 1시간 · high 4시간 · medium 12시간 · low 24시간. 관제 자기 탐지(R2xx) 사건은 1시간입니다.</div>
         </Card>
       </div>
-      <p className="m-0 text-xs text-ink-muted">최근 원문 수집 <Time value={data.latest_event} format="short" zone /> · 웹소켓 통보 시 갱신 · 30초마다 재조회 · 규칙별 비조치율은 <Link to="/rules">규칙 화면에서 보기</Link></p>
+      <p className="m-0 text-xs text-ink-muted">최근 원문 수집 <Time value={data.latest_event} format="short" zone /> · 규칙별 비조치율은 <Link to="/rules">규칙 화면에서 보기</Link></p>
     </>}
-    {/* 각주. 카드 바로 아래에 두면 매번 읽히는 문장이 되어 페이지 끝으로 옮겼다 */}
-    {targets.data && <p className="m-0 text-xs text-ink-muted" data-targets-note="">※ 카드 수치는 대상별입니다. 한 사건이 여러 대상에 걸칠 수 있어 합이 전체와 다릅니다.</p>}
   </div>
 }
 
@@ -106,6 +108,24 @@ function absorbedNote(unblocked: { sources: number; incidents: number } | undefi
   return `판정 뒤 흡수 미차단 ${unblocked.sources.toLocaleString()}곳 · 첫 사건 ${unblocked.incidents.toLocaleString()}건`
 }
 
-function Metric({ label, value, note, href, warn, compact }: { label: string; value: string; note?: string; href?: string; warn?: boolean; compact?: boolean }) {
-  return <div className="min-w-0 px-4 py-4"><dt className="text-xs text-ink-muted">{label}</dt><dd className={cn('m-0 mt-1.5 break-words font-semibold tracking-heading tabular-nums', compact ? 'text-base' : 'text-xl', warn && 'text-warning')}>{href ? <Link to={href}>{value}</Link> : value}</dd>{note && <div className="mt-1 text-xs text-ink-muted">{note}</div>}</div>
+/** 판정 목표 초과 · 목표 임박의 기준(lib/domain verdictTargetSeconds · WARN_RATIO, app/dashboard.py PENDING 과 같다) */
+const VERDICT_TARGET_NOTE = '판정 목표는 critical 1시간 · high 4시간 · medium 12시간 · low 24시간이고, 관제 자기 탐지(R2xx) 사건은 1시간입니다. 목표 임박은 목표 시간의 2/3 를 넘긴 사건입니다.'
+const FIRST_INCIDENT_NOTE = '첫 사건은 같은 페이로드의 출발지를 흡수한 사건입니다. 그 사건 상세의 함께 차단으로 막습니다.'
+
+/** 값 옆 도움말(ⓘ). label: 수치 이름 옆 · note: 아래 한 줄 끝. 설명은 칸 맨 아래에 펼친다 */
+interface MetricTip {
+  at: 'label' | 'note'
+  label: string
+  content: ReactNode
+}
+
+function Metric({ label, value, note, href, warn, compact, tip }: { label: string; value: string; note?: string; href?: string; warn?: boolean; compact?: boolean; tip?: MetricTip }) {
+  const cell = (button?: ReactNode, panel?: ReactNode) => <div className="min-w-0 px-4 py-4">
+    <dt className="text-xs text-ink-muted">{label}{tip?.at === 'label' && <> {button}</>}</dt>
+    <dd className={cn('m-0 mt-1.5 break-words font-semibold tracking-heading tabular-nums', compact ? 'text-base' : 'text-xl', warn && 'text-warning')}>{href ? <Link to={href}>{value}</Link> : value}</dd>
+    {note && <div className="mt-1 text-xs text-ink-muted">{note}{tip?.at === 'note' && <> {button}</>}</div>}
+    {panel}
+  </div>
+  if (!tip) return cell()
+  return <InfoTip label={tip.label} render={({ button, panel }) => cell(button, panel)}>{tip.content}</InfoTip>
 }

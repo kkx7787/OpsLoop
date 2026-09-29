@@ -14,7 +14,7 @@ export interface HistoryListProps {
   className?: string
 }
 
-/** 판정 · 조치 이력. 시각(KST) · 종류 · 값 · 행위자 · 사유/메모. 최근 것이 위 */
+/** 판정 · 조치 이력. 시각(KST) · 종류 · 값 · 행위자 · 사유/메모. 최근 것이 위. 제안이 없던 판정은 제안 칸을 비운다 */
 export function HistoryList({ detail, className }: HistoryListProps) {
   const entries = mergeHistory(detail)
   if (entries.length === 0) {
@@ -54,12 +54,14 @@ export function HistoryList({ detail, className }: HistoryListProps) {
                 {entry.observed_value !== null && entry.observed_value !== undefined && (
                   <span className="ml-1.5 text-ink-muted tabular-nums">관측 {entry.observed_value}</span>
                 )}
-                {entry.verdict && (
+                {entry.verdict && (entry.proposed || entry.decision_seconds != null) && (
                   <div className="mt-1 text-xs text-ink-muted">
-                    {entry.proposed
-                      ? `제안 ${VERDICT_LABEL[entry.proposed]} · ${entry.proposed === entry.verdict ? '제안 수락' : '제안 뒤집힘'}`
-                      : '제안 기록 없음'}
-                    {entry.decision_seconds != null && ` · 소요 ${formatDuration(entry.decision_seconds * 1000)}`}
+                    {[
+                      entry.proposed && `제안 ${VERDICT_LABEL[entry.proposed]} · ${entry.proposed === entry.verdict ? '제안 수락' : '제안 뒤집힘'}`,
+                      entry.decision_seconds != null && `소요 ${formatDuration(entry.decision_seconds * 1000)}`,
+                    ]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </div>
                 )}
               </td>

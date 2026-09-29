@@ -207,6 +207,8 @@ export interface PointRow {
   key: 'gateway' | 'fw'
   label: string
   point: EnforcePoint
+  /** 까닭이 화면이 덧붙인 판단 근거라 도움말(ⓘ)로 접는다(집행기 멈춤 · sources/model checkedPoints). 지점이 보낸 까닭은 본문에 둔다 */
+  noteTip?: true
 }
 
 const POINT_STATES = Object.keys(POINT_STATE_LABEL) as EnforcePointState[]

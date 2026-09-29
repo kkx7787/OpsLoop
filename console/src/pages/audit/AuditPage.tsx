@@ -55,7 +55,7 @@ export function AuditPage() {
   }
   function reset() { setActor(''); setTarget(''); setStart(''); setEnd(''); setFilters(defaults); setError('') }
   return <div className="worklist-page flex min-w-0 flex-col gap-3">
-    <PageHeader title="감사 기록" description="차단 변경, 노드 등록 토큰의 발급·취소, 알림 채널의 추가·변경, 계정의 추가·역할·활성·비밀번호 변경 이력을 확인합니다." />
+    <PageHeader title="감사 기록" description="차단 · 노드 토큰 · 알림 채널 · 계정의 변경 이력입니다. 판정 · 조치는 사건 상세에 남습니다." />
     {me.isPending ? <LoadingState /> : !allowed ? <ForbiddenState title="이 화면은 admin 만 볼 수 있습니다" requiredRoles="admin" currentRole={me.data?.role} /> : <>
       <MonitoringStatus updatedAt={query.dataUpdatedAt} error={query.data ? query.error : null} onRetry={() => void query.refetch()} busy={query.isFetching} />
       <Card><form className="grid gap-3 sm:flex sm:flex-wrap sm:items-end" onSubmit={submit}>
@@ -78,7 +78,6 @@ export function AuditPage() {
         </table></div>
         {!query.data.rows.length && <p className="p-4 text-sm text-ink-muted">조건에 맞는 감사 기록이 없습니다.</p>}
         <IncidentPagination label="감사 기록 페이지" page={Math.floor(filters.offset/filters.limit)+1} pageSize={filters.limit} total={query.data.total} busy={query.isFetching} onPage={page => setFilters({ ...filters, offset: (page-1)*filters.limit })} onPageSize={limit => setFilters({ ...filters, limit, offset: 0 })} />
-        <p className="m-0 border-t border-line px-4 py-3 text-xs text-ink-muted">추가된 기록은 이 화면에서 수정·삭제할 수 없습니다. 판정·조치 이력은 각 인시던트 상세에서 확인합니다.</p>
       </Card>}
     </>}
   </div>
