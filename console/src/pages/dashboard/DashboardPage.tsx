@@ -76,11 +76,13 @@ export function DashboardPage() {
               </li>
             })}
           </ul>
-          <div className="border-t border-line px-4 py-3 text-xs leading-5 text-ink-muted">판정 목표: critical 1시간 · high 4시간 · medium 12시간 · low 24시간. 콘솔·감사 사건은 1시간입니다.</div>
+          <div className="border-t border-line px-4 py-3 text-xs leading-5 text-ink-muted">판정 목표: critical 1시간 · high 4시간 · medium 12시간 · low 24시간. 관제 자기 탐지(R2xx) 사건은 1시간입니다.</div>
         </Card>
       </div>
       <p className="m-0 text-xs text-ink-muted">최근 원문 수집 <Time value={data.latest_event} format="short" zone /> · 웹소켓 통보 시 갱신 · 30초마다 재조회 · 규칙별 비조치율은 <Link to="/rules">규칙 화면에서 보기</Link></p>
     </>}
+    {/* 각주. 카드 바로 아래에 두면 매번 읽히는 문장이 되어 페이지 끝으로 옮겼다 */}
+    {targets.data && <p className="m-0 text-xs text-ink-muted" data-targets-note="">※ 카드 수치는 대상별입니다. 한 사건이 여러 대상에 걸칠 수 있어 합이 전체와 다릅니다.</p>}
   </div>
 }
 

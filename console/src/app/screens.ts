@@ -1,6 +1,6 @@
 import type { Action } from '@/auth/roles'
 
-/** 화면 자리의 정보: 설계 번호 · 제목 · 한 줄 설명 · 채우는 WBS 단계 · 보는 데 필요한 권한 */
+/** 화면 정보: 설계 번호 · 제목 · 한 줄 설명 · 채우는 WBS 단계 · 보는 데 필요한 권한(메뉴가 읽는다) */
 export interface Screen {
   code: string
   title: string

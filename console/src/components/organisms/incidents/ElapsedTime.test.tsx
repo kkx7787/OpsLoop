@@ -21,7 +21,7 @@ describe('ElapsedTime', () => {
     expect(screen.getByText('10m')).not.toHaveTextContent('목표')
   })
 
-  it('콘솔 발생 건(R2xx)은 심각도가 낮아도 critical 목표를 따른다', () => {
+  it('관제 자기 탐지(R2xx) 사건은 심각도가 낮아도 critical 목표를 따른다', () => {
     render(<ElapsedTime seconds={3_000} severity="low" ruleId="R201" />)
     expect(screen.getByText('50m')).toHaveAttribute('data-tone', 'warn')
   })

@@ -27,7 +27,7 @@ const TONE_LABEL: Record<ElapsedTone, string> = {
 
 /**
  * 경과 시간과 판정 목표(화면 설계 3장 표). 목표 임박과 초과는 시간 경고색으로 표시한다.
- * 콘솔 발생 건은 심각도와 관계없이 critical 목표를 따른다(verdictTargetSeconds).
+ * 관제 자기 탐지(R2xx) 사건은 심각도와 관계없이 critical 목표를 따른다(verdictTargetSeconds).
  */
 export function ElapsedClock({ severity, ruleId, firstTs, judgedAt, className }: ElapsedClockProps) {
   const judged = toDate(judgedAt)

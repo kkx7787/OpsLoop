@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { PeriodReport } from '@/api/reports'
+import { sensorOf } from '@/lib/domain'
 import { json } from '@/test/monitoring-fixtures'
 import { noRetryClient, renderRoutes } from '@/test/render'
 import { expectInertDom, expectMixedRevealed, HOSTILE, LONG, LONG_MORE, MIXED } from '@/test/hostile-fixtures'
@@ -157,6 +158,10 @@ describe('구역', () => {
     expect(cells(burden, '판정 대기 (사건 생성 → 첫 판정)')).toEqual(['판정 대기 (사건 생성 → 첫 판정)', '68생성 90건 중 판정', '1시간 30분', '1일'])
     expect(cells(burden, '판정 소요 (화면 열기 → 판정 저장)')).toEqual(['판정 소요 (화면 열기 → 판정 저장)', '0', '—', '—'])
     expect(rowOf(within(overview).getByRole('table', { name: '기간 사건 (발생 시각 기준)' }))).toEqual(['120', '3', '20', '60', '37', '4'])
+    // 발생원 이름은 사건 목록 · 상세와 같은 말이다(sensorOf). R202 도 R2xx 관제 자기 탐지로 센다
+    const origins = within(overview).getByRole('table', { name: '발생원별 사건' })
+    expect(within(origins).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['R0xx 허니팟', 'R1xx 웹 노드', `R2xx ${sensorOf('R202')}`, 'R3xx 인프라', '기타'])
+    expect(rowOf(origins)).toEqual(['90', '25', '5', '0', '0'])
     expect(rowOf(within(overview).getByRole('table', { name: '미판정 잔량 (출력 시점)' }))).toEqual(['40', '12', '7', '2', '1일 2시간'])
     const top = within(overview).getByRole('table', { name: '상위 출발지' })
     expect(within(top).getByRole('link', { name: '198.51.100.7' })).toHaveAttribute('href', '/sources/detail?ip=198.51.100.7')

@@ -88,15 +88,6 @@ export function TargetBoard({ data, pending, fetching, error, updatedAt, onRetry
         <h2 id={titleId} className="m-0 text-sm font-semibold tracking-heading">
           관제 대상
         </h2>
-        <span className="text-xs text-ink-muted">
-          {data ? (
-            <>
-              <Time value={data.as_of} format="time" zone /> 기준
-            </>
-          ) : (
-            '대상별 수집 · 보안 · 대응'
-          )}
-        </span>
       </div>
       {data && error ? (
         <div role="status" className="flex flex-wrap items-center gap-2 rounded-panel bg-warning-soft px-3 py-2 text-xs text-warning">
@@ -115,15 +106,10 @@ export function TargetBoard({ data, pending, fetching, error, updatedAt, onRetry
         </div>
       ) : null}
       {body}
-      {data && (
-        <p className="m-0 text-xs text-ink-muted" data-targets-note="">
-          카드 수치는 대상별입니다. 한 사건이 여러 대상에 걸칠 수 있어 합이 전체와 다릅니다.
-          {(data.unmapped.incidents_1h > 0 || data.unmapped.pending > 0) && (
-            <span className="font-medium text-ink" data-unmapped="">
-              {' '}
-              대상 미분류 사건: 최근 1시간 {data.unmapped.incidents_1h.toLocaleString('ko-KR')} · 미판정 {data.unmapped.pending.toLocaleString('ko-KR')}
-            </span>
-          )}
+      {/* 기준 시각은 페이지 머리 하나만 둔다. 카드 합이 전체와 다른 까닭은 페이지 끝 각주(DashboardPage)에 둔다 */}
+      {data && (data.unmapped.incidents_1h > 0 || data.unmapped.pending > 0) && (
+        <p className="m-0 text-xs font-medium text-ink" data-unmapped="">
+          대상 미분류 사건: 최근 1시간 {data.unmapped.incidents_1h.toLocaleString('ko-KR')} · 미판정 {data.unmapped.pending.toLocaleString('ko-KR')}
         </p>
       )}
     </section>

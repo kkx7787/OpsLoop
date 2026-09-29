@@ -90,7 +90,7 @@ describe('대시보드', () => {
     const fetch = stubDashboard({ badges: { as_of: '', available: true, badges: { [LATEST_KEY]: { cves: 1, kev: 1, applicability: 'unknown', stale: true } } } })
     renderPage()
     const aws = await screen.findByRole('region', { name: 'AWS 센서' })
-    expect(await within(aws).findByText('CVE 1 · KEV 1 · 미확인')).toHaveAttribute('title', '공개 정보 48시간 넘음 · 비해당으로 읽지 않음')
+    expect(await within(aws).findByText('CVE 1 · KEV 1 · 자산 미확인')).toHaveAttribute('title', '공개 정보 48시간 넘음 · 우리 자산 해당 여부를 확정하지 않음')
     const calls = fetch.mock.calls.map(([input]) => String(input)).filter((url) => url.startsWith('/api/cti/badges'))
     expect(calls).toHaveLength(1)
     expect(new URL(calls[0], 'http://localhost').searchParams.getAll('key')).toEqual(['R105|c1|203.0.113.7|2026-09-28T09:40:00+00:00', 'R201|v2|user:root|x'])
