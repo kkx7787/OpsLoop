@@ -361,7 +361,7 @@ ssh -F ~/.ssh/config.opsloop console-a 'f=$(docker inspect -f "{{.LogPath}}" ops
 | `opsloop_gate` | 수집 관문 | 데이터 노드 `/etc/opsloop/gate.env` | nodes 네 열 읽기 · `enroll_node` |
 | `opsloop_ingest` | 다리(pull_loki) · 파서 · 생존 신호 기록(record_heartbeats) | `/etc/opsloop/collector.env` | events · sessions · node_metrics 적재, nodes 수신 기록, 업로더 생존 신호(`sensor_heartbeats` 업로더 행, 이슈 #52) |
 | `opsloop_detector` | 탐지기(detect.py) | `/etc/opsloop/detector.env` | 규칙 입력 읽기, incidents 생성 · 억제 · 이어지는 사건 갱신(끝 시각 · 건수 · 근거 네 열), detector_runs |
-| `opsloop_console` | 콘솔 API · triage.py | 콘솔 `~/opsloop/.env` · 데이터 노드 `/etc/opsloop/triage.env` | 판정 · 조치 · 차단 · 등록 토큰 · 감사 · 로그인 기록 · CTI 표 읽기 · 생존 신호 · 노드 지표 읽기(이슈 #52) · 계정 변경 함수 `console_account_set` 실행(관제사 ↔ 조회자 · 비활성 · 재활성, 이슈 #59). 토큰 해시는 못 본다. 계정 표는 로그인 기록 열 말고는 못 고친다 |
+| `opsloop_console` | 콘솔 API · triage.py | 콘솔 `~/opsloop/.env` · 데이터 노드 `/etc/opsloop/triage.env` | 판정 · 조치 · 차단 · 등록 토큰 · 감사 · 로그인 기록 · CTI 표 읽기 · 생존 신호 · 노드 지표 읽기(이슈 #52) · 계정 변경 함수 `console_account_set`(관제사 ↔ 조회자 · 비활성 · 재활성, 이슈 #59) · `console_account_create` · `console_account_delete` · `console_account_password`(관제사 · 조회자 추가 · 이력 없는 계정 삭제 · 비밀번호 재설정, 이슈 #63) 실행. 토큰 해시는 못 본다. 계정 표는 로그인 기록 열 말고는 못 고친다 |
 | `opsloop_cti` | CTI 수집기(`opsloop-cti`: 공개 정보 갱신 · 자산 적재, 이슈 #39) | `/etc/opsloop/cti.env` | 공개 정보 · 자산 표(`cti_*` · `asset_*`) 쓰기(`cti_snapshots` 는 추가만), `rule_versions` 읽기. 이벤트 · 사건 · 판정은 못 본다 |
 | `opsloop_backup` | `backup-db.sh` 의 pg_dump · 역할 목록(pg_dumpall --globals-only --no-role-passwords) | 없음 (컨테이너 안 로컬 접속) | 읽기 전부 |
 | `opsloop` (소유자) | 스키마 · `nodes.py` · `auth.py`(계정 추가 · 비밀번호 · 관리자 부여 · 해제 · 비활성) | `/etc/opsloop/admin.env` (root 만) · compose `.env` | 전부 |
@@ -379,7 +379,7 @@ infra/vmware/scripts/db-console-role.sh console-a
 infra/vmware/scripts/verify-db-roles.sh
 ```
 
-- 계정 추가 · 비밀번호 · 관리자 부여는 콘솔 역할로는 안 된다. 콘솔 노드에서 소유자 접속으로 돌린다(아래 '콘솔 계정 (이슈 #59)').
+- 콘솔 역할은 계정 표를 직접 고치지 못한다. 관제사 · 조회자 계정의 추가 · 삭제 · 비밀번호 재설정 · 역할 변경은 콘솔 화면(DB 함수)으로 하고, 관리자 계정 추가 · 관리자 부여 · 관리자 비밀번호는 콘솔 노드에서 소유자 접속으로 돌린다(아래 '콘솔 계정 (이슈 #59)').
 - `detector/triage.py` 는 `set -a; . /etc/opsloop/triage.env; set +a` 뒤에 돌린다 (콘솔 역할).
 - 흡수 기록(`incident_absorbed`, 규칙 v3)을 읽는 콘솔 · triage 를 올리기 전에 `infra/migrations/20260925_round2.sql` 다음 `20260925_v3_absorbed.sql` 을 먼저 적용한다(흡수 기록 · 후속 차단 약속 `absorbed_blocks` 표). 표가 없으면 사건 상세와 triage 가 오류로 멈춘다. 알림 트리거 `infra/notify.sql` 도 다시 적용한다(`psql -1`).
 - 적재기는 규칙 파일을 `OPSLOOP_RULES`(기본 `rules_v3.json`, `/etc/default/opsloop-ingest` 로 바꾼다)로 탐지에 넘긴다. `puller/install-ingest.sh` 는 흡수 기록 표 · 탐지 역할 쓰기 권한이 없으면 코드를 바꾸지 않고 멈춘다. 전환은 다음 회차 뒤 `detector_runs` 의 최근 버전으로 확인한다.
@@ -395,12 +395,13 @@ infra/vmware/scripts/verify-db-roles.sh
 
 | 어디서 | 할 수 있는 것 |
 |---|---|
-| 콘솔 화면 `/accounts` (관리자만) | 관제사 ↔ 조회자 역할 변경, 비활성 · 재활성. 관리자 계정과 본인 계정은 바꾸지 못한다 |
-| 명령줄 `auth.py` (소유자 접속) | 계정 추가, 비밀번호 재설정, 관리자 부여 · 해제, 관리자 계정 비활성 · 재활성, 목록 |
+| 콘솔 화면 `/accounts` (관리자만) | 관제사 · 조회자 계정 추가 · 비밀번호 재설정 · 삭제(이력 없는 계정만, 이슈 #63), 관제사 ↔ 조회자 역할 변경, 비활성 · 재활성. 관리자 계정과 본인 계정은 바꾸지 못한다 |
+| 명령줄 `auth.py` (소유자 접속) | 계정 추가(관리자 포함), 비밀번호 재설정(관리자 · 본인 포함), 관리자 부여 · 해제, 관리자 계정 비활성 · 재활성, 목록 |
 
-- 콘솔 DB 역할(`opsloop_console`, triage.py 도 같다)은 계정 표를 고치지 못한다. UPDATE 는 로그인 기록(`last_login_at`) 열뿐이다. 화면의 변경은 DB 함수 `console_account_set`(SECURITY DEFINER, 콘솔만 실행)을 부른다. 함수가 관리자 대상 · 관리자로 올리기 · 자기 자신을 거부한다(`cli_only` · `self`).
+- 콘솔 DB 역할(`opsloop_console`, triage.py 도 같다)은 계정 표를 고치지 못한다. UPDATE 는 로그인 기록(`last_login_at`) 열뿐이다. 화면의 변경은 DB 함수 `console_account_set` · `console_account_create` · `console_account_delete` · `console_account_password`(SECURITY DEFINER, 콘솔만 실행)를 부른다. 함수가 관리자 대상 · 관리자로 올리기 · 관리자 역할로 만들기 · 자기 자신을 거부한다(`cli_only` · `self`).
+- 화면에서 정한 비밀번호(12 ~ 256자)는 콘솔 서버가 해시로 바꿔 함수에 넘긴다. 함수는 해시 형식(`pbkdf2_sha256$<반복>$<솔트>$<값>`, 16진수)이 아니면 `invalid` 로 거부한다(평문이 저장되는 사고를 막는다). 비밀번호 · 해시는 응답 · 감사 · 로그에 싣지 않는다.
 - 비활성 · 역할 변경 · 비밀번호 재설정은 그 계정의 열린 세션을 끊는다. 콘솔은 요청마다 계정 행을 읽고, 변경 시각(`updated_at`)보다 먼저 받은 쿠키를 무효로 본다. 다시 로그인하면 바뀐 역할로 들어온다. 실시간 연결은 30초 안에 끊긴다. 비활성 계정의 로그인은 틀린 비밀번호와 같은 응답이다.
-- 계정은 지우지 않고 비활성으로만 둔다. 판정 · 조치 기록이 계정에 귀속된다.
+- 삭제는 잘못 만든 계정을 지우는 용도다. 이력(로그인 기록 · 판정자 · 조치자 · 차단 요청자 · 해제자)이 없는 관제사 · 조회자 계정만 지우고, 이력이 있으면 `in_use` 로 거부하므로 비활성으로 막는다. 판정 · 조치 기록이 계정에 귀속된다.
 - 변경은 모두 DB 트리거가 감사에 남긴다(`console.account.*`. 감사 화면에 보이고 고치거나 지울 수 없다). 명령줄 · psql 직접 변경도 남는다. 비밀번호는 바뀐 사실만 남고 해시는 싣지 않는다.
 
 명령줄. 콘솔 노드에서 소유자 접속으로 돌리고, 명령 앞부분은 모두 같다:
@@ -421,24 +422,28 @@ infra/vmware/scripts/verify-db-roles.sh
 적용 순서 (Mac, 저장소 루트). 새 콘솔은 로그인과 요청마다 계정 상태 열을 읽으므로 마이그레이션이 먼저다(없으면 로그인 · 로그인한 요청이 모두 오류로 막힌다):
 
 ```bash
-# 1. 마이그레이션: 계정 열(disabled_at · updated_at) · 도장 트리거 · 변경 함수 · 감사 트리거 · 감사 조회 조건. 여러 번 적용해도 같다.
-#    옛 이미지는 새 열을 읽지 않으므로 먼저 적용해도 그대로 돈다. 기존 계정의 updated_at 은 만든 때로 채워 열린 세션을 끊지 않는다
+# 1. 마이그레이션 둘을 이 차례로. 둘 다 여러 번 적용해도 같다(이미 적용한 것을 다시 적용해도 된다).
+#    20261001 (#59): 계정 열(disabled_at · updated_at) · 도장 트리거 · 변경 함수 · 감사 트리거 · 감사 조회 조건.
+#      옛 이미지는 새 열을 읽지 않으므로 먼저 적용해도 그대로 돈다. 기존 계정의 updated_at 은 만든 때로 채워 열린 세션을 끊지 않는다
+#    20261002 (#63): 계정 추가 · 삭제 · 비밀번호 함수. 20261001 의 도장 · 감사 트리거를 쓰므로 그 뒤다. 옛 이미지는 새 함수를 부르지 않는다
 ssh -F ~/.ssh/config.opsloop data01 'sudo -n docker exec -i opsloop-db psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -q' \
   < infra/migrations/20261001_console_accounts.sql
-# 2. 검증: '콘솔 계정 관리' 절이 모두 ✔ 이고 종료 코드 0. 기존 계정 줄(role 갱신 · INSERT 거부)도 그대로 거부다
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n docker exec -i opsloop-db psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -q' \
+  < infra/migrations/20261002_console_accounts_manage.sql
+# 2. 검증: '콘솔 계정 관리' · '콘솔 계정 추가 · 삭제 · 비밀번호' 절이 모두 ✔ 이고 종료 코드 0. 기존 계정 줄(role 갱신 · INSERT 거부)도 그대로 거부다
 infra/vmware/scripts/verify-db-roles.sh
 # 3. 콘솔 이미지: 화면(npm run build → app/static)과 API 를 콘솔 A 에 올린다 (이슈 #47 과 같은 절차 · 백업 먼저)
-# 4. 콘솔 B 는 꺼 둔다. 켜 둔 채라면 3번 전에 분배에서 빼 두고(옛 이미지가 요청을 받으면 비활성 · 역할 변경을 모른다.
-#    roundrobin 이라 요청의 절반), 3번 뒤 같은 이미지로 다시 넣는다. up 은 maint 를 요구하고 분배 복귀는 ready 단계다
+# 4. 콘솔 B 는 꺼 둔다. 켜 둔 채라면 3번 전에 분배에서 빼 두고(옛 이미지가 요청을 받으면 비활성 · 역할 변경을 모르고 계정 추가 ·
+#    삭제 · 비밀번호 요청은 없는 주소다. roundrobin 이라 요청의 절반), 3번 뒤 같은 이미지로 다시 넣는다. up 은 maint 를 요구하고 분배 복귀는 ready 단계다
 infra/vmware/scripts/console-join.sh --step maint --apply     # 3번 전
 infra/vmware/scripts/console-join.sh --from image --apply     # 3번 뒤: image · env · up · verify · ready · assets
 ```
 
-- `20260923_console_ops.sql` · `20260924_notify.sql` 을 다시 적용하면 감사 조회 뷰와 보호 트리거가 계정 조건 없이 다시 만들어진다(계정 감사가 감사 화면에서 빠지고 지울 수 있게 된다). 그때는 `20261001_console_accounts.sql` 도 다시 적용한다. 역할 블록(`20260924_db_roles.sql`)은 표 권한만 거두므로 다시 적용해도 함수 실행 권한은 남는다.
-- 범위 밖: 화면에서 계정 추가 · 비밀번호 · 삭제, 로그인 실패 횟수에 따른 잠금. triage.py 는 콘솔 역할로 붙고 판정자 이름을 계정 표와 대조하지 않는다(비활성 계정 이름으로도 판정이 남는다).
-- 잔여 위험: 함수는 콘솔이 넘기는 행위자(`opsloop.actor`)를 그대로 믿는다(다른 감사와 같은 수준, `infra/schema.sql` T-8). 콘솔 역할 비밀번호(콘솔 `.env` · `triage.env`)가 새면 관제사 · 조회자 계정의 역할을 바꾸거나 비활성 · 재활성할 수는 있지만, 관리자로 올리거나 관리자 계정을 건드리지는 못한다.
-- 되돌리기: 마이그레이션은 그대로 두고 콘솔 이미지만 옛것으로 되돌려도 돈다. 다만 옛 이미지는 새 열을 읽지 않으므로 비활성 · 역할 변경 · 세션 무효화가 모두 무시된다(비활성 계정도 로그인되고, 쿠키는 12시간 동안 쿠키의 역할로 쓰인다).
-- 복원 훈련은 적용 뒤 첫 백업(04:30 · 16:30)이 생긴 다음에 한다. 그 전 백업을 복원하면 구조(트리거 · 함수 · 열)가 운영과 다르고 계정 지문이 새 열을 읽지 못해 `verify` 가 ✘ 다.
+- `20260923_console_ops.sql` · `20260924_notify.sql` 을 다시 적용하면 감사 조회 뷰와 보호 트리거가 계정 조건 없이 다시 만들어진다(계정 감사가 감사 화면에서 빠지고 지울 수 있게 된다). 그때는 `20261001_console_accounts.sql` 도 다시 적용한다. 역할 블록(`20260924_db_roles.sql`)은 표 권한만 거두므로 다시 적용해도 함수 실행 권한은 남는다. `20261002_console_accounts_manage.sql` 은 이것들을 다시 적용한 뒤에도 다시 할 필요가 없다. 콘솔 역할이 없을 때 적용했으면 역할을 만든 뒤 다시 적용한다(역할이 있을 때만 실행 권한을 준다).
+- 범위 밖: 화면에서 관리자 계정 추가 · 관리자 부여 · 관리자 비밀번호 변경, 본인 비밀번호 변경 화면, 이력이 있는 계정 삭제, 로그인 실패 횟수에 따른 잠금. triage.py 는 콘솔 역할로 붙고 판정자 이름을 계정 표와 대조하지 않는다(비활성 계정 이름으로도 판정이 남는다).
+- 잔여 위험: 함수는 콘솔이 넘기는 행위자(`opsloop.actor`)를 그대로 믿는다(다른 감사와 같은 수준, `infra/schema.sql` T-8). 콘솔 역할 비밀번호(콘솔 `.env` · `triage.env`)가 새면 관제사 · 조회자 계정의 역할을 바꾸거나 비활성 · 재활성하고, 관제사 계정을 만들거나 비밀번호를 바꿔 그 계정으로 로그인할 수는 있다(모두 감사에 남는다. 판정 · 차단은 콘솔 역할로도 이미 직접 넣을 수 있다). 관리자로 올리거나 관리자 계정을 건드리지는 못한다.
+- 되돌리기: 마이그레이션은 그대로 두고 콘솔 이미지만 옛것으로 되돌려도 돈다(#63 함수는 부르는 쪽이 없을 뿐이다). 다만 옛 이미지는 새 열을 읽지 않으므로 비활성 · 역할 변경 · 세션 무효화가 모두 무시된다(비활성 계정도 로그인되고, 쿠키는 12시간 동안 쿠키의 역할로 쓰인다).
+- 복원 훈련은 적용 뒤 첫 백업(04:30 · 16:30)이 생긴 다음에 한다. 그 전 백업을 복원하면 구조(트리거 · 함수 · 열)가 운영과 다르고 계정 지문이 새 열을 읽지 못해 `verify` 가 ✘ 다. 복원 훈련의 구조 참고값은 20261002 뒤(함수 18)다. 그 전 운영은 함수 15라 '구조 수치 = 계약 참고값' 이 경고로 나온다.
 
 ## DB 복원 (이슈 #45)
 

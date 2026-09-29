@@ -14,7 +14,8 @@
   python3 auth.py role <아이디> <역할> [--by <이름>]   관리자 부여 · 해제 포함
   python3 auth.py disable <아이디> [--by <이름>]      비활성 · enable 은 재활성
   python3 auth.py list                               아이디 · 역할 · 상태 · 마지막 로그인
-  --by 는 감사에 남는 행위자(cli:<이름>)다. 없으면 cli. 화면(accounts.py)은 관제사 ↔ 조회자 · 비활성 · 재활성만 한다.
+  --by 는 감사에 남는 행위자(cli:<이름>)다. 없으면 cli. 화면(accounts.py)은 관제사 · 조회자 계정만 다룬다: 추가 · 삭제 ·
+  비밀번호 재설정(이슈 #63) · 관제사 ↔ 조회자 · 비활성 · 재활성. 관리자 계정 · 관리자 부여는 여기서만 한다.
 """
 
 import argparse
@@ -36,6 +37,8 @@ import asyncpg
 COOKIE = "opsloop_session"
 SESSION_HOURS = 12
 ITERATIONS = 240_000
+# 받는 해시의 반복 수 범위(DB 함수 console_account_create · password 의 형식 검사와 같다: 5 ~ 7자리)
+MIN_ITERATIONS, MAX_ITERATIONS = 10_000, 9_999_999
 ROLES = ("viewer", "operator", "admin")
 
 # 서명 키가 없으면 매 기동마다 새로 만든다. 그러면 재시작 시 모든 세션이
@@ -55,7 +58,8 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, stored: str) -> bool:
     try:
         algo, iters, salt_hex, want = stored.split("$")
-        if algo != "pbkdf2_sha256":
+        # 반복 수가 터무니없이 크면 계산 한 번에 콘솔이 멈춘다(이벤트 루프 위에서 돈다). DB 함수의 해시 형식과 같은 범위만 받는다
+        if algo != "pbkdf2_sha256" or not MIN_ITERATIONS <= int(iters) <= MAX_ITERATIONS:
             return False
         dk = hashlib.pbkdf2_hmac("sha256", password.encode(),
                                  bytes.fromhex(salt_hex), int(iters))
@@ -272,7 +276,7 @@ async def authenticate(pool, username: str, password: str):
 # ──────────────────────────────────────────────────────────────
 #  계정 관리 (명령줄, 이슈 #59)
 #
-#  소유자 접속(DATABASE_URL)으로 표를 직접 고친다. 화면(accounts.py)은 콘솔 역할이라 console_account_set 함수로만
+#  소유자 접속(DATABASE_URL)으로 표를 직접 고친다. 화면(accounts.py)은 콘솔 역할이라 console_account_* 함수(#59 · #63)로만
 #  바꾸고 관리자 계정 · 관리자 부여는 못 한다. 그것은 여기서만 한다.
 #  바꾸는 명령은 한 트랜잭션에서 행위자(cli:<--by>)를 건 뒤 쓴다. 감사 트리거(audit_console_users)가 by= 로 남긴다.
 #  컨테이너는 USER app 으로 돌아 OS 사용자 이름은 늘 app 이다. 누가 했는지는 --by 로 받는다.
@@ -319,12 +323,26 @@ def fmt_ts(dt) -> str:
     return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%SZ") if dt else "-"
 
 
+def password_problem(pw: str) -> str | None:
+    """비밀번호로 쓸 수 없으면 까닭(문장), 쓸 수 있으면 None. 명령줄(ask_password)과 화면(accounts.py)이 같이 쓴다. 값은 싣지 않는다.
+    짝 없는 서로게이트("\\ud800")는 UTF-8 로 바꿀 수 없어 해시가 실패한다(500). 로그인 폼은 그런 글자를 대체 문자로 바꾸므로
+    (form_fields) 그 비밀번호로는 로그인할 수도 없다."""
+    if len(pw) < MIN_PASSWORD:
+        return f"비밀번호는 {MIN_PASSWORD}자 이상이어야 합니다"
+    if len(pw) > MAX_PASSWORD:
+        return f"비밀번호는 {MAX_PASSWORD}자 이하여야 합니다"
+    try:
+        pw.encode("utf-8")
+    except UnicodeEncodeError:
+        return "비밀번호에 쓸 수 없는 문자가 있습니다"
+    return None
+
+
 def ask_password() -> str:
     pw = getpass.getpass("비밀번호: ")
-    if len(pw) < MIN_PASSWORD:
-        raise CliError(f"비밀번호는 {MIN_PASSWORD}자 이상이어야 합니다")
-    if len(pw) > MAX_PASSWORD:
-        raise CliError(f"비밀번호는 {MAX_PASSWORD}자 이하여야 합니다")
+    problem = password_problem(pw)
+    if problem:
+        raise CliError(problem)
     if pw != getpass.getpass("다시 입력: "):
         raise CliError("입력이 일치하지 않습니다")
     return pw

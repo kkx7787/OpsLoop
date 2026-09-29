@@ -72,7 +72,7 @@ export const SCREENS = {
   accounts: {
     code: 'S-15',
     title: '계정',
-    description: '관제사 · 조회자 역할 변경과 비활성 · 재활성. 관리자 계정 · 계정 추가 · 비밀번호는 명령줄에서 하고 삭제하지 않는다.',
+    description: '관제사 · 조회자 계정 추가 · 비밀번호 재설정 · 이력 없는 계정 삭제와 역할 변경 · 비활성 · 재활성. 관리자 계정 · 본인 변경은 명령줄에서 한다.',
     wbs: '3.6.8',
     action: 'account.manage',
   },

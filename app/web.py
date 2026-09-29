@@ -544,7 +544,7 @@ button:focus-visible{outline:2px solid #01518f;outline-offset:2px}
 $error<input type="hidden" name="next" value="$next">
 <button type="submit">로그인</button>
 </form>
-<p class="note">가입 화면은 없습니다. 계정은 관리자가 명령줄로 발급합니다.<br>로그인 시도는 디코이와 같은 형식으로 기록되어 규칙 검증에 쓰입니다.</p>
+<p class="note">가입 화면은 없습니다. 계정은 관리자가 발급합니다.<br>로그인 시도는 디코이와 같은 형식으로 기록되어 규칙 검증에 쓰입니다.</p>
 </main></body></html>""")
 
 LOGIN_STYLE = LOGIN_PAGE.template.split("<style>", 1)[1].split("</style>", 1)[0]
