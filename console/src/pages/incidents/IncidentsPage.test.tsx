@@ -130,7 +130,7 @@ describe('IncidentsPage', () => {
     expect(within(first).getByRole('link', { name: 'R003' })).toHaveAttribute('href', `/incidents/${encodeURIComponent(KEY)}`)
 
     const second = within(table).getByRole('row', { name: /user:root/ })
-    expect(second).toHaveTextContent('콘솔 · 감사')
+    expect(second).toHaveTextContent('관제 자기 탐지')
     expect(second).toHaveTextContent('종결')
     expect(second).toHaveTextContent('실제 위협')
     expect(within(second).getByText('10m')).not.toHaveAttribute('data-tone')
@@ -376,7 +376,7 @@ describe('IncidentsPage · CVE 배지(#52)', () => {
     renderRoutes(routes(), '/incidents', noRetryClient())
     const table = await screen.findByRole('table', { name: '인시던트 목록' })
     const row = within(table).getByRole('row', { name: /203\.0\.113\.7/ })
-    const badge = await within(row).findByText('CVE 2 · KEV 1 · 해당')
+    const badge = await within(row).findByText('CVE 2 · KEV 1 · 자산 해당')
     expect(badge).toHaveAttribute('data-cti-badge')
     // 규칙 이름과 같은 칸 · 같은 줄
     expect(badge.parentElement).toBe(within(row).getByTitle('제품 식별 탐색').parentElement)
@@ -393,7 +393,7 @@ describe('IncidentsPage · CVE 배지(#52)', () => {
     renderRoutes(routes(), '/incidents', noRetryClient())
     const list = await screen.findByRole('list', { name: '인시던트 목록' })
     const card = within(list).getAllByRole('link')[1]
-    expect(await within(card).findByText('CVE 2 · KEV 1 · 미확인')).toHaveAttribute('title', '공개 정보 48시간 넘음 · 비해당으로 읽지 않음')
+    expect(await within(card).findByText('CVE 2 · KEV 1 · 자산 미확인')).toHaveAttribute('title', '공개 정보 48시간 넘음 · 우리 자산 해당 여부를 확정하지 않음')
   })
 
   it('배지 조회가 실패해도 목록은 그대로 보이고 배지만 빠진다', async () => {

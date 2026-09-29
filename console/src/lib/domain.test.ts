@@ -19,7 +19,9 @@ describe('sensorOf', () => {
     expect(sensorOf('R001')).toBe('허니팟')
     expect(sensorOf('R005')).toBe('허니팟')
     expect(sensorOf('R101')).toBe('웹 노드')
-    expect(sensorOf('R201')).toBe('콘솔 · 감사')
+    expect(sensorOf('R201')).toBe('관제 자기 탐지')
+    // R202 는 데이터 노드의 수집 관문 · 적재기 기록이지만 같은 자기 탐지다(콘솔로 묶지 않는다)
+    expect(sensorOf('R202')).toBe('관제 자기 탐지')
     expect(sensorOf('R301')).toBe('인프라')
   })
 
@@ -39,8 +41,9 @@ describe('판정 목표', () => {
     expect(ACK_TARGET_SECONDS).toEqual({ critical: 900, high: 3_600, medium: 14_400, low: null })
   })
 
-  it('콘솔 발생 건(R2xx)은 심각도와 관계없이 critical 목표, 모르는 심각도는 low', () => {
+  it('관제 자기 탐지 건(R2xx)은 심각도와 관계없이 critical 목표, 모르는 심각도는 low', () => {
     expect(verdictTargetSeconds('low', 'R201')).toBe(3_600)
+    expect(verdictTargetSeconds('high', 'R202')).toBe(3_600)
     expect(verdictTargetSeconds('low', 'R001')).toBe(86_400)
     expect(verdictTargetSeconds('unknown')).toBe(86_400)
   })
@@ -58,8 +61,9 @@ describe('elapsedTone', () => {
     expect(elapsedTone('low', 50_000)).toBe('ok')
   })
 
-  it('콘솔 발생 건은 critical 목표로 본다', () => {
+  it('관제 자기 탐지 건(R2xx)은 critical 목표로 본다', () => {
     expect(elapsedTone('low', 3_000, 'R201')).toBe('warn')
+    expect(elapsedTone('high', 3_600, 'R202')).toBe('over')
     expect(elapsedTone('low', 3_000, 'R001')).toBe('ok')
   })
 

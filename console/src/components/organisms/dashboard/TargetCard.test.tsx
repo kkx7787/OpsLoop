@@ -120,8 +120,8 @@ describe('TargetCard(#52)', () => {
     expect(link).toHaveTextContent('high')
     expect(link).toHaveTextContent('R105')
     expect(link).toHaveTextContent('제품 식별 탐색')
-    expect(link).toHaveTextContent('203.0.113.7 · 20분 전 · 미판정 CVE 3 · KEV 1 · 미확인')
-    expect(within(link).getByText('CVE 3 · KEV 1 · 미확인')).toHaveAttribute('data-cti-badge')
+    expect(link).toHaveTextContent('203.0.113.7 · 20분 전 · 미판정 CVE 3 · KEV 1 · 자산 미확인')
+    expect(within(link).getByText('CVE 3 · KEV 1 · 자산 미확인')).toHaveAttribute('data-cti-badge')
   })
 
   it('최근 사건이 없으면 그렇게 적는다', () => {

@@ -56,7 +56,7 @@ const AUDIT_EVENT_LABEL: Record<string, string> = {
   'console.notify.channel.created': '알림 채널 추가',
   'console.notify.channel.changed': '알림 채널 변경',
 }
-const ORIGINS = [['R0xx', 'R0xx 허니팟'], ['R1xx', 'R1xx 웹 노드'], ['R2xx', 'R2xx 콘솔 · 감사'], ['R3xx', 'R3xx 인프라'], ['other', '기타']] as const
+const ORIGINS = [['R0xx', 'R0xx 허니팟'], ['R1xx', 'R1xx 웹 노드'], ['R2xx', 'R2xx 관제 자기 탐지'], ['R3xx', 'R3xx 인프라'], ['other', '기타']] as const
 
 /** 구역 안 표 하나. 머리(h3)가 표의 이름이 된다 */
 function SubTable({ title, aside, head, empty, children }: { title: string; aside?: ReactNode; head: readonly string[]; empty?: string | false; children: ReactNode }) {

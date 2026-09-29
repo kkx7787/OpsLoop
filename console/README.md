@@ -46,9 +46,9 @@ src/components/        atoms · molecules · organisms · templates. index.ts �
   templates/           AppLayout(사이드바 + 상단바 + 본문 · /api/me 확인 · 401 → 로그인 · 실시간 통보 연결) · breadcrumbs
 src/app/router.tsx     경로표(react-router 7). / · /incidents · /incidents/:key · /blocklist · /rules · /sources · /reports · /nodes · /inventory · /alerts · /audit · /accounts · *
 src/app/nav.ts         메뉴 묶음(관제 · 대응 · 분석 · 수집 · 관리). 관리 묶음은 admin 이 아니면 흐리게
-src/app/screens.ts     화면 자리 정보(설계 번호 · 제목 · 한 줄 설명 · WBS)
+src/app/screens.ts     화면 정보(설계 번호 · 제목 · 한 줄 설명 · WBS · 권한). 메뉴(nav.ts)가 관리 묶음의 권한을 여기서 읽는다
 src/app/ComponentCatalog.tsx  공통 컴포넌트 모음. 개발 서버에서만 /dev/components
-src/pages/             구현 화면 및 나머지 화면 자리(PlaceholderPage · PendingCard · NotFoundPage · RouteError)
+src/pages/             구현 화면 · 없는 경로(NotFoundPage) · 경로 오류(RouteError)
   pages/dashboard/      미판정 현황(S-02): 경과 분포 · 목표 초과 · 우선 확인 8건 · 규칙별 비조치율
   pages/blocklist/      차단 목록(S-06): 활성·만료·해제 · 검색·페이지 탐색 · 관리자 해제
   pages/incidents/       인시던트 목록 화면(IncidentsPage). 조건·page·page_size를 주소에 두어 새로고침·뒤로 가기·공유에도 남는다

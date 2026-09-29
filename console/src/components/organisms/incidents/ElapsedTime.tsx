@@ -7,7 +7,7 @@ export interface ElapsedTimeProps extends Omit<ComponentProps<'span'>, 'children
   /** 발생(first_ts)부터 지난 초 */
   seconds: number
   severity: Severity | (string & {})
-  /** 콘솔 발생 건(R2xx)은 심각도와 관계없이 critical 목표를 따른다 */
+  /** 관제 자기 탐지(R2xx) 사건은 심각도와 관계없이 critical 목표를 따른다 */
   ruleId?: string | null
   /** 발생 시각. 마우스를 올리면 KST 로 보인다 */
   since?: TimeInput | null
