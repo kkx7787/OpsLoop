@@ -1,0 +1,24 @@
+blocklist | 26
+actions | 167
+nginx_request_real | 0
+verdicts | 1028
+incidents | 1028
+sessions | 4547
+decoy_request_real | 1023
+detector_runs | 29940
+events | 137274
+events_real | 137234
+events_min_ts | 2026-09-04 07:53:52.591615+00 | events_max_ts | 2026-09-28 07:22:11.349431+00
+incident_key_md5 | 455f9282e27aaa612fe336fdd7276e6e
+by_version | c1 | 3
+by_version | i1 | 2
+by_version | i2 | 1
+by_version | s1 | 4
+by_version | v1 | 555
+by_version | v2 | 321
+by_version | v3 | 138
+by_version | w1 | 2
+by_version | w2 | 2
+c1_incidents | R105 | 3
+rule_versions | a1,c1,i1,i2,n1,s1,v1,v2,v3,w1,w2
+unjudged | 0

@@ -1,0 +1,1129 @@
+{
+  "date": "2026-09-28",
+  "issue": 49,
+  "wbs": [
+    "3.7",
+    "3.8.2"
+  ],
+  "timezone": "UTC",
+  "scope": "폐루프 3회차 — 정상 트래픽 정의(정의서 · normal_traffic.json)를 실험 DB 사본(opsloop-lab49)에 넣고 R101 · R102 임계치 후보 w2(5) · w2-c3(3) · w2-c8(8) 을 정상 구간과 디코이 구간에 리플레이했다. 운영 DB 는 읽기 전용 조회만, 운영 콘솔 · web-01 · 허니팟 · 디코이에는 요청을 보내지 않았다. 규칙 버전 승격 없음. 모든 비율 옆에 분모를 둔다.",
+  "provenance": {
+    "git_head": "96018ffede16c8c6daa1b6f86a8370ab194613ed",
+    "branch": "feat/49-benign-traffic-replay",
+    "uncommitted_note": "detector/normal_traffic.json · normal_traffic.py · test_normal_traffic.py · docs/2026-09-28-정상-트래픽-정의.md · docs/2026-09-28-폐루프-3회차.md · 이 증거 폴더는 커밋 전(untracked). docs/2026-09-25-폐루프-2회차.md §6 두 항목 · docs/2026-09-22-탐지-규칙-추가-결과.md 77행 정정은 작업 트리 변경.",
+    "source_sha256": {
+      "detector/detect.py": "bb745a9b576c7b123ee5c462813c4c66d36e46b2dc3b9fe4bd19f0efd13ec25b",
+      "detector/rules_w1.json": "28db03b2ab4f7a0f3a9f82e728cbf5497670d7547dbf38706c13119a20fff6be",
+      "detector/normal_traffic.json": "90a2f75b09b95d9f671bcd73c6639cb5b0a17a22244cc3342f4ae15158bcc336",
+      "detector/normal_traffic.py": "cab2d0ae3821d90d8532160465ec3901598046997eadf568f4c31b9ffd9b9053",
+      "detector/test_normal_traffic.py": "0346fad2fa4d7bc60158a8243a83b8dcf5d55aa0425b1769b287670ad194c9ab"
+    },
+    "python": "scratchpad venv49 (Python 3.14.3 · psycopg2-binary 2.9.13) 로 detect.py · normal_traffic.py 실행. 계약이 가리킨 venv 는 /private/tmp 정리로 비어 있었다."
+  },
+  "lab_db": {
+    "container": "opsloop-lab49 (postgres:16-alpine · 127.0.0.1:55449 · 볼륨 없음 · --rm)",
+    "db_url": "postgresql://opsloop:<실험 DB 비밀번호>@127.0.0.1:55449/opsloop",
+    "dump": {
+      "file": "~/opsloop-backup/opsloop-20260927-0730.dump",
+      "sha256": "c3188212e102b67de3c24849d76f13e970ba64e9f9652407dc66801bf2bc596c",
+      "globals": "~/opsloop-backup/opsloop-20260927-0730.globals.sql",
+      "globals_sha256": "4dd81b9a05b23a37d883c0332b953dc814f475bda5efa750ace5a05a016594a9",
+      "archive_created_utc": "2026-09-27 07:30:06",
+      "dumped_from": "16.15",
+      "table_data": 23,
+      "restore": "globals 의 CREATE/ALTER ROLE · GRANT 줄만(opsloop CREATE 제외 · PASSWORD 줄 0) → pg_restore -U opsloop -d opsloop --no-owner --exit-on-error rc=0"
+    },
+    "fingerprint_restored": {
+      "events": 115965,
+      "events_real": 115925,
+      "events_min_ts": "2026-09-04T07:53:52.591615+00:00",
+      "events_max_ts": "2026-09-27T07:22:48.741410+00:00",
+      "incidents": 1027,
+      "verdicts": 888,
+      "actions": 32,
+      "blocklist": 13,
+      "sessions": 4440,
+      "detector_runs": 24013,
+      "incident_key_md5": "21b10f4b4f1b753b4a9d520ec0793129",
+      "unjudged": 139,
+      "latest_verdict_dist": {
+        "threat": 61,
+        "non_actionable": 39,
+        "false_positive": 5,
+        "benign_positive": 5,
+        "undetermined": 778
+      },
+      "incidents_by_version": {
+        "v1": 555,
+        "v2": 321,
+        "v3": 137,
+        "w1": 2,
+        "w2": 2,
+        "c1": 3,
+        "s1": 4,
+        "i1": 2,
+        "i2": 1
+      }
+    },
+    "fingerprint_after_replay": {
+      "queried_utc": "2026-09-27 20:31:40",
+      "events": 116031,
+      "events_real": 115991,
+      "events_max_ts": "2026-09-27T16:00:47+00:00",
+      "events_marked_normal49": 66,
+      "incidents": 1041,
+      "incidents_added": 14,
+      "incidents_added_breakdown": {
+        "normal_window_w2": 3,
+        "normal_window_w2-c3": 6,
+        "normal_window_w2-c8": 0,
+        "decoy_range_w2": 0,
+        "decoy_range_w2-c3": 3,
+        "decoy_range_w2-c8": 2
+      },
+      "old_incident_keys": {
+        "count": 1027,
+        "md5": "21b10f4b4f1b753b4a9d520ec0793129",
+        "unchanged": true
+      },
+      "all_incident_keys_md5": "d8c1bc608df2c53dd50baa61a4d41892",
+      "verdicts": 898,
+      "verdicts_added": 10,
+      "verdicts_operator": "lab:normal49",
+      "detector_runs": 24019,
+      "detector_runs_added_ids": [
+        24045,
+        24046,
+        24047,
+        24048,
+        24049,
+        24050
+      ],
+      "rule_versions_registered": [
+        "w2-c3",
+        "w2-c8"
+      ],
+      "unjudged": 143,
+      "latest_verdict_dist": {
+        "threat": 61,
+        "non_actionable": 39,
+        "false_positive": 15,
+        "benign_positive": 5,
+        "undetermined": 778
+      },
+      "note_0928": "리드가 9/18 콘솔 자체 시험 사건(R101 w2-c3)에 오탐 판정(id 905)을 더해 verdicts 897 → 898 · unjudged 144 → 143",
+      "verdicts_added_note": "정상 구간 9(895 ~ 903) + 9/18 콘솔 자체 시험 1(905)",
+      "requeried_utc": "2026-09-27 21:39"
+    }
+  },
+  "normal_window": {
+    "since": "2026-09-27T08:30:00+00:00",
+    "until": "2026-09-27T16:30:00+00:00",
+    "seconds": 28800,
+    "slot_seconds": 600,
+    "events_max_ts_before": "2026-09-27T07:22:48.741410+00:00",
+    "foreign_rows_in_window": 0,
+    "rows_planned": 66,
+    "rows_inserted": 66,
+    "rows_marked_in_window": 66,
+    "incident_keys_unchanged": true,
+    "driver": "psycopg2",
+    "dry_run_rows_inserted": 0,
+    "scenarios": [
+      {
+        "id": "C01",
+        "rows": 1,
+        "first_ts": "2026-09-27T08:30:00+00:00",
+        "last_ts": "2026-09-27T08:30:00+00:00",
+        "slot": 2984163
+      },
+      {
+        "id": "C02",
+        "rows": 3,
+        "first_ts": "2026-09-27T09:00:00+00:00",
+        "last_ts": "2026-09-27T09:00:45+00:00",
+        "slot": 2984166
+      },
+      {
+        "id": "C03",
+        "rows": 5,
+        "first_ts": "2026-09-27T09:30:00+00:00",
+        "last_ts": "2026-09-27T09:31:45+00:00",
+        "slot": 2984169
+      },
+      {
+        "id": "C04",
+        "rows": 6,
+        "first_ts": "2026-09-27T10:00:00+00:00",
+        "last_ts": "2026-09-27T10:02:40+00:00",
+        "slot": 2984172
+      },
+      {
+        "id": "C05",
+        "rows": 2,
+        "first_ts": "2026-09-27T10:30:00+00:00",
+        "last_ts": "2026-09-27T10:35:00+00:00",
+        "slot": 2984175
+      },
+      {
+        "id": "S01",
+        "rows": 1,
+        "first_ts": "2026-09-27T11:00:00+00:00",
+        "last_ts": "2026-09-27T11:00:00+00:00",
+        "slot": 2984178
+      },
+      {
+        "id": "S02",
+        "rows": 3,
+        "first_ts": "2026-09-27T11:30:00+00:00",
+        "last_ts": "2026-09-27T11:30:35+00:00",
+        "slot": 2984181
+      },
+      {
+        "id": "S03",
+        "rows": 6,
+        "first_ts": "2026-09-27T12:00:00+00:00",
+        "last_ts": "2026-09-27T12:01:50+00:00",
+        "slot": 2984184
+      },
+      {
+        "id": "S04",
+        "rows": 1,
+        "first_ts": "2026-09-27T12:30:00+00:00",
+        "last_ts": "2026-09-27T12:30:00+00:00",
+        "slot": 2984187
+      },
+      {
+        "id": "W01",
+        "rows": 3,
+        "first_ts": "2026-09-27T13:00:00+00:00",
+        "last_ts": "2026-09-27T13:00:30+00:00",
+        "slot": 2984190
+      },
+      {
+        "id": "W02",
+        "rows": 2,
+        "first_ts": "2026-09-27T13:30:00+00:00",
+        "last_ts": "2026-09-27T13:30:20+00:00",
+        "slot": 2984193
+      },
+      {
+        "id": "W03",
+        "rows": 4,
+        "first_ts": "2026-09-27T14:00:00+00:00",
+        "last_ts": "2026-09-27T14:01:00+00:00",
+        "slot": 2984196
+      },
+      {
+        "id": "W04",
+        "rows": 5,
+        "first_ts": "2026-09-27T14:30:00+00:00",
+        "last_ts": "2026-09-27T14:31:20+00:00",
+        "slot": 2984199
+      },
+      {
+        "id": "W05",
+        "rows": 6,
+        "first_ts": "2026-09-27T15:00:00+00:00",
+        "last_ts": "2026-09-27T15:00:05+00:00",
+        "slot": 2984202
+      },
+      {
+        "id": "W06",
+        "rows": 12,
+        "first_ts": "2026-09-27T15:30:00+00:00",
+        "last_ts": "2026-09-27T15:35:30+00:00",
+        "slot": 2984205
+      },
+      {
+        "id": "W07",
+        "rows": 6,
+        "first_ts": "2026-09-27T16:00:00+00:00",
+        "last_ts": "2026-09-27T16:00:47+00:00",
+        "slot": 2984208
+      }
+    ],
+    "sample": {
+      "scenarios": 16,
+      "by_target": {
+        "console": 5,
+        "web-01 sshd": 4,
+        "web-01 nginx": 7
+      },
+      "rows": 66,
+      "sources": [
+        "192.168.70.1 (콘솔 · nginx)",
+        "192.168.50.1 (sshd · ProxyJump)"
+      ],
+      "definition": "detector/normal_traffic.json (normal49-1)",
+      "marker": "message '[정상 시나리오 <id>] ' · UA 'OpsLoop-Normal49/<id> ' · username 'normal49.' · provenance real"
+    },
+    "label_rule": "정의서 5절: 정상 시나리오가 만든 사건 → false_positive. 의도한 시험(격리 · 노드 등록 · 복원 훈련)만 benign_positive. 판정은 실험 DB 에서만 · operator lab:normal49 · reason 에 시나리오 id"
+  },
+  "decoy_range": {
+    "since": "2026-09-18T02:28:16Z",
+    "until": "2026-09-27T03:26:51Z (배타)",
+    "events_real": 1928,
+    "sources": 181,
+    "eventid": {
+      "decoy.request": 974,
+      "decoy.session.connect": 954,
+      "decoy.login.*": 0,
+      "decoy.action.*": 0
+    },
+    "w2_404_after_exclusion": {
+      "events": 573,
+      "sources": 41,
+      "windows_10min": 92,
+      "window_size_dist": {
+        "1": 87,
+        "2": 3,
+        "224": 1,
+        "256": 1
+      },
+      "p50": 1,
+      "p90": 1,
+      "p95": 2,
+      "p99": 256
+    }
+  },
+  "candidates": {
+    "w2": {
+      "file": "detector/rules_w1.json",
+      "sha256": "28db03b2ab4f7a0f3a9f82e728cbf5497670d7547dbf38706c13119a20fff6be",
+      "R101_threshold": 5,
+      "R102_threshold": 5,
+      "note": "현행"
+    },
+    "w2-c3": {
+      "file": "docs/evidence/2026-09-28-replay/rules_w2-c3.json",
+      "sha256": "4929cd6ecbb10c5f5c2bd47a6008e7687954419235a3ec7afeb0bf9d1dc9a549",
+      "R101_threshold": 3,
+      "R102_threshold": 3
+    },
+    "w2-c8": {
+      "file": "docs/evidence/2026-09-28-replay/rules_w2-c8.json",
+      "sha256": "5e901372d284f1b6161137d6ee36049f1f136ce0f428145a8c8135d5ac21a90e",
+      "R101_threshold": 8,
+      "R102_threshold": 8
+    },
+    "diff": "rules_w1.json 사본에서 rule_version 과 R101 · R102 params.threshold 두 곳만 다르다(json 정규화 diff 3곳). R103 · R104 · exclude_url_patterns · aggregation 동일."
+  },
+  "runs": [
+    {
+      "id": 24045,
+      "rule_version": "w2",
+      "since": "2026-09-27T08:30:00+00:00",
+      "until": "2026-09-27T16:30:00+00:00",
+      "started_at": "2026-09-27T17:26:45.654334+00:00",
+      "incidents_new": 3,
+      "signals": {
+        "R101": 2,
+        "R102": 1
+      }
+    },
+    {
+      "id": 24046,
+      "rule_version": "w2-c3",
+      "since": "2026-09-27T08:30:00+00:00",
+      "until": "2026-09-27T16:30:00+00:00",
+      "started_at": "2026-09-27T17:26:45.779693+00:00",
+      "incidents_new": 6,
+      "signals": {
+        "R101": 3,
+        "R102": 3
+      }
+    },
+    {
+      "id": 24047,
+      "rule_version": "w2-c8",
+      "since": "2026-09-27T08:30:00+00:00",
+      "until": "2026-09-27T16:30:00+00:00",
+      "started_at": "2026-09-27T17:26:45.895080+00:00",
+      "incidents_new": 0,
+      "signals": {
+        "R101": 0,
+        "R102": 0
+      }
+    },
+    {
+      "id": 24048,
+      "rule_version": "w2",
+      "since": "2026-09-18T02:28:16+00:00",
+      "until": "2026-09-27T03:26:51+00:00",
+      "started_at": "2026-09-27T17:26:46.009502+00:00",
+      "incidents_new": 0,
+      "signals": {
+        "R101": 0,
+        "R102": 2
+      },
+      "note": "R102 2건은 덤프에 이미 있는 키라 새로 만들지 않음(멱등)"
+    },
+    {
+      "id": 24049,
+      "rule_version": "w2-c3",
+      "since": "2026-09-18T02:28:16+00:00",
+      "until": "2026-09-27T03:26:51+00:00",
+      "started_at": "2026-09-27T17:26:46.146479+00:00",
+      "incidents_new": 3,
+      "signals": {
+        "R101": 1,
+        "R102": 2
+      }
+    },
+    {
+      "id": 24050,
+      "rule_version": "w2-c8",
+      "since": "2026-09-18T02:28:16+00:00",
+      "until": "2026-09-27T03:26:51+00:00",
+      "started_at": "2026-09-27T17:26:46.287038+00:00",
+      "incidents_new": 2,
+      "signals": {
+        "R101": 0,
+        "R102": 2
+      }
+    }
+  ],
+  "normal_window_incidents": [
+    {
+      "key": "R101|w2|192.168.70.1|2026-09-27T10:00:00+00:00",
+      "scenario": "C04",
+      "observed": 5,
+      "verdict": "false_positive",
+      "verdict_id": 899
+    },
+    {
+      "key": "R101|w2|192.168.50.1|2026-09-27T12:00:00+00:00",
+      "scenario": "S03",
+      "observed": 5,
+      "verdict": "false_positive",
+      "verdict_id": 898
+    },
+    {
+      "key": "R102|w2|192.168.70.1|2026-09-27T14:30:00+00:00",
+      "scenario": "W04",
+      "observed": 5,
+      "verdict": "false_positive",
+      "verdict_id": 903
+    },
+    {
+      "key": "R101|w2-c3|192.168.70.1|2026-09-27T09:30:00+00:00",
+      "scenario": "C03",
+      "observed": 4,
+      "verdict": "false_positive",
+      "verdict_id": 896
+    },
+    {
+      "key": "R101|w2-c3|192.168.70.1|2026-09-27T10:00:00+00:00",
+      "scenario": "C04",
+      "observed": 5,
+      "verdict": "false_positive",
+      "verdict_id": 897
+    },
+    {
+      "key": "R101|w2-c3|192.168.50.1|2026-09-27T12:00:00+00:00",
+      "scenario": "S03",
+      "observed": 5,
+      "verdict": "false_positive",
+      "verdict_id": 895
+    },
+    {
+      "key": "R102|w2-c3|192.168.70.1|2026-09-27T14:00:00+00:00",
+      "scenario": "W03",
+      "observed": 4,
+      "verdict": "false_positive",
+      "verdict_id": 900
+    },
+    {
+      "key": "R102|w2-c3|192.168.70.1|2026-09-27T14:30:00+00:00",
+      "scenario": "W04",
+      "observed": 5,
+      "verdict": "false_positive",
+      "verdict_id": 901
+    },
+    {
+      "key": "R102|w2-c3|192.168.70.1|2026-09-27T16:00:00+00:00",
+      "scenario": "W07",
+      "observed": 3,
+      "verdict": "false_positive",
+      "verdict_id": 902
+    }
+  ],
+  "verdicts": {
+    "inserted": 9,
+    "operator": "lab:normal49",
+    "verdict": "false_positive",
+    "created_at": "2026-09-27T17:36:23.955019+00:00",
+    "ids": "895 ~ 903",
+    "reason_format": "[정상 시나리오 <id>] 사전 정의 정상 시나리오가 규칙에 걸림 → 오탐 (정상 트래픽 정의서 5절)",
+    "sql": "docs/evidence/2026-09-28-replay/verdicts_normal49.sql",
+    "status_set": "resolved",
+    "inserted_note": "verdicts_normal49.sql 이 넣은 정상 구간 9건(895 ~ 903)",
+    "additional": {
+      "id": 905,
+      "key": "R101|w2-c3|172.18.0.1|2026-09-18T06:05:28.451923+00:00",
+      "verdict": "false_positive",
+      "operator": "lab:normal49",
+      "created_at": "2026-09-27T21:35:07.312054+00:00",
+      "observed_value": null,
+      "status_set": "resolved",
+      "why": "lead_decisions · 디코이 구간 실행이 띄운 9/18 콘솔 자체 시험(우리 운영 행위) → 정의서 5절 오탐",
+      "file": "verdict_905_console_selftest.txt",
+      "note": "observed_value 가 비어 있다(정상 구간 9건은 observed_count_max 를 남김)"
+    },
+    "total_lab": 10,
+    "extra_0928": {
+      "id": 905,
+      "incident_key": "R101|w2-c3|172.18.0.1|2026-09-18T06:05:28.451923+00:00",
+      "verdict": "false_positive",
+      "operator": "lab:normal49",
+      "created_at": "2026-09-27T21:35:07+00:00",
+      "note": "정상 구간 밖(디코이 구간 실행에서 뜬 9/18 콘솔 자체 시험) · 리드 결정 · 실험 DB 판정 합계 10건(정상 구간 9 + 1). id 904 는 되돌려진 INSERT 로 비어 있음"
+    }
+  },
+  "decoy_range_incidents": [
+    {
+      "key": "R102|w2|172.237.27.147|2026-09-24T11:46:55.435365+00:00",
+      "observed": 256,
+      "origin": "덤프에 있던 사건",
+      "verdict": "non_actionable (han · 9/25)"
+    },
+    {
+      "key": "R102|w2|45.79.123.76|2026-09-25T22:37:36.575000+00:00",
+      "observed": 224,
+      "origin": "덤프에 있던 사건",
+      "verdict": "없음 (open)"
+    },
+    {
+      "key": "R102|w2-c3|172.237.27.147|2026-09-24T11:46:55.435365+00:00",
+      "observed": 256,
+      "origin": "이번 실행",
+      "verdict": "없음"
+    },
+    {
+      "key": "R102|w2-c3|45.79.123.76|2026-09-25T22:37:36.575000+00:00",
+      "observed": 224,
+      "origin": "이번 실행",
+      "verdict": "없음"
+    },
+    {
+      "key": "R101|w2-c3|172.18.0.1|2026-09-18T06:05:28.451923+00:00",
+      "observed": 4,
+      "origin": "이번 실행",
+      "verdict": "false_positive",
+      "note": "디코이 아님. 콘솔 자체 시험(console.login.failed 4 · han · 06:05:28 ~ 06:06:49 · 06:07:10 성공). 우리 운영 행위이지 탐지를 의도한 시험이 아니라 정의서 5절 규칙대로 오탐(리드 결정 · 9/28)",
+      "verdict_id": 905,
+      "operator": "lab:normal49"
+    },
+    {
+      "key": "R102|w2-c8|172.237.27.147|2026-09-24T11:46:55.435365+00:00",
+      "observed": 256,
+      "origin": "이번 실행",
+      "verdict": "없음"
+    },
+    {
+      "key": "R102|w2-c8|45.79.123.76|2026-09-25T22:37:36.575000+00:00",
+      "observed": 224,
+      "origin": "이번 실행",
+      "verdict": "없음"
+    }
+  ],
+  "results_table": {
+    "columns": [
+      "후보",
+      "임계치",
+      "정상 시나리오 걸림 (분모 16)",
+      "R101 오탐",
+      "R102 오탐",
+      "디코이 R102 재현율 (분모 2)",
+      "양성 2 밖 추가 사건"
+    ],
+    "rows": [
+      {
+        "candidate": "w2",
+        "threshold": 5,
+        "normal_caught": 3,
+        "normal_caught_ids": [
+          "C04",
+          "S03",
+          "W04"
+        ],
+        "R101_fp": 2,
+        "R102_fp": 1,
+        "decoy_recall": "2/2",
+        "decoy_extra_incidents": 0
+      },
+      {
+        "candidate": "w2-c3",
+        "threshold": 3,
+        "normal_caught": 6,
+        "normal_caught_ids": [
+          "C03",
+          "C04",
+          "S03",
+          "W03",
+          "W04",
+          "W07"
+        ],
+        "R101_fp": 3,
+        "R102_fp": 3,
+        "decoy_recall": "2/2",
+        "decoy_extra_incidents": 1,
+        "decoy_extra_note": "R101 172.18.0.1 9/18 콘솔 자체 시험(디코이 아님)"
+      },
+      {
+        "candidate": "w2-c8",
+        "threshold": 8,
+        "normal_caught": 0,
+        "normal_caught_ids": [],
+        "R101_fp": 0,
+        "R102_fp": 0,
+        "decoy_recall": "2/2",
+        "decoy_extra_incidents": 0
+      }
+    ],
+    "design_match": "16개 시나리오의 걸림 여부가 정의서 4절 기대 반응과 16/16 일치. 왼쪽 열은 설계값(시나리오가 임계치 경계 2 · 4 · 5회를 알고 만들어짐), 오른쪽 재현율은 분포가 양극(1~2 ↔ 224~256)이라 후보를 가르지 못함.",
+    "promotion": "없음. w2 유지."
+  },
+  "per_scenario": [
+    {
+      "id": "C01",
+      "countable": {
+        "R101": 0
+      },
+      "w2": null,
+      "w2-c3": null,
+      "w2-c8": null
+    },
+    {
+      "id": "C02",
+      "countable": {
+        "R101": 2
+      },
+      "w2": null,
+      "w2-c3": null,
+      "w2-c8": null
+    },
+    {
+      "id": "C03",
+      "countable": {
+        "R101": 4
+      },
+      "w2": null,
+      "w2-c3": "R101 (4)",
+      "w2-c8": null
+    },
+    {
+      "id": "C04",
+      "countable": {
+        "R101": 5
+      },
+      "w2": "R101 (5)",
+      "w2-c3": "R101 (5)",
+      "w2-c8": null
+    },
+    {
+      "id": "C05",
+      "countable": {},
+      "w2": null,
+      "w2-c3": null,
+      "w2-c8": null
+    },
+    {
+      "id": "S01",
+      "countable": {
+        "R101": 0
+      },
+      "w2": null,
+      "w2-c3": null,
+      "w2-c8": null
+    },
+    {
+      "id": "S02",
+      "countable": {
+        "R101": 2
+      },
+      "w2": null,
+      "w2-c3": null,
+      "w2-c8": null
+    },
+    {
+      "id": "S03",
+      "countable": {
+        "R101": 5
+      },
+      "w2": "R101 (5)",
+      "w2-c3": "R101 (5)",
+      "w2-c8": null
+    },
+    {
+      "id": "S04",
+      "countable": {
+        "R101": 0
+      },
+      "w2": null,
+      "w2-c3": null,
+      "w2-c8": null
+    },
+    {
+      "id": "W01",
+      "countable": {
+        "R102": 0
+      },
+      "w2": null,
+      "w2-c3": null,
+      "w2-c8": null
+    },
+    {
+      "id": "W02",
+      "countable": {
+        "R102": 2
+      },
+      "w2": null,
+      "w2-c3": null,
+      "w2-c8": null
+    },
+    {
+      "id": "W03",
+      "countable": {
+        "R102": 4
+      },
+      "w2": null,
+      "w2-c3": "R102 (4)",
+      "w2-c8": null
+    },
+    {
+      "id": "W04",
+      "countable": {
+        "R102": 5
+      },
+      "w2": "R102 (5)",
+      "w2-c3": "R102 (5)",
+      "w2-c8": null
+    },
+    {
+      "id": "W05",
+      "countable": {
+        "R102": 0
+      },
+      "w2": null,
+      "w2-c3": null,
+      "w2-c8": null,
+      "note": "메타데이터 404 6건 전부 exclude_url_patterns 가 뺌"
+    },
+    {
+      "id": "W06",
+      "countable": {},
+      "w2": null,
+      "w2-c3": null,
+      "w2-c8": null
+    },
+    {
+      "id": "W07",
+      "countable": {
+        "R102": 3
+      },
+      "w2": null,
+      "w2-c3": "R102 (3)",
+      "w2-c8": null,
+      "note": "메타데이터 3건 제외 · 깨진 링크 3건만 셈"
+    }
+  ],
+  "recall_R102": {
+    "known_positives": [
+      {
+        "src_ip": "172.237.27.147",
+        "first_ts": "2026-09-24T11:46:55.435365+00:00",
+        "slot_utc": "11:40~11:50",
+        "count_404_after_exclusion": 256,
+        "prod_verdict": "non_actionable (도구형 스캔 · 판정 893 · 2026-09-25 03:58)",
+        "rule_external_evidence": "404 256회 중 서로 다른 경로 253개(/ · /owa/ · /webui 만 2회) · 11:46:55 ~ 11:48:02 (67초) · 같은 활동에 R105 c1 요청 경로 서명 12건(판정 892 무시 가능) · 로그인 · 명령 · 업로드 없음 · 판정 893",
+        "decoy_sessions": 265
+      },
+      {
+        "src_ip": "45.79.123.76",
+        "first_ts": "2026-09-25T22:37:36.575000+00:00",
+        "slot_utc": "22:30~22:40",
+        "count_404_after_exclusion": 224,
+        "prod_verdict": "없음 (open)",
+        "rule_external_evidence": "404 224회 중 서로 다른 경로 221개(/ · /owa/ · /webui 만 2회) · 22:37:36 ~ 22:38:26 (50초) · 같은 활동에 R105 c1 요청 경로 서명 12건(22:37:59 · 미판정) · R102 판정 없음",
+        "decoy_sessions": 235
+      }
+    ],
+    "denominator": 2,
+    "unit": "출발지 × 10분 고정창",
+    "w2": "2/2",
+    "w2-c3": "2/2",
+    "w2-c8": "2/2",
+    "missed_sources": {
+      "w2-c3": [],
+      "w2-c8": []
+    },
+    "interpretation": "관측 창 크기가 1~2 와 224~256 으로 갈려 임계치 3~224 어디서도 디코이 사건 2. 재현율은 후보를 가르지 못한다.",
+    "definition": "기획안 7.6: 해당 라벨 집합에서 TP ÷ (TP + FN) · 단위를 세션 또는 시나리오로 고정 · 인터넷 전체 공격 탐지율로 확대 해석하지 않음. 여기서 단위 = 스캔 1회(출발지 × 10분 고정창 = 규칙 신호 단위 = 시나리오 단위). 디코이 세션 단위(265 · 235 세션)는 R102 가 세션으로 신호를 만들지 않아 쓰지 않음. TP 2 · FN 0. 두 양성은 출발지마다 창 하나라 출발지 단위로도 2/2",
+    "label_set_origin": "현행 w2(임계치 5)가 띄운 사건 2건 그대로. 규칙이 본 것(404 수)만으로 고르면 순환(판정 기준 §6)이라 규칙 밖 근거를 따로 확인: 경로 다양성 253 · 221(정상 W04 는 같은 경로 5회) · 같은 활동의 R105 c1 요청 경로 서명 12건씩(ivanti · confluence · dlink-hnap · geoserver. R105 는 경로 서명을 보고 R102 는 404 수를 보므로 순환 아님) · 판정 1건(893). 임계치 아래 창 90개(1~2회)는 라벨 없음 → FN 0 은 집합 안에서만",
+    "by_construction": "w2-c3 2/2 는 구성상 보장(같은 수 · 더 낮은 임계치 → w2 가 잡은 것을 놓칠 수 없다). 관측 정보가 있는 것은 w2-c8 2/2 만"
+  },
+  "R101_R103_R104": {
+    "R101": {
+      "decoy_measured_positives": 0,
+      "why": "decoy.login.failed 전 기간 0건 · 디코이 sessions login_attempts 합 0",
+      "synthetic": "9/22 DB 사본 합성(발생원별 6회 뜸 · 4회 안 뜸) + 이 회차 정상 시나리오 5개(2 · 4 · 5회 경계 · 오탐 쪽)",
+      "recall": "라벨 집합 없음"
+    },
+    "R103": {
+      "decoy_measured_positives": 0,
+      "incidents_all_versions": 0,
+      "synthetic": 1,
+      "synthetic_note": "9/22: 성공 세션 1건에 뜸 · 실패 세션은 안 뜸",
+      "defect_candidate": "리디렉트 view 로 사실상 '로그인 성공' (rules_w1.json)"
+    },
+    "R104": {
+      "decoy_measured_positives": 0,
+      "incidents_all_versions": 0,
+      "upload_events_all": 0,
+      "synthetic": 1,
+      "synthetic_note": "9/22: 업로드 1건에 뜸"
+    }
+  },
+  "rule_quality_lab_after_verdicts": {
+    "columns": [
+      "rule_id",
+      "rule_version",
+      "incidents",
+      "judged",
+      "threat",
+      "non_actionable",
+      "false_positive",
+      "fp_rate",
+      "non_actionable_rate",
+      "benign_positive",
+      "undetermined",
+      "judged_effective"
+    ],
+    "rows": [
+      [
+        "R101",
+        "w2",
+        2,
+        2,
+        0,
+        0,
+        2,
+        100.0,
+        100.0,
+        0,
+        0,
+        2
+      ],
+      [
+        "R101",
+        "w2-c3",
+        4,
+        4,
+        0,
+        0,
+        4,
+        100.0,
+        100.0,
+        0,
+        0,
+        4
+      ],
+      [
+        "R102",
+        "w1",
+        2,
+        2,
+        0,
+        1,
+        1,
+        50.0,
+        100.0,
+        0,
+        0,
+        2
+      ],
+      [
+        "R102",
+        "w2",
+        3,
+        2,
+        0,
+        1,
+        1,
+        50.0,
+        100.0,
+        0,
+        0,
+        2
+      ],
+      [
+        "R102",
+        "w2-c3",
+        5,
+        3,
+        0,
+        0,
+        3,
+        100.0,
+        100.0,
+        0,
+        0,
+        3
+      ],
+      [
+        "R102",
+        "w2-c8",
+        2,
+        0,
+        0,
+        0,
+        0,
+        null,
+        null,
+        0,
+        0,
+        0
+      ],
+      [
+        "R105",
+        "c1",
+        3,
+        2,
+        0,
+        2,
+        0,
+        0.0,
+        100.0,
+        0,
+        0,
+        2
+      ]
+    ],
+    "caution": "구성상 값. 정상 시나리오 사건은 정의상 전부 오탐이라 분자 = 정상 사건 수. 결과표는 '16개 중 n개' 로 적는다.",
+    "note_0928": "R101 w2-c3 행은 9/18 콘솔 자체 시험 판정(id 905) 뒤 실험 DB 재조회 값(judged 4 · fp 4)"
+  },
+  "production_readonly": {
+    "queried_utc": "2026-09-27 20:31:40",
+    "method": "ssh data01 → docker exec opsloop-db psql -U opsloop_backup (PGOPTIONS default_transaction_read_only=on)",
+    "events": {
+      "count": 126959,
+      "max_ts": "2026-09-27T20:29:44+00:00"
+    },
+    "console_since_0927": [
+      {
+        "src_ip": "192.168.70.1",
+        "eventid": "console.login.success",
+        "username": "han",
+        "count": 1,
+        "ts": "2026-09-27T10:57:03+00:00"
+      }
+    ],
+    "console_all_by_src": {
+      "127.0.0.1": {
+        "login.success": 4
+      },
+      "172.18.0.1": {
+        "login.failed": 4,
+        "login.success": 2
+      },
+      "192.168.50.1": {
+        "login.failed": 8,
+        "login.success": 8,
+        "logout": 4
+      },
+      "192.168.70.1": {
+        "login.success": 1
+      }
+    },
+    "console_source_split_after_43": "확인 1건 (분모 1)",
+    "console_login_failed_10min_max": {
+      "since_0927": 0,
+      "all_time": 4,
+      "all_time_where": "172.18.0.1 · 2026-09-18 06:00 창"
+    },
+    "R10x_incidents": {
+      "R101": 0,
+      "R102 w1": 2,
+      "R102 w2": 2,
+      "R105 c1": 3
+    },
+    "web01_since_0927": {
+      "sshd.login.success": {
+        "count": 17,
+        "src_ip": "192.168.50.1",
+        "username": "ops",
+        "min_ts": "2026-09-27T07:30:28+00:00",
+        "max_ts": "2026-09-27T20:02:27+00:00"
+      },
+      "nginx.request": 0
+    },
+    "decoy_404_windows_ge3_since_0927": [
+      {
+        "src_ip": "128.1.47.89",
+        "slot_utc": "2026-09-27 09:50",
+        "count_before_exclusion": 4,
+        "urls": [
+          "/favicon.ico",
+          "/robots.txt",
+          "/sitemap.xml",
+          "/config.json"
+        ],
+        "count_after_w2_exclusion": 1,
+        "fires": "없음(어느 후보에도)"
+      }
+    ],
+    "new_incidents_since_0927": {
+      "R002 v3": 1
+    },
+    "events_since_0927_by_sensor": {
+      "audit": 4,
+      "console": 1,
+      "cowrie": 172,
+      "decoy": 84,
+      "gateway": 18905,
+      "web-01": 17,
+      "note": "조회 시점(20:31) 값. 관문 이벤트는 늦게 적재돼 20:50 재조회에서 같은 구간(ts < 20:31:40) gateway 18,937 · 나머지 발생원 동일"
+    },
+    "unjudged": {
+      "total": 140,
+      "by_version": {
+        "v3": 138,
+        "w2": 1,
+        "c1": 1
+      }
+    },
+    "undetermined": {
+      "total": 778,
+      "operator": "system:v3-cutover",
+      "created_at": "2026-09-24T15:32:00.016087+00:00",
+      "by_version": {
+        "v1": 523,
+        "v2": 255
+      }
+    },
+    "latest_verdict_dist": {
+      "threat": 61,
+      "non_actionable": 39,
+      "false_positive": 5,
+      "benign_positive": 5,
+      "undetermined": 778
+    },
+    "incidents": {
+      "total": 1028,
+      "max_created_at": "2026-09-27T15:30:07+00:00",
+      "by_version": {
+        "v1": 555,
+        "v2": 321,
+        "v3": 138,
+        "w1": 2,
+        "w2": 2,
+        "c1": 3,
+        "s1": 4,
+        "i1": 2,
+        "i2": 1
+      }
+    },
+    "verdicts": {
+      "total": 888,
+      "max_created_at": "2026-09-25T03:58:42+00:00"
+    },
+    "detector_runs_by_version": {
+      "a1": 5334,
+      "c1": 2915,
+      "i1": 1571,
+      "i2": 3762,
+      "n1": 855,
+      "s1": 6189,
+      "v1": 490,
+      "v2": 1,
+      "v3": 689,
+      "w1": 1775,
+      "w2": 3559
+    },
+    "decoy_eventid_all": {
+      "decoy.request": 1014,
+      "decoy.session.connect": 994,
+      "decoy.login.*": 0,
+      "decoy.action.*": 0,
+      "note": "provenance 불문. fixture 8(request 3 · connect 5) 포함 · real 은 request 1,011 · connect 989 (9/27 20:52 UTC 재조회 · 검토 시 정정)"
+    },
+    "decoy_sessions_all": {
+      "count": 994,
+      "login_success_sum": 0,
+      "login_attempts_sum": 0
+    }
+  },
+  "doc_corrections": {
+    "docs/2026-09-25-폐루프-2회차.md §6": [
+      "'v3 는 아직 운영에 올리지 않았다(운영 실행 기록에 v3 없음)' → v3 는 2026-09-24 15:32 UTC 부터 운영(detector_runs v3 689회 · 9/27 20:31 UTC 조회)",
+      "'옛 버전 미판정 처리 … 전환 전에 정한다' → system:v3-cutover 가 2026-09-24 15:32:00 UTC 에 undetermined 778(v1 523 + v2 255)로 닫음 · 판정 없음 140"
+    ],
+    "docs/2026-09-22-탐지-규칙-추가-결과.md 77행": "'R103 0 — 디코이 세션 169개 모두 로그인 실패' → '디코이 로그인 이벤트가 기록되지 않아(decoy.login.* 전 기간 0건) 판단 불가 · 원인은 별도 이슈' (운영 decoy eventid 는 decoy.request · decoy.session.connect 두 종류뿐)"
+  },
+  "commands": [
+    "docker run -d --rm --name opsloop-lab49 -e POSTGRES_USER=opsloop -e POSTGRES_PASSWORD=<실험 DB 비밀번호> -e POSTGRES_DB=opsloop -p 127.0.0.1:55449:5432 postgres:16-alpine",
+    "G=~/opsloop-backup/opsloop-20260927-0730.globals.sql; grep -E '^(CREATE ROLE|ALTER ROLE|GRANT) ' \"$G\" | grep -vx 'CREATE ROLE opsloop;' | docker exec -i opsloop-lab49 psql -U opsloop -d postgres -v ON_ERROR_STOP=1 -q",
+    "docker exec -i opsloop-lab49 pg_restore -U opsloop -d opsloop --no-owner --exit-on-error < ~/opsloop-backup/opsloop-20260927-0730.dump",
+    "LAB='postgresql://opsloop:<실험 DB 비밀번호>@127.0.0.1:55449/opsloop'  # 셸에 DATABASE_URL 을 두지 않는다",
+    "python3 detector/normal_traffic.py --table",
+    "$PY detector/normal_traffic.py --db-url $LAB              # dry-run → normal_dry_run.json",
+    "$PY detector/normal_traffic.py --db-url $LAB --apply      # → normal_apply.json (window_start 08:30 · window_end 16:30)",
+    "$PY detector/detect.py --db-url $LAB --rules detector/rules_w1.json --run --since 2026-09-27T08:30:00+00:00 --until 2026-09-27T16:30:00+00:00   # w2 · 정상 구간",
+    "$PY detector/detect.py --db-url $LAB --rules docs/evidence/2026-09-28-replay/rules_w2-c3.json --run --since 2026-09-27T08:30:00+00:00 --until 2026-09-27T16:30:00+00:00",
+    "$PY detector/detect.py --db-url $LAB --rules docs/evidence/2026-09-28-replay/rules_w2-c8.json --run --since 2026-09-27T08:30:00+00:00 --until 2026-09-27T16:30:00+00:00",
+    "$PY detector/detect.py --db-url $LAB --rules <같은 세 파일> --run --since 2026-09-18T02:28:16Z --until 2026-09-27T03:26:51Z   # 디코이 구간 × 3",
+    "$PY detector/detect.py --db-url $LAB --compare w2 w2-c3 ; --compare w2 w2-c8 ; --compare w2-c3 w2-c8",
+    "$PY detector/detect.py --db-url $LAB --quality   # 판정 전 · 후",
+    "docker exec -i opsloop-lab49 psql -U opsloop -d opsloop -At < docs/evidence/2026-09-28-replay/verdicts_normal49.sql   # 정상 구간 사건 9건 → false_positive · lab:normal49",
+    "$PY detector/detect.py --db-url $LAB --list --severity medium --limit 40",
+    "ssh -F ~/.ssh/config.opsloop data01 'sudo -n docker exec -i -e PGOPTIONS=--default_transaction_read_only=on opsloop-db psql -U opsloop_backup -d opsloop -At' < prod_read_49b.sql   # 운영 읽기 전용",
+    "$PY detector/normal_traffic.py --db-url $LAB --rollback   # 되돌리기(표식 행만 삭제 · incidents 는 남음) — 이 회차에는 실행하지 않았다",
+    "PY = scratchpad/venv49/bin/python (psycopg2 2.9.13)"
+  ],
+  "notes": [
+    "운영 DB 쓰기 0 · 운영 콘솔 · web-01 · 허니팟 · 디코이 요청 0. 실험 DB 에만 66행 · 사건 14건 · 판정 10건(정상 구간 9 · 9/18 콘솔 자체 시험 1) · detector_runs 6행 · rule_versions 2행이 늘었고 기존 사건 키 1,027개의 md5 는 그대로다.",
+    "정상 구간 사건 수는 설계값(시나리오 표가 임계치 경계에 맞춰 만들어짐). 비율은 '16개 중 n개' 로만 적는다.",
+    "디코이 재현율 2/2 는 세 후보에 같다(분포 양극). 임계치 선택 근거가 아니다. 승격 없음.",
+    "w2-c3 는 디코이 구간 실행에서 콘솔 자체 시험(9/18 06:05 · 172.18.0.1 · 실패 4) 1건을 추가로 띄웠다. 디코이 아님 · 오탐으로 판정(id 905 · 리드 결정 9/28).",
+    "실험 DB 컨테이너는 볼륨 없음 · --rm. 리드 검토 전 docker stop 금지. 재복원 명령은 commands 에 있다.",
+    "비밀값 없음. 실험 DB 비밀번호는 <실험 DB 비밀번호> 로 가렸다."
+  ],
+  "review_metrics": {
+    "date": "2026-09-28",
+    "checked": [
+      "실험 DB 재계산: events 116,031(표식 66) · incidents 1,041 · verdicts 897 · detector_runs 24045~24050 · 옛 키 1,027 md5 21b10f4b… · 미판정 144(복원분 139) · 최신 판정 분포 · R10x 사건 21건 키 · observed_count_max · 판정 895~903 사유 = 결과표 일치",
+      "디코이 구간(9/18 02:28:16 ~ 9/27 03:26:51 배타) 한정 R102 w2 식: 663/79 → 메타 90/46 → 573/41 · 창 92 · 분포 87/3/1/1 · 임계치 3 · 5 · 8 모두 창 2 = 3절 일치. 정상 구간 창: R101 09:00 2 · 09:30 4 · 10:00 5 · 11:30 2 · 12:00 5 / R102 13:30 2 · 14:00 4 · 14:30 5 · 16:00 3 = 2절 표 일치",
+      "오탐률 = false_positive ÷ (최신 판정 − undetermined): rule_quality 뷰 정의 = 판정 기준 §3 = 2절 서술. 판정 9건 전부 false_positive · 사유에 시나리오 id = 정의서 5절",
+      "후보 파일 정규화 diff: rule_version · rules[0].params.threshold · rules[1].params.threshold 3곳만",
+      "운영 읽기 전용 재조회(9/27 20:50 UTC): v3-cutover undetermined 778 = v1 523 + v2 255 · 2026-09-24 15:32:00 · v3 runs(< 20:31:40) 689 · 판정 없음 140(v3 138 · w2 1 · c1 1) · 콘솔 9/27 1건 · console.login.failed 창 최대 4/0 · R101 0 · web-01 17 · decoy.login.* 0 · 128.1.47.89 09:50 창 4 = 5절 · 정정 일치",
+      "sha256.json 21개 파일 해시 실측 일치(정정 전) · 피드백 출처(사람 · 직함) 없음 · 1 · 2회차와 머리글 · 구성 · 말투 같음",
+      "(2차 · 9/27 21:39 UTC) 실험 DB 재조회: verdicts 898(905 추가) · 최신 판정 fp 15 · 판정 없음 143(w2-c3 2 · w2-c8 2 · v3 137 · w2 1 · c1 1) · rule_quality R101 w2-c3 4/4/100.0 = 2절 · 3절 · results.json 일치. 기획안 7.6 원문 '재현율은 해당 라벨 집합에서 TP ÷ (TP + FN) · 단위를 세션 또는 시나리오로 고정' 확인. 후보 파일 diff 3곳 재확인 · sha256.json 21개 재확인 · 운영 정정 수치(v3 첫 실행 15:32:37 · v3 689 · undetermined 778 = 523 + 255 · 판정 없음 140) 재확인. 피드백 출처 없음 · actions 32 · blocklist 13 · sessions 4,440 확인"
+    ],
+    "corrections": [
+      "3회차 §3 표 '무시 가능 (nmap · han · 9/25)' → 판정 893 사유에는 nmap 이 없다 → '도구형 스캔 · 판정 893 · 9/25 03:58'. 규칙 밖 근거 열(경로 다양성 256 · 224) 추가",
+      "3회차 §3 재현율에 기획안 정의(TP ÷ (TP + FN) · TP 2 · FN 0 · 단위) · 라벨 집합 출처(w2 가 띄운 사건 · 규칙 밖 근거 · 임계치 아래 창 라벨 없음) · c3 2/2 구성상 보장 명시. §4 열 '디코이 구간 추가 사건' → '양성 2 밖 추가 사건'. §6 순환 항목에 재현율 쪽 추가",
+      "3회차 §5 관문 이벤트 수에 조회 시점 표기(20:50 재조회 18,937)",
+      "2회차 §6 '전환과 같은 분에 쓴 문장이었다'(근거 없음) → '전환(15:32 UTC) 전 조회 기준 · 문서 커밋 15:33 UTC'(git f974c8a 2026-09-25T00:33:49+09:00)",
+      "results.json decoy_eventid_all 1,014 · 994 는 fixture 8 포함 → note 추가(real 1,011 · 989)",
+      "(2차) 3회차 머리글 판정 9건 → 10건 · §5 리플레이 뒤 미판정 144 → 143(R102 4건 미판정 · R101 1건 판정 905) · §6 '9건은' → '10건은' · §7 제목 '다음 회차로 넘기는 것'(1 · 2회차와 같게)",
+      "(2차) 3회차 §3 경로 다양성 실측: 172.237.27.147 은 404 256회 중 서로 다른 경로 253개(/ · /owa/ · /webui 2회씩) · 67초, 45.79.123.76 은 224회 중 221개 · 50초(22:37:36.575 ~ 22:38:26.583). '256개 · 224개 · 51초' 는 404 수를 경로 수로 적은 것이라 고침. 규칙 밖 근거에 같은 활동의 R105 c1(요청 경로 서명 12건씩 · 판정 기준 §6 순환 아님) 추가 — '45.79.123.76 근거는 경로 다양성뿐' 은 R105 c1 사건(22:37:59 · 미판정)을 빠뜨린 것",
+      "(2차) 3회차 §3 재현율 단위를 기획안 7.6 원문(세션 또는 시나리오)에 맞춰 명시 — 스캔 1회 = 출발지 × 10분 창 = 시나리오 단위 · 디코이 세션 단위(265 · 235)는 쓰지 않은 이유 적음",
+      "(2차) 2회차 §6 '문서 커밋 15:33 UTC' → 15:33 은 작성(author) 시각, 커밋(committer)은 15:38:21 UTC(f974c8a 2026-09-25T00:38:21+09:00) → '15:33 UTC 에 쓰여 15:38 UTC 에 커밋'",
+      "(2차) 증거 quality_after_verdicts.txt · list_medium_after_verdicts.txt · rule_quality_R10x_after.txt 를 판정 905 뒤 다시 뽑음(R101 w2-c3 judged 3 → 4 · 172.18.0.1 open → resolved) · verdict_905_console_selftest.txt 추가 · sha256.json 22개로 갱신"
+    ],
+    "not_changed": [
+      "docs/2026-09-08-판정-기준.md §7 정정 · docs/OpsLoop_WBS_v2.0.xlsx 변경은 이 검토 범위 밖(다른 담당) — 판정 기준 §7 의 새 문장(rule_quality 뷰 = 인시던트별 최신 판정)은 실험 DB 뷰 정의와 맞음을 확인만 함",
+      "판정 905 의 observed_value 가 비어 있음(정상 구간 9건은 4 · 5 등 관측값 있음) — 리드가 넣은 판정이라 고치지 않음"
+    ]
+  },
+  "lead_decisions": [
+    {
+      "at": "2026-09-28",
+      "item": "R101|w2-c3|172.18.0.1|2026-09-18T06:05:28 판정값",
+      "decision": "false_positive",
+      "why": "우리 운영 행위(콘솔 자체 로그인 시험). 탐지되기를 의도한 시험(격리 · 등록 · 복원)이 아니므로 정의서 5절 규칙"
+    }
+  ]
+}

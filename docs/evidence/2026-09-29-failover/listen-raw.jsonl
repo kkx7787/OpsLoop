@@ -1,0 +1,8 @@
+{"log":"실시간 통보: LISTEN 연결 끊김(SELECT 1 5초 초과). 다시 붙는다\n","stream":"stderr","time":"2026-09-28T16:02:52.929994075Z"}
+{"log":"실시간 통보: LISTEN 다시 붙음(22회째 시도 · 끊긴 지 144초). 화면에 resync 를 보낸다\n","stream":"stderr","time":"2026-09-28T16:05:16.457985369Z"}
+{"log":"실시간 통보: LISTEN 연결 끊김(SELECT 1 5초 초과). 다시 붙는다\n","stream":"stderr","time":"2026-09-28T16:08:06.503181362Z"}
+{"log":"실시간 통보: LISTEN 다시 붙음(15회째 시도 · 끊긴 지 144초). 화면에 resync 를 보낸다\n","stream":"stderr","time":"2026-09-28T16:10:30.692357336Z"}
+{"log":"실시간 통보: LISTEN 연결 끊김(SELECT 1 5초 초과). 다시 붙는다\n","stream":"stderr","time":"2026-09-28T16:13:35.754544205Z"}
+{"log":"실시간 통보: LISTEN 다시 붙음(14회째 시도 · 끊긴 지 138초). 화면에 resync 를 보낸다\n","stream":"stderr","time":"2026-09-28T16:15:54.013194609Z"}
+{"log":"실시간 통보: LISTEN 연결 끊김(SELECT 1 5초 초과). 다시 붙는다\n","stream":"stderr","time":"2026-09-28T16:18:59.070626241Z"}
+{"log":"실시간 통보: LISTEN 다시 붙음(14회째 시도 · 끊긴 지 136초). 화면에 resync 를 보낸다\n","stream":"stderr","time":"2026-09-28T16:21:15.318255365Z"}
