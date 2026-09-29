@@ -104,6 +104,11 @@ class PullTest(unittest.TestCase):
         patcher = mock.patch.object(pull, "disk_ok", lambda home: (True, 10 ** 12))
         patcher.start()
         self.addCleanup(patcher.stop)
+        # 받기 오류 종류도 고정한다. boto3 가 깔린 곳(운영 노드 · 시험 컨테이너)에서는 client_errors 가 botocore 오류만 돌려줘
+        # 가짜 S3 의 Err 가 잡히지 않는다(HeartbeatStateTest 와 같은 방식, 이슈 #70)
+        patcher = mock.patch.object(pull, "client_errors", lambda: (Err,))
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def run_pull(self, now=None):
         return pull.run(self.s3, "b", {HOST}, self.dir, now=now or T0 + timedelta(minutes=1))
@@ -488,6 +493,10 @@ class PullTest(unittest.TestCase):
                     self.s3.fail[k2] = "SlowDown"
                 else:
                     self.s3.read_fail[k2] = ReadTimeoutError("끊김")
+                # 운영의 client_errors 는 (ClientError, BotoCoreError) 다. 가짜 S3 오류(Err)와 읽기 끊김(BotoCoreError 인 ReadTimeoutError 흉내)을 함께 잡게 맞춘다
+                patcher = mock.patch.object(pull, "client_errors", lambda: (Err, ReadTimeoutError))
+                patcher.start()
+                self.addCleanup(patcher.stop)
                 rc, out = self.quiet(self.run_pull)
                 self.assertEqual(rc, 1)                       # 일시 오류: 실패로 드러내고 탐지는 보류
                 self.assertNotIn("인정 목록", out)

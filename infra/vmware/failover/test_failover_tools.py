@@ -1538,6 +1538,7 @@ class CollectFwTest(unittest.TestCase):
         self.assertIn("after midnight GET /health?p=r1-2", text)
         self.assertNotIn("old line before test", text)
 
+    @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root 는 권한 0 파일도 읽어 '읽을 수 없는 로그' 를 흉내 낼 수 없다(이슈 #70)")
     def test_unreadable_log(self):
         """로그를 읽을 수 없으면(권한 없음 · sudo 거절) 경고와 종료 1. fw.csv 는 남는다."""
         self.put(stats_csv("UP"))
