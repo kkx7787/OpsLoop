@@ -37,6 +37,10 @@ function subscribe(onChange: () => void): () => void {
   return () => mq.removeEventListener('change', onChange)
 }
 
+/** 대상 카드 격자. 열 수 계산은 아래 body 주석. gap-3(0.75rem) 이 식의 틈과 같아야 한다 */
+const TARGET_GRID =
+  'grid gap-3 grid-cols-[repeat(auto-fill,minmax(max(15rem,min(18.75rem,calc((100%_-_0.75rem)/2)),calc((100%_-_2.25rem)/4)),1fr))]'
+
 /** matchMedia 가 없는 환경(시험)은 넓은 화면으로 본다(useIsDesktop 과 같은 기준) */
 function snapshot(): boolean {
   if (typeof window.matchMedia !== 'function') return true
@@ -78,7 +82,10 @@ export function TargetBoard({ data, pending, fetching, error, updatedAt, onRetry
     )
   } else if (wide) {
     body = (
-      <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
+      // 카드 열 수는 화면 폭 구간이 아니라 이 격자의 실제 폭(사이드바를 뺀 본문)으로 정한다. 카드 최소 폭 300px(18.75rem) —
+      //   이보다 좁으면 줄바꿈이 늘어 카드가 급히 길어진다(실측). 한 줄에 최대 4개(각 칸이 격자의 1/4 이상), 카드가 보이는 폭에서는
+      //   최소 2개(사이드바가 생기는 768 ~ 880 에서만 240px 까지 내려간다). 넓을수록 4 → 3 → 2 개, 640px 미만은 접힌 목록이다
+      <div className={TARGET_GRID}>
         {targets.map((target) => (
           <TargetCard key={target.id} target={target} asOf={asOf} cti={badgeOf(badges, target)} />
         ))}

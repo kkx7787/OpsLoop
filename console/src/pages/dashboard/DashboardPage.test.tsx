@@ -297,7 +297,7 @@ describe('대시보드 · 등록 노드 카드(#64)', () => {
   it.each([
     ['5개', ['web-02']],
     ['6개', ['web-02', 'web-03']],
-  ])('카드 %s: 등록 노드는 고정 네 대상 뒤에 붙고 그리드 규칙(sm 두 개 · 2xl 네 개씩)은 그대로다', async (_name, ids) => {
+  ])('카드 %s: 등록 노드는 고정 네 대상 뒤에 붙고 격자는 폭에 따라 최대 4 · 최소 2 열이다', async (_name, ids) => {
     stubDashboard({ targets: withNodes(...ids) })
     renderPage()
     const board = await screen.findByRole('region', { name: '관제 대상' })
@@ -307,7 +307,9 @@ describe('대시보드 · 등록 노드 카드(#64)', () => {
     expect(cards.map((c) => c.dataset.targetKind)).toEqual(['fixed', 'fixed', 'fixed', 'fixed', ...ids.map(() => 'node')])
     // 카드는 모두 한 그리드의 칸이다. 넘치는 카드는 다음 줄로 간다(가로 스크롤 없음)
     const grid = cards[0].parentElement as HTMLElement
-    expect(grid).toHaveClass('grid', 'sm:grid-cols-2', '2xl:grid-cols-4')
+    // 열 수는 격자 폭으로 정한다(카드 최소 18.75rem · 한 줄 최대 4개 · 카드가 보이면 최소 2개). jsdom 은 배치를 계산하지 않아 규칙만 본다
+    expect(grid).toHaveClass('grid', 'gap-3')
+    expect(grid.className).toContain('grid-cols-[repeat(auto-fill,minmax(max(15rem,min(18.75rem,calc((100%_-_0.75rem)/2)),calc((100%_-_2.25rem)/4)),1fr))]')
     expect(cards.every((c) => c.parentElement === grid)).toBe(true)
   })
 
