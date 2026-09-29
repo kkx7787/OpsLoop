@@ -194,3 +194,7 @@ class OperationsDatabaseTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(asyncpg.RaiseError):
                 await self.conn.execute(sql)
         self.assertEqual(await self.conn.fetchval('SELECT count(*) FROM audit_log'),1)
+
+
+if __name__ == "__main__":
+    unittest.main()

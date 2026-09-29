@@ -182,3 +182,7 @@ class DashboardDatabaseTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(main.HTTPException) as error:
             await main.add_action("a", main.ActionIn(action="unblock_ip"), request)
         self.assertEqual(error.exception.status_code, 403)
+
+
+if __name__ == "__main__":
+    unittest.main()

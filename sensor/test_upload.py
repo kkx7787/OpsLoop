@@ -7,6 +7,7 @@ import os
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 sys.path.insert(0, os.path.dirname(__file__))
 import upload  # noqa: E402
@@ -55,6 +56,10 @@ class UploaderTest(unittest.TestCase):
         self.state = {}
         self.s3 = FakeS3()
         self._chunk, self._cap = upload.CHUNK, upload.RUN_CAP
+        # 업로더는 root 실행을 거부한다(main). 시험이 root 로 돌아도(컨테이너) 같은 결과가 나오게 실행 사용자를 고정한다(이슈 #70)
+        patcher = unittest.mock.patch.object(upload.os, "geteuid", lambda: 1000)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def tearDown(self):
         upload.CHUNK, upload.RUN_CAP = self._chunk, self._cap

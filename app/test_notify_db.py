@@ -445,3 +445,7 @@ class NotifyClaimLockTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await self.b.fetch(notifier.CLAIM, "console-b"), [])
         rows = await self.a.fetch("SELECT subject_key, status, claimed_by FROM notify_deliveries ORDER BY subject_key")
         self.assertEqual([tuple(r) for r in rows], [("one", "sending", "console-b"), ("two", "sending", "console-b")])
+
+
+if __name__ == "__main__":
+    unittest.main()

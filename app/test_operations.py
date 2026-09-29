@@ -37,3 +37,7 @@ class OperationsPermissionTests(unittest.IsolatedAsyncioTestCase):
                 with self.subTest(role=role,call=call), self.assertRaises(HTTPException) as error:
                     await call(*args)
                 self.assertEqual(error.exception.status_code,403 if role else 401)
+
+
+if __name__ == "__main__":
+    unittest.main()
