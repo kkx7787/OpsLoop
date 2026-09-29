@@ -2,7 +2,7 @@
 """콘솔 계정 관리(이슈 #59) DB 시험.  python3 infra/test_console_accounts_db.py
 
 DB 없이 도는 글자 시험: 마이그레이션(infra/migrations/20261001_console_accounts.sql)이 schema.sql 의 감사 조회 뷰 · 추가만 되는 행
-보호 문장과 '콘솔 계정 관리 (이슈 #59)' 블록을 글자 그대로 담는지, 블록이 #52 블록 뒤 파일 끝에 있는지, 열 · 도장 · 함수 · 감사
+보호 문장과 '콘솔 계정 관리 (이슈 #59)' 블록을 글자 그대로 담는지, 블록이 #52 블록 뒤에 있고 그 뒤에는 #63 블록만 오는지, 열 · 도장 · 함수 · 감사
 트리거 · 권한 줄이 계약과 같은지(콘솔 역할에 계정 표 쓰기 권한을 늘리지 않는지, 감사 detail 에 해시가 없는지), verify-db-roles.sh 에
 #59 절이 있고 기존 계정 줄(:38 · :39) · install-collector.sh 의 role 갱신 검사가 그대로인지, 복원 훈련의 구조 기대값 · 계정 지문이
 새 열을 반영하는지 본다.
@@ -35,6 +35,7 @@ BLOCK47 = os.path.join(ROOT, "infra", "test_block_enforce_db.py")
 
 HEADER = "-- 콘솔 계정 관리 (이슈 #59)"
 HEADER52 = "-- 관제 대상 상태판 (이슈 #52)"
+NEXT_HEADER = "-- 콘솔 계정 추가 · 삭제 · 비밀번호 (이슈 #63)"      # 이 블록 뒤에 오는 다음 블록(infra/test_console_accounts_manage_db.py)
 AUDIT_START = "-- 감사 기록 조회 (S-14)."
 AUDIT_END = "EXECUTE FUNCTION audit_append_only();"
 VERIFY_SECTION = 'echo "== 콘솔 계정 관리 (이슈 #59'
@@ -105,9 +106,11 @@ def audit_sql(text):
 
 
 def block59(text):
-    """'콘솔 계정 관리 (이슈 #59)' 블록(머리 주석 · 열 · 도장 · 함수 · 감사 트리거 · 권한). 파일 끝의 블록이다."""
+    """'콘솔 계정 관리 (이슈 #59)' 블록(머리 주석 · 열 · 도장 · 함수 · 감사 트리거 · 권한). 뒤에 #63 블록이 있으면 그 앞까지다."""
     start = text.index(HEADER + "\n")
-    end = text.rindex("END\n$$;") + len("END\n$$;")
+    stop = text.find("\n" + NEXT_HEADER, start)
+    region = text if stop < 0 else text[:stop]
+    end = region.rindex("END\n$$;") + len("END\n$$;")
     return text[start:end]
 
 
@@ -150,13 +153,14 @@ class ConsoleAccountsTextTest(unittest.TestCase):
         self.assertIn("< infra/migrations/20261001_console_accounts.sql", head)
         self.assertIn("infra/vmware/scripts/verify-db-roles.sh 의 '콘솔 계정 관리' 줄", head)
 
-    def test_블록은_52_블록_뒤_파일_끝에_있다(self):
+    def test_블록은_52_블록_뒤에_있고_그_뒤에는_63_블록만_온다(self):
         # 역할 블록이 표 권한을 먼저 거두므로 뒤에 둔다(이 블록은 함수 실행 권한만 주므로 역할 블록을 다시 적용해도 남는다)
         schema = read(SCHEMA)
         at = schema.index(HEADER + "\n")
         self.assertGreater(at, schema.index(HEADER52 + "\n"))
         self.assertGreater(at, schema.index("GRANT pg_read_all_data TO opsloop_backup"))
-        self.assertEqual(schema.rstrip("\n"), schema[:at] + block59(schema))
+        rest = schema[at + len(block59(schema)):].strip("\n")
+        self.assertTrue(rest.startswith(NEXT_HEADER), rest[:80])
         self.assertEqual(schema.count(HEADER + "\n"), 1)
 
     def test_감사_조회_뷰와_보호_트리거는_같은_네_갈래를_본다(self):
@@ -221,7 +225,8 @@ class ConsoleAccountsTextTest(unittest.TestCase):
         self.assertTrue(" ".join(sql.split()).endswith(COLLECTOR_ROLE), sql)
 
     def test_복원_훈련은_새_트리거_함수를_세고_계정_지문에_비활성과_변경_시각을_넣는다(self):
-        self.assertEqual(QUERIES.EXPECT, {"tables": 26, "fk": 15, "triggers": 9, "functions": 15, "views": 3})
+        # 함수 18 = #59 뒤 15 + #63 의 계정 추가 · 삭제 · 비밀번호 함수 셋(infra/test_console_accounts_manage_db.py)
+        self.assertEqual(QUERIES.EXPECT, {"tables": 26, "fk": 15, "triggers": 9, "functions": 18, "views": 3})
         [fp] = [f for f in QUERIES.FINGERPRINTS if f[0] == "console_users"]
         self.assertEqual(fp[1:], ("username", "ROW(username, role, created_at, disabled_at, md5(password_hash))",
                                   "greatest(created_at, updated_at)", "console_users", ""))
@@ -608,9 +613,9 @@ class ConsoleAccountsMigrationTest(AccountsCase):
 
     @classmethod
     def old_schema(cls):
-        """schema.sql 에서 이번 블록을 빼고 감사 조회 뷰 · 보호 트리거를 옛 모양(계정 조건 없음)으로 되돌린다."""
+        """schema.sql 에서 이번 블록(과 그 뒤의 #63 블록)을 빼고 감사 조회 뷰 · 보호 트리거를 옛 모양(계정 조건 없음)으로 되돌린다."""
         text = read(SCHEMA)
-        text = text.replace(block59(text), "")
+        text = text[:text.index(HEADER + "\n")]
         audit = audit_sql(text)
         old = audit.replace(" OR eventid LIKE 'console.account.%'", "").replace(" OR OLD.eventid LIKE 'console.account.%'", "")
         assert "console.account" not in old and old != audit

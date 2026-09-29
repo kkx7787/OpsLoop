@@ -26,7 +26,7 @@ src/api/queryClient.ts 재시도 규칙: 5xx · 네트워크만 2회
 src/api/incidents.ts   인시던트 목록(useIncidentsPage · 페이지별 limit/offset) · 상세(useIncident) · 판정 · 조치(useVerdictMutation · useActionMutation) · 규칙 품질. 쿼리 키는 incidentKeys · ruleKeys
 src/api/monitoring.ts  대시보드(useSummary) · 차단 목록(useBlocklist). 기존 API 조회 · 30초 재조회 · 서버 시각으로 만료 계산
 src/api/notify.ts      알림 채널(useChannels · createChannel · updateChannel · testChannel) · 발송 이력(useDeliveries). 채널 주소는 함수로만 보내고 캐시에 두지 않는다. 쿼리 키는 notifyKeys
-src/api/accounts.ts    계정(S-15 · #59): 목록(useAccounts) · 역할 변경(setAccountRole) · 비활성 · 재활성(setAccountActive). 쓰기는 함수로 부르고 끝나면 accountKeys · auditKey 를 다시 받는다
+src/api/accounts.ts    계정(S-15 · #59 · #63): 목록(useAccounts) · 역할 변경(setAccountRole) · 비활성 · 재활성(setAccountActive) · 추가(createAccount) · 비밀번호 재설정(resetAccountPassword) · 삭제(deleteAccount). 쓰기는 함수로 부르고(비밀번호를 캐시에 두지 않는다) 끝나면 accountKeys · auditKey 를 다시 받는다
 src/api/cti.ts         CVE · KEV 연계(#39): 사건 연계(useIncidentCti) · 주목 CVE(useWatch) · 자산 목록(useAssets) · 자산 상세(useAsset · 거르기 · 쪽). 쿼리 키는 ctiKeys(사건 상세 키 밑에 두지 않는다)
 src/api/live-context.ts 공통 연결 상태. S-10에서 웹소켓 끊김과 REST 조회 실패를 구별
 src/api/live.ts        실시간 통보(WS /ws). useLiveUpdates 가 한 번 잇고 통보마다 해당 쿼리를 무효화한다. 끊기면 1초 → 30초 지수 백오프. 재접속 · resync 때 놓친 통보를 보완하도록 목록·상세·지표 · CVE 연계 · /api/me 를 재조회(RESYNC_KEYS). hello 의 콘솔 이름을 상태에 싣는다
@@ -56,7 +56,7 @@ src/pages/             구현 화면 · 없는 경로(NotFoundPage) · 경로 �
   pages/sources/         출발지 분석(S-09): 목록 · 도구 지문 탭(/sources?tab=fingerprints) · 상세(/sources/detail?ip=)
   pages/reports/         보고서(S-11): 기간 · 구역 선택(주소창 ?period=&s=) · 인쇄용 본문 · 인쇄(window.print)
   pages/alerts/          알림 설정(S-12): 채널 표 · 추가/수정 양식 · 사용/중지 · 시험 발송 · 발송 이력. admin 이 아니면 403
-  pages/accounts/        계정(S-15 · #59): 계정 표 · 줄 안 확인 양식(관제사 ↔ 조회자 · 비활성 · 재활성) · 명령줄 안내. admin 이 아니면 403
+  pages/accounts/        계정(S-15 · #59 · #63): 계정 추가 양식 · 계정 표 · 줄 안 확인 양식(관제사 ↔ 조회자 · 비활성 · 재활성 · 비밀번호 재설정 · 삭제) · 명령줄 안내. admin 이 아니면 403
   pages/assets/          자산 · 취약점(#39, 경로 /inventory): 주목 CVE · 신선도 요약 · 자산 표 · 고른 자산의 주요 패키지 · 이미지 · 배포판 취약점(?asset= 로 주소에 남는다)
 src/test/              vitest setup(WebSocket 은 아무 일도 하지 않는 소켓) · render(메모리 라우터 · /api/me 스텁) · hostile-fixtures(악성 표본 · DOM 점검)
 ```
@@ -185,14 +185,17 @@ src/test/              vitest setup(WebSocket 은 아무 일도 하지 않는 �
 - `/api/me` 의 `console` 은 선택 필드다(없거나 문자열이 아니면 뺀다). REST 요청은 두 대에 번갈아 가므로 화면 표시에는 쓰지 않는다(전환 시험 프로브가 기록한다).
 - 배포: API 와 화면 빌드를 함께 배포한다. 화면만 먼저 나가도 깨지지 않지만(콘솔 표시 없음 · resync 없음), 세션이 끝난 탭의 재연결 되풀이는 서버의 1008 변경이 있어야 멈춘다.
 
-## 계정 (S-15 · #59)
+## 계정 (S-15 · #59 · #63)
 
-- `/accounts`(S-15): admin 만 콘솔 계정 표(아이디 · 역할 · 상태 · 마지막 로그인 · 변경 시각 · 동작, 아이디 순)를 보고 관제사 ↔ 조회자 역할 변경과 비활성 · 재활성을 한다. 행의 버튼이 행 아래에 확인 양식을 펼치고 `확정` 으로 보낸다(모달 없음, 차단 해제와 같은 방식). 양식은 여는 순간의 변경을 잡아 두어, 그사이 목록이 바뀌어도 읽은 문장과 다른 변경을 보내지 않는다.
-- 화면에서 하지 않는 것: 계정 추가 · 관리자 부여와 해제 · 관리자 계정의 비활성과 재활성 · 비밀번호 · 삭제. 명령줄(`app/auth.py` 의 `add` · `role` · `passwd` · `disable` · `enable` · `list`, 행위자 `--by <이름>`)에서 한다. 콘솔이 뚫려도 스스로 관리자가 될 수 없게 하려는 경계다. 화면 아래 '명령줄에서 하는 일' 카드가 명령 모양만 보이고 접속 주소 · 비밀번호는 싣지 않는다. 접속 절차는 `infra/vmware/README.md`.
-- 잠긴 행: 서버 `locked` 가 `admin` 이면 '명령줄에서만 변경', `self`(로그인한 본인)면 '본인 계정' 을 버튼 대신 보인다. 서버가 잠금을 주지 않아도 역할이 admin 이면 잠근다. 서버(DB 함수 `console_account_set`)가 같은 규칙으로 409 를 주므로 화면 잠금은 보안 경계가 아니다.
-- API: `GET /api/accounts`, `POST /api/accounts/role` `{username, role: viewer|operator}`, `POST /api/accounts/active` `{username, active}`. 아이디는 경로가 아니라 본문으로 보낸다. 응답은 `{result: ok|unchanged, account}` 이고 없는 계정은 404, 관리자 계정 · 관리자 부여 · 본인은 409 다. 409 는 서버 설명을 띠에 그대로 보인다. 비밀번호 해시는 오지 않는다.
-- 쓰기는 훅이 아니라 함수(`setAccountRole` · `setAccountActive`)로 부른다. 확정 중에는 두 번 보내지 않고(`useRef`) 다른 행 버튼도 이유를 보이며 막는다. 성공이든 실패든 끝나면 목록(`accountKeys`)과 감사 기록(`auditKey`)을 다시 받는다. 이미 그 값이면(`unchanged`) 바뀐 것도 감사 행도 없다고 알린다. 시간 초과 · 연결 끊김 · 5xx 는 이미 적용됐을 수 있어 '실패' 대신 '결과 확인 필요' 로 알리고 다시 받은 목록을 보게 한다. 목록은 30초마다 다시 조회한다.
-- 세션: 서버가 요청마다 계정 상태를 DB 로 확인한다. 역할 변경 · 비활성 전에 받은 쿠키는 무효라 그 계정의 다음 요청은 401 → 로그인이고, 실시간 연결은 30초 안에 1008 로 닫힌다(화면은 다시 잇지 않고 로그인 안내). 다시 로그인하면 바뀐 역할을 받으므로 `useMe`(5분 캐시)를 따로 무효화하지 않는다. 재활성해도 비활성 전 쿠키는 되살아나지 않는다.
+- `/accounts`(S-15): admin 만 콘솔 계정 표(아이디 · 역할 · 상태 · 마지막 로그인 · 변경 시각 · 동작, 아이디 순)를 보고 관제사 · 조회자 계정의 역할 변경(관제사 ↔ 조회자) · 비활성 · 재활성 · 비밀번호 재설정 · 삭제를 한다. 행의 버튼이 행 아래에 확인 양식을 펼치고 `확정` 으로 보낸다(모달 없음, 차단 해제와 같은 방식). 양식은 여는 순간의 변경을 잡아 두어, 그사이 목록이 바뀌어도 읽은 문장과 다른 변경을 보내지 않는다.
+- 계정 추가(#63): 머리의 '계정 추가' 가 표 위에 양식(아이디 · 역할 관제사/조회자, 기본 조회자 · 비밀번호 · 비밀번호 확인)을 연다. 아이디는 서버와 같은 형식(`[A-Za-z0-9._-]{1,64}`), 비밀번호는 12 ~ 256자(글자 수)이고 두 칸이 같아야 보낸다. 틀린 칸에 까닭을 보이고 그 칸으로 초점을 옮긴다. 성공하면 칸을 비우고 양식을 열어 둔 채 아이디 칸으로 초점을 옮기며, 실패하면 고쳐 보낼 수 있게 값을 둔다. 닫으면 '계정 추가' 로 초점을 돌린다.
+- 비밀번호 재설정 · 삭제(#63): 재설정은 줄 안 양식에서 새 비밀번호를 두 번 받는다(열면 첫 칸으로 초점). 그 계정의 옛 쿠키는 무효가 되어 새 비밀번호로 다시 로그인해야 한다. 삭제 단추는 서버 `deletable` 이 `true`(판정 · 조치 · 로그인 기록 없음)인 행에만 두고, `false` · `null`(서버가 모름)이면 두지 않는다. 지우면 행이 빠지므로 초점을 표로 옮긴다. 이력이 생겨 서버가 거부하면(409) 서버 설명(비활성으로 막으라는 안내)을 그대로 보인다.
+- 비밀번호 값: 입력칸은 제어하지 않는 입력(`type=password` · `autocomplete=new-password` · `name` 없음)이라 React 상태 · 마크업(value 특성)에 남지 않고, 양식이 어떤 길로 제출돼도 주소에 실리지 않는다. 요청 본문에만 싣고 쿼리 · Mutation 캐시 · 로그에 두지 않는다. 해시는 서버가 만들고 응답 · 감사에 없다. 입력칸은 성공 · 닫기 · 취소 때 비운다.
+- 화면에서 하지 않는 것: 관리자 계정 추가 · 관리자 부여와 해제 · 관리자 계정의 비활성 · 재활성 · 비밀번호 · 본인 계정 변경. 명령줄(`app/auth.py` 의 `add` · `role` · `passwd` · `disable` · `enable` · `list`, 행위자 `--by <이름>`)에서 한다. 콘솔이 뚫려도 스스로 관리자가 될 수 없게 하려는 경계다. 화면 아래 '명령줄에서 하는 일' 카드가 명령 모양만 보이고 접속 주소 · 비밀번호는 싣지 않는다. 접속 절차는 `infra/vmware/README.md`.
+- 잠긴 행: 서버 `locked` 가 `admin` 이면 '명령줄에서만 변경', `self`(로그인한 본인)면 '본인 계정' 을 버튼 대신 보인다. 서버가 잠금을 주지 않아도 역할이 admin 이면 잠근다. 서버(DB 함수 `console_account_set` · `_create` · `_delete` · `_password`)가 같은 규칙으로 409 를 주므로 화면 잠금은 보안 경계가 아니다.
+- API: `GET /api/accounts`(항목에 `deletable`), `POST /api/accounts/role` `{username, role: viewer|operator}`, `POST /api/accounts/active` `{username, active}`, `POST /api/accounts` `{username, role, password}` → 201, `POST /api/accounts/password` `{username, password}`, `POST /api/accounts/delete` `{username}`. 아이디는 경로가 아니라 본문으로 보낸다. 응답은 `{result: ok|unchanged, account}`(삭제는 `{result: ok}`)이고 없는 계정은 404, 이미 있는 아이디 · 이력 있는 계정 삭제 · 관리자 계정 · 관리자 부여 · 본인은 409, 형식 · 길이 위반은 422 다. 409 · 422 는 서버 설명을 띠에 그대로 보인다. 비밀번호 해시는 오지 않는다.
+- 쓰기는 훅이 아니라 함수(`setAccountRole` · `setAccountActive` · `createAccount` · `resetAccountPassword` · `deleteAccount`)로 부른다. 확정 중에는 두 번 보내지 않고(`useRef`) 다른 행 버튼과 추가 단추도(추가 중이면 행 버튼도) 이유를 보이며 막는다. 성공이든 실패든 끝나면 목록(`accountKeys`)과 감사 기록(`auditKey`)을 다시 받는다. 이미 그 값이면(`unchanged`) 바뀐 것도 감사 행도 없다고 알린다. 시간 초과 · 연결 끊김 · 5xx 는 이미 적용됐을 수 있어 '실패' 대신 '결과 확인 필요' 로 알리고 다시 받은 목록을 보게 한다. 목록은 30초마다 다시 조회한다.
+- 세션: 서버가 요청마다 계정 상태를 DB 로 확인한다. 역할 변경 · 비활성 · 비밀번호 재설정 전에 받은 쿠키는 무효라 그 계정의 다음 요청은 401 → 로그인이고, 실시간 연결은 30초 안에 1008 로 닫힌다(화면은 다시 잇지 않고 로그인 안내). 다시 로그인하면 바뀐 역할을 받으므로 `useMe`(5분 캐시)를 따로 무효화하지 않는다. 재활성해도 비활성 전 쿠키는 되살아나지 않는다.
 - 감사 기록(S-14): `console.account.created` · `.role.changed` · `.disabled` · `.enabled` · `.password.changed`(바뀐 사실만) · `.deleted` 를 계정 추가 · 역할 변경 · 비활성 · 재활성 · 비밀번호 변경 · 삭제로 보인다. DB 트리거가 화면 · 명령줄 · psql 변경을 모두 남기고 detail 의 `target=<아이디>` 로 대상 필터에 걸린다.
-- 아이디는 비신뢰 문자열로 그린다(`UntrustedText` 64자, 버튼 · 양식 이름은 `revealHidden`). 변경 본문에는 받은 원문 그대로 보낸다.
-- 배포: 마이그레이션 `infra/migrations/20261001_console_accounts.sql` → `verify-db-roles.sh` → 콘솔 이미지(API 와 화면 빌드 함께) 순서다. 콘솔 B 는 꺼 두거나 같은 이미지로 올린다(옛 이미지는 비활성 · 역할 변경을 모른다). 명령은 `infra/vmware/README.md`.
+- 아이디는 비신뢰 문자열로 그린다(`UntrustedText` 64자, 버튼 · 양식 이름은 `revealHidden`). 변경 본문에는 받은 원문 그대로 보낸다. 새 아이디는 형식 검사로 숨은 문자 · 태그를 보내기 전에 막는다.
+- 배포: 마이그레이션 `infra/migrations/20261001_console_accounts.sql` → `20261002_console_accounts_manage.sql`(#63) → `verify-db-roles.sh` → 콘솔 이미지(API 와 화면 빌드 함께) 순서다. 콘솔 B 는 꺼 두거나 같은 이미지로 올린다(옛 이미지는 비활성 · 역할 변경 · 추가 · 삭제 · 재설정 경로를 모른다). 명령은 `infra/vmware/README.md`.

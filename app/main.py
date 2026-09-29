@@ -122,7 +122,8 @@ app.include_router(targets_router)
 # 출발지 분석 · 도구 지문 묶음 (sources.py) · 기간 보고서 (reports.py) · 이슈 #58
 app.include_router(sources_router)
 app.include_router(reports_router)
-# 계정 관리 (accounts.py · 이슈 #59). GET /api/accounts · POST /api/accounts/role · /api/accounts/active (admin)
+# 계정 관리 (accounts.py · 이슈 #59 · #63). GET /api/accounts · POST /api/accounts(추가) · /api/accounts/delete ·
+#   /api/accounts/password · /api/accounts/role · /api/accounts/active (admin)
 app.include_router(accounts_router)
 
 

@@ -12,6 +12,8 @@
 #   infra/migrations/20260930_status_board.sql 을 적용한 뒤에 돌린다.
 #   콘솔 계정 관리(이슈 #59)의 계정 변경 함수(console_account_set) 실행 권한 · 도장 · 감사 트리거와 감사 조회 뷰 · 보호 트리거의
 #   계정 조건도 본다. infra/migrations/20261001_console_accounts.sql 을 적용한 뒤에 돌린다.
+#   콘솔 계정 추가 · 삭제 · 비밀번호(이슈 #63)의 세 함수(console_account_create · console_account_delete · console_account_password)
+#   실행 권한도 본다. infra/migrations/20261002_console_accounts_manage.sql 을 적용한 뒤에 돌린다.
 # 사용 (Mac, 저장소 루트): infra/vmware/scripts/verify-db-roles.sh     종료 코드 0 = 전부 기대대로
 set -uo pipefail
 SSH=(ssh -F "$HOME/.ssh/config.opsloop" -o BatchMode=yes -o ConnectTimeout=10)
@@ -178,6 +180,30 @@ p opsloop_console  "(SELECT prosecdef FROM pg_proc WHERE proname = 'console_acco
 p opsloop_console  "(SELECT count(*) = 2 FROM pg_trigger WHERE tgname IN ('console_users_stamp', 'trg_audit_console_users') AND tgenabled = 'O')" t
 p opsloop_console  "(SELECT pg_get_viewdef('audit_log'::regclass) LIKE '%console.account.%')" t
 p opsloop_console  "(SELECT pg_get_triggerdef(oid) LIKE '%console.account.%' FROM pg_trigger WHERE tgname = 'trg_audit_append_only')" t
+
+echo "== 콘솔 계정 추가 · 삭제 · 비밀번호 (이슈 #63. 계정 추가 · 삭제 · 비밀번호 함수)"
+#   관제사 · 조회자 계정 추가, 이력 없는 계정 삭제, 비밀번호 재설정은 console_account_create · console_account_delete ·
+#   console_account_password(SECURITY DEFINER)로만 하고 콘솔만 실행 권한을 받는다. 콘솔 역할의 계정 표 INSERT · DELETE 는 여전히 거부다.
+#   행위자가 없으면 아무것도 바꾸지 않고 no_actor 를 돌려주므로 실행 줄은 데이터를 바꾸지 않는다. 역할 블록을 다시 적용해도 실행 권한은
+#   남는다. infra/test_console_accounts_manage_db.py 가 이 줄들을 시험 DB 에서 돌린다
+q opsloop_console  "INSERT INTO console_users (username, password_hash, role) SELECT username, password_hash, 'viewer' FROM console_users WHERE false" 거부
+q opsloop_console  "DELETE FROM console_users WHERE false" 거부
+q opsloop_console  "SELECT console_account_create(NULL, NULL, NULL)" 허용
+q opsloop_console  "SELECT console_account_delete(NULL)" 허용
+q opsloop_console  "SELECT console_account_password(NULL, NULL)" 허용
+q opsloop_detector "SELECT console_account_create(NULL, NULL, NULL)" 거부
+p opsloop_console  "has_function_privilege('opsloop_console', 'console_account_create(text, text, text)', 'EXECUTE')" t
+p opsloop_console  "has_function_privilege('opsloop_console', 'console_account_delete(text)', 'EXECUTE')" t
+p opsloop_console  "has_function_privilege('opsloop_console', 'console_account_password(text, text)', 'EXECUTE')" t
+p opsloop_detector "has_function_privilege('opsloop_detector', 'console_account_create(text, text, text)', 'EXECUTE')" f
+p opsloop_detector "has_function_privilege('opsloop_detector', 'console_account_delete(text)', 'EXECUTE')" f
+p opsloop_detector "has_function_privilege('opsloop_detector', 'console_account_password(text, text)', 'EXECUTE')" f
+p opsloop_ingest   "has_function_privilege('opsloop_ingest', 'console_account_create(text, text, text)', 'EXECUTE')" f
+p opsloop_ingest   "has_function_privilege('opsloop_ingest', 'console_account_delete(text)', 'EXECUTE')" f
+p opsloop_ingest   "has_function_privilege('opsloop_ingest', 'console_account_password(text, text)', 'EXECUTE')" f
+p opsloop_console  "(SELECT prosecdef FROM pg_proc WHERE proname = 'console_account_create')" t
+p opsloop_console  "(SELECT prosecdef FROM pg_proc WHERE proname = 'console_account_delete')" t
+p opsloop_console  "(SELECT prosecdef FROM pg_proc WHERE proname = 'console_account_password')" t
 
 echo "== 접속 한도 (이슈 #43. 콘솔 한 대 = 풀 10 + LISTEN 1 → 두 대 22 + triage.py)"
 #   20 이면 콘솔 B 를 켤 때 한도에 닿는다. 무제한(-1)도 기대와 다르다고 본다 (콘솔이 DB 접속을 다 써 버리지 않게 하는 울타리다)

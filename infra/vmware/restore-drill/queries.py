@@ -38,7 +38,9 @@ TABLES = ("events", "sessions", "rule_versions", "incidents", "actions", "verdic
 # 이슈 #52 뒤: 표 +1(sensor_heartbeats) · 트리거 +1 · 함수 +1(sensor_heartbeats_guard). FK · 뷰 · 시퀀스(기본 키는 text)는 그대로다
 # 이슈 #59 뒤: 트리거 +2(console_users_stamp · trg_audit_console_users) · 함수 +3(console_users_stamp · console_account_set ·
 #   audit_console_users). 표(console_users 에 열만 더한다) · FK · 뷰(audit_log 는 교체) · 시퀀스는 그대로다
-EXPECT = {"tables": 26, "fk": 15, "triggers": 9, "functions": 15, "views": 3}
+# 이슈 #63 뒤: 함수 +3(console_account_create · console_account_delete · console_account_password). 표 · FK · 트리거 · 뷰 ·
+#   시퀀스는 그대로다
+EXPECT = {"tables": 26, "fk": 15, "triggers": 9, "functions": 18, "views": 3}
 S3_SENSORS = ("cowrie", "decoy", "gateway")      # opsloop-ingest SENSORS. 나머지 센서는 관제 대상 로그(Loki · 관문 · 관리 원장)
 DB_ONLY_SENSORS = ("audit", "console")           # DB 에만 있는 이벤트. 원장에서 다시 만들 수 없다
 

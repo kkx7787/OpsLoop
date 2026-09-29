@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""계정 관리(이슈 #59) 시험. DB 없이 돈다.  python3 app/test_accounts.py
+"""계정 관리(이슈 #59 · #63) 시험. DB 없이 돈다.  python3 app/test_accounts.py
 
 보는 것
-  1. 계정 API(accounts.py): 세션 없음 401 · 관리자가 아니면 403(DB 를 보지 않는다) · 목록 모양(해시 없음 · 잠금 표시 · 활성) ·
-     변경은 한 트랜잭션에서 행위자를 건 뒤 console_account_set 한 번 · 결과 매핑(ok · unchanged 200, not_found 404,
-     cli_only · self 409 문구, no_actor · 모르는 값 500) · 입력 422(DB 를 보지 않는다) · 출처 확인 · 아이디는 매개변수로만
+  1. 계정 API(accounts.py): 세션 없음 401 · 관리자가 아니면 403(DB 를 보지 않고 해시도 만들지 않는다) · 목록 모양(해시 없음 ·
+     잠금 표시 · 활성 · 삭제 가능, 이력 표를 못 읽으면 null) · 변경은 한 트랜잭션에서 행위자를 건 뒤 계정 함수 한 번 ·
+     추가 · 삭제 · 비밀번호 재설정(#63): 해시는 서버가 만들어 함수 인자로만 넘기고 응답 · 로그에 평문 · 해시가 없다 ·
+     결과 매핑(ok · unchanged 200 · 추가 201, invalid 422, not_found 404, exists · in_use · cli_only · self 409 문구,
+     no_actor · 모르는 값 · DB 오류 500, DB 오류 로그는 첫 줄만) · 입력 422(짧은 · 긴 비밀번호 · 아이디 형식 · 관리자 역할,
+     DB 를 보지 않는다) · Cache-Control no-store · 출처 확인 · 아이디는 매개변수로만
   2. 세션 순수 함수(auth): 쿠키의 발급 시각 i · session_valid(없음 · 비활성 · 변경 전 쿠키 · i 없는 옛 쿠키)
   3. 로그인(auth.authenticate): 비활성 계정은 비밀번호가 맞아도 실패(해시 계산은 같게, 로그인 기록 갱신 없음) ·
      발급 시각은 UPDATE … RETURNING 의 DB 시각 · 확인과 갱신 사이에 계정이 바뀌면(updated_at 이 다르면) 실패
@@ -18,6 +21,7 @@ import asyncio
 import io
 import json
 import os
+import re
 import sys
 import unittest
 from contextlib import asynccontextmanager, redirect_stderr, redirect_stdout
@@ -40,10 +44,15 @@ T0 = datetime(2026, 9, 20, 1, 0, tzinfo=timezone.utc)
 T1 = datetime(2026, 9, 29, 3, 0, tzinfo=timezone.utc)
 
 
-def row(username, role, disabled_at=None, last_login_at=None, updated_at=T0):
+PASSWORD = "correct-horse-battery"
+NEW_PASSWORD = "another-long-password"
+HASHED = re.compile(r"pbkdf2_sha256\$[0-9]+\$[0-9a-f]+\$[0-9a-f]+")
+
+
+def row(username, role, disabled_at=None, last_login_at=None, updated_at=T0, deletable=True):
     # 가짜 DB 는 해시까지 돌려준다. 응답에 실리지 않는지 본다(목록 문장에는 애초에 없다)
     return {"username": username, "role": role, "disabled_at": disabled_at, "created_at": T0,
-            "last_login_at": last_login_at, "updated_at": updated_at,
+            "last_login_at": last_login_at, "updated_at": updated_at, "deletable": deletable,
             "password_hash": "pbkdf2_sha256$240000$00$11"}
 
 
@@ -57,15 +66,22 @@ class FakeConn:
 
     async def fetchval(self, sql, *args):
         self.pool.calls.append((sql, args))
+        if sql == accounts.READABLE_SQL:
+            return self.pool.readable
+        if self.pool.error is not None:
+            raise self.pool.error
         return self.pool.result
 
     async def fetchrow(self, sql, *args):
         self.pool.calls.append((sql, args))
-        return self.pool.rows.get(args[0])
+        found = self.pool.rows.get(args[0])
+        # 이력 표를 못 읽으면 고른 문장(ONE_PLAIN_SQL)이 삭제 가능 여부를 NULL 로 준다
+        return found if found is None or sql == accounts.ONE_SQL else {**found, "deletable": None}
 
     async def fetch(self, sql, *args):
         self.pool.calls.append((sql, args))
-        return list(self.pool.rows.values())
+        rows = list(self.pool.rows.values())
+        return rows if sql == accounts.LIST_SQL else [{**r, "deletable": None} for r in rows]
 
     @asynccontextmanager
     async def transaction(self):
@@ -76,11 +92,13 @@ class FakeConn:
 
 
 class FakePool:
+    """result: 계정 함수가 돌려줄 값, error: 계정 함수가 던질 DB 오류, readable: 이력 표(판정 · 조치 · 차단)를 읽을 수 있는가."""
+
     def __init__(self):
-        self.calls, self.result = [], "ok"
+        self.calls, self.result, self.error, self.readable = [], "ok", None, True
         self.rows = {r["username"]: r for r in (
-            row("boss", "admin", last_login_at=T1), row("root", "admin"), row("op", "operator"),
-            row("view", "viewer", disabled_at=T1, updated_at=T1))}
+            row("boss", "admin", last_login_at=T1, deletable=False), row("root", "admin"),
+            row("op", "operator", deletable=False), row("view", "viewer", disabled_at=T1, updated_at=T1))}
 
     @asynccontextmanager
     async def acquire(self):
@@ -90,12 +108,19 @@ class FakePool:
 # ──────────────────────────────────────────────────────────────
 #  1. 계정 API
 # ──────────────────────────────────────────────────────────────
+NEW = {"username": "kim", "role": "operator", "password": PASSWORD}
+
+
 class AccountsApiTest(unittest.TestCase):
     def setUp(self):
         self.pool = FakePool()
         patcher = patch.object(main.app.state, "pool", self.pool, create=True)
         patcher.start()
         self.addCleanup(patcher.stop)
+        # 해시를 언제 만드는지 센다(권한 · 입력 검사를 지난 뒤에만). 값은 진짜 함수가 만든다
+        hasher = patch.object(auth, "hash_password", wraps=auth.hash_password)
+        self.hash = hasher.start()
+        self.addCleanup(hasher.stop)
         self.accounts = test_web.FakeAccounts().patch(self)
         for name, role in (("boss", "admin"), ("op", "operator"), ("view2", "viewer")):
             self.accounts[name] = test_web.account_row(role)
@@ -108,11 +133,24 @@ class AccountsApiTest(unittest.TestCase):
     def post(self, path, body):
         return self.client.post(path, json=body, headers=SAME)
 
+    def function_args(self, sql):
+        """계정 함수에 넘긴 인자. 한 번만 불렸어야 한다."""
+        [args] = [args for called, args in self.pool.calls if called == sql]
+        return args
+
+    def assert_no_secret(self, text, *hashes):
+        for secret in (PASSWORD, NEW_PASSWORD, "pbkdf2", *hashes):
+            self.assertNotIn(secret, text)
+
     def test_세션이_없으면_401_이고_DB_를_보지_않는다(self):
         self.assertEqual(self.client.get("/api/accounts").status_code, 401)
-        self.assertEqual(self.post("/api/accounts/role", {"username": "op", "role": "viewer"}).status_code, 401)
-        self.assertEqual(self.post("/api/accounts/active", {"username": "op", "active": False}).status_code, 401)
-        self.assertEqual((self.pool.calls, self.accounts.calls), ([], []))
+        for path, body in (("/api/accounts/role", {"username": "op", "role": "viewer"}),
+                           ("/api/accounts/active", {"username": "op", "active": False}),
+                           ("/api/accounts", NEW), ("/api/accounts/delete", {"username": "op"}),
+                           ("/api/accounts/password", {"username": "op", "password": PASSWORD})):
+            with self.subTest(path=path):
+                self.assertEqual(self.post(path, body).status_code, 401)
+        self.assertEqual((self.pool.calls, self.accounts.calls, self.hash.call_count), ([], [], 0))
 
     def test_관리자가_아니면_403_이고_DB_를_보지_않는다(self):
         for name in ("op", "view2"):
@@ -121,12 +159,18 @@ class AccountsApiTest(unittest.TestCase):
                 self.assertEqual(self.client.get("/api/accounts").status_code, 403)
                 self.assertEqual(self.post("/api/accounts/role", {"username": "op", "role": "viewer"}).status_code, 403)
                 self.assertEqual(self.post("/api/accounts/active", {"username": "op", "active": True}).status_code, 403)
-        self.assertEqual(self.pool.calls, [])
+                self.assertEqual(self.post("/api/accounts", NEW).status_code, 403)
+                self.assertEqual(self.post("/api/accounts/delete", {"username": "view"}).status_code, 403)
+                r = self.post("/api/accounts/password", {"username": "view", "password": PASSWORD})
+                self.assertEqual(r.status_code, 403)
+        # 관리자가 아니면 해시도 만들지 않는다(수백 ms 계산을 아무나 시키지 못한다)
+        self.assertEqual((self.pool.calls, self.hash.call_count), ([], 0))
 
     def test_쿠키가_관리자여도_DB_역할이_관제사면_403(self):
         self.client.cookies.set(auth.COOKIE, auth.issue("op", "admin"))
         self.assertEqual(self.client.get("/api/accounts").status_code, 403)
-        self.assertEqual(self.pool.calls, [])
+        self.assertEqual(self.post("/api/accounts", NEW).status_code, 403)
+        self.assertEqual((self.pool.calls, self.hash.call_count), ([], 0))
 
     def test_목록은_해시_없이_잠금_표시와_함께(self):
         self.login()
@@ -140,16 +184,45 @@ class AccountsApiTest(unittest.TestCase):
                          {"boss": "self", "root": "admin", "op": None, "view": None})
         self.assertEqual({a["username"]: a["active"] for a in body["accounts"]},
                          {"boss": True, "root": True, "op": True, "view": False})
+        self.assertEqual({a["username"]: a["deletable"] for a in body["accounts"]},
+                         {"boss": False, "root": True, "op": False, "view": True})
         view = body["accounts"][3]
         self.assertEqual(view, {"username": "view", "role": "viewer", "active": False,
                                 "disabled_at": T1.isoformat(), "created_at": T0.isoformat(), "last_login_at": None,
-                                "updated_at": T1.isoformat(), "locked": None})
+                                "updated_at": T1.isoformat(), "locked": None, "deletable": True})
         self.assertNotIn("password_hash", r.text)
-        self.assertNotIn("pbkdf2", r.text)
-        self.assertEqual(self.pool.calls, [(accounts.LIST_SQL, ())])
-        for sql in (accounts.LIST_SQL, accounts.ONE_SQL, auth.LOOKUP_SQL):
+        self.assert_no_secret(r.text)
+        self.assertEqual(self.pool.calls, [(accounts.READABLE_SQL, ()), (accounts.LIST_SQL, ())])
+        for sql in (accounts.LIST_SQL, accounts.ONE_SQL, accounts.LIST_PLAIN_SQL, accounts.ONE_PLAIN_SQL, auth.LOOKUP_SQL):
             self.assertNotIn("password_hash", sql)
         self.assertIn("ORDER BY username", accounts.LIST_SQL)
+        self.assertIn("ORDER BY username", accounts.LIST_PLAIN_SQL)
+
+    def test_삭제_가능은_함수의_이력_기준과_같다(self):
+        # console_account_delete 의 in_use: 로그인 기록 · 판정 처리자 · 조치 처리자 · 차단 요청자 · 해제자
+        for part in ("last_login_at IS NOT NULL", "FROM verdicts WHERE operator = u.username",
+                     "FROM actions WHERE operator = u.username",
+                     "FROM blocklist WHERE requested_by = u.username OR released_by = u.username"):
+            self.assertIn(part, accounts.DELETABLE)
+        for sql in (accounts.LIST_SQL, accounts.ONE_SQL):
+            self.assertIn(accounts.DELETABLE + " AS deletable", sql)
+        for sql in (accounts.LIST_PLAIN_SQL, accounts.ONE_PLAIN_SQL):
+            self.assertIn("NULL::boolean AS deletable", sql)
+            self.assertNotIn("verdicts", sql)
+
+    def test_이력_표를_못_읽으면_삭제_가능은_null(self):
+        self.login()
+        self.pool.readable = False
+        r = self.client.get("/api/accounts")
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual({a["deletable"] for a in r.json()["accounts"]}, {None})
+        self.assertEqual(self.pool.calls, [(accounts.READABLE_SQL, ()), (accounts.LIST_PLAIN_SQL, ())])
+        # 변경 뒤 계정 행도 같다. 변경 자체는 그대로 된다
+        self.pool.calls.clear()
+        r = self.post("/api/accounts/role", {"username": "op", "role": "viewer"})
+        self.assertEqual((r.status_code, r.json()["account"]["deletable"]), (200, None))
+        self.assertIn((accounts.ONE_PLAIN_SQL, ("op",)), self.pool.calls)
+        self.assertNotIn(accounts.ONE_SQL, [sql for sql, _ in self.pool.calls])
 
     def test_역할_변경은_행위자를_건_한_트랜잭션에서_함수_한_번(self):
         self.login()
@@ -157,14 +230,16 @@ class AccountsApiTest(unittest.TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertEqual(r.json(), {"result": "ok", "account": {
             "username": "op", "role": "operator", "active": True, "disabled_at": None, "created_at": T0.isoformat(),
-            "last_login_at": None, "updated_at": T0.isoformat(), "locked": None}})
+            "last_login_at": None, "updated_at": T0.isoformat(), "locked": None, "deletable": False}})
         self.assertEqual(self.pool.calls, [
             ("transaction", ()),
             ("SELECT set_config('opsloop.actor', $1, true)", ("boss",)),
             (accounts.SET_SQL, ("op", "viewer", None)),
+            (accounts.READABLE_SQL, ()),
             (accounts.ONE_SQL, ("op",)),
             ("commit", ())])
-        self.assertNotIn("pbkdf2", r.text)
+        self.assert_no_secret(r.text)
+        self.assertEqual(self.hash.call_count, 0)
 
     def test_활성_변경은_역할_인자가_비어_있다(self):
         self.login()
@@ -196,6 +271,120 @@ class AccountsApiTest(unittest.TestCase):
                 # 거부면 계정 행을 다시 읽지 않는다
                 self.assertNotIn(accounts.ONE_SQL, [sql for sql, _ in self.pool.calls])
 
+    # ── 추가 · 삭제 · 비밀번호 재설정 (이슈 #63) ──
+    def test_계정_추가는_서버가_만든_해시를_함수에_넘긴다(self):
+        self.login()
+        self.pool.rows["kim"] = row("kim", "operator")      # 가짜 함수는 행을 넣지 않는다. 함수가 넣었을 행을 둔다
+        with redirect_stdout(io.StringIO()) as out:
+            r = self.post("/api/accounts", NEW)
+        self.assertEqual((r.status_code, r.headers["cache-control"]), (201, "no-store"))
+        self.assertEqual(r.json(), {"result": "ok", "account": {
+            "username": "kim", "role": "operator", "active": True, "disabled_at": None, "created_at": T0.isoformat(),
+            "last_login_at": None, "updated_at": T0.isoformat(), "locked": None, "deletable": True}})
+        name, role, password_hash = self.function_args(accounts.CREATE_SQL)
+        self.assertEqual((name, role), ("kim", "operator"))
+        self.assertRegex(password_hash, rf"^{HASHED.pattern}$")
+        self.assertTrue(auth.verify_password(PASSWORD, password_hash))
+        self.assertEqual(self.pool.calls, [
+            ("transaction", ()),
+            ("SELECT set_config('opsloop.actor', $1, true)", ("boss",)),
+            (accounts.CREATE_SQL, ("kim", "operator", password_hash)),
+            (accounts.READABLE_SQL, ()),
+            (accounts.ONE_SQL, ("kim",)),
+            ("commit", ())])
+        self.assertEqual(self.hash.call_count, 1)
+        self.assert_no_secret(r.text + out.getvalue(), password_hash)
+
+    def test_비밀번호_재설정도_해시만_넘기고_계정_행을_돌려준다(self):
+        self.login()
+        with redirect_stdout(io.StringIO()) as out:
+            r = self.post("/api/accounts/password", {"username": "view", "password": NEW_PASSWORD})
+        self.assertEqual((r.status_code, r.headers["cache-control"]), (200, "no-store"))
+        self.assertEqual((r.json()["result"], r.json()["account"]["username"], r.json()["account"]["deletable"]),
+                         ("ok", "view", True))
+        name, password_hash = self.function_args(accounts.PASSWORD_SQL)
+        self.assertEqual(name, "view")
+        self.assertTrue(auth.verify_password(NEW_PASSWORD, password_hash))
+        self.assertEqual(self.pool.calls[:3], [
+            ("transaction", ()),
+            ("SELECT set_config('opsloop.actor', $1, true)", ("boss",)),
+            (accounts.PASSWORD_SQL, ("view", password_hash))])
+        self.assertEqual(self.pool.calls[-1], ("commit", ()))
+        self.assert_no_secret(r.text + out.getvalue(), password_hash)
+        # 같은 비밀번호라도 소금이 달라 해시가 다르다
+        self.pool.calls.clear()
+        self.post("/api/accounts/password", {"username": "view", "password": NEW_PASSWORD})
+        self.assertNotEqual(self.function_args(accounts.PASSWORD_SQL)[1], password_hash)
+
+    def test_계정_삭제는_함수_한_번이고_행을_다시_읽지_않는다(self):
+        self.login()
+        r = self.post("/api/accounts/delete", {"username": "view"})
+        self.assertEqual((r.status_code, r.json(), r.headers["cache-control"]), (200, {"result": "ok"}, "no-store"))
+        self.assertEqual(self.pool.calls, [
+            ("transaction", ()),
+            ("SELECT set_config('opsloop.actor', $1, true)", ("boss",)),
+            (accounts.DELETE_SQL, ("view",)),
+            ("commit", ())])
+        self.assertEqual(self.hash.call_count, 0)
+
+    def test_추가_삭제_비밀번호_결과_매핑(self):
+        self.login()
+        refused = {"invalid": (422, "아이디 · 비밀번호 형식이 맞지 않습니다"),
+                   "exists": (409, "이미 있는 아이디입니다"),
+                   "in_use": (409, "판정 · 조치 · 로그인 기록이 있는 계정은 지울 수 없습니다. 비활성으로 막아 주세요"),
+                   "not_found": (404, "계정을 찾을 수 없습니다"),
+                   "cli_only": (409, "관리자 계정과 관리자 부여는 명령줄에서만 바꿉니다"),
+                   "self": (409, "본인 계정은 여기서 바꿀 수 없습니다"),
+                   "no_actor": (500, "서버 오류"),
+                   # 역할 · 활성만 unchanged 를 받는다. 추가 · 삭제 · 비밀번호는 ok 만 성공이다
+                   "unchanged": (500, "서버 오류"),
+                   "모르는 값": (500, "서버 오류")}
+        endpoints = {"/api/accounts": (NEW, accounts.CREATE_SQL, ("invalid", "exists", "cli_only", "self")),
+                     "/api/accounts/delete": ({"username": "root"}, accounts.DELETE_SQL,
+                                              ("in_use", "not_found", "cli_only", "self")),
+                     "/api/accounts/password": ({"username": "root", "password": PASSWORD}, accounts.PASSWORD_SQL,
+                                                ("invalid", "not_found", "cli_only", "self"))}
+        for path, (body, sql, results) in endpoints.items():
+            for result in (*results, "no_actor", "unchanged", "모르는 값"):
+                with self.subTest(path=path, result=result), redirect_stdout(io.StringIO()) as out:
+                    self.pool.result = result
+                    self.pool.calls.clear()
+                    r = self.post(path, body)
+                    status, detail = refused[result]
+                    self.assertEqual((r.status_code, r.json()), (status, {"detail": detail}))
+                    self.assertEqual(r.headers["cache-control"], "no-store")
+                    self.assertIn(sql, [called for called, _ in self.pool.calls])
+                    self.assertNotIn(accounts.ONE_SQL, [called for called, _ in self.pool.calls])
+                    self.assertEqual("처리하지 못함" in out.getvalue(), status == 500)
+                    self.assert_no_secret(r.text + out.getvalue())
+
+    def test_DB_오류는_종류와_첫_줄만_남기고_500(self):
+        asyncpg = accounts.asyncpg
+        if not hasattr(asyncpg, "PostgresError"):
+            self.skipTest("asyncpg 가 없다(가짜 모듈)")
+        self.login()
+        # 오류 상세(DETAIL)에는 실패한 행이 실릴 수 있다(해시 포함). 그 줄은 로그에 남기지 않는다
+        fake_hash = "pbkdf2_sha256$1$ab$cd"
+        self.pool.error = asyncpg.PostgresError.new(
+            {"C": "23514", "M": "new row violates check constraint", "D": f"Failing row contains (kim, {fake_hash})."})
+        with redirect_stdout(io.StringIO()) as out:
+            r = self.post("/api/accounts", NEW)
+        self.assertEqual((r.status_code, r.json(), r.headers["cache-control"]), (500, {"detail": "서버 오류"}, "no-store"))
+        self.assertEqual(out.getvalue(),
+                         "[accounts] 계정 함수 DB 오류: CheckViolationError: new row violates check constraint\n")
+        self.assert_no_secret(r.text + out.getvalue(), fake_hash)
+
+    def test_같은_아이디를_함께_추가해_고유_제약에_걸리면_409(self):
+        asyncpg = accounts.asyncpg
+        if not hasattr(asyncpg, "UniqueViolationError"):
+            self.skipTest("asyncpg 가 없다(가짜 모듈)")
+        self.login()
+        self.pool.error = asyncpg.PostgresError.new({"C": "23505", "M": "duplicate key value violates unique constraint"})
+        with redirect_stdout(io.StringIO()) as out:
+            r = self.post("/api/accounts", NEW)
+        self.assertEqual((r.status_code, r.json()), (409, {"detail": "이미 있는 아이디입니다"}))
+        self.assertEqual(out.getvalue(), "")
+
     def test_입력이_틀리면_422_이고_DB_를_보지_않는다(self):
         self.login()
         bad_role = [{}, {"username": "op"}, {"role": "viewer"}, {"username": "", "role": "viewer"},
@@ -214,34 +403,104 @@ class AccountsApiTest(unittest.TestCase):
         self.pool.result = "not_found"
         self.assertEqual(self.post("/api/accounts/role", {"username": "a" * 128, "role": "viewer"}).status_code, 404)
 
+    def test_추가_삭제_비밀번호_입력이_틀리면_422_이고_DB_도_해시도_없다(self):
+        self.login()
+        short, long_ = "s" * (auth.MIN_PASSWORD - 1), "l" * (auth.MAX_PASSWORD + 1)
+        bad_create = [
+            ({}, None), ({"username": "kim", "role": "viewer"}, None), ({"role": "viewer", "password": PASSWORD}, None),
+            ({**NEW, "password": short}, "비밀번호는 12자 이상이어야 합니다"),
+            ({**NEW, "password": long_}, "비밀번호는 256자 이하여야 합니다"),
+            ({**NEW, "role": "admin"}, None), ({**NEW, "role": "Viewer"}, None), ({**NEW, "role": None}, None),
+            ({**NEW, "username": ""}, "아이디는 영문"), ({**NEW, "username": "a b"}, "아이디는 영문"),
+            ({**NEW, "username": "a" * 65}, "아이디는 영문"), ({**NEW, "username": "관리자"}, "아이디는 영문"),
+            ({**NEW, "username": "../x"}, "아이디는 영문"), ({**NEW, "username": "kim\n"}, "아이디는 영문"),
+            ({**NEW, "username": "a\x00b"}, "아이디는 영문"), ({**NEW, "username": "<b>x</b>"}, "아이디는 영문"),
+            ({**NEW, "username": 5}, None), ({**NEW, "password": 123456789012345}, None),
+            ({**NEW, "password": None}, None), ({**NEW, "password": [PASSWORD]}, None),
+            ({**NEW, "password_hash": "pbkdf2_sha256$1$ab$cd"}, None)]     # 해시를 직접 넣지 못한다
+        bad_delete = [({}, None), ({"username": ""}, None), ({"username": "a" * 129}, None),
+                      ({"username": "a\x00b"}, "NUL"), ({"username": None}, None), ({"username": "op", "force": True}, None)]
+        bad_password = [({"username": "op"}, None), ({"password": PASSWORD}, None),
+                        ({"username": "op", "password": short}, "비밀번호는 12자 이상이어야 합니다"),
+                        ({"username": "op", "password": long_}, "비밀번호는 256자 이하여야 합니다"),
+                        ({"username": "", "password": PASSWORD}, None), ({"username": "a\x00b", "password": PASSWORD}, "NUL"),
+                        ({"username": "op", "password": PASSWORD, "role": "admin"}, None),
+                        ({"username": "op", "password": ""}, "비밀번호는 12자 이상")]
+        for path, cases in (("/api/accounts", bad_create), ("/api/accounts/delete", bad_delete),
+                            ("/api/accounts/password", bad_password)):
+            for body, msg in cases:
+                with self.subTest(path=path, body=body):
+                    r = self.post(path, body)
+                    self.assertEqual((r.status_code, r.headers["cache-control"]), (422, "no-store"))
+                    # 가림 라우트: type · loc · msg 만. 입력한 비밀번호 · 아이디가 되돌아오지 않는다
+                    self.assertTrue(all(set(item) <= {"type", "loc", "msg"} for item in r.json()["detail"]))
+                    self.assert_no_secret(r.text)
+                    for secret in (short, long_):
+                        self.assertNotIn(secret, r.text)
+                    if msg:
+                        self.assertIn(msg, " ".join(item["msg"] for item in r.json()["detail"]))
+        self.assertEqual((self.pool.calls, self.hash.call_count), ([], 0))
+
+    def test_경계값은_받는다(self):
+        self.login()
+        for username, password in (("a" * 64, "a" * auth.MIN_PASSWORD), ("A.b_c-9", "a" * auth.MAX_PASSWORD),
+                                   ("kim", "가" * auth.MIN_PASSWORD), ("kim", " spaces and\ttab ")):
+            with self.subTest(username=username, n=len(password)):
+                self.pool.rows[username] = row(username, "viewer")
+                self.pool.calls.clear()
+                r = self.post("/api/accounts", {"username": username, "role": "viewer", "password": password})
+                self.assertEqual(r.status_code, 201)
+                self.assertTrue(auth.verify_password(password, self.function_args(accounts.CREATE_SQL)[2]))
+        # 재설정은 이미 있는 계정이라 로그인과 같은 길이(128)까지 받는다. 검증을 지나 함수까지 간다
+        self.pool.result = "not_found"
+        r = self.post("/api/accounts/password", {"username": "a" * 128, "password": "p" * auth.MAX_PASSWORD})
+        self.assertEqual(r.status_code, 404)
+
     def test_짝_없는_서로게이트는_500_이_아니라_422(self):
         # 기본 422 처리기는 입력을 되돌려 싣다가 인코딩 오류로 500 이 된다. 가림 라우트는 type · loc · msg 만 싣는다
         self.login()
         for path, raw in (("/api/accounts/role", b'{"username":"\\ud800","role":"viewer"}'),
                           ("/api/accounts/active", b'{"username":"\\udc00x","active":false}'),
-                          ("/api/accounts/role", b'{"username":"op","role":"\\ud800"}')):
+                          ("/api/accounts/role", b'{"username":"op","role":"\\ud800"}'),
+                          ("/api/accounts", b'{"username":"kim","role":"viewer","password":"\\ud800aaaaaaaaaaaaaa"}'),
+                          ("/api/accounts/delete", b'{"username":"\\ud800"}'),
+                          ("/api/accounts/password", b'{"username":"op","password":"aaaaaaaaaaaaaa\\udc00"}')):
             with self.subTest(path=path, raw=raw):
                 r = self.client.post(path, content=raw, headers={**SAME, "content-type": "application/json"})
                 self.assertEqual(r.status_code, 422)
                 self.assertTrue(all(set(item) <= {"type", "loc", "msg"} for item in r.json()["detail"]))
-        self.assertEqual(self.pool.calls, [])
+                if b"password" in raw:
+                    # 비밀번호 칸은 제약 없는 str 이라 서로게이트가 그대로 들어온다. 해시 전에 검사가 막는다
+                    self.assertIn("쓸 수 없는 문자", r.json()["detail"][0]["msg"])
+        self.assertEqual((self.pool.calls, self.hash.call_count), ([], 0))
 
     def test_다른_출처의_변경은_막는다(self):
         self.login()
         for headers in ({}, test_web.EVIL):
-            r = self.client.post("/api/accounts/active", json={"username": "op", "active": False}, headers=headers)
-            self.assertEqual(r.status_code, 403)
-        self.assertEqual(self.pool.calls, [])
+            for path, body in (("/api/accounts/active", {"username": "op", "active": False}), ("/api/accounts", NEW),
+                               ("/api/accounts/delete", {"username": "op"}),
+                               ("/api/accounts/password", {"username": "op", "password": PASSWORD})):
+                with self.subTest(path=path, headers=headers):
+                    r = self.client.post(path, json=body, headers=headers)
+                    self.assertEqual(r.status_code, 403)
+        self.assertEqual((self.pool.calls, self.hash.call_count), ([], 0))
 
     def test_아이디는_매개변수로만_넘긴다(self):
         self.login()
         for name in ("x' OR '1'='1", "../../etc/passwd", "<img src=x onerror=alert(1)>", "a/b%2Fc", "관제 사용자"):
-            self.pool.calls.clear()
             self.pool.result = "not_found"
-            r = self.post("/api/accounts/role", {"username": name, "role": "viewer"})
-            self.assertEqual(r.status_code, 404)
-            self.assertIn((accounts.SET_SQL, (name, "viewer", None)), self.pool.calls)
-            self.assertNotIn(name, json.dumps(r.json(), ensure_ascii=False))
+            for path, body, sql, args in (
+                    ("/api/accounts/role", {"username": name, "role": "viewer"}, accounts.SET_SQL, (name, "viewer", None)),
+                    ("/api/accounts/delete", {"username": name}, accounts.DELETE_SQL, (name,)),
+                    ("/api/accounts/password", {"username": name, "password": PASSWORD}, accounts.PASSWORD_SQL, None)):
+                with self.subTest(name=name, path=path):
+                    self.pool.calls.clear()
+                    r = self.post(path, body)
+                    self.assertEqual(r.status_code, 404)
+                    self.assertEqual(self.function_args(sql)[0], name)
+                    if args is not None:
+                        self.assertEqual(self.function_args(sql), args)
+                    self.assertNotIn(name, json.dumps(r.json(), ensure_ascii=False))
 
 
 # ──────────────────────────────────────────────────────────────
@@ -284,9 +543,6 @@ class SessionTest(unittest.TestCase):
 # ──────────────────────────────────────────────────────────────
 #  3. 로그인 · 4. 계정 조회
 # ──────────────────────────────────────────────────────────────
-PASSWORD = "correct-horse-battery"
-
-
 class AuthPool:
     """authenticate · lookup 용 가짜 풀. fetchrow 는 계정 행, fetchval 은 UPDATE … RETURNING 값. fails 번은 옛 연결 오류."""
 
@@ -402,9 +658,33 @@ class PasswordInputTest(unittest.TestCase):
         self.assertEqual(auth.MAX_PASSWORD, 256)
         self.assertEqual(self.ask("a" * 256), "a" * 256)
         self.assertEqual(self.ask("가" * 12), "가" * 12)
-        for bad in ("a" * 257, "a" * 11):
+        for bad in ("a" * 257, "a" * 11, "a" * 12 + "\udc80"):
             with self.subTest(n=len(bad)), self.assertRaises(auth.CliError):
                 self.ask(bad)
+
+    def test_화면과_같은_검사(self):
+        # 명령줄(ask_password)과 화면(accounts.checked_password)이 같이 쓴다. 문장에 값이 없다
+        self.assertIsNone(auth.password_problem("a" * 12))
+        self.assertIsNone(auth.password_problem("\x00" * 12))
+        cases = {"b" * 11: "비밀번호는 12자 이상이어야 합니다", "c" * 257: "비밀번호는 256자 이하여야 합니다",
+                 "d" * 12 + "\ud800": "비밀번호에 쓸 수 없는 문자가 있습니다"}
+        for bad, want in cases.items():
+            with self.subTest(n=len(bad)):
+                self.assertEqual(auth.password_problem(bad), want)
+
+
+class VerifyPasswordTest(unittest.TestCase):
+    """반복 수가 범위 밖인 해시는 계산하지 않고 거부한다(계산 한 번에 콘솔이 멈추는 해시를 심는 길을 막는다)."""
+
+    def test_반복_수_범위(self):
+        stored = auth.hash_password("correct horse battery")
+        self.assertTrue(auth.verify_password("correct horse battery", stored))
+        _, iters, salt, value = stored.split("$")
+        for bad in ("999999999999", "10000000", "9999", "0"):
+            with self.subTest(iters=bad), patch.object(auth.hashlib, "pbkdf2_hmac", side_effect=AssertionError("계산하면 안 된다")):
+                self.assertFalse(auth.verify_password("correct horse battery", f"pbkdf2_sha256${bad}${salt}${value}"))
+        self.assertEqual((auth.MIN_ITERATIONS, auth.MAX_ITERATIONS), (10_000, 9_999_999))
+        self.assertTrue(auth.MIN_ITERATIONS <= auth.ITERATIONS <= auth.MAX_ITERATIONS)
 
 
 class CliArgsTest(unittest.TestCase):
