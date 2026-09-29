@@ -4,11 +4,12 @@ import ipaddress
 import json
 import secrets
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+import cti
 from access import require_role
 
 router = APIRouter()
@@ -60,11 +61,15 @@ async def quality(request: Request, details: bool = False,
     definitions = []
     for row in versions:
         definition = json.loads(row['definition']) if isinstance(row['definition'], str) else row['definition']
+        # 규칙 정의는 손으로 넣은 jsonb 다. rules 가 배열이 아니거나 객체가 아닌 항목 · id 가 없는 항목은 건너뛴다(500 대신,
+        #   reports.VERSIONS_SQL 과 같은 기준, 이슈 #62)
+        rules = definition.get('rules') if isinstance(definition, dict) else None
         definitions.append({"version": row['rule_version'], "created_at": row['created_at'], "reason": row['reason'],
                             "rules": [{"id": r['id'], "name": r.get('name', r['id']),
                                        "enabled": r.get('enabled', True), "severity": r.get('severity'),
                                        "rationale": r.get('rationale'), "change": r.get('changed_from_v1')}
-                                      for r in definition.get('rules', [])]})
+                                      for r in (rules if isinstance(rules, list) else [])
+                                      if isinstance(r, dict) and r.get('id') is not None]})
     return {"as_of": as_of, "since": since, "until": until, "rows": [dict(row) for row in rows],
             "versions": definitions, "runs": [dict(row) for row in runs]}
 
@@ -102,7 +107,9 @@ class EnrollmentIn(BaseModel):
     @classmethod
     def valid_addr(cls, value):
         address = ipaddress.ip_address(value)
-        if address.is_unspecified or address.is_multicast or address.is_loopback:
+        # IPv6 영역 표기(fe80::1%eth0)는 파이썬은 받지만 inet 에는 영역이 없다. asyncpg 가 영역을 버리고 넣어 본문 주소와 달라지므로
+        #   늘 409(대상 정보가 다름)가 된다. sources.parse_ip 와 같은 기준으로 거른다(이슈 #62)
+        if address.is_unspecified or address.is_multicast or address.is_loopback or getattr(address, 'scope_id', None):
             raise ValueError('수집 관문에 접속할 노드의 IP 주소 하나를 입력해 주세요')
         return str(address)
 
@@ -140,8 +147,10 @@ async def issue_enrollment(body: EnrollmentIn, request: Request, response: Respo
     return dict(row) | {"node_id": body.node_id, "token": token}
 
 
+# 경로 인자도 노드 등록과 같은 형식 · bigint 범위로 거른다. NUL · 너무 큰 번호가 DB 에 닿으면 500 이 된다(이슈 #62)
 @router.post('/api/nodes/{node_id}/enrollments/{enrollment_id}/cancel')
-async def cancel_enrollment(node_id: str, enrollment_id: int, request: Request):
+async def cancel_enrollment(node_id: Annotated[str, Path(pattern=r"^[a-z0-9][a-z0-9-]{0,62}$")],
+                            enrollment_id: Annotated[int, Path(ge=1, le=2**63 - 1)], request: Request):
     user = require_role(request, 'admin')
     async with request.app.state.pool.acquire() as c, c.transaction():
         await c.fetchrow("SELECT node_id FROM nodes WHERE node_id=$1 FOR UPDATE", node_id)
@@ -161,9 +170,12 @@ async def cancel_enrollment(node_id: str, enrollment_id: int, request: Request):
 async def audit_log(request: Request, actor: str = Query(default='',max_length=128),
                     target: str = Query(default='',max_length=128),
                     since: datetime | None = None, until: datetime | None = None,
-                    limit: int = Query(default=25,ge=1,le=100), offset: int = Query(default=0,ge=0)):
+                    limit: int = Query(default=25,ge=1,le=100), offset: int = Query(default=0,ge=0,le=cti.MAX_OFFSET)):
     require_role(request,'admin')
     interval(since,until)
+    # 글자 열에 NUL 은 들어가지 못해 DB 오류(500)가 난다. offset 상한도 같은 까닭이다(int64 초과, 이슈 #62)
+    if '\x00' in actor or '\x00' in target:
+        raise HTTPException(422,'검색어에 NUL 글자를 넣을 수 없습니다')
     # LIKE와 달리 %·_도 문자 그대로 검색한다. 대상은 detail 전체가 아니라 node · ip · target · channel 필드다.
     source = """WITH records AS (SELECT *, substring(detail from '(?:^|[[:space:]])(?:node|ip|target|channel)=([^[:space:]]+)') AS target
                               FROM audit_log) """

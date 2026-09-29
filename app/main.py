@@ -26,14 +26,16 @@ from typing import Literal, Optional
 
 import asyncpg
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, Field, field_validator
 
 import auth
+import cti
 import web
 from proposals import CIRCULAR_RULES, SSH_RULES, propose
 from dashboard import dashboard_metrics
-from access import require_role
+from access import masked_validation, require_role
 from operations import router as operations_router
 from notify import router as notify_router
 from cti import router as cti_router
@@ -222,6 +224,9 @@ async def require_session(request: Request, call_next):
 
 # 보안 헤더 · CORS · 출처 확인 (web.py). 세션 검사보다 나중에 붙여 그 바깥에 둔다.
 web.guard(app)
+# 입력 검증 오류(422)는 앱 전체에서 type · loc · msg 만 싣는다(access.masked_validation, 이슈 #62). 기본 처리기는 입력값을 되돌려
+#   싣다가 짝 없는 서로게이트(\ud800)에서 인코딩 오류로 500 이 된다. 알림 · 계정 API 의 가림 라우트와 같은 모양이다
+app.add_exception_handler(RequestValidationError, masked_validation)
 
 
 @app.get("/login", response_class=HTMLResponse)
@@ -324,16 +329,17 @@ async def health():
 async def list_incidents(
     status: Optional[STATUSES] = None,
     severity: Optional[SEVERITIES] = None,
-    rule_id: Optional[str] = None,
-    rule_version: Optional[str] = None,
+    rule_id: Optional[str] = Query(None, max_length=128),
+    rule_version: Optional[str] = Query(None, max_length=128),
     actor_ip: Optional[str] = None,
-    target: Optional[str] = None,
+    target: Optional[str] = Query(None, max_length=256),
     since: Optional[datetime] = None,
     until: Optional[datetime] = None,
     judged: Optional[bool] = None,
     sort: Literal["pending", "severity", "recent"] = "pending",
     limit: int = Query(50, ge=1, le=500),
-    offset: int = Query(0, ge=0),
+    # 상한이 없으면 int64 를 넘는 값이 DB 에 닿아 422 가 아니라 500 이 된다(cti.MAX_OFFSET, 이슈 #62)
+    offset: int = Query(0, ge=0, le=cti.MAX_OFFSET),
 ):
     """기본 정렬은 미판정 경과 시간이다. 심각도순이 아니다.
 
@@ -350,6 +356,10 @@ async def list_incidents(
         if ip is None or getattr(ip, "scope_id", None):
             raise HTTPException(422, "actor_ip 는 IP 주소여야 합니다")
         actor_ip = str(ip)
+    # 글자 열에 NUL 은 들어가지 못해 그대로 넘기면 DB 오류가 500 이 된다(이슈 #62). 그런 규칙 · 대상은 없으므로 입력 오류다
+    for name, value in (("rule_id", rule_id), ("rule_version", rule_version), ("target", target)):
+        if value and "\x00" in value:
+            raise HTTPException(422, f"{name} 에 NUL 글자를 넣을 수 없습니다")
 
     where, params = [], []
 
@@ -406,6 +416,8 @@ async def list_incidents(
 
 @app.get("/api/incidents/{incident_key:path}")
 async def get_incident(incident_key: str):
+    if "\x00" in incident_key:  # 키에 NUL 은 없다. DB 에 넘기면 오류가 500 이 된다(이슈 #62)
+        raise HTTPException(404, "인시던트를 찾을 수 없습니다")
     async with app.state.pool.acquire() as c:
         inc = await c.fetchrow("""
             SELECT incident_key, rule_id, rule_version, rule_name, severity,
@@ -625,6 +637,13 @@ async def summary():
 #  조치와 판정 - 폐루프의 입력
 # ----------------------------------------------------------------------
 
+def no_nul(value: Optional[str], name: str) -> Optional[str]:
+    """메모 · 판정 사유의 NUL 은 글자 열에 들어가지 못해 INSERT 가 DB 오류(500)로 끝난다. 입력 오류(422)로 돌려준다(이슈 #62)."""
+    if value is not None and "\x00" in value:
+        raise ValueError(f"{name}에 NUL 글자를 넣을 수 없습니다")
+    return value
+
+
 # 판정자와 조치자는 본문이 아니라 세션에서 가져온다. 본문 값을 믿으면 남의 이름으로
 # 판정할 수 있고, 판정이 계정에 귀속된다는 전제가 깨진다.
 class ActionIn(BaseModel):
@@ -647,18 +666,34 @@ class ActionIn(BaseModel):
         if v is None:
             return v
         try:
-            return str(ipaddress.ip_address(v.strip()))
+            ip = ipaddress.ip_address(v.strip())
         except ValueError:
+            ip = None
+        # IPv6 영역 표기(fe80::1%eth0)는 파이썬은 받지만 inet 에는 영역이 없다. 매개변수로 넘기면 asyncpg 가 영역을 버려 다른 주소(fe80::1)를
+        #   다루고, 글자로 넘기면 캐스팅 오류다. sources.parse_ip 와 같은 기준으로 거른다(이슈 #62)
+        if ip is None or getattr(ip, "scope_id", None):
             raise ValueError("actor_ip 는 IP 주소여야 합니다")
+        return str(ip)
+
+    @field_validator("note")
+    @classmethod
+    def _note(cls, v):
+        return no_nul(v, "메모")
 
 
 class VerdictIn(BaseModel):
     verdict: VERDICTS
     reason: Optional[str] = Field(default=None, max_length=1000)
-    observed_value: Optional[float] = None
+    # NaN · 무한대는 저장은 되지만 응답 JSON 을 만들지 못해 판정 뒤 그 사건 상세가 계속 500 이 된다(이슈 #62)
+    observed_value: Optional[float] = Field(None, allow_inf_nan=False)
     # 뒤집힘 비율과 판정 비용을 재려면 제안값과 소요 시간이 판정과 함께 남아야 한다.
     proposed: Optional[VERDICTS] = None
     decision_seconds: Optional[int] = Field(default=None, ge=0, le=86400)
+
+    @field_validator("reason")
+    @classmethod
+    def _reason(cls, v):
+        return no_nul(v, "판정 사유")
 
 
 # 조치가 인시던트 상태를 어떻게 바꾸는지. 규칙을 코드 한 곳에 모아둔다.
@@ -715,6 +750,8 @@ async def notify_event(c, kind: str, incident_key: str, row_id) -> None:
 
 @app.post("/api/incidents/{incident_key:path}/actions", status_code=201)
 async def add_action(incident_key: str, body: ActionIn, request: Request):
+    if "\x00" in incident_key:  # 키에 NUL 은 없다. DB 에 넘기면 오류가 500 이 된다(이슈 #62)
+        raise HTTPException(404, "인시던트를 찾을 수 없습니다")
     user = require_role(request, "operator", "admin")
     if body.action in ADMIN_ACTIONS:
         require_role(request, "admin")
@@ -869,6 +906,8 @@ async def add_action(incident_key: str, body: ActionIn, request: Request):
 
 @app.post("/api/incidents/{incident_key:path}/verdict", status_code=201)
 async def add_verdict(incident_key: str, body: VerdictIn, request: Request):
+    if "\x00" in incident_key:  # 키에 NUL 은 없다. DB 에 넘기면 오류가 500 이 된다(이슈 #62)
+        raise HTTPException(404, "인시던트를 찾을 수 없습니다")
     user = require_role(request, "operator", "admin")
     async with app.state.pool.acquire() as c:
         async with c.transaction():
