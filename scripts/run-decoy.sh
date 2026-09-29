@@ -27,4 +27,5 @@ sudo docker run -d --name decoy --restart always \
   opsloop-decoy:latest
 
 echo "[완료] 디코이 기동. 로그: $BASE/log/decoy.json.\$(date -u +%F)"
+# shellcheck disable=SC2028  # 복사해 쓸 명령을 글자 그대로 찍는다. \n 은 curl -w 가 푼다
 echo "       확인:  curl -s -o /dev/null -w '%{http_code}\\n' http://localhost:8080/admin"

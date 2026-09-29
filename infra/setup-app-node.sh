@@ -38,6 +38,7 @@ echo "[5/5] 트리거 적용 및 상태 확인"
 # schema.sql 은 최초 기동 시 자동 적용되지만 notify.sql 은 나중에 추가되었다.
 # 재적용해도 안전하도록 작성되어 있다.
 sleep 10
+# shellcheck disable=SC2024  # notify.sql 은 저장소 파일이라 실행한 사용자가 읽는다. sudo 는 docker 몫이다
 sudo docker compose exec -T postgres psql -U opsloop -d opsloop -q -1 < notify.sql
 sudo docker compose ps
 sudo docker compose exec -T postgres psql -U opsloop -d opsloop -c '\dt'

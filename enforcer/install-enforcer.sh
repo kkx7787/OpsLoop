@@ -223,6 +223,7 @@ chown -R root:root /opt/opsloop/.enforcer.new
 rm -rf /opt/opsloop/enforcer.old
 if [ -d "$CODE" ]; then mv "$CODE" /opt/opsloop/enforcer.old; echo "  이전 판은 /opt/opsloop/enforcer.old"; fi
 mv /opt/opsloop/.enforcer.new "$CODE"
+# shellcheck disable=SC2012  # 깐 파일 이름을 화면에 보이기만 한다 (이름은 저장소 파일이다)
 ls "$CODE" | sed 's/^/    /'
 cat > /usr/local/bin/opsloop-enforcer.new <<'EOT'
 #!/bin/sh

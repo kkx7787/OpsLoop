@@ -37,10 +37,12 @@ PY
 echo "  opsloop_console 비밀번호를 바꿨다"
 
 echo "== 2. 데이터 노드 /etc/opsloop/triage.env (root:ops 0640 · detector/triage.py 가 읽는다)"
+# shellcheck disable=SC2016  # $pw 는 원격 셸이 표준 입력에서 읽어 펼친다 (비밀번호를 명령행 인자에 두지 않는다)
 printf '%s\n' "$OPSLOOP_PW" | "${SSH[@]}" data01 'read -r pw; printf "DATABASE_URL=postgresql://opsloop_console:%s@192.168.60.11:5432/opsloop\n" "$pw" | sudo -n install -m 640 -o root -g ops /dev/stdin /etc/opsloop/triage.env && echo "  썼다"'
 
 for c in "${CONSOLES[@]}"; do
   echo "== 3. $c: .env · console.yml · API 컨테이너"
+  # shellcheck disable=SC2016  # 위와 같다. $pw · $f 는 콘솔의 원격 셸이 펼친다
   printf '%s\n' "$OPSLOOP_PW" | "${SSH[@]}" "$c" 'read -r pw; f=~/opsloop/.env; umask 077; { grep -v "^OPSLOOP_CONSOLE_DB_PASSWORD=" "$f" 2>/dev/null || true; printf "OPSLOOP_CONSOLE_DB_PASSWORD=%s\n" "$pw"; } > "$f.tmp" && mv "$f.tmp" "$f" && chmod 600 "$f" && echo "  .env 갱신"'
   "${SSH[@]}" "$c" 'cat > ~/opsloop/console.yml' < "$ROOT/infra/vmware/compose/console.yml"
   "${SSH[@]}" "$c" 'cd ~/opsloop && docker compose -f console.yml up -d 2>&1 | tail -1; sleep 4; docker exec opsloop-api python3 -c "import os; print(\"  DB 역할:\", os.environ[\"DATABASE_URL\"].split(\"://\")[1].split(\":\")[0])"; curl -s -m 5 -o /dev/null -w "  /health → %{http_code}\n" http://127.0.0.1:8000/health'

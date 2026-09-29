@@ -722,8 +722,8 @@ DB 인스턴스를 잃었다고 보고, 백업 한 벌(덤프 + 역할 목록)�
 | `t0` | `rto:T0` 장애 선언 · 운영 `now()` = T_f |
 | `up` | `rto:S1` 백업 선택 · 훈련 DB 컨테이너 · 준비 · 게시 주소 · 메모리 · OOM 점수 · 이미지 · 환경에 비밀번호 없음 · `rto:S2` |
 | `roles` | 역할 목록의 CREATE/ALTER ROLE · GRANT 적용(비밀번호 줄 · 모르는 줄이 있으면 멈춘다) · 로그인 역할마다 새 비밀번호 · env 파일 접속 확인 · 속성 · 멤버십 대조 · `rto:S3` |
-| `restore` | 덤프를 ssh 표준 입력으로 `pg_restore --no-owner --exit-on-error`(data01 에 덤프 파일을 남기지 않는다) · 23개 표 건수 · 목차와 카탈로그 대조 · T_b 하한 · `rto:S4` |
-| `verify` | 훈련 쪽 지문(판정 · 조치 · 차단 · 노드 · 등록 · 계정 · 알림 · 감사) → 무결성 19개 0 · 기준값 · 구조 · 시퀀스 · `verify-db-roles.sh` 문장 67줄 허용 · 거부 → 알림 끄기 · `rto:S5`. 다시 돌리면 지문은 그 복원 뒤 처음 뜬 것을 쓴다 |
+| `restore` | 덤프를 ssh 표준 입력으로 `pg_restore --no-owner --exit-on-error`(data01 에 덤프 파일을 남기지 않는다) · 26개 표 건수 · 목차와 카탈로그 대조 · T_b 하한 · `rto:S4` |
+| `verify` | 훈련 쪽 지문(판정 · 조치 · 차단 · 노드 · 등록 · 계정 · 알림 · 감사) → 무결성 19개 0 · 기준값 · 구조 · 시퀀스 · `verify-db-roles.sh` 문장 123줄 허용 · 거부 → 알림 끄기 · `rto:S5`. 다시 돌리면 지문은 그 복원 뒤 처음 뜬 것을 쓴다 |
 | `console` | 이미지 옮기기(ID 대조) · 터널 · 콘솔 · /health · `rto:S6`. 사람이 목록 · 상세 · 차단 · 감사를 보고 시험 사건 1건을 판정한다. 그 뒤 `console --confirm` → `rto:S7`(서비스 재개) |
 | `regen` | 가용 메모리 확인 · `opsloop-ingest --full` · `pull_loki.py --node web-01 --since <T_b−1시간> --ledgers-from-start`(최대 RSS · 시간 기록) · `rto:S8`. console 과는 verify 뒤 어느 쪽이 먼저여도 된다 |
 | `compare` | 따라잡기 한 회차 → T_r. `[T_b−1시간, T_r−30분)` 의 `provenance='real'` events(센서별 건수 · line_hash md5) · sessions · node_metrics 를 운영과 같은 문장으로 대조한다. 창 끝이 T_b 뒤 15분 이상이어야 하므로 T_b + 45분 뒤에 돌린다(이르면 멈추고 다시 돌리라고 알린다). 다르면 차이 줄을 회차 폴더에 남긴다 |
@@ -1133,6 +1133,30 @@ ssh -F ~/.ssh/config.opsloop data01 'sudo -n -u opsloop-cti /usr/local/bin/opslo
   CVE-2021-3156)는 비해당('배포판 기록에 이 릴리스(…)의 영향 패키지가 없다')이다.
 - 타이머 회차가 돌고 있으면 끝날 때까지 기다린다(20분이 넘으면 종료 1). 그때는 타이머 회차가 끝난 뒤 다시 돌린다.
 
+## 셸 스크립트 점검 (이슈 #62)
+
+저장소의 셸 스크립트(추적 중인 `*.sh` 와 첫 줄이 sh · bash 인 `cti/opsloop-cti`)를 shellcheck 로 본다. 방화벽 · 콘솔 · 데이터 노드 · AWS 관문에서 도는 것들이라 스크립트를 고친 커밋마다 돌린다. 읽기만 한다.
+
+```bash
+# 저장소 루트에서
+scripts/check-shell.sh            # 기준: 종료 0 · 경고 0 (shellcheck 0.11.0 기본 수준, 참고까지 센다)
+scripts/check-shell.sh -f gcc     # 한 줄 꼴. shellcheck 가 없으면 설치 방법을 찍고 종료 2 (brew install shellcheck)
+```
+
+경로는 저장소 루트 기준이다. 의도한 모양은 그 줄 바로 위에 `# shellcheck disable=SCxxxx  # 이유` 로 남겼다 (2026-09-29, 16곳). 새로 남길 때는 이 표에 더한다.
+
+| 경고 | 곳 | 이유 |
+|---|---|---|
+| SC2012 (ls 파싱) | `collector/install-collector.sh` · `cti/install-cti.sh` · `enforcer/install-enforcer.sh` | 깐 파일 이름을 화면에 보이기만 한다 |
+| SC2012 | `infra/vmware/scripts/backup-db.sh` 보관 정리 2줄 | 이름은 이 스크립트가 만든 `opsloop-<시각>` 뿐이다. Mac(BSD) find 로는 시각순 정렬을 못 한다 |
+| SC2012 · SC2013 | `infra/aws/scripts/pre-image-scan.sh` 3곳 | 호스트 키 개수만 센다 · 홈 폴더 참고 줄 · 계정 이름에는 공백이 없다 |
+| SC2016 | `infra/vmware/scripts/db-console-role.sh` 2곳 | `$pw` 는 원격 셸이 표준 입력에서 읽어 펼친다 (비밀번호를 명령행 인자에 두지 않는다) |
+| SC2029 | `infra/vmware/scripts/verify.sh` 의 `ssh_fw` | 검증 명령은 Mac 에서 주소를 채운 문자열로 넘겨 방화벽에서 돈다 |
+| SC2086 | `infra/vmware/scripts/console-join.sh` 의 `is_maint` | 상태 두 칸(숫자)을 낱말로 나눠 받는다 |
+| SC2015 | `infra/vmware/failover/collect_fw.sh` · `puller/compare-paths.sh` | 두 검사 가운데 하나라도 어긋나면 멈춘다 · 기록용 스크립트의 끝 줄 |
+| SC2024 | `infra/setup-app-node.sh` | `notify.sql` 은 저장소 파일이라 실행한 사용자가 읽는다. sudo 는 docker 몫이다 |
+| SC2028 | `scripts/run-decoy.sh` | 복사해 쓸 명령을 글자 그대로 찍는다. `\n` 은 curl -w 가 푼다 |
+
 ## 파일
 
 | 경로 | 내용 |
@@ -1153,5 +1177,6 @@ ssh -F ~/.ssh/config.opsloop data01 'sudo -n -u opsloop-cti /usr/local/bin/opslo
 | `scripts/fw-add-ext-nic.sh` | 운영 중인 방화벽에 외부 역할 세그먼트 랜카드를 붙인다 (기본 계획만, `--apply`) |
 | `netplan/attacker.yaml` | 시연용 공격자 VM 주소 (203.0.113.10 · 경로 203.0.113.1 · 이름 해석 없음) |
 | `scripts/*.sh` | 네트워크 생성 · seed · 복제 · 구성 · 검증 · DB 백업 · 자산 수집 |
+| `../../scripts/check-shell.sh` | 저장소 셸 스크립트 정적 점검 (위 '셸 스크립트 점검') |
 
 비밀번호와 개인 키는 저장소에 넣지 않는다. seed 이미지도 저장소 밖(`~/Virtual Machines.localized`)에 만든다.

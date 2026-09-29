@@ -17,7 +17,7 @@ apply() { # $1 VM 이름  $2 netplan 파일
   echo "== $name"
   "$VMRUN" list | grep -q "$vmx" || "$VMRUN" start "$vmx" nogui
   echo "-- VMware Tools 응답 대기"
-  for i in $(seq 1 60); do g runProgramInGuest "$vmx" /bin/true >/dev/null 2>&1 && break; sleep 5; done
+  for _ in $(seq 1 60); do g runProgramInGuest "$vmx" /bin/true >/dev/null 2>&1 && break; sleep 5; done
   g CopyFileFromHostToGuest "$vmx" "$plan" /tmp/50-opsloop.yaml
   g runScriptInGuest "$vmx" /bin/bash "
     set -e
@@ -59,5 +59,5 @@ apply opsloop-console-b "$HERE/netplan/console-b.yaml"
 apply opsloop-data-01   "$HERE/netplan/data-01.yaml"
 
 echo; echo "== SSH 확인 (관리망 경유)"
-for ip in 192.168.70.254; do ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "${KEY%.pub}" ops@$ip 'hostname; ip -br addr' || true; done
+ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -i "${KEY%.pub}" ops@192.168.70.254 'hostname; ip -br addr' || true
 echo "콘솔과 데이터 노드는 방화벽을 통해 접근합니다: ssh -J ops@192.168.70.254 ops@192.168.50.11"

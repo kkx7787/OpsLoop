@@ -49,7 +49,7 @@ PY
 
 echo "== 2. VMware Tools 응답 대기"
 ok=0
-for i in $(seq 1 60); do g runProgramInGuest "$TARGET" /bin/true >/dev/null 2>&1 && { ok=1; break; }; sleep 5; done
+for _ in $(seq 1 60); do g runProgramInGuest "$TARGET" /bin/true >/dev/null 2>&1 && { ok=1; break; }; sleep 5; done
 [ "$ok" = 1 ] || { echo "응답이 없습니다 (비밀번호가 틀렸거나 부팅이 끝나지 않음)"; exit 1; }
 
 echo "== 3. 게스트 구성"

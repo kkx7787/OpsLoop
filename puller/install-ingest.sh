@@ -11,8 +11,6 @@ VERSION=${1:?커밋}
 SRC="$(cd "$(dirname "$0")/.." && pwd)"
 BUCKET=${OPSLOOP_BUCKET:-opsloop-archive-739272173045}
 HOSTS=${OPSLOOP_HOSTS:-i-058726c1a0671fe1d}
-DB_HOST=192.168.60.11          # DB 는 이 주소에만 묶여 있다 (compose/data.yml)
-ENV_SRC=/home/ops/opsloop/.env
 
 echo "== 패키지"
 export DEBIAN_FRONTEND=noninteractive
