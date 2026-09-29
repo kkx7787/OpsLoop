@@ -1,9 +1,10 @@
-"""관제 대상별 상태판 (이슈 #52). GET /api/dashboard/targets
+"""관제 대상별 상태판 (이슈 #52 · #64). GET /api/dashboard/targets
 
-카드 네 장(AWS 센서 · web-01 · 관제 콘솔 · 데이터 노드)에 수집 · 보안 · 시스템 · 대응 · 취약점을 대상별로 모은다.
+고정 카드 네 장(AWS 센서 · web-01 · 관제 콘솔 · 데이터 노드) 뒤에 등록 노드 카드(nodes 에서 폐기되지 않고 고정 대상과 겹치지
+않는 노드, node_id 순)를 붙여 수집 · 보안 · 시스템 · 대응 · 취약점을 대상별로 모은다. 등록 노드 카드는 web-01 카드와 같은 모양이다.
 반복 읽기 · 읽기 전용 트랜잭션 하나에서 읽는다(대시보드 summary 와 같다). 표 · 권한이 없는 것은 오류가 아니라
-선검사(to_regclass + has_table_privilege)로 갈라 '미확인' 으로 답한다. 한 질의라도 실패하면 트랜잭션 전체가 멈추므로
-예외로 가르지 않는다.
+선검사(to_regclass + has_table_privilege, 열 권한만 있는 nodes 는 has_column_privilege)로 갈라 '미확인' 으로 답한다.
+한 질의라도 실패하면 트랜잭션 전체가 멈추므로 예외로 가르지 않는다.
 
 정직한 표기
   - 수집: 생존 신호가 있는 대상만 신호 시각으로 정상 · 수신 없음을 가른다. 로그 시각만으로 정상 · 장애를 정하지 않는다
@@ -12,6 +13,9 @@
     0 이 '막지 못했다' 로 읽히지 않게 화면이 문구를 고른다.
   - 사건 → 대상 매핑은 순수 함수(resolve)다. 한 사건이 여러 대상에 붙을 수 있어 카드 합은 전체와 다르다.
     어느 대상에도 붙이지 못한 사건은 숨기지 않고 unmapped 로 센다.
+  - 등록 노드의 발생원(events.sensor = nodes.sensor)은 그 노드 카드로 잇는다. 노드 에이전트 이벤트(sshd. · nginx.)는 고정 web-01 과
+    등록 노드가 함께 내므로 등록 노드가 있으면 실제 이벤트의 발생원으로 어느 노드의 사건인지 고른다. 등록 노드가 없으면 지금처럼
+    web-01 이고, 등록 노드가 있어도 web-01 의 값은 같다(고르지 못하면 전처럼 web-01).
 """
 import json
 from datetime import timedelta
@@ -67,6 +71,9 @@ POINTS = {"aws-sensor": ("gateway", "AWS 관문"), "web-01": ("fw", "내부 방�
 TARGET_ASSETS = {"aws-sensor": ["honeypot-dmz", "gateway"], "web-01": ["web-01"],
                  "console": ["console-a", "console-b"], "data-node": ["data-01"]}
 WEB_NODE = "web-01"
+# 노드 에이전트(parser/parse_agent.py: auth · nginx)가 내는 이벤트 이름 접두. 고정 web-01 과 등록 노드가 함께 낸다
+NODE_PREFIXES = ("sshd.", "nginx.")
+NODE_ROLE = "등록 노드"        # 등록 노드 카드의 역할 설명
 
 # 집행기가 enforce_note 에 쓰는 '집행 제외' 말머리. main.ENFORCE_EXCLUDED 와 같다(test_targets 가 맞춰 본다).
 #   main 을 불러오면 순환이라 여기 둔다
@@ -77,6 +84,16 @@ HEARTBEATS_READABLE_SQL = ("SELECT CASE WHEN to_regclass('sensor_heartbeats') IS
                            " ELSE has_table_privilege('sensor_heartbeats', 'SELECT') END")
 METRICS_READABLE_SQL = ("SELECT CASE WHEN to_regclass('node_metrics') IS NULL THEN false"
                         " ELSE has_table_privilege('node_metrics', 'SELECT') END")
+
+# nodes 를 읽을 수 있는가. 콘솔에는 열 권한만 있어(has_table_privilege 는 거짓이다) 읽는 열마다 본다. 표가 없으면
+#   to_regclass 가 NULL 이라 행이 없어 거짓이고, 없는 열은 권한 함수에 넘기지 않는다(이름으로 넘기면 오류다). $1 읽는 열
+NODES_READABLE_SQL = """
+    SELECT count(*) = cardinality($1::text[]) FROM pg_attribute a
+    WHERE a.attrelid = to_regclass('nodes') AND a.attname = ANY($1::text[]) AND NOT a.attisdropped
+      AND has_column_privilege(a.attrelid, a.attnum, 'SELECT')"""
+NODE_COLUMNS = ["node_id", "hostname", "sensor", "status", "registered_at", "last_seen_at", "last_loaded_at"]
+# 고정 web-01 수신(NODE_SQL)이 읽는 열. 카드 열(hostname · sensor)만 모자라면 web-01 은 전처럼 읽는다
+WEB_NODE_COLUMNS = ["node_id", "status", "registered_at", "last_seen_at", "last_loaded_at"]
 
 HEARTBEATS_SQL = "SELECT source, kind, role, host, seen_at, checked_at, problem FROM sensor_heartbeats ORDER BY source"
 
@@ -151,19 +168,31 @@ LOGS_SQL = """
     SELECT s AS sensor, (SELECT max(e.ts) FROM events e WHERE e.sensor = s AND e.provenance = 'real') AS last_at
     FROM unnest($1::text[]) AS s"""
 
-# 노드 수신 판정. operations.py /api/nodes 의 CASE 와 같은 규칙이다(now() 대신 기준 시각 $2). $1 노드 id
-NODE_SQL = """
+# 노드 수신 판정. operations.py /api/nodes 의 CASE 와 같은 규칙이다(now() 대신 기준 시각 {at})
+RECEPTION_SQL = """CASE WHEN n.status='revoked' THEN 'revoked' WHEN n.status='pending' THEN 'waiting'
+                WHEN coalesce(n.last_seen_at,n.registered_at) < {at}::timestamptz-interval '10 minutes' THEN 'silent'
+                WHEN n.last_seen_at IS NULL THEN 'waiting' ELSE 'normal' END"""
+
+# 고정 web-01 의 수신. $1 노드 id · $2 기준 시각
+NODE_SQL = f"""
     SELECT n.status, n.last_seen_at, n.last_loaded_at,
-           CASE WHEN n.status='revoked' THEN 'revoked' WHEN n.status='pending' THEN 'waiting'
-                WHEN coalesce(n.last_seen_at,n.registered_at) < $2::timestamptz-interval '10 minutes' THEN 'silent'
-                WHEN n.last_seen_at IS NULL THEN 'waiting' ELSE 'normal' END AS reception
+           {RECEPTION_SQL.format(at="$2")} AS reception
     FROM nodes n WHERE n.node_id = $1"""
+
+# 등록 노드 전체와 수신(node_id 순). 카드로 붙일 노드는 node_targets 가 고른다(nodes 는 작은 표다). $1 기준 시각
+NODES_SQL = f"""
+    SELECT n.node_id, n.hostname, n.sensor, n.status, n.last_seen_at, n.last_loaded_at,
+           {RECEPTION_SQL.format(at="$1")} AS reception
+    FROM nodes n ORDER BY n.node_id"""
 
 DETECTOR_SQL = "SELECT max(started_at) FROM detector_runs"
 
+# 노드별 최신 자원 지표 한 행. (node_id, ts) 색인(idx_node_metrics_node_ts)으로 노드마다 한 번 내려간다. $1 노드 id 들
 METRICS_SQL = """
-    SELECT ts, cpu_pct, mem_used_pct, disk_root_pct, load1 FROM node_metrics
-    WHERE node_id = $1 ORDER BY ts DESC LIMIT 1"""
+    SELECT n AS node_id, m.ts, m.cpu_pct, m.mem_used_pct, m.disk_root_pct, m.load1
+    FROM unnest($1::text[]) AS n
+    CROSS JOIN LATERAL (SELECT ts, cpu_pct, mem_used_pct, disk_root_pct, load1 FROM node_metrics
+                        WHERE node_id = n ORDER BY ts DESC LIMIT 1) m"""
 
 # 살아 있는 차단(해제 · 만료 안 됨, 만료 없는 옛 차단 · 집행 제외 아님)을 지점별로 적용 확인 · 실패 · 미확인으로 나눈다.
 #   실패는 그 지점이 거부했다고 보고한 것(failed)이다. 모르는 것이 아니라 알려진 미적용이라 미확인과 가른다.
@@ -235,21 +264,25 @@ def event_source(name: str) -> str | None:
     return None
 
 
-def candidate_sources(spec: dict) -> list[str]:
-    """규칙의 발생원 후보: params.sensors ∪ 이벤트 이름 접두로 고른 발생원."""
+def candidate_sources(spec: dict, nodes=None) -> list[str]:
+    """규칙의 발생원 후보: params.sensors ∪ 이벤트 이름 접두로 고른 발생원. 노드 에이전트 이벤트(sshd. · nginx.)는 web-01 과
+    등록 노드의 발생원(nodes 의 키)이 모두 후보다."""
     found = list(spec.get("sensors") or [])
     for name in [*spec.get("eventids", []), *([spec["eventid_like"]] if spec.get("eventid_like") else [])]:
         source = event_source(name)
-        if source and source not in found:
-            found.append(source)
+        more = [source] if source else []
+        if name.startswith(NODE_PREFIXES):
+            more += list(nodes or {})
+        found += [s for s in more if s not in found]
     return found
 
 
-def attach(sources) -> set[tuple[str, str | None]]:
-    """발생원들 → {(대상, AWS 센서 발생원 나눔 또는 None)}. 모르는 발생원은 버린다."""
+def attach(sources, nodes=None) -> set[tuple[str, str | None]]:
+    """발생원들 → {(대상, AWS 센서 발생원 나눔 또는 None)}. 고정 발생원(SENSOR_TARGET)이 먼저이고 그다음 등록 노드의
+    발생원(nodes: {발생원: 노드 id})이다. 모르는 발생원은 버린다."""
     out = set()
     for source in sources:
-        target = SENSOR_TARGET.get(source)
+        target = SENSOR_TARGET.get(source) or (nodes or {}).get(source)
         if target:
             out.add((target, source if source in PART_KEYS else None))
     return out
@@ -258,30 +291,36 @@ def attach(sources) -> set[tuple[str, str | None]]:
 EVENTS, SESSIONS = "events", "sessions"   # resolve 의 둘째 값: 무엇으로 발생원을 더 고르는가(없으면 False)
 
 
-def resolve(target, sensors, spec) -> tuple[set, str | bool]:
+def resolve(target, sensors, spec, nodes=None) -> tuple[set, str | bool]:
     """사건 하나를 대상에 붙인다. (붙인 곳 {(대상, 나눔)}, 더 고를 방법: False · EVENTS · SESSIONS).
+    nodes 는 등록 노드 {발생원: 노드 id} 다(없으면 고정 대상만 본다).
 
-    순서: (1) target 'node:<id>' (2) target 'user:…' → 콘솔 (3) 근거의 발생원(evidence.sensors) (4) 규칙의 발생원 후보.
+    순서: (1) target 'node:<id>' → 등록 노드면 그 카드, 아니면 고정 발생원(web-01) (2) target 'user:…' → 콘솔
+    (3) 근거의 발생원(evidence.sensors) (4) 규칙의 발생원 후보.
     후보의 대상이 하나면 그 대상이고, 대상이 둘 이상이면(발생원이 섞인 규칙) 이벤트로 고른다(붙인 곳 없음 · EVENTS).
+    등록 노드 발생원이 더해져서 둘 이상이 됐을 뿐이면(고정 발생원만으로는 하나, n1 R101 의 sshd.) 고르지 못할 때 등록 노드 없이
+    정한 값이다(n1 R101 은 web-01 · EVENTS).
     대상은 하나인데 AWS 센서 발생원이 여럿이면 대상은 정하고 나눔만 이벤트로 고른다(대상만 붙인 곳 · EVENTS).
     (5) 후보가 없는 세션 규칙(v3 R002)은 AWS 센서이고 나눔은 사건의 세션으로 고른다(대상만 붙인 곳 · SESSIONS).
     고르지 못하면 Cowrie 다. (6) 후보가 없는 기준선 · 키 심기 규칙은 Cowrie (7) 그 밖은 붙이지 못한다.
     """
     if isinstance(target, str) and target.startswith("node:"):
-        return attach([target[len("node:"):]]), False
+        node_id = target[len("node:"):]
+        return ({(node_id, None)} if node_id in (nodes or {}).values() else attach([node_id])), False
     if isinstance(target, str) and target.startswith("user:"):
         return {("console", None)}, False
     evidence = _strings(sensors)
     if evidence:
-        return attach(evidence), False
+        return attach(evidence, nodes), False
     if spec is None:
         return set(), False
-    sources = candidate_sources(spec)
+    sources = candidate_sources(spec, nodes)
     if sources:
-        pairs = attach(sources)
+        pairs = attach(sources, nodes)
         targets = {t for t, _ in pairs}
         if len(targets) > 1:
-            return set(), EVENTS
+            # 고르지 못하면 등록 노드 없이 정한 값이다(고정 발생원만으로도 섞였으면 붙인 곳 없음, 나눔도 그대로)
+            return (resolve(target, sensors, spec)[0] if nodes else set()), EVENTS
         if len({p for _, p in pairs if p}) > 1:
             return {(t, None) for t in targets}, EVENTS
         return pairs, False
@@ -377,12 +416,20 @@ def sensor_collection(as_of, available: bool, heartbeats: list, last: dict) -> d
     return collection("quiet", f"{head} · 최근 1시간 요청 없음", signal, logs)
 
 
-def node_collection(as_of, node, last: dict) -> dict:
-    """web-01. 노드 수신 판정(operations.py 와 같은 규칙)으로 가른다. 정상이면 web-01 로그로 정상 · 요청 없음을 가른다."""
-    logs = logs_of("web-01", last)
+def node_collection(as_of, node, last: dict, sources=None, readable=True) -> dict:
+    """web-01 · 등록 노드. 노드 수신 판정(operations.py 와 같은 규칙)으로 가른다. 정상이면 그 노드 로그로 정상 · 요청 없음을 가른다.
+    sources 는 등록 노드 로그 [(발생원, 이름)](모두 요청 로그)이고 없으면 고정 web-01 이다. nodes 를 읽을 수 없으면(readable 거짓)
+    등록 기록이 없는 것이 아니라 모르는 것이다."""
+    if sources is None:
+        logs, keys = logs_of(WEB_NODE, last), ACTIVE_LOGS[WEB_NODE]
+    else:
+        logs = [{"key": key, "label": label, "last_at": cti.iso(last.get(key))} for key, label in sources]
+        keys = [key for key, _ in sources]
     seen = node["last_seen_at"] if node else None
     signal = signal_of("노드 수신", NODE_SILENT, seen)
     extra = [{"label": "마지막 적재", "at": cti.iso(node["last_loaded_at"]) if node else None, "note": None}]
+    if not readable:
+        return collection("unknown", "노드 표를 읽을 수 없음", signal, logs, extra)
     if node is None:
         return collection("unknown", "노드 등록 기록 없음", signal, logs, extra)
     reception = node["reception"]
@@ -395,7 +442,7 @@ def node_collection(as_of, node, last: dict) -> dict:
                   else "노드 수신 기록 없음 · 등록 뒤 10분 넘게 수신 없음")
         return collection("no_signal", reason, signal, logs, extra)
     head = f"노드 수신 {ago(as_of, seen)}"
-    if active("web-01", last, as_of):
+    if any(not older(as_of, last.get(key), WINDOW_SECONDS) for key in keys):
         return collection("ok", f"{head} · 최근 1시간 로그 있음", signal, logs, extra)
     return collection("quiet", f"{head} · 최근 1시간 요청 없음", signal, logs, extra)
 
@@ -426,14 +473,15 @@ def data_collection(as_of, started, available: bool, heartbeats: list) -> dict:
     return collection("ok", head + tail, signal, [], extra)
 
 
-def system_block(target_id: str, readable: bool, row, as_of) -> dict:
-    """자원 지표. web-01 만 모은다. 읽을 수 없음 · 행 없음 · 오래됨을 가른다."""
-    if target_id != WEB_NODE:
+def system_block(target_id: str, readable: bool, row, as_of, registered: bool = False) -> dict:
+    """자원 지표. 고정 대상은 web-01 만 모은다. 읽을 수 없음 · 행 없음 · 오래됨을 가른다.
+    등록 노드(registered)는 지표를 보내는 노드만이다. 행이 없으면 '없음' 이 아니라 미수집이다."""
+    if target_id != WEB_NODE and not registered:
         return {"state": "not_collected", "metrics": None}
     if not readable:
         return {"state": "no_privilege", "metrics": None}
     if row is None:
-        return {"state": "no_data", "metrics": None}
+        return {"state": "not_collected" if registered else "no_data", "metrics": None}
 
     def num(value, digits=1):
         return round(float(value), digits) if value is not None else None
@@ -473,11 +521,15 @@ def response_block(target_id: str, blocks, exempt: int, reports: dict, as_of=Non
 
 
 def vulns_block(target_id: str, available: bool, assets: dict, as_of) -> dict:
-    """취약점. 자산 표에 없는 자산은 수 0 · 오래됨 · missing 이다(없다고 '취약점 0' 으로 읽히지 않게)."""
+    """취약점. 자산 표에 없는 자산은 수 0 · 오래됨 · missing 이다(없다고 '취약점 0' 으로 읽히지 않게).
+    등록 노드(TARGET_ASSETS 에 없는 대상)는 같은 이름(asset_id = node_id)의 자산이 있을 때만 잇고, 없으면 빈 목록(연결된 자산 없음)이다."""
     if not available:
         return {"available": False, "assets": []}
+    ids = TARGET_ASSETS.get(target_id)
+    if ids is None:
+        ids = [target_id] if target_id in assets else []
     out = []
-    for asset_id in TARGET_ASSETS[target_id]:
+    for asset_id in ids:
         row = assets.get(asset_id)
         if row is None:
             out.append({"asset_id": asset_id, "vuln_total": 0, "vuln_kev": 0, "collected_at": None,
@@ -501,11 +553,13 @@ def latest_of(incidents: list, as_of) -> dict | None:
             "last_ts": cti.iso(best["last_ts"]), "judged": bool(best["judged"])}
 
 
-def tally(incidents: list, attached: dict, as_of) -> tuple[dict, dict]:
-    """대상별 보안 집계와 붙이지 못한 사건 수. attached 는 {사건 키: {(대상, 나눔)}}. 대상별 rows 는 붙은 사건이다."""
+def tally(incidents: list, attached: dict, as_of, extra=()) -> tuple[dict, dict]:
+    """대상별 보안 집계와 붙이지 못한 사건 수. attached 는 {사건 키: {(대상, 나눔)}}. 대상별 rows 는 붙은 사건이다.
+    extra 는 등록 노드 카드 id 다."""
     since = as_of - timedelta(seconds=WINDOW_SECONDS)
     per = {tid: {"incidents_1h": 0, "high_1h": 0, "pending": 0, "rows": [],
-                 "parts": {key: {"incidents_1h": 0, "pending": 0} for key, _ in AWS_PARTS}} for tid, _, _ in TARGETS}
+                 "parts": {key: {"incidents_1h": 0, "pending": 0} for key, _ in AWS_PARTS}}
+           for tid in [*(tid for tid, _, _ in TARGETS), *extra]}
     unmapped = {"incidents_1h": 0, "pending": 0}
     for inc in incidents:
         pairs = attached.get(inc["incident_key"]) or set()
@@ -526,6 +580,27 @@ def tally(incidents: list, attached: dict, as_of) -> tuple[dict, dict]:
     return per, unmapped
 
 
+def node_targets(rows) -> list[dict]:
+    """등록 노드 행(NODES_SQL) → 카드로 붙일 노드 [{id, label, sensor, node}](node_id 순).
+    폐기된 노드 · 고정 대상과 id 가 겹치는 노드(web-01 은 고정 카드다) · 발생원이 고정 발생원이나 앞 노드와 겹치는 노드는 뺀다
+    (그 발생원의 로그 · 사건은 이미 다른 카드 것이라 두 카드에 나뉘면 안 된다). 발생원은 nodes.sensor, 없으면 node_id 다
+    (적재는 node_id 를 events.sensor 로 쓰고 등록은 sensor 를 node_id 로 넣는다). 이름은 hostname, 없으면 node_id 다."""
+    fixed = {tid for tid, _, _ in TARGETS}
+    out, taken = [], set(SENSOR_TARGET)
+    for row in sorted(rows, key=lambda r: r["node_id"]):
+        sensor = row["sensor"] or row["node_id"]
+        if row["status"] == "revoked" or row["node_id"] in fixed or sensor in taken:
+            continue
+        taken.add(sensor)
+        out.append({"id": row["node_id"], "label": row["hostname"] or row["node_id"], "sensor": sensor, "node": row})
+    return out
+
+
+def node_sources(cards) -> dict[str, str]:
+    """등록 노드 카드 → {발생원: 노드 id}(resolve · attach 의 nodes)."""
+    return {card["sensor"]: card["id"] for card in cards}
+
+
 def security_block(target_id: str, slot: dict, as_of) -> dict:
     parts = [{"key": key, "label": label, **slot["parts"][key]} for key, label in AWS_PARTS] \
         if target_id == "aws-sensor" else []
@@ -537,8 +612,17 @@ def security_block(target_id: str, slot: dict, as_of) -> dict:
 #  조회
 # ----------------------------------------------------------------------
 
-async def attach_incidents(c, incidents: list) -> dict:
-    """{사건 키: {(대상, 나눔)}}. 규칙 정의는 쓰인 버전만 한 번에 읽고, 발생원이 섞인 규칙의 사건만 이벤트로 고른다."""
+async def read_nodes(c, as_of) -> tuple[bool, list[dict]]:
+    """(web-01 수신(NODE_SQL)을 읽을 수 있는가, 카드로 붙일 등록 노드). 표가 없거나 열 권한이 모자라면 등록 노드 카드는 없다
+    (고정 네 대상만). 카드 열(hostname · sensor)만 모자라면 web-01 수신은 전처럼 읽는다(카드 때문에 web-01 값이 바뀌지 않게)."""
+    if await c.fetchval(NODES_READABLE_SQL, NODE_COLUMNS):
+        return True, node_targets(await c.fetch(NODES_SQL, as_of))
+    return bool(await c.fetchval(NODES_READABLE_SQL, WEB_NODE_COLUMNS)), []
+
+
+async def attach_incidents(c, incidents: list, nodes=None) -> dict:
+    """{사건 키: {(대상, 나눔)}}. 규칙 정의는 쓰인 버전만 한 번에 읽고, 발생원이 섞인 규칙의 사건만 이벤트로 고른다.
+    nodes 는 등록 노드 {발생원: 노드 id} 다."""
     versions = sorted({i["rule_version"] for i in incidents})
     specs = {}
     for row in (await c.fetch(RULES_SQL, versions) if versions else []):
@@ -546,7 +630,7 @@ async def attach_incidents(c, incidents: list) -> dict:
     attached, joins, by_session, fallback = {}, [], [], {}
     for inc in incidents:
         spec = specs.get((inc["rule_version"], inc["rule_id"]))
-        pairs, need = resolve(inc["target"], inc["sensors"], spec)
+        pairs, need = resolve(inc["target"], inc["sensors"], spec, nodes)
         attached[inc["incident_key"]] = pairs
         if need == EVENTS and inc["actor_ip"]:
             joins.append(join_item(inc, spec))
@@ -566,7 +650,7 @@ async def attach_incidents(c, incidents: list) -> dict:
             found.setdefault(row["incident_key"], []).append(row["sensor"])
     for key, sensors in found.items():
         # 이벤트가 모르는 발생원뿐이면 앞서 정한 것(대상만 · Cowrie · 없음)을 둔다
-        attached[key] = attach(sensors) or fallback[key]
+        attached[key] = attach(sensors, nodes) or fallback[key]
     return attached
 
 
@@ -575,16 +659,21 @@ async def targets_view(c, as_of) -> dict:
     heartbeats_available = bool(await c.fetchval(HEARTBEATS_READABLE_SQL))
     metrics_available = bool(await c.fetchval(METRICS_READABLE_SQL))
     heartbeats = [dict(r) for r in await c.fetch(HEARTBEATS_SQL)] if heartbeats_available else []
+    # 등록 노드 카드. nodes 를 읽을 수 없으면 고정 네 대상만이고, web-01 이 읽는 열까지 없으면 web-01 수신도 모른다
+    nodes_readable, cards = await read_nodes(c, as_of)
+    nodes = node_sources(cards)
 
     incidents = [dict(r) for r in await c.fetch(INCIDENTS_SQL, as_of, WINDOW_SECONDS, LATEST_HOURS)]
-    attached = await attach_incidents(c, incidents)
-    per, unmapped = tally(incidents, attached, as_of)
+    attached = await attach_incidents(c, incidents, nodes)
+    per, unmapped = tally(incidents, attached, as_of, [card["id"] for card in cards])
 
-    sensors = sorted({key for rows in LOGS.values() for key, _ in rows})
+    logs = {card["id"]: [(card["sensor"], f"{card['label']} 로그")] for card in cards}
+    sensors = sorted({key for rows in [*LOGS.values(), *logs.values()] for key, _ in rows})
     last = {r["sensor"]: r["last_at"] for r in await c.fetch(LOGS_SQL, sensors)}
-    node = await c.fetchrow(NODE_SQL, WEB_NODE, as_of)
+    node = await c.fetchrow(NODE_SQL, WEB_NODE, as_of) if nodes_readable else None
     started = await c.fetchval(DETECTOR_SQL)
-    metrics = await c.fetchrow(METRICS_SQL, WEB_NODE) if metrics_available else None
+    metrics = {r["node_id"]: r for r in await c.fetch(METRICS_SQL, [WEB_NODE, *(card["id"] for card in cards)])} \
+        if metrics_available else {}
     blocks = await c.fetchrow(BLOCKS_SQL, as_of)
     reports = {r["source"][len("block:"):]: r for r in heartbeats
                if r["kind"] == "block_report" and r["source"].startswith("block:")}
@@ -600,18 +689,21 @@ async def targets_view(c, as_of) -> dict:
 
     collections = {
         "aws-sensor": sensor_collection(as_of, heartbeats_available, heartbeats, last),
-        "web-01": node_collection(as_of, node, last),
+        "web-01": node_collection(as_of, node, last, readable=nodes_readable),
         "console": console_collection(last),
         "data-node": data_collection(as_of, started, heartbeats_available, heartbeats),
+        **{card["id"]: node_collection(as_of, card["node"], last, logs[card["id"]]) for card in cards},
     }
     targets = []
-    for tid, label, role in TARGETS:
+    # 고정 대상 뒤에 등록 노드. kind 는 화면이 순서 · 아이콘을 가르는 값이다
+    for tid, label, role, kind in [*((tid, label, role, "fixed") for tid, label, role in TARGETS),
+                                   *((card["id"], card["label"], NODE_ROLE, "node") for card in cards)]:
         exempt = len({i["actor_ip"] for i in per[tid]["rows"] if i["actor_ip"] in exempt_ips})
         targets.append({
-            "id": tid, "label": label, "role": role,
+            "id": tid, "kind": kind, "label": label, "role": role,
             "collection": collections[tid],
             "security": security_block(tid, per[tid], as_of),
-            "system": system_block(tid, metrics_available, metrics, as_of),
+            "system": system_block(tid, metrics_available, metrics.get(tid), as_of, kind == "node"),
             "response": response_block(tid, blocks, exempt, reports, as_of, heartbeats_available),
             "vulns": vulns_block(tid, cti_available, assets, as_of),
         })

@@ -260,6 +260,18 @@ class EnrollmentInTests(unittest.TestCase):
                 operations.EnrollmentIn(**(NODE | {"addr": addr}))
         self.assertEqual(operations.EnrollmentIn(**(NODE | {"addr": "fe80::1"})).addr, "fe80::1")
 
+    def test_발생원_상태판_대상_이름은_노드_이름으로_쓸_수_없다(self):
+        # 겹치면 그 노드의 사건 · 카드가 고정 대상으로 가거나 카드가 생기지 않는다(이슈 #64). 명령줄(collector/nodes.py)과 같은 목록이다
+        for name in ("audit", "aws-sensor", "data-node", "console", "gateway"):
+            with self.subTest(node_id=name), self.assertRaises(ValidationError):
+                operations.EnrollmentIn(**(NODE | {"node_id": name, "hostname": name}))
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("collector_nodes", os.path.join(os.path.dirname(__file__), "..", "collector", "nodes.py"))
+        if spec and os.path.exists(spec.origin):
+            nodes = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(nodes)
+            self.assertEqual(nodes.RESERVED, operations.RESERVED)
+
 
 # ----------------------------------------------------------------------
 #  5. 규칙 품질 상세

@@ -1,4 +1,4 @@
-import type { CollectionState, SystemState, Target, TargetAssetVulns, TargetLog, TargetMetrics, TargetResponse } from '@/api/targets'
+import { targetKind, type CollectionState, type SystemState, type Target, type TargetAssetVulns, type TargetLog, type TargetMetrics, type TargetResponse } from '@/api/targets'
 import { toDate } from '@/lib/time'
 import type { Tone } from '../../atoms/tones'
 
@@ -113,6 +113,17 @@ export function vulnText(asset: TargetAssetVulns): string {
 export function assetHref(assetId: string): string {
   return `/inventory?asset=${encodeURIComponent(assetId)}`
 }
+
+/**
+ * 카드 순서(#64): 고정 대상 뒤에 등록 노드. 서버가 이미 그렇게 주지만 섞여 와도 고정 대상이 앞자리를 잃지 않게
+ * 종류로만 나눈다(각 무리 안은 서버 순서 그대로)
+ */
+export function orderTargets<T extends Pick<Target, 'id' | 'kind'>>(targets: readonly T[]): T[] {
+  return [...targets.filter((t) => targetKind(t) === 'fixed'), ...targets.filter((t) => targetKind(t) === 'node')]
+}
+
+/** 대상 이름을 그릴 최대 글자 수. 등록 노드 이름(hostname)의 상한(253)과 같다. 넘으면 자르고 전체는 말풍선으로 본다 */
+export const LABEL_MAX = 253
 
 /** 모바일 접힌 요약의 미판정 글 */
 export function pendingText(target: Pick<Target, 'security'>): string {

@@ -7,7 +7,8 @@ test_dashboard_db 와 같이 무작위 스키마에 둔다. 처리기는 가짜 
   - 목록: 출발지별 사건 수 · 미판정 · 최신 판정 분포가 독립 SQL(사건마다 상관 부질의로 마지막 판정)과 같다 ·
     critical + medium 출발지의 최고 심각도가 critical(글자 max 면 medium) · 같은 시각 판정은 id 가 큰 것 ·
     시험 대역 표시와 기본 제외(include_test) · 차단 제외(코드 상수 · block_exempt 표 · 표를 못 읽으면 null) ·
-    주소 없는 사건(target 만)은 없음 · 노린 대상(실제 이벤트의 발생원만, 감사 기록 제외) · 차단 행 · 정렬 세 가지(동률은 주소 순) ·
+    주소 없는 사건(target 만)은 없음 · 노린 대상(실제 이벤트의 발생원만, 감사 기록 제외. 등록 노드 발생원은 그 노드,
+    nodes 표가 없거나 폐기된 노드면 버림) · 차단 행 · 정렬 세 가지(동률은 주소 순) ·
     q 앞부분(IPv6 대문자) · 쪽 넘김 · 마지막 관측(실제 이벤트의 마지막 시각. 감사 기록 제외 · 마지막 사건과 따로)
   - 지문: hassh · ssh_version · user_agent 값과 출발지 · 연결 · 사건 있는 출발지 수. 모의 · 시험 자료 이벤트 · 콘솔 UA · 빈 버전은
     빠지고 긴 UA 는 512자로 잘린다. 지문 조건 목록(fp_kind · fp)은 그 지문을 쓴 출발지 가운데 사건 있는 곳뿐이다
@@ -265,6 +266,18 @@ class ListTests(Base):
         self.assertEqual(block["enforced_at"], self.ago(249).isoformat())
         self.assertTrue(all(items[ip]["block"] is None for ip in (B, C, D, E, F)))
         self.assertEqual((await self.listing())["checkers"], {"gateway_stale": False, "fw_stale": True})
+
+    async def test_노린_대상은_등록_노드_발생원도_그_노드로_본다(self):
+        await self.event(15, "nginx.request", "web-02", E)
+        # nodes 표가 없으면(이 시험 자료) 등록 노드를 몰라 버린다
+        self.assertEqual({i["ip"]: i["targets"] for i in (await self.listing())["items"]}[E], ["web-01"])
+        await self.conn.execute(temp_table("nodes"))
+        await self.conn.execute("""INSERT INTO nodes (node_id, hostname, sensor, status) VALUES
+            ('web-01', 'web-01', 'web-01', 'active'), ('web-02', 'web02.lab', 'web-02', 'active')""")
+        self.assertEqual({i["ip"]: i["targets"] for i in (await self.listing())["items"]}[E], ["web-01", "web-02"])
+        self.assertEqual((await self.detail(E))["summary"]["targets"], ["web-01", "web-02"])
+        await self.conn.execute("UPDATE nodes SET status = 'revoked' WHERE node_id = 'web-02'")
+        self.assertEqual((await self.detail(E))["summary"]["targets"], ["web-01"])
 
     async def test_정렬_세_가지(self):
         # 최근: 마지막 시각 내림차순

@@ -171,10 +171,11 @@ def parse_ip(value: str, name: str = "ip") -> str:
     return str(ip)
 
 
-def targets_of(sensors) -> list[str]:
-    """이벤트 발생원들 → 노린 대상 id(상태판 카드 순서). 모르는 발생원은 버린다(targets.attach)."""
-    hit = {target for target, _ in targets.attach(sensors or [])}
-    return [tid for tid, _, _ in targets.TARGETS if tid in hit]
+def targets_of(sensors, nodes=None) -> list[str]:
+    """이벤트 발생원들 → 노린 대상 id(상태판 카드 순서: 고정 대상 뒤 등록 노드). 모르는 발생원은 버린다(targets.attach).
+    nodes 는 등록 노드 {발생원: 노드 id}(targets.node_sources)다."""
+    hit = {target for target, _ in targets.attach(sensors or [], nodes)}
+    return [tid for tid, _, _ in targets.TARGETS if tid in hit] + [tid for tid in (nodes or {}).values() if tid in hit]
 
 
 def block_of(row) -> dict | None:
@@ -195,12 +196,12 @@ def exempt_flag(in_nets: bool, readable: bool) -> bool | None:
     return False if readable else None
 
 
-def source_item(row, seen, block, in_nets: bool, exempt_readable: bool) -> dict:
+def source_item(row, seen, block, in_nets: bool, exempt_readable: bool, nodes=None) -> dict:
     """출발지 집계 한 행(SOURCES_SQL 의 s) → 목록 항목. seen 은 SENSORS_SQL 한 행(발생원 · 마지막 관측)이고 실제 이벤트가
-    없으면 None 이다(노린 대상은 빈 목록, 마지막 관측은 null)."""
+    없으면 None 이다(노린 대상은 빈 목록, 마지막 관측은 null). nodes 는 등록 노드 {발생원: 노드 id} 다."""
     return {"ip": row["ip"], "incidents": row["incidents"], "unjudged": row["unjudged"],
             "severity": SEVERITIES[row["rank"]], "rules": list(row["rules"]),
-            "targets": targets_of(seen["sensors"] if seen else None),
+            "targets": targets_of(seen["sensors"] if seen else None, nodes),
             "first_ts": cti.iso(row["first_ts"]), "last_ts": cti.iso(row["last_ts"]),
             "last_seen": cti.iso(seen["last_seen"] if seen else None),
             "verdicts": {v: row[v] for v in VERDICTS},
@@ -227,8 +228,9 @@ async def checkers(c, as_of) -> dict:
     return checkers_of(readable, await c.fetch(targets.HEARTBEATS_SQL) if readable else [], as_of)
 
 
-async def source_items(c, rows) -> list[dict]:
-    """집계 행들 → 목록 항목. 쪽에 나온 주소만 이벤트 발생원 · 마지막 관측 · 차단 행 · 차단 제외 대역을 따로 묻는다."""
+async def source_items(c, rows, as_of) -> list[dict]:
+    """집계 행들 → 목록 항목. 쪽에 나온 주소만 이벤트 발생원 · 마지막 관측 · 차단 행 · 차단 제외 대역을 따로 묻는다.
+    노린 대상은 상태판과 같이 등록 노드 발생원도 그 노드로 본다(nodes 를 읽을 수 없으면 고정 대상만)."""
     ips = [r["ip"] for r in rows]
     if not ips:
         return []
@@ -236,7 +238,8 @@ async def source_items(c, rows) -> list[dict]:
     blocks = {r["ip"]: r for r in await c.fetch(BLOCKS_SQL, ips)}
     readable = await has_exempt_table(c)
     in_nets = {r["ip"] for r in await c.fetch(targets.EXEMPT_SQL, ips, await block_nets(c))}
-    return [source_item(r, seen.get(r["ip"]), blocks.get(r["ip"]), r["ip"] in in_nets, readable) for r in rows]
+    nodes = targets.node_sources((await targets.read_nodes(c, as_of))[1])
+    return [source_item(r, seen.get(r["ip"]), blocks.get(r["ip"]), r["ip"] in in_nets, readable, nodes) for r in rows]
 
 
 @router.get("/api/sources")
@@ -275,7 +278,7 @@ async def list_sources(request: Request,
         rows = await c.fetch(f"""{SOURCES_SQL}
             SELECT * FROM s {w}
             ORDER BY {ORDERS[sort]} LIMIT ${len(params) + 1} OFFSET ${len(params) + 2}""", *params, limit, offset)
-        items = await source_items(c, rows)
+        items = await source_items(c, rows, as_of)
         checks = await checkers(c, as_of)
     return {"as_of": cti.iso(as_of), "total": total, "limit": limit, "offset": offset, "checkers": checks,
             "items": items}
@@ -293,7 +296,7 @@ async def source_detail(request: Request, ip: str = Query(..., max_length=64)):
         row = await c.fetchrow(f"{SOURCES_SQL} SELECT * FROM s WHERE s.actor_ip = $1::inet", addr)
         if row is None and not await c.fetchval(HAS_EVENTS_SQL, addr):
             raise HTTPException(404, "이 출발지의 사건이나 이벤트가 없습니다")
-        summary = (await source_items(c, [row]))[0] if row else None
+        summary = (await source_items(c, [row], as_of))[0] if row else None
         last_seen = summary["last_seen"] if summary else cti.iso(await c.fetchval(LAST_SEEN_SQL, addr))
         incidents = await c.fetch(DETAIL_INCIDENTS_SQL, addr, DETAIL_INCIDENTS)
         kinds = await c.fetch(EVENT_KINDS_SQL, addr, DETAIL_KINDS, row is not None)

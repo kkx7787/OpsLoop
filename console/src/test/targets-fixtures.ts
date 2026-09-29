@@ -122,6 +122,38 @@ export function dataNode(extra: Partial<Target> = {}): Target {
   }
 }
 
+/**
+ * 등록 노드 카드(#64). web-01 카드와 같은 틀이다: 노드 수신 판정 · 집행 지점 없음(미확인) · 지표 미수집 ·
+ * 같은 이름의 자산 없음(서버 vulns_block 은 빈 목록을 준다).
+ * 이름은 hostname(opsloop-<id>), 역할은 '등록 노드', 로그 이름은 '<이름> 로그'(targets.py 와 같다)
+ */
+export function nodeTarget(id = 'web-02', extra: Partial<Target> = {}): Target {
+  return {
+    id,
+    kind: 'node',
+    label: `opsloop-${id}`,
+    role: '등록 노드',
+    collection: {
+      state: 'ok',
+      reason: '노드 수신 2분 전 · 최근 1시간 로그 있음',
+      signal: { label: '노드 수신', seen_at: minutesAgo(2), checked_at: null, stale_after_seconds: 600, problem: null },
+      logs: [{ key: id, label: `opsloop-${id} 로그`, last_at: minutesAgo(3) }],
+      extra: [{ label: '마지막 적재', at: minutesAgo(2), note: null }],
+    },
+    security: {
+      incidents_1h: 2,
+      high_1h: 1,
+      pending: 3,
+      parts: [],
+      latest: { incident_key: `R101|v3|198.51.100.9|${id}`, rule_id: 'R101', rule_name: 'SSH 무차별 대입', severity: 'high', actor_ip: '198.51.100.9', target: null, last_ts: minutesAgo(5), judged: false },
+    },
+    system: { state: 'not_collected', metrics: null },
+    response: { point: null, point_label: null, applied: null, failed: null, unverified: null, exempt: 0, report: null, stalled: null },
+    vulns: { available: true, assets: [] },
+    ...extra,
+  }
+}
+
 export function targetsResult(extra: Partial<TargetsResult> = {}): TargetsResult {
   return {
     as_of: TARGETS_AS_OF,

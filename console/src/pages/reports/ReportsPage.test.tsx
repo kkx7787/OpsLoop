@@ -249,7 +249,7 @@ describe('보고서 · 비신뢰 문자열(#41)', () => {
         rules: { ...RULES_SECTION, versions: [{ rule_version: HOSTILE.zwsp, created_at: '2026-09-24T01:00:00Z', reason: LONG, rules: [MIXED] }] },
         blocks: { ...BLOCKS_SECTION, audit: [{ eventid: HOSTILE.svg, count: 1 }] },
         // 수집 사유에는 업로더가 보고한 문제(problem) 원문이 붙는다(targets.py sensor_collection)
-        targets: { ...TARGETS_SECTION, sensors: [{ sensor: HOSTILE.img, events: 1 }], targets: [{ ...TARGETS_SECTION.targets[0], collection: { state: 'no_signal', reason: `업로더 생존 신호 없음 · ${MIXED}` } }] },
+        targets: { ...TARGETS_SECTION, sensors: [{ sensor: HOSTILE.img, events: 1 }], targets: [{ ...TARGETS_SECTION.targets[0], collection: { state: 'no_signal', reason: `업로더 생존 신호 없음 · ${MIXED}` } }, { ...TARGETS_SECTION.targets[0], id: 'web-02', label: HOSTILE.rlo }] },
         cti: { ...CTI_SECTION, assets: [{ ...CTI_SECTION.assets[0], asset_id: HOSTILE.jsUrl }], kev_added: { total: 1, ours: [{ cve_id: HOSTILE.mdLink, name: MIXED, date_added: HOSTILE.decoy, assets: [HOSTILE.style] }] } },
         ops: { ...OPS_SECTION, notify: { ...OPS_SECTION.notify!, rows: [{ event: HOSTILE.prefetch, status: HOSTILE.ansi, count: 1 }] } },
       },
@@ -262,6 +262,8 @@ describe('보고서 · 비신뢰 문자열(#41)', () => {
     expectMixedRevealed(within(screen.getByRole('region', { name: '취약점 · CVE' })).getByRole('table', { name: '기간 중 KEV 등재 · 우리 자산 해당' }))
     expectMixedRevealed(within(screen.getByRole('region', { name: '관제 대상 · 수집' })).getByRole('table', { name: '대상 상태 (출력 시점)' }))
     expect(within(screen.getByRole('region', { name: '보고서 머리' })).getByText('출력자').nextElementSibling?.textContent).toBe('admin⟨U+202E⟩gnp.exe')
+    // 등록 노드(#64) 이름은 노드 hostname 이다
+    expect(within(screen.getByRole('table', { name: '대상 상태 (출력 시점)' })).getAllByRole('row').at(-1)?.firstElementChild?.textContent).toBe('admin⟨U+202E⟩gnp.exe')
     // 2만 자는 앞부분만 싣고 펼치기 단추를 두지 않는다(종이에 단추가 찍히거나 접힌 채 잘리지 않게)
     expect(container.textContent).not.toContain(LONG)
     expect(container.textContent).toContain(`${'L'.repeat(500)}…`)

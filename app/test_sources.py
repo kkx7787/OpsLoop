@@ -1,7 +1,8 @@
 """출발지 분석(sources.py · 이슈 #58) 시험. DB 없이 돈다.  python3 -m unittest discover -s app
 
 보는 것
-  1. 순수 함수: 주소 인자(정규화 · 주소 아님 · 대역 · NUL · IPv6 영역 표기는 422) · 노린 대상(카드 순서 · 모르는 발생원 버림) ·
+  1. 순수 함수: 주소 인자(정규화 · 주소 아님 · 대역 · NUL · IPv6 영역 표기는 422) · 노린 대상(카드 순서 · 모르는 발생원 버림 ·
+     등록 노드 발생원은 고정 대상 뒤 그 노드) ·
      차단 행 모양(사건 상세 blocked 와 같은 열 · 시각 ISO · 지점 결과 객체) · 차단 제외(상수 대역은 참 · 표를 못 읽으면 null) ·
      집행기 확인 멈춤(10분 경계 · 기록 없음은 멈춤 · 표를 못 읽으면 null) · 목록 항목(순위 → 심각도 이름 · 판정 분포 · 마지막 관측) ·
      감사 기록은 어느 이벤트 질의에도 들지 않고 콘솔 기록은 사건 없는 주소의 판정 · 마지막 관측에서만 빠진다
@@ -76,6 +77,13 @@ class PureTests(unittest.TestCase):
         self.assertEqual(s.targets_of(["audit", "console", "collector"]), ["console", "data-node"])
         self.assertEqual(s.targets_of(None), [])
         self.assertEqual(s.targets_of(["simulator"]), [])
+
+    def test_노린_대상은_등록_노드도_상태판_카드_순서로_본다(self):
+        nodes = {"web-02": "web-02", "web-03": "web-03"}
+        self.assertEqual(s.targets_of(["web-03", "cowrie", "web-02", "web-09"], nodes), ["aws-sensor", "web-02", "web-03"])
+        self.assertEqual(s.targets_of(["web-01", "web-03"], nodes), ["web-01", "web-03"])
+        # nodes 를 모르면(표 · 권한 없음) 지금처럼 버린다
+        self.assertEqual(s.targets_of(["web-02"]), [])
 
     def test_차단_행은_사건_상세와_같은_모양이다(self):
         self.assertIsNone(s.block_of(None))

@@ -159,7 +159,8 @@ function Targets({ s }: { s: TargetsSection }) {
         // 서버는 지점 이름(point_label)만 싣는다. 상태판 문구(responseParts)는 지점이 있는지만 보고 이름을 쓰므로 있다는 표시만 채운다
         const response = { ...t.response, point: t.response.point_label ? ('gateway' as const) : null, report: null }
         return <tr key={t.id}>
-          <td className={cell}>{t.label}</td>
+          {/* 등록 노드(#64)의 이름은 노드 hostname 이라 비신뢰 문자열로 그린다 */}
+          <td className={cell}><UntrustedText value={t.label} clip /></td>
           <td data-label="수집" className={cell}><Badge tone={COLLECTION_TONE[state]}>{COLLECTION_LABEL[state]}</Badge>{t.collection.reason && <div className="mt-1 text-xs text-ink-muted"><UntrustedText value={t.collection.reason} clip /></div>}</td>
           <td data-label="대응" className={cell}>{responseParts(response).map(p => p.text).join(' · ')}</td>
         </tr>

@@ -50,7 +50,8 @@ REQUESTER_KINDS = ("console", "triage", "system", "unknown")
 
 # 구역이 읽는 표. 모두 있고 콘솔 역할이 읽을 수 있어야 그 구역을 낸다. 역할 블록만 다시 적용하면 뒤쪽 블록의 권한이 빠지므로
 #   구역마다 먼저 본다. nodes 는 콘솔에 열 권한만 있어(has_table_privilege 가 거짓이다) 넣지 않는다. 상태판(targets_view)은
-#   생존 신호 · 자원 지표 · CTI · 금지 대역을 스스로 가른다. 흡수 기록 · 주목 CVE · 알림 발송은 없으면 그 부분만 null 이다
+#   생존 신호 · 자원 지표 · nodes(열 권한으로 본다, 등록 노드 카드) · CTI · 금지 대역을 스스로 가른다. 흡수 기록 · 주목 CVE ·
+#   알림 발송은 없으면 그 부분만 null 이다
 TABLES = {
     "overview": ["incidents", "verdicts"],
     "rules": ["incidents", "verdicts", "rule_versions"],

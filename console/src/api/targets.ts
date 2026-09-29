@@ -5,19 +5,36 @@ import { monitoringKeys } from './monitoring-keys'
 
 /**
  * 관제 대상 상태판(이슈 #52). 서버 계약은 app/targets.py.
- *  GET /api/dashboard/targets → TargetsResult (대상 네 곳의 수집 · 보안 · 시스템 · 대응 · 취약점 요약)
+ *  GET /api/dashboard/targets → TargetsResult (고정 대상 네 곳 · 등록 노드(#64)의 수집 · 보안 · 시스템 · 대응 · 취약점 요약)
  * 수치는 대상별이다. 한 사건이 여러 대상에 붙을 수 있어 카드 합은 전체 사건 수가 아니다.
  * 생존 신호가 없는 대상은 서버가 '미확인'(unknown)으로 답한다. 화면은 로그 시각만으로 정상 · 장애 색을 입히지 않는다.
  */
 
+/** 코드에 정한 고정 대상(app/targets.py TARGETS). 카드 순서도 이 순서다 */
 export const TARGET_IDS = ['aws-sensor', 'web-01', 'console', 'data-node'] as const
-export type TargetId = (typeof TARGET_IDS)[number]
+export type FixedTargetId = (typeof TARGET_IDS)[number]
+/** 대상 id. 고정 네 값이거나 등록 노드의 node_id(#64, 고정 값과 겹치지 않는다) */
+export type TargetId = string
+
+/** fixed 고정 대상 · node 수집 노드 표(nodes)에 등록한 노드(#64). 이전 서버는 싣지 않는다 */
+export const TARGET_KINDS = ['fixed', 'node'] as const
+export type TargetKind = (typeof TARGET_KINDS)[number]
+
+export function isFixedTargetId(id: string): id is FixedTargetId {
+  return (TARGET_IDS as readonly string[]).includes(id)
+}
+
+/** 대상 종류. kind 가 없거나 모르는 값이면 id 로 가른다(고정 네 값이 아니면 등록 노드) */
+export function targetKind(target: Pick<Target, 'id' | 'kind'>): TargetKind {
+  if (target.kind === 'fixed' || target.kind === 'node') return target.kind
+  return isFixedTargetId(target.id) ? 'fixed' : 'node'
+}
 
 /** 수집 상태. ok 정상 · quiet 요청 없음(신호는 있고 로그만 없다) · no_signal 수신 없음 · unknown 생존 상태 미확인 */
 export const COLLECTION_STATES = ['ok', 'quiet', 'no_signal', 'unknown'] as const
 export type CollectionState = (typeof COLLECTION_STATES)[number]
 
-/** 자원 지표 상태. web-01 만 수집한다 */
+/** 자원 지표 상태. 지표를 보내는 노드(web-01 · 등록 노드 가운데 node_metrics 에 있는 것)만 수집한다 */
 export const SYSTEM_STATES = ['ok', 'stale', 'not_collected', 'no_privilege', 'no_data'] as const
 export type SystemState = (typeof SYSTEM_STATES)[number]
 
@@ -107,7 +124,7 @@ export interface TargetReport {
 }
 
 export interface TargetResponse {
-  /** 이 대상 앞의 집행 지점. 콘솔 · 데이터 노드는 null(적용 결과를 수집하지 않는다) */
+  /** 이 대상 앞의 집행 지점. 콘솔 · 데이터 노드 · 등록 노드는 null(적용 결과를 수집하지 않는다) */
   point: EnforcePoint | null
   point_label: string | null
   /** 그 지점이 적용을 확인한 살아 있는 차단 수 */
@@ -142,6 +159,9 @@ export interface TargetVulns {
 
 export interface Target {
   id: TargetId
+  /** 고정 대상 · 등록 노드. 이전 서버에는 없다(targetKind 로 읽는다) */
+  kind?: TargetKind
+  /** 등록 노드는 hostname(없으면 node_id)이라 비신뢰 문자열로 그린다 */
   label: string
   role: string
   collection: TargetCollection
@@ -160,7 +180,7 @@ export interface TargetsResult {
   heartbeats_available: boolean
   /** node_metrics 를 읽을 수 있다 */
   metrics_available: boolean
-  /** 순서 고정: aws-sensor, web-01, console, data-node */
+  /** 순서 고정: aws-sensor, web-01, console, data-node, 그 뒤 등록 노드(node_id 순) */
   targets: Target[]
   /** 대상에 붙이지 못한 사건. 숨기지 않는다 */
   unmapped: { incidents_1h: number; pending: number }

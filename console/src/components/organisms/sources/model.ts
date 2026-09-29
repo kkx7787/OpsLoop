@@ -111,7 +111,7 @@ export function incidentsOfHref(ip: string): string {
   return `/incidents?${new URLSearchParams({ actor_ip: ip })}`
 }
 
-/** 관제 대상 이름(app/targets.py TARGETS 와 같다). 모르는 값은 원문을 비신뢰 문자열로 그린다 */
+/** 고정 관제 대상 이름(app/targets.py TARGETS 와 같다). 모르는 값(등록 노드의 node_id 등, #64)은 원문을 비신뢰 문자열로 그린다 */
 export const TARGET_LABEL: Record<string, string> = {
   'aws-sensor': 'AWS 센서',
   'web-01': 'web-01',

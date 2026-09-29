@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { TargetResponse } from '@/api/targets'
-import { awsSensor, minutesAgo, web01 } from '@/test/targets-fixtures'
-import { collectionState, formatPct, latestLog, responseParts, systemText, vulnText } from './target-format'
+import { awsSensor, consoleTarget, dataNode, minutesAgo, nodeTarget, web01 } from '@/test/targets-fixtures'
+import { collectionState, formatPct, latestLog, orderTargets, responseParts, systemText, vulnText } from './target-format'
 
 const response = (extra: Partial<TargetResponse>): TargetResponse => ({ point: 'gateway', point_label: 'AWS 관문', applied: 0, unverified: 0, exempt: 0, report: null, ...extra })
 const texts = (r: TargetResponse) => responseParts(r).map((p) => p.text)
@@ -98,5 +98,22 @@ describe('수집 · 시스템 · 취약점 표기', () => {
     expect(vulnText({ ...base, collected_at: null, checked_at: null, stale: true })).toBe('조사 기록 없음')
     expect(vulnText({ ...base, checked_at: null })).toBe('취약점 대조 전')
     expect(vulnText({ ...base, vuln_total: 1234, vuln_kev: 5 })).toBe('취약점 1,234 · KEV 5')
+  })
+})
+
+describe('카드 순서(#64): 고정 대상 뒤 등록 노드', () => {
+  const ids = (targets: { id: string }[]) => targets.map((t) => t.id)
+
+  it('서버 순서를 지키고 등록 노드는 고정 네 대상 뒤에 둔다', () => {
+    const fixed = [awsSensor(), web01(), consoleTarget(), dataNode()]
+    expect(ids(orderTargets([...fixed, nodeTarget('web-02'), nodeTarget('web-03')]))).toEqual(['aws-sensor', 'web-01', 'console', 'data-node', 'web-02', 'web-03'])
+    // 섞여 와도 고정 대상이 앞자리를 잃지 않고, 각 무리 안은 받은 순서 그대로다
+    expect(ids(orderTargets([nodeTarget('web-03'), awsSensor(), nodeTarget('web-02'), web01()]))).toEqual(['aws-sensor', 'web-01', 'web-03', 'web-02'])
+  })
+
+  it('kind 가 없는 이전 응답은 id 로 가른다(고정 네 값이 아니면 등록 노드)', () => {
+    const legacy = [nodeTarget('web-02', { kind: undefined }), consoleTarget({ kind: undefined })]
+    expect(ids(orderTargets(legacy))).toEqual(['console', 'web-02'])
+    expect(orderTargets([])).toEqual([])
   })
 })

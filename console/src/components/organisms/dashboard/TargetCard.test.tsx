@@ -5,7 +5,9 @@ import type { LiveState } from '@/api/live'
 import { LiveContext } from '@/api/live-context'
 import type { Target } from '@/api/targets'
 import { expectInertDom, expectMixedRevealed, HOSTILE, MIXED } from '@/test/hostile-fixtures'
-import { awsSensor, consoleTarget, dataNode, LATEST_KEY, minutesAgo, TARGETS_AS_OF, web01 } from '@/test/targets-fixtures'
+import { hasHidden, revealHidden } from '@/lib/untrusted'
+import { awsSensor, consoleTarget, dataNode, LATEST_KEY, minutesAgo, nodeTarget, TARGETS_AS_OF, web01 } from '@/test/targets-fixtures'
+import { LABEL_MAX } from './target-format'
 import { TargetCard } from './TargetCard'
 
 const AS_OF = Date.parse(TARGETS_AS_OF)
@@ -19,7 +21,9 @@ function renderCard(target: Target, options: { live?: LiveState; cti?: Parameter
       </LiveContext.Provider>
     </MemoryRouter>,
   )
-  const card = screen.getByRole('region', { name: target.label })
+  // 구역 이름은 대상 이름이다. 표식 · 말줄임이 붙는 악성 이름은 이름 대신 하나뿐인 구역으로 찾는다
+  const plain = !hasHidden(target.label) && !target.label.includes('\n') && target.label.length <= LABEL_MAX
+  const card = screen.getByRole('region', plain ? { name: target.label } : {})
   /** 구역 한 칸(dt 제목 옆 dd) */
   const row = (title: string) => within(card).getByText(title, { selector: 'dt' }).nextElementSibling as HTMLElement
   return { ...view, card, row }
@@ -211,5 +215,107 @@ describe('TargetCard(#52)', () => {
     expectInertDom(container)
     expectMixedRevealed(container)
     expect(within(row('최근 사건')).getByRole('link').querySelector('button')).toBeNull()
+  })
+})
+
+describe('TargetCard · 등록 노드(#64)', () => {
+  it('web-01 카드와 같은 틀: 이름(hostname) · 역할 옆 node_id · 노드 수신 · 보안 · 최근 사건', () => {
+    const { card, row } = renderCard(nodeTarget('web-02'), { cti: { cves: 1, kev: 0, applicability: 'unknown', stale: false } })
+    expect(card).toHaveAttribute('data-target', 'web-02')
+    expect(card).toHaveAttribute('data-target-kind', 'node')
+    expect(within(card).getByRole('heading', { level: 3 })).toHaveTextContent('opsloop-web-02')
+    expect(within(card).getByText('등록 노드', { exact: false })).toHaveTextContent('등록 노드 · web-02')
+    expect(within(card).getByText('정상')).toHaveClass('bg-success-soft')
+    expect(row('수집')).toHaveTextContent('노드 수신 2분 전')
+    expect(row('수집')).toHaveTextContent('opsloop-web-02 로그 3분 전')
+    expect(row('수집')).toHaveTextContent('마지막 적재 2분 전')
+    expect(row('보안')).toHaveTextContent('최근 1시간 신규 2 · 높음 이상 1 · 미판정 3')
+    const link = within(row('최근 사건')).getByRole('link')
+    expect(link).toHaveAttribute('href', `/incidents/${encodeURIComponent('R101|v3|198.51.100.9|web-02')}`)
+    expect(link).toHaveTextContent('198.51.100.9 · 5분 전 · 미판정 CVE 1 · 자산 미확인')
+    // 콘솔 카드만 실시간 연결 줄을 둔다
+    expect(card).not.toHaveTextContent('실시간 연결')
+  })
+
+  it('실시간 연결 줄은 고정 콘솔 카드에만 둔다(같은 id 의 등록 노드가 와도)', () => {
+    const { card } = renderCard(nodeTarget('console'))
+    expect(card).toHaveAttribute('data-target-kind', 'node')
+    expect(card).not.toHaveTextContent('실시간 연결')
+  })
+
+  it('지표가 없으면 미수집, 집행 지점이 없으면 숫자 없는 미확인, 같은 이름의 자산이 없으면 연결된 자산 없음', () => {
+    // targets.py vulns_block: 등록 노드는 asset_id = node_id 인 자산이 있을 때만 잇고 없으면 assets 가 빈 목록이다(표본 기본값)
+    const { row } = renderCard(nodeTarget('web-02'))
+    expect(row('시스템')).toHaveTextContent('자원 지표 미수집')
+    expect(row('대응')).toHaveTextContent('차단 적용 여부 미확인')
+    expect(row('대응').textContent ?? '').not.toMatch(ZERO)
+    expect(row('대응').querySelector('[data-report]')).toBeNull()
+    expect(row('취약점')).toHaveTextContent('연결된 자산 없음')
+    expect(row('취약점').textContent ?? '').not.toMatch(ZERO)
+    expect(within(row('취약점')).queryByRole('link')).toBeNull()
+  })
+
+  it('같은 이름의 자산이 있으면 web-01 처럼 수 · KEV 를 자산 화면으로 잇는다', () => {
+    const asset = { asset_id: 'web-07', vuln_total: 4, vuln_kev: 1, collected_at: minutesAgo(60), checked_at: minutesAgo(50), stale: false, missing: false }
+    const { row } = renderCard(nodeTarget('web-07', { vulns: { available: true, assets: [asset] } }))
+    expect(row('취약점')).toHaveTextContent('web-07 취약점 4 · KEV 1 · 조사 1시간 전')
+    expect(within(row('취약점')).getByRole('link', { name: /web-07/ })).toHaveAttribute('href', '/inventory?asset=web-07')
+  })
+
+  it('수신 전 등록 노드: 마지막 로그 말풍선의 로그 이름(hostname 에서 온다)도 표식으로 보인다', () => {
+    const label = `${HOSTILE.rlo}${HOSTILE.zwsp}`
+    const base = nodeTarget('web-08', { label })
+    const signal = { label: '노드 수신', seen_at: null, checked_at: null, stale_after_seconds: 600, problem: null }
+    const logs = [{ key: 'web-08', label: `${label} 로그`, last_at: minutesAgo(30) }]
+    const { container, row } = renderCard({ ...base, collection: { ...base.collection, state: 'no_signal', reason: '노드 수신 기록 없음 · 등록 뒤 10분 넘게 수신 없음', signal, logs } })
+    expectInertDom(container)
+    const line = row('수집').querySelector('[data-signal="none"][title]')
+    expect(line).toHaveTextContent('마지막 로그 30분 전')
+    expect(line).toHaveAttribute('title', `${revealHidden(label)} 로그 기준`)
+    expect(line?.getAttribute('title')).not.toMatch(/[\u202E\u200B]/u)
+  })
+
+  it('지표를 보내는 노드는 web-01 처럼 수치 한 줄', () => {
+    const { row } = renderCard(nodeTarget('web-03', { system: { state: 'ok', metrics: { ts: minutesAgo(1), cpu_pct: 7, mem_used_pct: 33.4, disk_root_pct: 51, load1: 0.1 } } }))
+    expect(row('시스템')).toHaveTextContent('CPU 7% · 메모리 33% · 디스크 51% · 1분 전')
+  })
+
+  it('hostname 이 없어 이름이 node_id 면 역할 옆에 다시 적지 않는다', () => {
+    const { card } = renderCard(nodeTarget('web-04', { label: 'web-04' }))
+    expect(card.querySelector('[data-node-id]')).toBeNull()
+    expect(within(card).getByText('등록 노드')).toBeInTheDocument()
+  })
+
+  it('kind 가 없는 응답도 고정 네 값이 아닌 id 는 등록 노드로 읽는다', () => {
+    const { card } = renderCard(nodeTarget('web-05', { kind: undefined }))
+    expect(card).toHaveAttribute('data-target-kind', 'node')
+    expect(card.querySelector('[data-node-id]')).toHaveTextContent('web-05')
+    const fixed = renderCard(web01())
+    expect(fixed.card).toHaveAttribute('data-target-kind', 'fixed')
+    expect(fixed.card.querySelector('[data-node-id]')).toBeNull()
+    expect(fixed.card.querySelector('h3')).not.toHaveAttribute('title')
+  })
+
+  it('악성 hostname · node_id 는 표식으로 보이고 이름 · 말풍선에 숨은 문자가 원문으로 남지 않는다', () => {
+    const label = `${HOSTILE.rlo} ${HOSTILE.img} ${HOSTILE.decoy} ${HOSTILE.isolate}`
+    const { container, card } = renderCard(nodeTarget(HOSTILE.zwsp, { label }))
+    expectInertDom(container)
+    const title = within(card).getByRole('heading', { level: 3 })
+    expect(title).toHaveTextContent('admin⟨U+202E⟩gnp.exe <img src=//a.attacker.test/p.png onerror=alert(1)> 줄1↵2026-09-18')
+    expect(title).toHaveAttribute('title', revealHidden(label))
+    expect(title.querySelector('button')).toBeNull()
+    expect(card.querySelector('[data-node-id]')).toHaveTextContent('ad⟨U+200B⟩min')
+    // 로그 이름도 노드가 적어 낸 값에서 온다
+    expect(card).toHaveTextContent('opsloop-ad⟨U+200B⟩min 로그 3분 전')
+  })
+
+  it('긴 악성 이름은 253자에서 자르고(펼치기 단추 없음) 전체는 말풍선으로 본다', () => {
+    const { container, card } = renderCard(nodeTarget('web-06', { label: MIXED }))
+    expectInertDom(container)
+    const title = within(card).getByRole('heading', { level: 3 })
+    expect(title).toHaveClass('truncate')
+    expect(title).toHaveAttribute('title', revealHidden(MIXED))
+    expect(title.textContent?.endsWith('…')).toBe(true)
+    expect(title.querySelector('button')).toBeNull()
   })
 })

@@ -13,7 +13,12 @@
   4. 시스템 · 대응 · 취약점: 미수집 · 권한 없음 · 행 없음 · 오래됨 · 지점 없는 대상은 수 대신 null(0 이 아님) · 실패는 미확인과 따로 ·
      집행기 확인 멈춤이면 적용 확인을 미확인으로 합침 ·
      보고 신호 · 자산 없음은 0 이 아니라 missing · 48시간
-  5. 라우터: main 앱에 붙음 · 세션 없으면 401 · 표 · 권한이 없는 DB 에서도 200(미확인) · 집행 제외 말머리가 main 과 같다
+  5. 라우터: main 앱에 붙음 · 세션 없으면 401 · 표 · 권한이 없는 DB 에서도 200(미확인) · 집행 제외 말머리가 main 과 같다 ·
+     nodes 를 읽을 수 없으면 고정 네 대상만(web-01 수신 미확인) · 등록 노드 카드는 고정 대상 뒤에 web-01 카드와 같은 필드로
+  6. 등록 노드(이슈 #64): 발생원 · node:<id> 가 그 노드 카드로 감(고정 발생원이 먼저) · 노드 에이전트 이벤트(sshd. · nginx.)는
+     등록 노드가 있으면 이벤트로 고르고 고르지 못하면 전처럼 web-01(실제 규칙 파일 전부가 고르지 못할 때의 값이 같음) ·
+     카드로 붙일 노드(폐기 · 고정 대상 id · 고정 발생원 · 겹치는 발생원 제외, node_id 순, 이름은 hostname) · 수집(그 노드 로그) ·
+     자원 지표(보내는 노드만, 행 없으면 미수집) · 취약점(같은 이름의 자산만) · 대응(지점 없음) · 집계
 main 이 필요한 시험은 test_web 을 먼저 불러 asyncpg 가 없는 곳에서도 가짜를 넣는다(main 보다 먼저).
 """
 import json
@@ -461,13 +466,30 @@ class FakeConn:
         yield
 
 
+class NodesConn(FakeConn):
+    """nodes 만 읽을 수 있는 DB(운영 콘솔처럼 열 권한). 등록 노드 행은 ROWS 다."""
+    ROWS = []
+
+    async def fetchval(self, sql, *args):
+        if sql == t.NODES_READABLE_SQL:
+            self.calls.append(sql)
+            return True
+        return await super().fetchval(sql, *args)
+
+    async def fetch(self, sql, *args):
+        if sql == t.NODES_SQL:
+            self.calls.append(sql)
+            return self.ROWS
+        return await super().fetch(sql, *args)
+
+
 class FakePool:
-    def __init__(self):
-        self.calls = []
+    def __init__(self, conn=FakeConn):
+        self.calls, self.conn = [], conn
 
     @asynccontextmanager
     async def acquire(self):
-        yield FakeConn(self.calls)
+        yield self.conn(self.calls)
 
 
 class RouterTests(unittest.TestCase):
@@ -516,11 +538,185 @@ class RouterTests(unittest.TestCase):
         self.assertIn(t.HEARTBEATS_READABLE_SQL, self.pool.calls)
         self.assertIn(t.METRICS_READABLE_SQL, self.pool.calls)
 
+    def test_nodes_를_읽을_수_없으면_고정_네_대상만이다(self):
+        self.client.cookies.set(self.auth.COOKIE, self.auth.issue("han", "viewer"))
+        body = self.client.get("/api/dashboard/targets").json()
+        self.assertEqual([(x["id"], x["kind"]) for x in body["targets"]],
+                         [("aws-sensor", "fixed"), ("web-01", "fixed"), ("console", "fixed"), ("data-node", "fixed")])
+        # 등록 기록이 없는 것이 아니라 모르는 것이다. 권한 없는 표는 읽지 않는다
+        web = body["targets"][1]["collection"]
+        self.assertEqual((web["state"], web["reason"]), ("unknown", "노드 표를 읽을 수 없음"))
+        self.assertIn(t.NODES_READABLE_SQL, self.pool.calls)
+        for sql in (t.NODES_SQL, t.NODE_SQL):
+            self.assertNotIn(sql, self.pool.calls)
+
+    def test_등록_노드_카드는_고정_대상_뒤에_web_01_카드와_같은_모양으로_붙는다(self):
+        self.pool.conn = type("Conn", (NodesConn,), {"ROWS": [
+            node_row("web-03", status="pending", reception="waiting", seen=None, loaded=None),
+            node_row("web-02", hostname="web02.lab", sensor="web-02"),
+            node_row("web-01", hostname="web-01", sensor="web-01"),
+            node_row("probe-01", sensor="probe-01", status="revoked", reception="revoked")]})
+        self.client.cookies.set(self.auth.COOKIE, self.auth.issue("han", "viewer"))
+        body = self.client.get("/api/dashboard/targets").json()
+        self.assertEqual([(x["id"], x["kind"], x["label"], x["role"]) for x in body["targets"]][4:],
+                         [("web-02", "node", "web02.lab", "등록 노드"), ("web-03", "node", "web-03", "등록 노드")])
+        self.assertEqual([x["id"] for x in body["targets"]][:4], ["aws-sensor", "web-01", "console", "data-node"])
+        web, node = body["targets"][1], body["targets"][4]
+        self.assertEqual(set(node), set(web))
+        for key in ("collection", "security", "system", "response", "vulns"):
+            with self.subTest(block=key):
+                self.assertEqual(set(node[key]), set(web[key]))
+        self.assertEqual((node["collection"]["state"], node["collection"]["reason"]),
+                         ("quiet", "노드 수신 2분 전 · 최근 1시간 요청 없음"))
+        self.assertEqual(node["collection"]["logs"], [{"key": "web-02", "label": "web02.lab 로그", "last_at": None}])
+        self.assertEqual(body["targets"][5]["collection"]["reason"], "노드 등록 대기 · 수신 전")
+        self.assertEqual((node["response"]["point"], node["response"]["applied"]), (None, None))
+        self.assertEqual(node["system"], {"state": "no_privilege", "metrics": None})    # node_metrics 를 읽을 수 없음
+        # web-01 은 고정 카드(NODE_SQL)로 읽는다. 가짜 DB 에는 그 행이 없다
+        self.assertEqual(web["collection"]["reason"], "노드 등록 기록 없음")
+        self.assertIn(t.NODES_SQL, self.pool.calls)
+
     def test_경로는_상태판_처리기로_간다(self):
         from starlette.routing import Match
         scope = {"type": "http", "path": "/api/dashboard/targets", "method": "GET", "root_path": "", "headers": []}
         route = next(r for r in self.main.app.routes if r.matches(scope)[0] == Match.FULL)
         self.assertIs(route.endpoint, t.dashboard_targets)
+
+
+# ----------------------------------------------------------------------
+#  6. 등록 노드 (이슈 #64)
+# ----------------------------------------------------------------------
+
+NODES = {"web-02": "web-02"}      # 등록 노드 {발생원: 노드 id}
+
+
+def node_row(node_id, status="active", hostname=None, sensor=None, reception="normal", seen=2, loaded=2):
+    """NODES_SQL 한 행과 같은 꼴. seen · loaded 는 분 전(None 이면 없음)."""
+    return {"node_id": node_id, "hostname": hostname, "sensor": sensor, "status": status, "reception": reception,
+            "last_seen_at": NOW - timedelta(minutes=seen) if seen is not None else None,
+            "last_loaded_at": NOW - timedelta(minutes=loaded) if loaded is not None else None}
+
+
+class NodeResolveTests(unittest.TestCase):
+    def test_등록_노드의_발생원은_그_노드_카드다(self):
+        self.assertEqual(t.attach(["web-02", "cowrie", "web-09"], NODES), {("web-02", None), ("aws-sensor", "cowrie")})
+        # 고정 발생원이 먼저다(등록 노드가 고정 발생원을 가져가지 못한다)
+        self.assertEqual(t.attach(["web-01"], {"web-01": "web-01b"}), {("web-01", None)})
+        # 등록 노드를 모르면 지금처럼 버린다
+        self.assertEqual(t.attach(["web-02"]), set())
+        # 근거의 발생원(url_signature 의 evidence.sensors)
+        self.assertEqual(t.resolve(None, json.dumps(["decoy", "web-02"]), spec(eventids=["nginx.request"]), NODES),
+                         ({("aws-sensor", "decoy"), ("web-02", None)}, False))
+
+    def test_노드_대상은_등록_노드면_그_카드다(self):
+        self.assertEqual(t.resolve("node:web-02", None, spec(), NODES), ({("web-02", None)}, False))
+        self.assertEqual(t.resolve("node:web-01", None, spec(), NODES), ({("web-01", None)}, False))
+        # 폐기 · 미등록 노드는 카드가 없어 붙이지 못한다(지금과 같다)
+        self.assertEqual(t.resolve("node:probe-01", None, spec(), NODES), (set(), False))
+        self.assertEqual(t.resolve("node:web-02", None, spec()), (set(), False))
+
+    def test_노드_에이전트_이벤트는_등록_노드가_있으면_이벤트로_고른다(self):
+        r101 = spec("actor_rate", eventids=["sshd.login.failed", "sshd.login.invalid_user"])
+        self.assertEqual(t.candidate_sources(r101, NODES), ["web-01", "web-02"])
+        self.assertEqual(t.candidate_sources(spec(eventid_like="nginx.%"), NODES), ["web-01", "web-02"])
+        self.assertEqual(t.candidate_sources(spec(eventids=["cowrie.login.failed", "decoy.request"]), NODES),
+                         ["cowrie", "decoy"])
+        # 등록 노드가 없으면 지금처럼 web-01 이다. 있으면 이벤트로 고르고, 고르지 못하면 전처럼 web-01 이다
+        self.assertEqual(t.resolve(None, None, r101), ({("web-01", None)}, False))
+        self.assertEqual(t.resolve(None, None, r101, NODES), ({("web-01", None)}, t.EVENTS))
+        # 고정 발생원만으로도 섞인 규칙은 전처럼 붙인 곳 없이 이벤트로 고른다
+        self.assertEqual(t.resolve(None, None, spec(eventids=["nginx.request", "decoy.request"]), NODES),
+                         (set(), t.EVENTS))
+        # 등록 노드 발생원이 더해져 섞였을 뿐이면 고르지 못할 때 등록 노드 없이 정한 값이다(AWS 센서 나눔도 그대로)
+        cowrie_and_node = spec(sensors=["cowrie", "web-02"], eventids=["cowrie.login.failed"])
+        self.assertEqual(t.resolve(None, None, cowrie_and_node), ({("aws-sensor", "cowrie")}, False))
+        self.assertEqual(t.resolve(None, None, cowrie_and_node, NODES), ({("aws-sensor", "cowrie")}, t.EVENTS))
+
+    def test_실제_규칙_파일은_등록_노드가_있어도_고르지_못할_때의_값이_같다(self):
+        changed = set()
+        for version, rule_id, s in file_rules():
+            before, join = t.resolve(None, None, s)
+            after, join_after = t.resolve(None, None, s, NODES)
+            with self.subTest(version=version, rule=rule_id):
+                self.assertEqual(after, before)
+                if join_after != join:
+                    changed.add((version, rule_id, join, join_after))
+        # 노드 에이전트 이벤트만 보는 규칙(n1 R101)만 이벤트로 고르게 바뀐다
+        self.assertEqual(changed, {("n1", "R101", False, t.EVENTS)})
+
+    def test_집계는_등록_노드_카드를_함께_센다(self):
+        rows = [incident("a", 5, severity="high"), incident("b", 5), incident("c", 5)]
+        attached = {"a": {("web-02", None)}, "b": {("web-01", None), ("web-02", None)}, "c": set()}
+        per, unmapped = t.tally(rows, attached, NOW, ["web-02"])
+        self.assertEqual(list(per), ["aws-sensor", "web-01", "console", "data-node", "web-02"])
+        self.assertEqual((per["web-02"]["incidents_1h"], per["web-02"]["high_1h"], per["web-02"]["pending"]), (2, 1, 2))
+        self.assertEqual((per["web-01"]["incidents_1h"], per["web-01"]["high_1h"]), (1, 0))
+        self.assertEqual(unmapped, {"incidents_1h": 1, "pending": 1})
+        self.assertEqual(t.security_block("web-02", per["web-02"], NOW)["parts"], [])
+        self.assertEqual(t.security_block("web-02", per["web-02"], NOW)["latest"]["incident_key"], "a")
+
+
+class NodeCardTests(unittest.TestCase):
+    def test_폐기_고정_대상_고정_발생원_겹치는_발생원은_카드가_없다(self):
+        rows = [node_row("web-03", status="pending", reception="waiting", seen=None),
+                node_row("web-02", hostname="web02.lab", sensor="web-02"),
+                node_row("web-01", hostname="web-01", sensor="web-01"),              # 고정 대상
+                node_row("probe-01", sensor="probe-01", status="revoked", reception="revoked"),
+                node_row("audit", sensor="audit"),                                    # 고정 발생원(콘솔 감사 기록)
+                node_row("web-04", sensor="web-02"),                                  # 앞 노드와 같은 발생원
+                node_row("data-node", sensor="data-node")]                            # 고정 대상 id
+        cards = t.node_targets(rows)
+        self.assertEqual([(c["id"], c["label"], c["sensor"]) for c in cards],
+                         [("web-02", "web02.lab", "web-02"), ("web-03", "web-03", "web-03")])
+        self.assertEqual(t.node_sources(cards), {"web-02": "web-02", "web-03": "web-03"})
+        self.assertEqual(t.node_targets([]), [])
+
+    def test_수집은_web_01_과_같은_판정이고_그_노드_로그로_가른다(self):
+        sources = [("web-02", "web02.lab 로그")]
+        logs = {"web-02": NOW - timedelta(minutes=5), "web-01": NOW}
+        c = t.node_collection(NOW, node_row("web-02"), logs, sources)
+        self.assertEqual((c["state"], c["reason"]), ("ok", "노드 수신 2분 전 · 최근 1시간 로그 있음"))
+        self.assertEqual(c["logs"], [{"key": "web-02", "label": "web02.lab 로그",
+                                      "last_at": (NOW - timedelta(minutes=5)).isoformat()}])
+        self.assertEqual(c["extra"], [{"label": "마지막 적재", "at": (NOW - timedelta(minutes=2)).isoformat(), "note": None}])
+        # web-01 로그만 있으면 이 노드는 요청 없음이다
+        c = t.node_collection(NOW, node_row("web-02"), {"web-01": NOW}, sources)
+        self.assertEqual((c["state"], c["reason"]), ("quiet", "노드 수신 2분 전 · 최근 1시간 요청 없음"))
+        for row, state, reason in [
+                (node_row("web-03", status="pending", reception="waiting", seen=None), "unknown", "노드 등록 대기 · 수신 전"),
+                (node_row("web-02", reception="silent", seen=12), "no_signal", "노드 수신 12분 전 · 10분 넘게 끊김")]:
+            with self.subTest(reason=reason):
+                c = t.node_collection(NOW, row, logs, sources)
+                self.assertEqual((c["state"], c["reason"]), (state, reason))
+
+    def test_nodes_를_읽을_수_없으면_web_01_수신은_미확인이다(self):
+        c = t.node_collection(NOW, None, {"web-01": NOW}, readable=False)
+        self.assertEqual((c["state"], c["reason"], c["extra"][0]["at"]), ("unknown", "노드 표를 읽을 수 없음", None))
+        self.assertEqual([(l["key"], l["label"]) for l in c["logs"]], [("web-01", "web-01 로그")])
+
+    def test_자원_지표는_보내는_노드만이고_행이_없으면_미수집이다(self):
+        row = BlocksTests.ROW
+        self.assertEqual(t.system_block("web-02", True, None, NOW, True), {"state": "not_collected", "metrics": None})
+        self.assertEqual(t.system_block("web-02", False, row, NOW, True), {"state": "no_privilege", "metrics": None})
+        self.assertEqual(t.system_block("web-02", True, row, NOW, True), t.system_block("web-01", True, row, NOW))
+        stale = row | {"ts": NOW - timedelta(seconds=601)}
+        self.assertEqual(t.system_block("web-02", True, stale, NOW, True)["state"], "stale")
+        # 등록 노드로 넘기지 않은 id 는 고정 대상처럼 미수집이다. web-01 은 행이 없으면 지금처럼 '없음' 이다
+        self.assertEqual(t.system_block("web-02", True, row, NOW), {"state": "not_collected", "metrics": None})
+        self.assertEqual(t.system_block("web-01", True, None, NOW), {"state": "no_data", "metrics": None})
+
+    def test_취약점은_같은_이름의_자산만_잇고_대응은_지점이_없다(self):
+        assets = {"web-02": {"vuln_total": 3, "vuln_kev": 1, "collected_at": NOW - timedelta(hours=1), "checked_at": None}}
+        self.assertEqual(t.vulns_block("web-02", True, assets, NOW)["assets"], [{
+            "asset_id": "web-02", "vuln_total": 3, "vuln_kev": 1, "collected_at": (NOW - timedelta(hours=1)).isoformat(),
+            "checked_at": None, "stale": False, "missing": False}])
+        self.assertEqual(t.vulns_block("web-03", True, assets, NOW), {"available": True, "assets": []})
+        self.assertEqual(t.vulns_block("web-02", False, assets, NOW), {"available": False, "assets": []})
+        blocks = {"gateway_applied": 3, "gateway_failed": 0, "gateway_unverified": 1,
+                  "fw_applied": 1, "fw_failed": 0, "fw_unverified": 0}
+        self.assertEqual(t.response_block("web-02", blocks, 1, {}, NOW, True),
+                         {"point": None, "point_label": None, "applied": None, "failed": None, "unverified": None,
+                          "exempt": 1, "report": None, "stalled": None})
 
 
 if __name__ == "__main__":
