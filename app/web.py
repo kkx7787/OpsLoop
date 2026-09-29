@@ -504,6 +504,7 @@ def to_login(request: Request) -> RedirectResponse:
 #  그 <style> 만 이 응답의 CSP 에 해시로 연다(LOGIN_CSP). 스타일을 고치면 해시는 모듈을 읽을 때 다시 계산된다.
 #  style= 속성은 쓰지 않는다('unsafe-hashes' 없이 막힌다).
 #  필드 이름(username · password)과 기록(console.login.*)은 바꾸지 않는다. next 만 숨은 필드로 더한다.
+#  로그인 전 공개 화면이라 기록 방식 · 탐지 설계는 적지 않는다. 안내는 계정을 어디서 받는지 한 줄이다.
 # ──────────────────────────────────────────────────────────────
 LOGIN_ERROR = "아이디 또는 비밀번호가 올바르지 않습니다."
 
@@ -544,7 +545,7 @@ button:focus-visible{outline:2px solid #01518f;outline-offset:2px}
 $error<input type="hidden" name="next" value="$next">
 <button type="submit">로그인</button>
 </form>
-<p class="note">가입 화면은 없습니다. 계정은 관리자가 발급합니다.<br>로그인 시도는 디코이와 같은 형식으로 기록되어 규칙 검증에 쓰입니다.</p>
+<p class="note">계정은 관리자에게 요청하세요.</p>
 </main></body></html>""")
 
 LOGIN_STYLE = LOGIN_PAGE.template.split("<style>", 1)[1].split("</style>", 1)[0]

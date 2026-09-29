@@ -448,8 +448,9 @@ def node_collection(as_of, node, last: dict, sources=None, readable=True) -> dic
 
 
 def console_collection(last: dict) -> dict:
-    """관제 콘솔. 생존 신호가 없어 늘 미확인이다. 지금 붙은 콘솔은 화면이 실시간 연결(hello)로 보인다."""
-    return collection("unknown", "생존 신호 없음 · 현재 콘솔은 실시간 연결로 표시", None, logs_of("console", last))
+    """관제 콘솔. 생존 신호가 없어 늘 미확인이다. 지금 붙은 콘솔은 화면이 실시간 연결(hello)로 보인다.
+    까닭은 신호를 보내지 않는다는 사실만 적는다. 실시간 연결 줄은 카드에 보이고, 보고서(종이)에는 그 줄이 없다."""
+    return collection("unknown", "생존 신호를 보내지 않음", None, logs_of("console", last))
 
 
 def data_collection(as_of, started, available: bool, heartbeats: list) -> dict:

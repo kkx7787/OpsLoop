@@ -334,7 +334,7 @@ class OtherCollectionTests(unittest.TestCase):
     def test_콘솔은_늘_생존_상태_미확인이다(self):
         c = t.console_collection({"console": NOW})
         self.assertEqual((c["state"], c["reason"], c["signal"], c["extra"]),
-                         ("unknown", "생존 신호 없음 · 현재 콘솔은 실시간 연결로 표시", None, []))
+                         ("unknown", "생존 신호를 보내지 않음", None, []))
         self.assertEqual(c["logs"], [{"key": "console", "label": "마지막 로그인 기록", "last_at": NOW.isoformat()}])
 
     def test_데이터_노드는_탐지_실행이_신호다(self):

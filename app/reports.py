@@ -358,15 +358,14 @@ async def overview(c, since, until, as_of) -> dict:
     top = await c.fetch(TOP_SOURCES_SQL, since, until)
     return {
         "basis": "mixed",
-        "notes": ["사건 수 · 상위 출발지: 발생 시각(first_ts)이 기간 안인 사건. 사건 목록 · 규칙 구역의 기간 조건과 같다",
+        "notes": ["사건 수 · 상위 출발지: 발생 시각이 기간 안인 사건",
                   "판정 수 · 날짜별 판정: 기간 안에 기록된 판정(재판정 포함)",
-                  "시험 출발지(시험 대역)의 사건 · 판정은 사건 수 · 판정 수 · 판정 대기 · 판정 소요 · 날짜별 · 상위 출발지에서 빼고 "
-                  "사건 · 판정 수만 따로 센다",
-                  "흡수 · 억제로 지워진 알림은 사건 수에 없다(규칙 구역의 흡수 수)",
-                  "판정 대기: 기간 안에 만들어진(created_at) 사건의 생성부터 첫 판정까지. 기간 끝까지 판정된 사건만 백분위에 넣는다",
-                  "판정 소요: 콘솔 판정 화면이 잰 시간(decision_seconds). triage · 일괄 판정은 값이 없어 빠진다",
-                  "잔량 · 목표 초과: 출력 시각 기준(대시보드와 같다). 시험 출발지도 넣고, 목표 시간은 발생 시각부터 잰다",
-                  "날짜별: 한국 시각(KST) 날짜. 생성은 created_at 기준. 첫날 · 마지막 날은 기간에 든 시간만 센다"],
+                  "시험 출발지(시험 대역): 사건 · 판정 수는 따로 세고 다른 값에서는 뺀다. 잔량 · 목표 초과에만 넣는다",
+                  "흡수 · 억제로 지워진 알림은 사건 수에 없다",
+                  "판정 대기: 기간 안에 만들어진 사건 대상. 기간 끝까지 판정된 사건만 백분위에 넣는다",
+                  "판정 소요: 콘솔에서 한 판정만. triage · 일괄 판정은 값이 없어 빠진다",
+                  "잔량 · 목표 초과: 출력 시각 기준. 목표 시간은 발생 시각부터 잰다",
+                  "날짜별: 한국 시각(KST) 날짜, 사건은 만들어진 시각 기준. 첫날 · 마지막 날은 기간에 든 시간만 센다"],
         "incidents": incidents,
         "verdicts": verdicts,
         "backlog": {"unjudged": pending["total"], "undetermined": await c.fetchval(UNDETERMINED_SQL),
@@ -386,14 +385,12 @@ async def overview(c, since, until, as_of) -> dict:
 async def rules(c, since, until, as_of) -> dict:
     rows = [{k: num(v) if k.endswith("_rate") else v for k, v in dict(r).items()}
             for r in await c.fetch(QUALITY_SQL, since, until)]
-    notes = ["규칙별 판정: 발생 시각이 기간 안인 사건의 지금 최신 판정(규칙 화면과 같은 계산). 판정을 고치면 다시 뽑은 값이 달라진다",
+    notes = ["규칙별 판정: 발생 시각이 기간 안인 사건의 출력 시각 기준 최신 판정. 판정을 고치면 다시 뽑은 값이 달라진다",
              "시험 출발지의 사건 · 흡수는 뺀다",
-             "흡수 · 억제: 기간 안에 기록된 흡수 기록. 탐지기가 판정 없는 알림을 지우며 남긴 것이라 사건 수에는 없다",
-             "규칙 버전: 기간 안에 만든 버전"]
+             "흡수 · 억제: 기간 안에 기록된 흡수 기록. 사건 수에는 없다"]
     absorbed = None
-    if await c.fetchval(MISSING_SQL, ["incident_absorbed"]):
-        notes.append("흡수 기록 표를 읽을 수 없어 흡수 수를 내지 않는다")
-    else:
+    # 표를 읽을 수 없으면 absorbed 가 null 이고, 화면 · 인쇄물은 그 null 을 보고 빠졌다는 문장을 한 번 찍는다(notes 에 되풀이하지 않는다)
+    if not await c.fetchval(MISSING_SQL, ["incident_absorbed"]):
         by_rule = [dict(r) for r in await c.fetch(ABSORBED_SQL, since, until)]
         absorbed = {"absorbed": sum(r["absorbed"] for r in by_rule), "suppressed": sum(r["suppressed"] for r in by_rule),
                     "rules": by_rule}
@@ -414,13 +411,13 @@ async def blocks(c, since, until, as_of) -> dict:
     return {
         "basis": "mixed",
         "notes": ["조치: 기간 안에 기록된 차단 · 해제 조치(사건 조치 기록)",
-                  "새 차단 요청: 기간 안의 감사 created · rearmed 와 만료 뒤 다시 건 차단(extended). 만료 뒤 다시 건 차단은 "
-                  "감사에 요청자가 남지 않아 미기록으로 센다. 살아 있는 차단의 만료 연장은 새 요청이 아니다",
-                  "감사 이벤트: 기간 안의 차단 감사 기록 종류별 수(행위자 · 내용은 싣지 않는다). extended 는 살아 있는 차단 연장과 "
+                  "새 차단 요청: 기간 안의 차단 요청 · 재요청과 만료 뒤 다시 건 차단. 만료 뒤 다시 건 차단은 요청자가 남지 않아 "
+                  "미기록으로 센다. 살아 있는 차단의 연장은 새 요청이 아니다",
+                  "감사 이벤트: 기간 안의 차단 감사 기록 종류별 수(행위자 · 내용은 싣지 않는다). '차단 연장'은 살아 있는 차단의 연장과 "
                   "만료 뒤 다시 건 차단을 함께 센다",
-                  "집행 지연: 새 차단 요청마다 같은 주소의 다음 요청 전 첫 집행 확인(감사 enforced 의 관문 적용 시각)까지. "
-                  "해제 · 만료된 차단도 넣는다. 기간 끝까지 확인되지 않은 요청은 집행 확인 수에서 빠진다",
-                  "차단 상태: 출력 시각 기준(대시보드와 같은 분류)",
+                  "집행 지연: 새 차단 요청부터 첫 집행 확인이 적은 관문 적용 시각까지(같은 주소의 다음 요청 전). "
+                  "해제 · 만료된 차단도 넣고, 기간 끝까지 확인되지 않은 요청은 집행 확인 수에서 빠진다",
+                  "차단 상태: 출력 시각 기준",
                   "시험 출발지의 차단(차단 시연)도 함께 센다"],
         "actions": actions,
         "requests": {"total": sum(requests.values()), **requests},
@@ -448,8 +445,6 @@ async def targets_section(c, since, until, as_of) -> dict:
         web = {"samples": m["samples"], "cpu_pct": num(m["cpu_pct"]), "mem_used_pct": num(m["mem_used_pct"]),
                "disk_root_pct": num(m["disk_root_pct"]), "max_gap_seconds": num(m["max_gap"])}
         notes.append("web-01 자원: 기간 안 1분 지표의 최대값")
-    else:
-        notes.append("자원 지표 표를 읽을 수 없어 web-01 자원을 내지 않는다")
     return {
         "basis": "mixed", "notes": notes, "targets": rows,
         "sensors": [{"sensor": r["sensor"], "events": r["n"]} for r in await c.fetch(SENSOR_EVENTS_SQL, since, until)],
@@ -477,13 +472,11 @@ async def watch_summary(c, as_of) -> dict:
 async def cti_section(c, since, until, as_of) -> dict:
     snapshots = await c.fetch(cti.SNAPSHOTS_SQL)
     assets = await c.fetch(cti.ASSETS_SQL, None)
-    notes = ["자산별 취약점 · 주목 CVE: 출력 시각의 대조 결과(수집기가 자산마다 지우고 다시 넣어 이력이 없다)",
+    notes = ["자산별 취약점 · 주목 CVE: 출력 시각의 대조 결과(이력이 없다)",
              "KEV 등재: 등재일(날짜)이 기간의 KST 날짜 안인 항목. 우리 자산에 걸린 것만 자산을 적는다",
              "신선도: 출처별 마지막 성공 수집과 자산 조사 시각"]
     watch = None
-    if await c.fetchval(MISSING_SQL, ["cti_watch"]):
-        notes.append("주목 CVE 표를 읽을 수 없어 주목 CVE 를 내지 않는다")
-    else:
+    if not await c.fetchval(MISSING_SQL, ["cti_watch"]):
         watch = await watch_summary(c, as_of)
     kev = await c.fetch(KEV_ADDED_SQL, since, until)
     return {
@@ -501,17 +494,14 @@ async def cti_section(c, since, until, as_of) -> dict:
 
 
 async def ops(c, since, until, as_of) -> dict:
-    notes = ["감사 이벤트: 기간 안의 감사 기록 종류별 수(행위자 · 내용은 싣지 않는다)",
-             "로그인 실패: 기간 안의 콘솔 로그인 실패 기록"]
+    notes = ["감사 이벤트: 기간 안의 감사 기록 종류별 수(행위자 · 내용은 싣지 않는다)"]
     notify = None
-    if await c.fetchval(MISSING_SQL, ["notify_deliveries"]):
-        notes.append("알림 발송 표를 읽을 수 없어 알림 발송을 내지 않는다")
-    else:
+    if not await c.fetchval(MISSING_SQL, ["notify_deliveries"]):
         rows = [{"event": r["event"], "status": r["status"], "count": r["n"]}
                 for r in await c.fetch(NOTIFY_SQL, since, until)]
         notify = {"total": sum(r["count"] for r in rows), "failed": sum(r["count"] for r in rows if r["status"] == "failed"),
                   "p50_seconds": num(await c.fetchval(NOTIFY_DELAY_SQL, since, until)), "rows": rows}
-        notes.append("알림 발송: 기간 안에 넣은 발송. 시험 발송은 뺀다. 지연은 보낸 것의 넣은 시각 → 보낸 시각")
+        notes.append("알림 발송: 기간 안에 넣은 발송(시험 발송 제외). 지연은 넣은 시각 → 보낸 시각")
     return {
         "basis": "period", "notes": notes,
         "audit": [{"eventid": r["eventid"], "count": r["n"]} for r in await c.fetch(AUDIT_SQL, since, until, "%")],

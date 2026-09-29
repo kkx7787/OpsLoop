@@ -1024,6 +1024,10 @@ class LoginTest(Base):
         self.assertIn('<input type="hidden" name="next" value="/">', body)
         self.assertIn("OpsLoop 관제 콘솔", body)
         self.assertNotIn(web.LOGIN_ERROR, body)
+        # 안내는 계정을 어디서 받는지 한 줄. 로그인 전 공개 화면이라 기록 방식 · 탐지 설계(디코이 · 규칙)는 적지 않는다
+        self.assertIn("계정은 관리자에게 요청하세요.", body)
+        for word in ("디코이", "규칙"):
+            self.assertNotIn(word, body)
 
     def test_success_goes_to_next(self):
         r = self.post(next="/incidents/k1?tab=raw")
