@@ -82,7 +82,9 @@ chmod 600 "$gout"
 echo "백업 $(du -h "$out" | cut -f1) $out · 표 $tables 개 · 역할 $roles 개 $(basename "$gout")"
 
 # 오래된 것부터 지워 최근 KEEP 개만 남긴다 (.unverified 는 건드리지 않는다). 역할 목록도 같은 개수
+# shellcheck disable=SC2012  # 이름은 이 스크립트가 만든 opsloop-<시각> 뿐이다. Mac(BSD) find 로는 시각순 정렬을 못 한다
 ls -1t "$DEST"/opsloop-*.dump 2>/dev/null | tail -n +"$((KEEP + 1))" | while read -r f; do rm -f -- "$f"; done
+# shellcheck disable=SC2012  # 위와 같다
 ls -1t "$DEST"/opsloop-*.globals.sql 2>/dev/null | tail -n +"$((KEEP + 1))" | while read -r f; do rm -f -- "$f"; done
 
 if [ "${LEDGER:-1}" = 1 ]; then

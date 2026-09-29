@@ -86,6 +86,7 @@ done
 rm -rf "$APP/collector.old"
 if [ -d "$APP/collector" ]; then mv "$APP/collector" "$APP/collector.old"; echo "  이전 판은 $APP/collector.old"; fi
 mv "$APP/.collector.new" "$APP/collector"
+# shellcheck disable=SC2012  # 깐 파일 이름을 화면에 보이기만 한다 (이름은 저장소 파일이다)
 ls "$APP/collector" | sed 's/^/    /'
 app_ver=$(cat "$APP/VERSION" 2>/dev/null || echo 없음)
 [ "$app_ver" = "$VERSION" ] || echo "  경고: parser · detector 는 커밋 $app_ver 이다. 같은 커밋으로 install-ingest.sh 를 돌리고 이 스크립트를 다시 돌린다"

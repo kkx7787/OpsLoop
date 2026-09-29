@@ -80,6 +80,7 @@ chmod -R u+rwX,go+rX,go-w /opt/opsloop/.cti.new
 rm -rf /opt/opsloop/cti.old
 if [ -d "$CODE" ]; then mv "$CODE" /opt/opsloop/cti.old; echo "  이전 판은 /opt/opsloop/cti.old"; fi
 mv /opt/opsloop/.cti.new "$CODE"
+# shellcheck disable=SC2012  # 깐 파일 이름을 화면에 보이기만 한다 (이름은 저장소 파일이다)
 ls "$CODE" | sed 's/^/    /'
 echo "  주목 CVE 목록 $CODE/watchlist.json (${WATCH_N}개)"
 install -m 755 "$SRC/cti/opsloop-cti" /usr/local/bin/opsloop-cti

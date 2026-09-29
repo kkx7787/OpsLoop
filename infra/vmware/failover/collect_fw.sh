@@ -47,6 +47,7 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$DIR" ] || { usage >&2; exit 2; }
 echo "$DURATION" | grep -Eq '^[0-9]+(\.[0-9]+)?$' || die "--duration 은 0 이상의 수"
+# shellcheck disable=SC2015  # 모양 검사 · 0 초과 검사 가운데 하나라도 어긋나면 멈춘다 (die 는 끝낸다)
 echo "$PERIOD" | grep -Eq '^[0-9]+(\.[0-9]+)?$' && awk -v p="$PERIOD" 'BEGIN { exit !(p > 0) }' \
   || die "--period 는 0 보다 큰 수"
 echo "$HOST" | grep -Eq '^[A-Za-z0-9][A-Za-z0-9_.-]*$' || die "--host 가 이상하다"

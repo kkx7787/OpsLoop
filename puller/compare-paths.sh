@@ -50,4 +50,5 @@ while IFS='|' read -r kind key n md5; do
   else verdict=다름; bad=1; fi
   printf '%-10s %-8s %22s %22s  %s\n' "$kind" "$key" "$n · ${md5:0:8}" "${other%%|*} · $(printf '%s' "${other#*|}" | cut -c1-8)" "$verdict"
 done <<< "$inner"
+# shellcheck disable=SC2015  # 기록용 스크립트. echo 가 실패하면 종료 1 이어도 된다
 [ "$bad" = 0 ] && echo "events · sessions 모두 같다" || { echo "events 또는 sessions 가 다르다" >&2; exit 1; }

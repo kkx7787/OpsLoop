@@ -99,6 +99,11 @@ class PullTest(unittest.TestCase):
         self.dir = tempfile.mkdtemp()
         self.s3 = FakeS3()
         pull._JOURNAL = False
+        # 디스크 여유 검사는 시험을 돌리는 컴퓨터의 디스크를 본다. 여유가 10% 아래면 모든 회차가 13(받기 멈춤)으로 끝나
+        # 시험이 컴퓨터 상태에 좌우된다. 여유 있음으로 고정하고, 여유 없음은 따로 시험한다(이슈 #62)
+        patcher = mock.patch.object(pull, "disk_ok", lambda home: (True, 10 ** 12))
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def run_pull(self, now=None):
         return pull.run(self.s3, "b", {HOST}, self.dir, now=now or T0 + timedelta(minutes=1))

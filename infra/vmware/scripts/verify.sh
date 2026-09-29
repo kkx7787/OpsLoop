@@ -8,6 +8,7 @@ S1=192.168.50.11   # console-a
 D1=192.168.60.11   # data-01
 W1=192.168.50.21   # web-01 (관제 대상)
 SSHO=(-o BatchMode=yes -o ConnectTimeout=5 -o IdentitiesOnly=yes -i "$KEY")
+# shellcheck disable=SC2029  # 검증 명령은 주소($W1 · $A1)를 Mac 에서 채운 문자열로 넘겨 방화벽에서 돈다
 ssh_fw()  { ssh "${SSHO[@]}" ops@$FW "$@"; }
 # ProxyJump 는 점프 구간에 -i 를 넘기지 않는다. ProxyCommand 로 같은 키를 쓴다
 ssh_in()  { ssh "${SSHO[@]}" -o ProxyCommand="ssh -q -W %h:%p ${SSHO[*]} ops@$FW" ops@"$1" "${@:2}"; }

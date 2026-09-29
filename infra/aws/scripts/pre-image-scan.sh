@@ -256,6 +256,7 @@ main() {
       done
       if [ -d "$h/.gnupg/private-keys-v1.d" ] && [ -n "$(ls -A "$h/.gnupg/private-keys-v1.d" 2>/dev/null)" ]; then found "GPG 개인키 $h/.gnupg/private-keys-v1.d"; todo "$h/.gnupg"; fi
     done
+    # shellcheck disable=SC2012  # 개수만 센다. 호스트 키 이름은 sshd 가 정한 꼴이다
     n=$(ls /etc/ssh/ssh_host_*_key 2>/dev/null | wc -l | tr -d ' ')
     [ "$n" -gt 0 ] && note "SSH 호스트 키 ${n}개 (/etc/ssh/ssh_host_*_key) — cloud-init 이 새 인스턴스에서 다시 만든다(ssh_deletekeys 기본값). 새 인스턴스에서 지문이 바뀌었는지 확인"
     while IFS= read -r -d '' f; do
@@ -329,6 +330,7 @@ main() {
       elif [ "$u" = ssm-user ] && [ "$pw" = "비밀번호 없음" ]; then note "계정 $u (uid $uid, $shell, $su, $pw) — SSM 세션이 만드는 계정"
       else found "계정 $u (uid $uid, $shell, $su, $pw, $home) — 임시 · 추가 계정이면 지운다 (userdel -r)"; todo "계정 $u"; fi
     done < /etc/passwd
+    # shellcheck disable=SC2013  # 계정 이름에는 공백이 없어 한 줄이 한 낱말이다
     for u in $(awk -F: '$2 ~ /^\$/ {print $1}' /etc/shadow 2>/dev/null); do
       uid=$(id -u "$u" 2>/dev/null || echo 0)
       if [ "$uid" -lt 1000 ]; then found "시스템 계정 $u (uid $uid) 에 비밀번호가 있다"; todo "계정 $u 의 비밀번호"; fi
@@ -344,6 +346,7 @@ main() {
     done
     extra=$(grep -vE '^[[:space:]]*(#|$|Defaults|root[[:space:]]|%admin|%sudo|@includedir)' /etc/sudoers 2>/dev/null | paste -sd';' -)
     if [ -n "$extra" ]; then found "/etc/sudoers 기본 밖 규칙: $extra"; todo "/etc/sudoers 의 추가 규칙"; fi
+    # shellcheck disable=SC2012  # 참고 줄에 소유자 · 날짜를 보이기만 한다 (판정에 쓰지 않는다)
     note "홈 폴더: $(ls -ld --time-style=+%Y-%m-%d /home/* /root 2>/dev/null | awk '{print $NF" ("$3", "$6")"}' | paste -sd';' -)"
     ll=$(lastlog 2>/dev/null | awk 'NR>1 && !/Never logged in/ {print $1}' | paste -sd, -)
     [ -n "$ll" ] && note "로그인 기록 있는 계정: $ll"

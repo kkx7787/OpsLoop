@@ -101,6 +101,7 @@ hap() { on fw "echo \"@1 $1\" | sudo -n nc -N -U $MASTER"; }
 srv_state() { # console-b 의 '운영 관리' (show servers state 의 6 · 7번째 열)
   hap "show servers state $BK" | awk -v s="$SRV" '$4 == s { print $6, $7 }'
 }
+# shellcheck disable=SC2086  # 두 칸(운영 · 관리 상태, 숫자)을 낱말로 나눠 $1 · $2 로 받는다
 is_maint() { local st; st=$(srv_state) || return 1; set -- $st; [[ "${2:-}" =~ ^[0-9]+$ ]] && [ $(( $2 & 1 )) -ne 0 ]; }
 is_up() { local st; st=$(srv_state) || return 1; [ "$st" = "2 0" ]; }
 no_sessions() { # show stat 의 5번째 열 scur
@@ -373,7 +374,7 @@ desc() {
 }
 usage() { sed -n '11,17p' "$0" | sed 's/^# \{0,1\}//'; }
 
-MODE=join; ONLY=""; FROM=""
+MODE="join"; ONLY=""; FROM=""
 while [ $# -gt 0 ]; do
   case $1 in
     --apply) APPLY=1 ;;
@@ -398,7 +399,7 @@ if [ -n "$ONLY" ]; then
   STEPS=$ONLY
 elif [ -n "$FROM" ]; then
   in_list "$FROM" "$STEPS" || { echo "모르는 $NAME 단계: $FROM (--list)" >&2; exit 2; }
-  STEPS=" $STEPS "; STEPS="$FROM ${STEPS#* $FROM }"
+  STEPS=" $STEPS "; STEPS="$FROM ${STEPS#* "$FROM" }"
 fi
 
 BOOT_BEFORE=""

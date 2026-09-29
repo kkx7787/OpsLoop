@@ -6,7 +6,6 @@
 #   opsloop-data-01   2GB / 2core  데이터망 (실사용 0.5GB 안팎. Mac 메모리가 빠듯해 3GB 에서 줄였다)
 # 연결 복제라 디스크는 바뀐 부분만 차지한다. 나중에 붙이는 노드(web-01 등)는 scripts/add-node.sh 로 만든다.
 set -euo pipefail
-HERE="$(cd "$(dirname "$0")/.." && pwd)"
 VMDIR="${VMDIR:-$HOME/Virtual Machines.localized}"
 BASE="${BASE:-$VMDIR/opsloop-base.vmwarevm/opsloop-base.vmx}"
 VMRUN="/Applications/VMware Fusion.app/Contents/Library/vmrun"

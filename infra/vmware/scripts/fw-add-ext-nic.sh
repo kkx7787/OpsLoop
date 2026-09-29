@@ -32,7 +32,7 @@ have_net=0; grep -q "^answer VNET_5_HOSTONLY_SUBNET " "/Library/Preferences/VMwa
 if [ $have_nic = 0 ]; then
   echo "== 1. 방화벽 종료 (내부망 통신이 잠시 멈춥니다)"
   "$VMRUN" list | grep -q "$VMX" && "$VMRUN" stop "$VMX" soft
-  for i in $(seq 1 24); do "$VMRUN" list | grep -q "$VMX" || break; sleep 5; done
+  for _ in $(seq 1 24); do "$VMRUN" list | grep -q "$VMX" || break; sleep 5; done
   "$VMRUN" list | grep -q "$VMX" && { echo "방화벽이 꺼지지 않습니다"; exit 1; }
   echo "== 2. vmx 에 ethernet4 추가"
   cp -p "$VMX" "$VMX.bak.$(date +%Y%m%d%H%M%S)"
@@ -40,7 +40,7 @@ if [ $have_nic = 0 ]; then
   "$VMRUN" start "$VMX" nogui
 fi
 echo "== 3. SSH 대기"
-ok=0; for i in $(seq 1 36); do "${SSH[@]}" fw true >/dev/null 2>&1 && { ok=1; break; }; sleep 5; done
+ok=0; for _ in $(seq 1 36); do "${SSH[@]}" fw true >/dev/null 2>&1 && { ok=1; break; }; sleep 5; done
 [ $ok = 1 ] || { echo "방화벽 SSH 가 열리지 않습니다 (관리망 · VPN 확인)"; exit 1; }
 echo "== 4. netplan 넣기 · 적용"
 python3 - "$HERE/netplan/fw.yaml.template" <<'PY' | "${SSH[@]}" fw 'set -e
