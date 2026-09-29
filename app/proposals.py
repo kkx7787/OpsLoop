@@ -24,7 +24,8 @@ def propose(rule_id, counts, covered_by=None):
         return result("non_actionable", f"같은 출발지·겹치는 구간에 이미 실제 위협으로 판정된 사건이 있습니다: {covered_by}",
                       "대표 사건의 조치 범위를 확인한 뒤 중복 여부를 판정하세요.")
     if rule_id in CIRCULAR_RULES:
-        return result(None, "규칙 조건과 위협 판정 근거가 겹칩니다. 같은 증거를 정답으로 재사용하지 않고 직접 판정하세요.")
+        # 무엇이 겹치는지는 ① 순환 규칙 배너(main.CIRCULAR)가 한 번 말한다. 여기서는 제안이 없는 까닭과 할 일만 둔다
+        return result(None, "순환 규칙입니다. 증거를 보고 직접 판정하세요.")
 
     fails = counts.get("cowrie.login.failed", 0)
     oks = counts.get("cowrie.login.success", 0)
@@ -35,5 +36,6 @@ def propose(rule_id, counts, covered_by=None):
     if cmds or files or proxy:
         return result("threat", facts, "빈도 조건과 별도로 명령 실행·파일 이동·경유 시도 중 하나가 관측됐습니다.")
     if oks or fails:
-        return result("non_actionable", facts, "관측 구간에는 인증 시도만 있고 후속 명령·파일 이동·경유 시도는 없습니다. 지속성과 조치 필요성을 확인하세요.")
-    return result(None, "근거가 될 행위 기록이 없습니다. 수집 누락을 정상으로 판단하지 않고 직접 확인하세요.")
+        # 명령 · 파일 · 경유 시도가 0 인 것은 바로 위 facts 줄이 보인다
+        return result("non_actionable", facts, "인증 시도만 있고 후속 행위는 없습니다. 지속성과 조치 필요성을 확인하세요.")
+    return result(None, "근거가 될 행위 기록이 없습니다. 수집 누락인지 먼저 확인하세요.")

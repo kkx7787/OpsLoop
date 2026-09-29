@@ -428,9 +428,13 @@ class ReportsDatabaseTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(name=name):
                 self.assertEqual(sections[name], {"available": False, "reason": "표가 없거나 읽기 권한이 없음: audit_log"})
         self.assertIsNone(sections["rules"]["absorbed"])
-        self.assertIn("흡수 기록 표를 읽을 수 없어 흡수 수를 내지 않는다", sections["rules"]["notes"])
         self.assertIsNone(sections["cti"]["watch"])
         self.assertIsNone(sections["targets"]["web"])
+        # 빠진 부분은 null 로만 알린다. 화면 · 인쇄물이 null 을 보고 빠졌다는 문장을 한 번 찍으므로 notes 에 되풀이하지 않고,
+        #   내지 않은 값의 기준(web-01 자원)도 싣지 않는다
+        for name in ("rules", "targets", "cti"):
+            with self.subTest(name=name):
+                self.assertEqual([n for n in sections[name]["notes"] if "읽을 수 없" in n or "web-01 자원" in n], [])
         self.assertTrue(sections["overview"]["available"])
         await self.conn.execute("DROP TABLE asset_vulnerabilities")
         self.assertEqual((await self.report(["cti"]))["sections"]["cti"],

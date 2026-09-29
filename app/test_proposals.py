@@ -15,12 +15,18 @@ class ProposalTests(unittest.TestCase):
                     self.assertEqual(propose(rule, {event: 1})["verdict"], "threat")
 
     def test_missing_evidence_is_not_benign(self):
-        self.assertIsNone(propose("R001", {})["verdict"])
+        proposal = propose("R001", {})
+        self.assertIsNone(proposal["verdict"])
+        # 0 건을 정상으로 읽지 않게 수집 누락부터 보라고 한다
+        self.assertIn("수집 누락", " ".join(proposal["reasons"]))
 
     def test_circular_evidence_does_not_confirm_itself(self):
         # R006(키 심기)은 조건과 판정 근거가 모두 authorized_keys 쓰기다. R003 은 v3 에서도 순환이다(판정 기준 §6)
         for rule in ("R002", "R003", "R004", "R006"):
-            self.assertIsNone(propose(rule, {"cowrie.command.input": 100})["verdict"])
+            proposal = propose(rule, {"cowrie.command.input": 100})
+            self.assertIsNone(proposal["verdict"])
+            # 무엇이 겹치는지는 ① 순환 규칙 배너(main.CIRCULAR)가 한 번 말한다. 제안 근거는 순환 규칙이라는 것과 할 일만이다
+            self.assertEqual(proposal["reasons"], ["순환 규칙입니다. 증거를 보고 직접 판정하세요."])
 
     def test_key_plant_duplicate_is_still_proposed(self):
         # 순환 규칙에서도 중복(같은 출발지 · 겹치는 구간의 위협 판정)은 규칙 조건과 무관한 근거라 제안한다
