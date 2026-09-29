@@ -1,131 +1,45 @@
-import type { ReactNode } from 'react'
 import { Link } from 'react-router'
-import { useSummary, type BlockCounts } from '@/api/monitoring'
+import { useCtiBadges } from '@/api/cti'
+import { useControlHealth } from '@/api/health'
+import { useSummary } from '@/api/monitoring'
 import { useTargets } from '@/api/targets'
-import { Card, CardHeader } from '@/components/atoms/Card'
-import { SeverityBadge } from '@/components/atoms/SeverityBadge'
 import { Time } from '@/components/atoms/Time'
-import { UntrustedText } from '@/components/atoms/UntrustedText'
-import { InfoTip } from '@/components/molecules/InfoTip'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { MonitoringStatus } from '@/components/organisms/MonitoringStatus'
-import { TargetBoard } from '@/components/organisms/dashboard/TargetBoard'
+import { AgeDistribution, ControlHealthBand, DashboardMetrics, latestKeys, PendingQueue, SupportTargets, TargetBoard } from '@/components/organisms/dashboard'
 import { ApiErrorState } from '@/components/organisms/states/ApiErrorState'
 import { LoadingState } from '@/components/organisms/states/LoadingState'
-import { formatDuration } from '@/lib/time'
-import { sensorOf } from '@/lib/domain'
 import { cn } from '@/lib/cn'
-import { revealHidden } from '@/lib/untrusted'
-
-const AGE_LABELS = ['1시간 미만', '1–4시간', '4–12시간', '12–24시간', '24시간 이상']
 
 /**
- * 관제 현황(S-02). 위에서부터 관제 대상 상태판(#52) → 미판정 수치 네 칸 → 먼저 확인할 사건 · 경과 분포.
- * 상태판과 요약은 따로 조회한다. 한쪽이 실패해도 다른 쪽은 그대로 보인다.
+ * 관제 현황(S-02, 보호 대상 중심 #72). 위에서부터 관제 이상 띠(있을 때만) → 보호 대상 카드 → 미판정 수치 네 칸 →
+ * 먼저 처리할 사건 · 경과 분포 → 관측 센서 · 관제 시스템 접힌 줄. 이 파일은 조립만 한다.
+ * 요약 · 상태판 · 관제 이상은 따로 조회한다. 한쪽이 실패해도 다른 쪽은 그대로 보인다.
+ * 먼저 처리할 사건은 상태판의 queue 가 있으면 요약과 관계없이 그린다. 요약도 queue 도 없을 때만 요약 오류 화면이다
+ * (queue 가 있을 때 요약 실패는 공통 띠가 알린다).
+ * CVE 배지는 모든 대상의 최근 사건 키로 여기서 한 번만 묻고 카드 · 접힌 줄에 나눠 준다.
  * 규칙별 비조치율은 규칙 화면(규칙별 판정 집계)에 있어 여기서는 그리로 잇기만 한다.
- * 계산 기준(판정 목표 · 첫 사건 · 카드 합)은 값 옆 도움말(ⓘ)에 둔다. 갱신 방식은 공통 띠(MonitoringStatus)가 알린다.
  */
 export function DashboardPage() {
   const query = useSummary()
   const targets = useTargets()
+  const health = useControlHealth()
   const data = query.data
+  const queue = targets.data?.queue
+  const badges = useCtiBadges(latestKeys(targets.data?.targets ?? [])).data?.badges
+  const asOf = data?.as_of ?? targets.data?.as_of
+  const retryAll = () => { void query.refetch(); void targets.refetch(); void health.refetch() }
   return <div className="flex min-w-0 flex-col gap-4">
-    <PageHeader title="관제 현황" aside={data && <span className="text-xs text-ink-muted"><Time value={data.as_of} format="time" zone /> 기준</span>} />
-    <MonitoringStatus updatedAt={query.dataUpdatedAt} error={data ? query.error : null} onRetry={() => { void query.refetch(); void targets.refetch() }} busy={query.isFetching} />
-    <TargetBoard data={targets.data} pending={targets.isPending} fetching={targets.isFetching} error={targets.error} updatedAt={targets.dataUpdatedAt} onRetry={() => void targets.refetch()} />
-    {query.isPending ? <LoadingState title="대시보드를 불러오는 중입니다" /> : !data ? <ApiErrorState error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} /> : <>
-      <Card padding="none">
-        <dl className="m-0 grid grid-cols-2 divide-x divide-line md:grid-cols-4">
-          <Metric label="가장 오래된 미판정" value={data.pending.total ? formatDuration(data.pending.oldest_seconds * 1000) : '없음'} warn={data.pending.overdue > 0} />
-          <Metric label="미판정" value={`${data.pending.total.toLocaleString()}건`} href="/incidents?judged=false" />
-          <Metric label="판정 목표 초과" value={`${data.pending.overdue.toLocaleString()}건`} note={`목표 임박 ${data.pending.warning.toLocaleString()}건`} warn={data.pending.overdue > 0}
-            tip={{ at: 'label', label: '판정 목표', content: VERDICT_TARGET_NOTE }} />
-          <Metric label={`활성 차단 요청 ${data.blocked_ips.toLocaleString()}건`} value={blocksValue(data.blocks, data.blocked_ips)} href="/blocklist" compact={!!data.blocks}
-            note={[mismatchNote(data.blocks), absorbedNote(data.absorbed_unblocked)].filter(Boolean).join(' · ') || undefined}
-            tip={absorbedNote(data.absorbed_unblocked) ? { at: 'note', label: '첫 사건', content: FIRST_INCIDENT_NOTE } : undefined}
-            warn={!!data.absorbed_unblocked?.sources || !!data.blocks?.mismatch} />
-        </dl>
-      </Card>
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
-        <Card padding="none" className="min-w-0">
-          <CardHeader title="먼저 확인할 사건" aside={<Link to="/incidents?judged=false">미판정 전체 보기 →</Link>} />
-          {data.oldest_pending.length ? <ol className="m-0 list-none divide-y divide-line p-0">
-            {data.oldest_pending.map(item => <li key={item.incident_key}>
-              <Link to={`/incidents/${encodeURIComponent(item.incident_key)}`} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 hover:bg-canvas sm:grid-cols-[110px_minmax(0,1fr)_auto]">
-                <div className={cn('text-sm font-semibold tabular-nums', item.overdue ? 'text-warning' : 'text-ink')}>
-                  {formatDuration(item.pending_seconds * 1000, 'compact')}
-                  <div className="text-xs font-normal">{item.overdue ? '목표 초과' : `목표 ${formatDuration(item.target_seconds * 1000)}`}</div>
-                </div>
-                <div className="col-span-2 row-start-2 min-w-0 sm:col-span-1 sm:row-auto">
-                  <div className="break-words text-sm text-ink" title={revealHidden(item.rule_name)}><span className="mr-2 font-mono text-primary">{item.rule_id}</span><UntrustedText value={item.rule_name} clip /></div>
-                  <div className="mt-0.5 flex min-w-0 gap-1 text-xs text-ink-muted">
-                    <span className="truncate font-mono" title={revealHidden(item.actor_ip ?? item.target ?? '') || undefined}><UntrustedText value={item.actor_ip ?? item.target} fallback="대상 없음" clip /></span>
-                    <span className="shrink-0">· {sensorOf(item.rule_id)}</span>
-                  </div>
-                </div>
-                <SeverityBadge severity={item.severity} className="col-start-2 row-start-1 justify-self-end sm:col-start-3" />
-              </Link>
-            </li>)}
-          </ol> : <p className="m-0 px-4 py-8 text-ink-muted">미판정 사건이 없습니다. 최근 수집 시각도 함께 확인해 주세요.</p>}
-          <p className="m-0 border-t border-line px-4 py-2 text-xs text-ink-muted">오래된 순 · 최대 8건 · 전체 규칙 버전</p>
-        </Card>
-        <Card padding="none">
-          <CardHeader title="미판정 경과 시간" />
-          <ul className="m-0 flex list-none flex-col gap-4 p-4">
-            {AGE_LABELS.map((label, index) => {
-              const count = data.pending.age_distribution[index] ?? 0
-              const percent = data.pending.total ? count / data.pending.total * 100 : 0
-              return <li key={label}>
-                <div className="mb-1.5 flex justify-between gap-2 text-xs"><span>{label}</span><span className="tabular-nums">{count.toLocaleString()}건</span></div>
-                <div className="h-1.5 overflow-hidden rounded-sm bg-line" aria-hidden="true"><div className="h-full bg-primary" style={{ width: `${percent}%` }} /></div>
-              </li>
-            })}
-          </ul>
-        </Card>
-      </div>
-      <p className="m-0 text-xs text-ink-muted">최근 원문 수집 <Time value={data.latest_event} format="short" zone /> · 규칙별 비조치율은 <Link to="/rules">규칙 화면에서 보기</Link></p>
-    </>}
+    <PageHeader title="관제 현황" aside={asOf && <span className="text-xs text-ink-muted"><Time value={asOf} format="time" zone /> 기준</span>} />
+    <MonitoringStatus updatedAt={query.dataUpdatedAt} error={data || queue ? query.error : null} onRetry={retryAll} busy={query.isFetching} />
+    <ControlHealthBand health={health} />
+    <TargetBoard data={targets.data} pending={targets.isPending} fetching={targets.isFetching} error={targets.error} updatedAt={targets.dataUpdatedAt} onRetry={() => void targets.refetch()} badges={badges} />
+    {data ? <DashboardMetrics summary={data} /> : queue ? null : query.isPending ? <LoadingState title="대시보드를 불러오는 중입니다" /> : <ApiErrorState error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} />}
+    {(data || queue) && <div className={cn('grid items-start gap-4', data && 'xl:grid-cols-[minmax(0,1fr)_300px]')}>
+      <PendingQueue queue={queue} oldest={data?.oldest_pending} />
+      {data && <AgeDistribution pending={data.pending} />}
+    </div>}
+    <SupportTargets data={targets.data} updatedAt={targets.dataUpdatedAt} badges={badges} />
+    {data && <p className="m-0 text-xs text-ink-muted">최근 원문 수집 <Time value={data.latest_event} format="short" zone /> · 규칙별 비조치율은 <Link to="/rules">규칙 화면에서 보기</Link></p>}
   </div>
-}
-
-/**
- * 활성 차단 요청을 집행 상태로 나눈 값(이슈 #47). 요청 수 하나만 크게 보이면 실제로 막은 수로 읽힌다.
- * 관문이 반영한 것은 집행 확인뿐이다. 이전 서버(집행 상태 없음)는 요청 수와 '집행 상태 미확인' 을 보인다
- */
-function blocksValue(blocks: BlockCounts | undefined, total: number): string {
-  if (!blocks) return `${total.toLocaleString()}건 · 집행 상태 미확인`
-  return `집행 확인 ${blocks.enforced.toLocaleString()} · 대기 ${blocks.pending.toLocaleString()} · 제외 ${blocks.excluded.toLocaleString()}`
-}
-
-/** 관문 불일치. 요청과 관문 상태가 5분 넘게 다르다(집행기 · 관문 동기화 확인) */
-function mismatchNote(blocks: BlockCounts | undefined): string | undefined {
-  return blocks?.mismatch ? `관문 불일치 ${blocks.mismatch.toLocaleString()}건` : undefined
-}
-
-/** 판정 뒤에 흡수됐는데 차단이 없는 출발지. 첫 사건 상세의 함께 차단(후속 차단)으로 막는다 */
-function absorbedNote(unblocked: { sources: number; incidents: number } | undefined): string | undefined {
-  if (!unblocked?.sources) return undefined
-  return `판정 뒤 흡수 미차단 ${unblocked.sources.toLocaleString()}곳 · 첫 사건 ${unblocked.incidents.toLocaleString()}건`
-}
-
-/** 판정 목표 초과 · 목표 임박의 기준(lib/domain verdictTargetSeconds · WARN_RATIO, app/dashboard.py PENDING 과 같다) */
-const VERDICT_TARGET_NOTE = '판정 목표는 critical 1시간 · high 4시간 · medium 12시간 · low 24시간이고, 관제 자기 탐지(R2xx) 사건은 1시간입니다. 목표 임박은 목표 시간의 2/3 를 넘긴 사건입니다.'
-const FIRST_INCIDENT_NOTE = '첫 사건은 같은 페이로드의 출발지를 흡수한 사건입니다. 그 사건 상세의 함께 차단으로 막습니다.'
-
-/** 값 옆 도움말(ⓘ). label: 수치 이름 옆 · note: 아래 한 줄 끝. 설명은 칸 맨 아래에 펼친다 */
-interface MetricTip {
-  at: 'label' | 'note'
-  label: string
-  content: ReactNode
-}
-
-function Metric({ label, value, note, href, warn, compact, tip }: { label: string; value: string; note?: string; href?: string; warn?: boolean; compact?: boolean; tip?: MetricTip }) {
-  const cell = (button?: ReactNode, panel?: ReactNode) => <div className="min-w-0 px-4 py-4">
-    <dt className="text-xs text-ink-muted">{label}{tip?.at === 'label' && <> {button}</>}</dt>
-    <dd className={cn('m-0 mt-1.5 break-words font-semibold tracking-heading tabular-nums', compact ? 'text-base' : 'text-xl', warn && 'text-warning')}>{href ? <Link to={href}>{value}</Link> : value}</dd>
-    {note && <div className="mt-1 text-xs text-ink-muted">{note}{tip?.at === 'note' && <> {button}</>}</div>}
-    {panel}
-  </div>
-  if (!tip) return cell()
-  return <InfoTip label={tip.label} render={({ button, panel }) => cell(button, panel)}>{tip.content}</InfoTip>
 }

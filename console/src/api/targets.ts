@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from './client'
 import { ApiError, isApiError } from './errors'
+import type { IncidentBase } from './incidents'
+import type { PendingIncident } from './monitoring'
 import { monitoringKeys } from './monitoring-keys'
 
 /**
@@ -8,6 +10,8 @@ import { monitoringKeys } from './monitoring-keys'
  *  GET /api/dashboard/targets → TargetsResult (고정 대상 네 곳 · 등록 노드(#64)의 수집 · 보안 · 시스템 · 대응 · 취약점 요약)
  * 수치는 대상별이다. 한 사건이 여러 대상에 붙을 수 있어 카드 합은 전체 사건 수가 아니다.
  * 생존 신호가 없는 대상은 서버가 '미확인'(unknown)으로 답한다. 화면은 로그 시각만으로 정상 · 장애 색을 입히지 않는다.
+ * 화면은 대상을 세 무리로 나눠 그린다(#72): 보호 대상(web-01 · 등록 노드) · 관측 센서(aws-sensor) · 관제 시스템(console · data-node).
+ * 먼저 처리할 사건(queue)은 이 경로에만 있다(보고서의 같은 계산에는 없다).
  */
 
 /** 코드에 정한 고정 대상(app/targets.py TARGETS). 카드 순서도 이 순서다 */
@@ -19,6 +23,12 @@ export type TargetId = string
 /** fixed 고정 대상 · node 수집 노드 표(nodes)에 등록한 노드(#64). 이전 서버는 싣지 않는다 */
 export const TARGET_KINDS = ['fixed', 'node'] as const
 export type TargetKind = (typeof TARGET_KINDS)[number]
+
+/** 무리(#72). 보호 대상은 web-01 과 등록 노드(kind node) 전부다. 서버 TARGETS 순서 · TARGET_IDS 는 바꾸지 않는다 */
+export const PROTECTED_IDS = ['web-01'] as const
+export const PROTECTED_KIND: TargetKind = 'node'
+export const SENSOR_IDS = ['aws-sensor'] as const
+export const SYSTEM_IDS = ['console', 'data-node'] as const
 
 export function isFixedTargetId(id: string): id is FixedTargetId {
   return (TARGET_IDS as readonly string[]).includes(id)
@@ -70,6 +80,8 @@ export interface TargetCollection {
   signal: TargetSignal | null
   logs: TargetLog[]
   extra: TargetExtra[]
+  /** 데이터 노드만: 멈춘 확인(적재기 · 집행기 지점 하나라도). state 는 그대로라 화면이 '주의' 로 보인다. 이전 서버에는 없다 */
+  stopped?: Array<'loader' | 'enforcer'>
 }
 
 /** 발생원(Cowrie · 웹 디코이 · AWS 관문) 하나의 수치. AWS 센서만 있다 */
@@ -144,6 +156,10 @@ export interface TargetAssetVulns {
   asset_id: string
   vuln_total: number
   vuln_kev: number
+  /** 수정 상태별 수(#72). missing 이면 0. 이전 서버에는 없다 */
+  vuln_fix_available?: number
+  vuln_reboot_pending?: number
+  vuln_fix_unknown?: number
   collected_at: string | null
   checked_at: string | null
   stale: boolean
@@ -182,8 +198,27 @@ export interface TargetsResult {
   metrics_available: boolean
   /** 순서 고정: aws-sensor, web-01, console, data-node, 그 뒤 등록 노드(node_id 순) */
   targets: Target[]
-  /** 대상에 붙이지 못한 사건. 숨기지 않는다 */
+  /** 장비를 확인하지 못한 사건(화면 글자는 '장비 미확인'). 숨기지 않는다 */
   unmapped: { incidents_1h: number; pending: number }
+  /** 먼저 처리할 사건(#72). 이전 서버에는 없다(화면은 요약의 oldest_pending 으로 대신한다) */
+  queue?: TargetsQueue
+}
+
+/**
+ * 먼저 처리할 사건 한 줄. 요약 oldest_pending 과 같은 칸에 묶음 · 관련 장비를 더했다(rule_version 은 없다).
+ * lane front: 보호 대상 · 관제 시스템 · 장비 미확인, back: AWS 센서(허니팟 · 디코이)뿐
+ */
+export type QueueItem = PendingIncident & Pick<IncidentBase, 'devices' | 'device_state' | 'device_fallback'> & { lane: 'front' | 'back' }
+
+/** 미판정 전체의 수와 앞 묶음부터 채운 최대 8건. 순서는 서버가 정한다(묶음 → 첫 시각 → 키) */
+export interface TargetsQueue {
+  total: number
+  front: number
+  back: number
+  /** 그중 장비 미확인 */
+  unconfirmed: number
+  overdue: number
+  items: QueueItem[]
 }
 
 export const TARGETS_PATH = '/api/dashboard/targets'

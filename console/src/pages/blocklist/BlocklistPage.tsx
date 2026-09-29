@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { useBlocklist, type BlockEntry } from '@/api/monitoring'
+import { controlHealthView, useControlHealth } from '@/api/health'
 import { useActionMutation } from '@/api/incidents'
 import { describeError } from '@/api/errors'
 import { usePermission } from '@/auth/useMe'
@@ -15,7 +16,7 @@ import { InfoTip } from '@/components/molecules/InfoTip'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { MonitoringStatus } from '@/components/organisms/MonitoringStatus'
 import { IncidentPagination } from '@/components/organisms/incidents/IncidentPagination'
-import { BLOCK_STATE_LABEL, BLOCK_STATE_TONE, blockState, blockStateHint, enforcementPoints, LIVE_BLOCK_STATES, type BlockState } from '@/components/organisms/incident-detail/format'
+import { BLOCK_STATE_LABEL, BLOCK_STATE_TONE, blockState, blockStateHint, enforcementPoints, LIVE_BLOCK_STATES, pointCounts, type BlockState } from '@/components/organisms/incident-detail/format'
 import { EnforcePointList } from '@/components/organisms/incident-detail/EnforcePointList'
 import { ApiErrorState } from '@/components/organisms/states/ApiErrorState'
 import { LoadingState } from '@/components/organisms/states/LoadingState'
@@ -29,6 +30,8 @@ type Notice = { tone: 'success' | 'danger'; message: string }
 
 export function BlocklistPage() {
   const query = useBlocklist()
+  // 관제 상태는 틀(AppLayout)이 받아 둔 캐시만 읽는다(따로 묻지 않는다). 확인 불가면 멈춤을 붙이지 않는다
+  const health = controlHealthView(useControlHealth(false))
   const permission = usePermission('block.release')
   const clock = useNow(1_000)
   const [params, setParams] = useSearchParams()
@@ -49,6 +52,10 @@ export function BlocklistPage() {
     if (LIVE_BLOCK_STATES.includes(state)) live[state] += 1
     groups[LIVE_BLOCK_STATES.includes(state) ? 'active' : state as 'expired' | 'released'].push(entry)
   }
+  // 내부 방화벽은 실패 · 미확인만 센다(#72). 대시보드 지점별 수와 같은 정의이고 보고 상태 그대로다.
+  // 집행기가 멈춰 대시보드가 적용 · 실패를 미확인에 합칠 때는 수를 바꾸지 않고 두 칸 뒤에 '집행기 멈춤' 만 붙인다
+  const fw = pointCounts(rows, now, 'fw')
+  const fwStalled = health.state === 'ok' && health.alerts.some(item => item.key === 'enforcer:fw') ? '집행기 멈춤' : undefined
   const keyword = search.trim().toLowerCase()
   const filtered = groups[tab].filter(entry => `${entry.actor_ip} ${entry.reason ?? ''} ${entry.incident_key ?? ''}`.toLowerCase().includes(keyword))
   const currentPage = Math.min(page, Math.max(1, Math.ceil(filtered.length / pageSize)))
@@ -59,10 +66,10 @@ export function BlocklistPage() {
     <MonitoringStatus updatedAt={query.dataUpdatedAt} error={query.data ? query.error : null} onRetry={() => void query.refetch()} busy={query.isFetching} />
     {notice && <Banner tone={notice.tone} title={notice.message} action={<Button size="sm" onClick={() => setNotice(null)}>닫기</Button>} />}
     {query.isPending ? <LoadingState title="차단 목록을 불러오는 중입니다" /> : !query.data ? <ApiErrorState error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} /> : <>
-      <Card padding="none" className="grid grid-cols-3 divide-x divide-line xl:grid-cols-6">
-        <Count label="활성 요청" value={groups.active.length} /><Count label="AWS 집행 확인" value={live.enforced} /><Count label="AWS 집행 대기" value={live.pending} warning /><Count label="관문 불일치" value={live.mismatch} warning /><Count label="집행 제외" value={live.excluded} /><Count label="24시간 내 만료" value={groups.active.filter(entry => entry.expires_at && Date.parse(entry.expires_at) <= now + 86_400_000).length} />
+      <Card padding="none" className="grid grid-cols-2 divide-x divide-line sm:grid-cols-4 xl:grid-cols-8">
+        <Count label="활성 요청" value={groups.active.length} /><Count label="AWS 집행 확인" value={live.enforced} /><Count label="AWS 집행 대기" value={live.pending} warning /><Count label="관문 불일치" value={live.mismatch} warning /><Count label="내부 방화벽 실패" value={fw.failed} warning note={fwStalled} /><Count label="내부 방화벽 미확인" value={fw.unverified} warning note={fwStalled} /><Count label="집행 제외" value={live.excluded} /><Count label="24시간 내 만료" value={groups.active.filter(entry => entry.expires_at && Date.parse(entry.expires_at) <= now + 86_400_000).length} />
       </Card>
-      <p className="m-0 text-xs text-ink-muted">집행 수는 AWS 관문 기준이며 내부 방화벽 결과는 행마다 봅니다. <InfoTip label="집행 범위">활성은 만료 · 해제 전 요청입니다. AWS 관문은 허니팟 유입(22 · 23 · 8080)을, 내부 방화벽은 web-01 접근을 막습니다.</InfoTip></p>
+      <p className="m-0 text-xs text-ink-muted">AWS 관문은 집행 상태별로, 내부 방화벽은 실패 · 미확인만 셉니다. <InfoTip label="집행 범위">활성은 만료 · 해제 전 요청입니다. AWS 관문은 허니팟 유입(22 · 23 · 8080)을, 내부 방화벽은 web-01 접근을 막습니다. 미확인은 대기 · 확인 지연 · 기록 없음입니다.</InfoTip></p>
       <Card padding="none" className="worklist-panel flex min-w-0 flex-col overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2">
           <div role="group" aria-label="차단 상태" className="flex gap-5">{TABS.map(([value, label]) => <button key={value} type="button" aria-pressed={tab === value} className={cn('min-h-9 cursor-pointer border-b-2 px-0.5 text-sm', tab === value ? 'border-primary font-semibold text-primary' : 'border-transparent text-ink-muted')} onClick={() => { const next = new URLSearchParams(params); next.set('tab', value); setParams(next); setPage(1) }}>{label} <span className="tabular-nums">{groups[value].length}</span></button>)}</div>
@@ -77,8 +84,9 @@ export function BlocklistPage() {
   </div>
 }
 
-function Count({ label, value, warning }: { label: string; value: number; warning?: boolean }) {
-  return <div className="px-4 py-4"><div className="text-xs text-ink-muted">{label}</div><div className={cn('mt-1.5 text-xl font-semibold tabular-nums', warning && value > 0 && 'text-warning')}>{value.toLocaleString()}건</div></div>
+/** 상단 칸. note 는 값 뒤에 붙는 주의 글자(집행기 멈춤) */
+function Count({ label, value, warning, note }: { label: string; value: number; warning?: boolean; note?: string }) {
+  return <div className="px-4 py-4"><div className="text-xs text-ink-muted">{label}</div><div className={cn('mt-1.5 text-xl font-semibold tabular-nums', warning && value > 0 && 'text-warning')}>{value.toLocaleString()}건{note && <> <span className="text-xs font-medium whitespace-nowrap text-warning">· {note}</span></>}</div></div>
 }
 
 /** 같은 페이로드 흡수 차단 행(규칙 v3). 근거 사건은 첫 사건이고 행의 출발지는 흡수 출발지다(서버 absorbed_reason_tag) */

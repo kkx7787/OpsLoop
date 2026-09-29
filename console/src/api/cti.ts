@@ -292,6 +292,8 @@ export interface AssetRow {
   vuln_kev: number
   vuln_fix_available: number
   vuln_reboot_pending: number
+  /** 배포판 기록으로 수정 여부를 가리지 못한 취약점 수(#72). 이전 서버에서는 생략된다 */
+  vuln_fix_unknown?: number
   max_epss: number | null
 }
 

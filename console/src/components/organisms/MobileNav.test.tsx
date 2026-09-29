@@ -31,11 +31,13 @@ describe('MobileNav', () => {
     expect(within(dialog).getByRole('link', { name: '대시보드' })).toHaveAttribute('aria-current', 'page')
     expect(within(dialog).getByText('root')).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: '로그아웃' })).toBeInTheDocument()
+    // 관제 이상 요약 자리. 틀이 값을 넘기지 않으면 조회 전이다
+    expect(within(dialog).getByRole('link', { name: '관제 상태 조회 전' })).toHaveAttribute('href', '/')
     expect(within(dialog).getByRole('button', { name: '메뉴 닫기' })).toHaveFocus()
     expect(document.body.style.overflow).toBe('hidden')
   })
 
-  it('Escape · 바깥 누름 · 닫기 단추 · 메뉴 항목 누름으로 닫는다', () => {
+  it('Escape · 바깥 누름 · 닫기 단추 · 메뉴 항목 · 관제 요약 누름으로 닫는다', () => {
     const onClose = renderNav(true)
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledTimes(1)
@@ -47,6 +49,8 @@ describe('MobileNav', () => {
     expect(onClose).toHaveBeenCalledTimes(4)
     fireEvent.click(screen.getByRole('link', { name: 'OpsLoop' }))      // 제품 표지도 이동이다
     expect(onClose).toHaveBeenCalledTimes(5)
+    fireEvent.click(screen.getByRole('link', { name: '관제 상태 조회 전' })) // 관제 요약도 대시보드로 가는 이동이다
+    expect(onClose).toHaveBeenCalledTimes(6)
   })
 
   it('열린 채 데스크톱 폭이 되면 닫는다', () => {

@@ -48,7 +48,7 @@ export interface Column {
 }
 
 /**
- * 여섯 개 핵심 열. 신호·세션 수는 규칙 아래, 발생원은 출발지 아래에 함께 표시한다.
+ * 여섯 개 핵심 열. 신호·세션 수는 규칙 아래, 장비(이전 서버는 발생원)는 출발지 아래에 함께 표시한다.
  */
 export const COLUMNS: readonly Column[] = [
   { key: 'elapsed', label: '경과' },

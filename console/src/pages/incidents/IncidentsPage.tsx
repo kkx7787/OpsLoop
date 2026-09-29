@@ -8,7 +8,7 @@ import { buttonClasses } from '@/components/atoms/button-styles'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { Banner } from '@/components/molecules/Banner'
 import { describeError } from '@/api/errors'
-import { clearFilters, countFilters, filtersFromSearch, ruleOptionsOf, searchFromFilters, type ListFilters } from '@/components/organisms/incidents/filters'
+import { clearFilters, countFilters, deviceOptionsOf, filtersFromSearch, ruleOptionsOf, searchFromFilters, type ListFilters } from '@/components/organisms/incidents/filters'
 import { IncidentFilterBar, IncidentSortControl } from '@/components/organisms/incidents/IncidentFilterBar'
 import { IncidentList } from '@/components/organisms/incidents/IncidentList'
 import { IncidentPagination } from '@/components/organisms/incidents/IncidentPagination'
@@ -27,6 +27,8 @@ export function IncidentsPage() {
   const now = useNow(30_000)
   const list = incidents.data
   const rules = useMemo(() => ruleOptionsOf(list?.rules, list?.items), [list])
+  // 장비 선택지는 목록 응답에 함께 온다(따로 묻지 않는다)
+  const devices = useMemo(() => deviceOptionsOf(list?.device_options, filters.device), [list, filters.device])
   // 한 쪽의 사건 키를 모아 CVE 배지를 한 번에 묻는다(#52). 실패하면 배지만 빠지고 목록은 그대로다
   const keys = useMemo(() => list?.items.map((item) => item.incident_key) ?? [], [list])
   const badges = useCtiBadges(keys)
@@ -103,7 +105,7 @@ export function IncidentsPage() {
             {quickViews.map((view) => <button key={view.label} type="button" aria-pressed={view.selected} onClick={() => setFilters(view.filters)} className={cn('min-h-10 cursor-pointer border-b-2 px-0.5 text-sm transition-colors', view.selected ? 'border-primary font-semibold text-primary' : 'border-transparent text-ink-muted hover:text-ink')}>{view.label}</button>)}
           </div>
         </div>
-        <IncidentFilterBar value={filters} onChange={setFilters} rules={rules} className="px-3 py-2" />
+        <IncidentFilterBar value={filters} onChange={setFilters} rules={rules} devices={devices} className="px-3 py-2" />
       </section>
       <section aria-label="조회 결과" className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-card bg-surface shadow-card md:flex-1">
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-line px-3 py-2 text-xs">

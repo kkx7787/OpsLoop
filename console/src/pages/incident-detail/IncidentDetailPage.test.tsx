@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import type { RouteObject } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ctiKeys, incidentCtiPath } from '@/api/cti'
-import { incidentPath, type AbsorbedInfo, type EvidenceSample, type IncidentDetail } from '@/api/incidents'
+import { incidentPath, type AbsorbedInfo, type EvidenceSample, type IncidentDetail, type IncidentDevice } from '@/api/incidents'
 import { ACTION_STATUS } from '@/lib/domain'
 import { revealHidden } from '@/lib/untrusted'
 import { ctiBadgeText } from '@/components/molecules/cti-badge-format'
@@ -873,15 +873,16 @@ describe('IncidentDetailPage · 차단 집행(#47)', () => {
     const box = panel.getByRole('form', { name: '차단 확인' })
     const form = within(box)
     const sentence = box.querySelector('p') as HTMLElement
-    expect(sentence).toHaveTextContent(/^출발지 4\.4\.66\.84 에는 만료 없는 옛 차단이 살아 있어 관문 집행에서 빠집니다\(집행 제외\)\. 이 요청은 사유 · 요청자만 바꿉니다\. 관문에서 막으려면 admin 이 해제한 뒤 다시 차단합니다\./)
+    // 집행 제외는 두 지점(AWS 관문 · 내부 방화벽) 모두에서 빠진다(#72)
+    expect(sentence).toHaveTextContent(/^출발지 4\.4\.66\.84 에는 만료 없는 옛 차단이 살아 있어 두 지점 집행에서 빠집니다\(집행 제외\)\. 이 요청은 사유 · 요청자만 바꿉니다\. 지점에서 막으려면 admin 이 해제한 뒤 다시 차단합니다\./)
     // 만료 칸이 보여도 이 요청이 무엇을 바꾸는지(요청의 효과)는 ⓘ 가 아니라 본문에 있다
     expect(form.getByText(/이 요청은 사유 · 요청자만 바꿉니다/).closest('[data-infotip]')).toBeNull()
     expect(form.getByRole('button', { name: '옛 차단 설명' })).toHaveAccessibleDescription('살아 있는 차단의 만료는 앞당기지 않아, 다시 걸어도 만료가 그대로 없습니다.')
     expect(sentence).not.toHaveTextContent('동안 차단합니다')
-    expect(form.queryByText(/집행 확인으로 바뀝니다/)).toBeNull()
+    expect(form.queryByText(/지점별로 확인합니다/)).toBeNull()
   })
 
-  it('차단 확인은 요청이 관문 반영 뒤 집행 확인으로 바뀐다고 알린다', async () => {
+  it('차단 확인은 적용 대상 두 지점과 지점별 확인을 알린다', async () => {
     stubApi()
     renderRoutes(routes(), PATH)
     const { panel } = await readyPanel()
@@ -892,7 +893,7 @@ describe('IncidentDetailPage · 차단 집행(#47)', () => {
     expect(sentence).toHaveTextContent(/^출발지 4\.4\.66\.84 를 1일 \(24시간\) 동안 차단합니다\./)
     expect(sentence).not.toHaveTextContent('만료되면 저절로 풀립니다')
     // 처리 과정 · 예외는 문장 끝 도움말. 살아 있는 차단이 있으면 만료를 앞당기지 않는다는 예외도 거기 있다
-    expect(form.getByRole('button', { name: '차단 설명' })).toHaveAccessibleDescription('이미 살아 있는 차단이 있으면 만료를 앞당기지 않습니다. 요청은 AWS 관문이 허니팟 유입에 반영하면 차단 목록에 집행 확인으로 바뀝니다.')
+    expect(form.getByRole('button', { name: '차단 설명' })).toHaveAccessibleDescription('이미 살아 있는 차단이 있으면 만료를 앞당기지 않습니다. 적용 대상: AWS 관문 · web-01 앞 내부 방화벽. 실제 적용 결과는 지점별로 확인합니다.')
   })
 
   it('후속 차단은 첫 사건 판정이 위협이 아니면 멈춤 · 판정 전이면 대기로 보인다', async () => {
@@ -999,5 +1000,82 @@ describe('IncidentDetailPage · 비신뢰 문자열(#41)', () => {
     const [, first, second] = within(table).getAllByRole('row')
     expect(within(first).getAllByRole('cell').map((td) => td.textContent)).toEqual(['p', 'c', 'x'])
     expect(within(second).getAllByRole('cell').map((td) => td.textContent)).toEqual(['—', '—', 'y'])
+  })
+})
+
+// ---------------------------------------------------------------- #72 관련 장비
+
+describe('IncidentDetailPage · 관련 장비(#72)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const WEB: IncidentDevice = { id: 'web-01', part: null, label: 'web-01', group: 'protected', logs: ['웹 접근'], basis: 'confirmed' }
+  const SENSOR: IncidentDevice = { id: 'aws-sensor', part: null, label: 'AWS 센서', group: 'sensor', logs: ['세션 기록'], basis: 'rule_scope' }
+  const COWRIE: IncidentDevice = { id: 'aws-sensor', part: 'cowrie', label: 'Cowrie', group: 'sensor', logs: ['SSH 세션'], basis: 'fallback' }
+  const NOTE = '기존 근거(대상 열 · 근거 발생원 · 탐지와 같은 범위의 이벤트)로 조회 때 계산합니다. 로그 삭제나 매핑 기준이 바뀌면 달라질 수 있습니다.'
+
+  /** 머리의 '장비' 항목 값(dt 다음 dd) */
+  async function deviceItem(): Promise<HTMLElement> {
+    const dt = await screen.findByText('장비', { selector: 'dt' })
+    const dd = dt.nextElementSibling as HTMLElement
+    expect(dd.tagName).toBe('DD')
+    return dd
+  }
+
+  it('장비 항목은 배지(보호 대상 먼저)와 근거 글자를 보이고, 계산 방식은 장비 옆 ⓘ 에 둔다', async () => {
+    stubApi({ body: detail({ devices: [SENSOR, WEB], device_state: 'confirmed', device_fallback: [] }) })
+    renderRoutes(routes(), PATH)
+    const dd = await deviceItem()
+    expect([...dd.querySelectorAll('[data-device]')].map((el) => [el.getAttribute('data-device'), el.getAttribute('data-device-basis')])).toEqual([['web-01', 'confirmed'], ['aws-sensor', 'rule_scope']])
+    expect(dd.querySelector('[data-device="web-01"]')).toHaveTextContent('web-01 · 웹 접근')
+    expect(dd.querySelector('[data-device="web-01"]')?.nextElementSibling).toHaveTextContent('확인')
+    expect(dd.querySelector('[data-device="aws-sensor"]')?.nextElementSibling).toHaveTextContent('규칙 범위')
+    const tip = screen.getByRole('button', { name: '장비 설명' })
+    expect(tip.closest('dt')).not.toBeNull()
+    expect(tip).toHaveAccessibleDescription(NOTE)
+    expect(tipPanel(tip)).not.toHaveTextContent('규칙상')
+    // 수집 정보의 발생원(규칙 번호 분류)은 그대로 둔다
+    expect(screen.getByText('발생원 허니팟')).toBeInTheDocument()
+  })
+
+  it('대체 추정만 있으면 배지는 장비 미확인이고, 추정 장비 이름은 ⓘ 문장에만 있다', async () => {
+    stubApi({ body: detail({ rule_id: 'R005', rule_name: '기준선 이탈', devices: [], device_state: 'unconfirmed', device_fallback: [COWRIE] }) })
+    renderRoutes(routes(), PATH)
+    const dd = await deviceItem()
+    const badge = dd.querySelector('[data-device-unknown]') as HTMLElement
+    expect(badge).toHaveTextContent('장비 미확인')
+    expect(badge.parentElement).not.toHaveTextContent('Cowrie')
+    expect(dd.querySelector('[data-device]')).toBeNull()
+    const tip = screen.getByRole('button', { name: '장비 설명' })
+    expect(tip).toHaveAccessibleDescription(`${NOTE} 이벤트로 장비를 고르지 못했습니다. 규칙상 Cowrie 일 수 있으나 확인하지 않았습니다.`)
+  })
+
+  it('규칙 범위 장비가 있으면 대체 추정은 문장으로도 적지 않는다(세션을 고르지 못한 R002)', async () => {
+    stubApi({ body: detail({ rule_id: 'R002', rule_name: '세션', devices: [SENSOR], device_state: 'rule_scope', device_fallback: [COWRIE] }) })
+    renderRoutes(routes(), PATH)
+    const dd = await deviceItem()
+    expect(dd.querySelector('[data-device="aws-sensor"]')).toHaveTextContent('AWS 센서 · 세션 기록')
+    expect(dd.querySelector('[data-device-unknown]')).toBeNull()
+    expect(screen.getByRole('button', { name: '장비 설명' })).toHaveAccessibleDescription(NOTE)
+  })
+
+  it('추정 장비가 등록 노드면 이름(hostname)을 비신뢰 글자로 그린다', async () => {
+    const guessed: IncidentDevice[] = [{ ...WEB, basis: 'fallback' }, { id: 'web-02', part: null, label: MIXED, group: 'protected', logs: ['SSH 인증'], basis: 'fallback' }]
+    stubApi({ body: detail({ rule_id: 'R101', devices: [], device_state: 'unconfirmed', device_fallback: guessed }) })
+    const { container } = renderRoutes(routes(), PATH)
+    await deviceItem()
+    const panel = tipPanel(screen.getByRole('button', { name: '장비 설명' }))
+    expect(panel.textContent).toContain(`규칙상 web-01 · ${revealHidden(MIXED)} 일 수 있으나 확인하지 않았습니다.`)
+    expectInertDom(container)
+    expectMixedRevealed(panel)
+  })
+
+  it('이전 서버(devices 없음)는 장비 항목을 두지 않는다', async () => {
+    stubApi()
+    renderRoutes(routes(), PATH)
+    expect(await screen.findByRole('heading', { level: 1, name: 'R003 악성코드 투하' })).toBeInTheDocument()
+    expect(screen.queryByText('장비', { selector: 'dt' })).toBeNull()
+    expect(screen.queryByRole('button', { name: '장비 설명' })).toBeNull()
   })
 })

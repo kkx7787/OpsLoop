@@ -8,6 +8,7 @@ import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { VerdictBadge } from '../../atoms/VerdictBadge'
 import { CtiBadge } from '../../molecules/CtiBadge'
+import { DeviceBadges } from '../../molecules/DeviceBadges'
 import { IncidentStatusLabel } from './IncidentStatusLabel'
 import { ElapsedTime } from './ElapsedTime'
 import { incidentHref, isPending, sourceOf } from './model'
@@ -20,7 +21,7 @@ export interface IncidentCardProps extends Omit<ComponentProps<'li'>, 'children'
   cti?: CtiBadgeValue
 }
 
-/** 모바일 카드: 경과·심각도·규칙·출발지와 판정·처리 상태. 카드 전체가 링크다. */
+/** 모바일 카드: 경과·심각도·규칙·출발지·관련 장비와 판정·처리 상태. 카드 전체가 링크다. */
 export function IncidentCard({ incident, elapsedSeconds, cti, className, ...rest }: IncidentCardProps) {
   return (
     <li data-incident-key={incident.incident_key} className={cn('list-none', className)} {...rest}>
@@ -55,6 +56,7 @@ export function IncidentCard({ incident, elapsedSeconds, cti, className, ...rest
             대상 <UntrustedText value={incident.target} clip />
           </div>
         )}
+        {incident.devices && <DeviceBadges source={incident} mode="compact" className="flex-wrap" />}
         <div className="flex items-center justify-between gap-2 border-t border-black/5 pt-2 text-xs">
           <IncidentStatusLabel status={incident.status} />
           {incident.verdict ? <VerdictBadge verdict={incident.verdict} /> : <span className="font-medium text-primary">미판정</span>}

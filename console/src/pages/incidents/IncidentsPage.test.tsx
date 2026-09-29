@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { MemoryRouter, type RouteObject } from 'react-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { type Incident, type IncidentPage } from '@/api/incidents'
+import { type DeviceOption, type Incident, type IncidentDevice, type IncidentPage } from '@/api/incidents'
 import { IncidentList } from '@/components/organisms/incidents/IncidentList'
 import { revealHidden } from '@/lib/untrusted'
 import { expectInertDom, expectMixedRevealed, HOSTILE, LONG, MIXED } from '@/test/hostile-fixtures'
@@ -487,5 +487,126 @@ describe('IncidentsPage · 비신뢰 문자열(#41)', () => {
     stubApi(() => json(page(0, [incident(84)], 1)))
     renderRoutes(routes(), `/incidents?rule_id=${encodeURIComponent(HOSTILE.rlo)}`, noRetryClient())
     expect(await screen.findByRole('option', { name: 'admin⟨U+202E⟩gnp.exe' })).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------- #72 관련 장비
+
+describe('IncidentsPage · 관련 장비(#72)', () => {
+  beforeEach(() => {
+    vi.stubGlobal('scrollTo', vi.fn())
+  })
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const WEB: IncidentDevice = { id: 'web-01', part: null, label: 'web-01', group: 'protected', logs: ['웹 접근'], basis: 'confirmed' }
+  const DECOY: IncidentDevice = { id: 'aws-sensor', part: 'decoy', label: '웹 디코이', group: 'sensor', logs: ['웹 요청'], basis: 'confirmed' }
+  const GUESS: IncidentDevice = { id: 'aws-sensor', part: 'cowrie', label: 'Cowrie', group: 'sensor', logs: ['SSH 세션'], basis: 'fallback' }
+  const node = (label: string): IncidentDevice => ({ id: 'web-02', part: null, label, group: 'protected', logs: ['SSH 인증'], basis: 'rule_scope' })
+  const OPTIONS: DeviceOption[] = [
+    { id: 'web-01', label: 'web-01', group: 'protected' },
+    { id: 'web-02', label: 'web02.lab', group: 'protected' },
+    { id: 'aws-sensor', label: 'AWS 센서', group: 'sensor' },
+    { id: 'console', label: '관제 콘솔', group: 'monitor' },
+    { id: 'data-node', label: '데이터 노드', group: 'monitor' },
+  ]
+  /** 여러 장비(서버가 디코이를 먼저 줘도 보호 대상 먼저) · 대체 추정만 있는 R005 · 이전 서버 행 */
+  const ROWS = [
+    incident(84, { rule_id: 'R102', rule_name: '웹 공격', devices: [DECOY, WEB, node('web02.lab')], device_state: 'confirmed', device_fallback: [] }),
+    incident(85, { rule_id: 'R005', rule_name: '기준선 이탈', devices: [], device_state: 'unconfirmed', device_fallback: [GUESS] }),
+    incident(86),
+  ]
+  const rowOf = (root: HTMLElement, n: number) => root.querySelector(`[data-incident-key="R003|v2|4.4.66.${n}|2026-09-18T06:00:00+00:00"]`) as HTMLElement
+  const optionTexts = () => within(screen.getByRole('combobox', { name: '장비' })).getAllByRole('option').map((option) => option.textContent)
+
+  it('대시보드 링크(?judged=false&device=web-01)로 열면 장비 조건을 그대로 보내고 선택지는 목록 응답에서 읽는다', async () => {
+    const fetch = stubApi(() => json({ ...page(0, [ROWS[0]], 1), device_options: OPTIONS }))
+    renderRoutes(routes(), '/incidents?judged=false&device=web-01', noRetryClient())
+    await screen.findByRole('table', { name: '인시던트 목록' })
+    expect(listUrls(fetch)).toEqual(['/api/incidents?judged=false&device=web-01&limit=25&offset=0'])
+    expect(screen.getByRole('combobox', { name: '장비' })).toHaveValue('web-01')
+    await waitFor(() => expect(optionTexts()).toEqual(['전체', 'web-01', 'web02.lab', 'AWS 센서', '관제 콘솔', '데이터 노드', '장비 미확인']))
+    // 장비 선택지를 따로 묻지 않는다(목록 요청과 그 쪽의 CVE 배지 요청뿐)
+    expect(calledUrls(fetch).every((url) => url.startsWith('/api/incidents?') || url.startsWith('/api/cti/badges?'))).toBe(true)
+    expect(screen.getByRole('button', { name: '미판정만' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('장비를 바꾸면 쪽이 빠지고 다시 묻는다. 전체로 돌리면 주소에서도 빠진다', async () => {
+    const fetch = stubApi((url) => json({ ...page(Number(url.searchParams.get('offset')), [ROWS[0]], 60), device_options: OPTIONS }))
+    const { router } = renderRoutes(routes(), '/incidents?device=web-01&page=2', noRetryClient())
+    await screen.findByRole('table')
+    expect(calledUrls(fetch)).toContain('/api/incidents?device=web-01&limit=25&offset=25')
+    fireEvent.change(screen.getByRole('combobox', { name: '장비' }), { target: { value: '_unconfirmed' } })
+    await waitFor(() => expect(router.state.location.search).toBe('?device=_unconfirmed'))
+    await waitFor(() => expect(calledUrls(fetch)).toContain('/api/incidents?device=_unconfirmed&limit=25&offset=0'))
+    fireEvent.change(screen.getByRole('combobox', { name: '장비' }), { target: { value: '' } })
+    await waitFor(() => expect(router.state.location.search).toBe(''))
+  })
+
+  it('주소의 장비가 선택지에 없거나 형식 밖이면: 없는 것은 id 로 보이고 형식 밖은 버린다', async () => {
+    const fetch = stubApi(() => json({ ...page(0, [], 0), device_options: OPTIONS }))
+    const { unmount } = renderRoutes(routes(), '/incidents?device=web-09', noRetryClient())
+    expect(await screen.findByRole('heading', { name: '조건에 맞는 인시던트가 없습니다' })).toBeInTheDocument()
+    expect(screen.getByRole('combobox', { name: '장비' })).toHaveValue('web-09')
+    expect(optionTexts().slice(0, 2)).toEqual(['전체', 'web-09'])
+    unmount()
+    fetch.mockClear()
+    renderRoutes(routes(), '/incidents?device=..%2Fx', noRetryClient())
+    await screen.findByRole('heading', { name: '인시던트가 없습니다' })
+    expect(listUrls(fetch)).toEqual(['/api/incidents?limit=25&offset=0'])
+  })
+
+  it('행은 장비 · 로그 종류를 보호 대상 먼저 두 개와 +n 으로, 대체 추정은 장비 미확인으로만 보인다', async () => {
+    stubApi(() => json({ ...page(0, ROWS, 3), device_options: OPTIONS }))
+    const { container } = renderRoutes(routes(), '/incidents', noRetryClient())
+    await screen.findByRole('table', { name: '인시던트 목록' })
+
+    const mixed = rowOf(container, 84)
+    expect([...mixed.querySelectorAll('[data-device]')].map((el) => el.getAttribute('data-device'))).toEqual(['web-01', 'web-02'])
+    expect(mixed.querySelector('[data-device="web-01"]')).toHaveTextContent('web-01 · 웹 접근')
+    expect(within(mixed).getByText('+1')).toBeInTheDocument()
+    expect(mixed).toHaveTextContent('외 1대')
+    // 장비가 있으면 규칙 번호 분류(발생원)는 보이지 않는다
+    expect(mixed).not.toHaveTextContent('허니팟')
+
+    const guess = rowOf(container, 85)
+    expect(guess.querySelector('[data-device-unknown]')).toHaveTextContent('장비 미확인')
+    expect(guess.querySelector('[data-device-basis="fallback"]')).toBeNull()
+    expect(guess).not.toHaveTextContent('Cowrie')
+    expect(guess.querySelector('[title*="Cowrie"]')).toBeNull()
+
+    // 이전 서버(devices 없음) 행은 지금 표기
+    const legacy = rowOf(container, 86)
+    expect(legacy).toHaveTextContent('허니팟')
+    expect(legacy.querySelector('[data-device], [data-device-unknown]')).toBeNull()
+
+    // 행을 누르면 상세로 가므로 행 안에는 단추가 없다
+    for (const row of [mixed, guess, legacy]) expect(within(row).queryByRole('button')).toBeNull()
+  })
+
+  it('모바일 카드도 같은 장비 줄을 두고 카드 안에 단추가 없다', async () => {
+    vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener: () => {}, removeEventListener: () => {} })))
+    stubApi(() => json({ ...page(0, ROWS, 3), device_options: OPTIONS }))
+    const { container } = renderRoutes(routes(), '/incidents', noRetryClient())
+    const list = await screen.findByRole('list', { name: '인시던트 목록' })
+    const [mixed, guess, legacy] = [84, 85, 86].map((n) => rowOf(container, n))
+    expect(mixed.querySelector('[data-device="web-01"]')).toHaveTextContent('web-01 · 웹 접근')
+    expect(within(mixed).getByText('+1')).toBeInTheDocument()
+    expect(guess.querySelector('[data-device-unknown]')).toHaveTextContent('장비 미확인')
+    expect(guess).not.toHaveTextContent('Cowrie')
+    expect(legacy.querySelector('[data-device], [data-device-unknown]')).toBeNull()
+    expect(within(list).queryByRole('button')).toBeNull()
+  })
+
+  it('등록 노드 이름(hostname)은 비신뢰 글자로만 그리고 말풍선 · 선택지 글자는 표식이다', async () => {
+    const rows = [incident(84, { devices: [node(MIXED)], device_state: 'rule_scope', device_fallback: [] })]
+    stubApi(() => json({ ...page(0, rows, 1), device_options: [{ id: 'web-02', label: MIXED, group: 'protected' }] }))
+    const { container } = renderRoutes(routes(), '/incidents', noRetryClient())
+    const table = await screen.findByRole('table', { name: '인시던트 목록' })
+    expectInertDom(container)
+    expectMixedRevealed(table)
+    expect(rowOf(container, 84).querySelector('[data-device="web-02"]')).toHaveAttribute('title', revealHidden(`${MIXED} · SSH 인증`))
+    await waitFor(() => expect(optionTexts()).toContain(revealHidden(MIXED)))
   })
 })

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { Incident, RuleQuality } from '@/api/incidents'
-import { clearFilters, countFilters, filtersFromSearch, ruleOptionsOf, searchFromFilters } from './filters'
+import type { DeviceOption, Incident, RuleQuality } from '@/api/incidents'
+import { clearFilters, countFilters, deviceOptionsOf, filtersFromSearch, ruleOptionsOf, searchFromFilters } from './filters'
 
 describe('filtersFromSearch', () => {
   it('주소의 조건 칸을 읽는다', () => {
@@ -28,6 +28,15 @@ describe('filtersFromSearch', () => {
       expect(filtersFromSearch(new URLSearchParams({ actor_ip: bad }))).toEqual({})
     }
   })
+
+  it('장비(device)는 장비 id 또는 장비 미확인일 때만 읽고, 틀린 값은 서버에 넘기지 않게 버린다(#72)', () => {
+    expect(filtersFromSearch(new URLSearchParams('device=web-01'))).toEqual({ device: 'web-01' })
+    expect(filtersFromSearch(new URLSearchParams('device=%20aws-sensor%20'))).toEqual({ device: 'aws-sensor' })
+    expect(filtersFromSearch(new URLSearchParams('device=_unconfirmed'))).toEqual({ device: '_unconfirmed' })
+    for (const bad of ['', 'Web-01', '-web', '_x', '../x', 'web_01', 'a'.repeat(64), 'web\u0000', 'web-01;drop']) {
+      expect(filtersFromSearch(new URLSearchParams({ device: bad }))).toEqual({})
+    }
+  })
 })
 
 describe('searchFromFilters', () => {
@@ -44,6 +53,14 @@ describe('searchFromFilters', () => {
     expect(searchFromFilters(filtersFromSearch(new URLSearchParams(search))).toString()).toBe(search)
     const withActor = 'judged=false&actor_ip=2001%3Adb8%3A%3A1&sort=recent'
     expect(searchFromFilters(filtersFromSearch(new URLSearchParams(withActor))).toString()).toBe(withActor)
+    // 대시보드 카드 '미판정 N' 링크
+    const pending = 'judged=false&device=web-01'
+    expect(searchFromFilters(filtersFromSearch(new URLSearchParams(pending))).toString()).toBe(pending)
+    expect(searchFromFilters({ sort: 'recent', device: '_unconfirmed', actor_ip: '203.0.113.5' }).toString()).toBe('actor_ip=203.0.113.5&device=_unconfirmed&sort=recent')
+  })
+
+  it('장비 조건을 빼면 주소에서도 빠진다', () => {
+    expect(searchFromFilters({ judged: false }, new URLSearchParams('device=web-01&judged=false&page=2')).toString()).toBe('page=2&judged=false')
   })
 
   it('출발지 조건을 빼면 주소에서도 빠진다', () => {
@@ -62,6 +79,37 @@ describe('countFilters · clearFilters', () => {
     expect(clearFilters({ status: 'open' })).toEqual({})
     expect(countFilters({ actor_ip: '203.0.113.5' })).toBe(1)
     expect(clearFilters({ actor_ip: '203.0.113.5', sort: 'severity' })).toEqual({ sort: 'severity' })
+    expect(countFilters({ judged: false, device: 'web-01' })).toBe(2)
+    expect(clearFilters({ device: '_unconfirmed', sort: 'recent' })).toEqual({ sort: 'recent' })
+  })
+})
+
+describe('deviceOptionsOf (#72)', () => {
+  const OPTIONS: DeviceOption[] = [
+    { id: 'web-01', label: 'web-01', group: 'protected' },
+    { id: 'web-02', label: 'web02.lab', group: 'protected' },
+    { id: 'aws-sensor', label: 'AWS 센서', group: 'sensor' },
+  ]
+
+  it('서버 선택지(서버 순서) 뒤에 장비 미확인을 둔다', () => {
+    expect(deviceOptionsOf(OPTIONS)).toEqual([
+      { id: 'web-01', label: 'web-01' },
+      { id: 'web-02', label: 'web02.lab' },
+      { id: 'aws-sensor', label: 'AWS 센서' },
+      { id: '_unconfirmed', label: '장비 미확인' },
+    ])
+    expect(deviceOptionsOf(OPTIONS, 'web-02')).toHaveLength(4)
+    expect(deviceOptionsOf(OPTIONS, '_unconfirmed')).toHaveLength(4)
+  })
+
+  it('주소의 장비가 선택지에 없으면(이전 서버 · 폐기된 노드) id 를 이름으로 앞에 붙인다', () => {
+    expect(deviceOptionsOf(undefined, 'web-09')).toEqual([{ id: 'web-09', label: 'web-09' }, { id: '_unconfirmed', label: '장비 미확인' }])
+    expect(deviceOptionsOf(OPTIONS, 'web-09')[0]).toEqual({ id: 'web-09', label: 'web-09' })
+  })
+
+  it('형식 밖 id 는 버리고 이름이 비면 id 를 쓴다', () => {
+    const bad = [{ id: 'Bad Id', label: 'x', group: 'protected' }, { id: 'web-03', label: '', group: 'protected' }, null, { id: '_unconfirmed', label: '가짜', group: 'monitor' }]
+    expect(deviceOptionsOf(bad as never)).toEqual([{ id: 'web-03', label: 'web-03' }, { id: '_unconfirmed', label: '장비 미확인' }])
   })
 })
 

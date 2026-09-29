@@ -7,8 +7,9 @@ import { Button } from '../../atoms/Button'
 import { Chip } from '../../atoms/Chip'
 import { Label } from '../../atoms/Label'
 import { Select } from '../../atoms/Select'
+import { isDeviceId } from '../../molecules/device-format'
 import { SegmentedControl, type SegmentOption } from '../../molecules/SegmentedControl'
-import { clearFilters, countFilters, DEFAULT_SORT, SORT_LABEL, SORTS, type ListFilters, type RuleOption } from './filters'
+import { clearFilters, countFilters, DEFAULT_SORT, SORT_LABEL, SORTS, type DeviceChoice, type ListFilters, type RuleOption } from './filters'
 import { isIncidentStatus } from './model'
 
 export interface IncidentFilterBarProps {
@@ -16,6 +17,8 @@ export interface IncidentFilterBarProps {
   onChange: (next: ListFilters) => void
   /** 규칙 선택지. 주소에 있는 규칙이 여기 없어도 고른 값은 보인다 */
   rules?: readonly RuleOption[]
+  /** 장비 선택지(deviceOptionsOf: 서버 선택지 · 장비 미확인 · 주소의 값) */
+  devices?: readonly DeviceChoice[]
   className?: string
 }
 
@@ -34,10 +37,10 @@ function Field({ id, label, children }: { id: string; label: string; children: R
 }
 
 /**
- * 조건 띠: 상태 · 심각도 · 규칙 · 판정 여부. 값은 부르는 쪽이 주소에 둔다.
+ * 조건 띠: 상태 · 심각도 · 규칙 · 장비 · 판정 여부. 값은 부르는 쪽이 주소에 둔다.
  * 출발지(actor_ip)는 고르는 칸 없이 출발지 분석(S-09)에서 넘어오므로 칩으로만 보이고 × 로 뺀다.
  */
-export function IncidentFilterBar({ value, onChange, rules = [], className }: IncidentFilterBarProps) {
+export function IncidentFilterBar({ value, onChange, rules = [], devices = [], className }: IncidentFilterBarProps) {
   const id = useId()
   const active = countFilters(value)
   const ruleOptions =
@@ -102,6 +105,27 @@ export function IncidentFilterBar({ value, onChange, rules = [], className }: In
             <option key={rule.id} value={rule.id}>
               {/* 규칙 값은 주소(?rule_id=)에서 올 수 있다. <option> 은 글자만 받으므로 문자열로 바꿔 넣는다 */}
               {revealHidden(rule.name ? `${rule.id} ${rule.name}` : rule.id)}
+            </option>
+          ))}
+        </Select>
+      </Field>
+
+      <Field id={`${id}-device`} label="장비">
+        <Select
+          id={`${id}-device`}
+          fieldSize="sm"
+          className="w-auto max-w-[200px]"
+          value={value.device ?? ''}
+          onChange={(event) => {
+            const next = event.target.value
+            patch({ device: isDeviceId(next) ? next : undefined })
+          }}
+        >
+          <option value="">전체</option>
+          {devices.map((device) => (
+            <option key={device.id} value={device.id}>
+              {/* 등록 노드 이름은 hostname(비신뢰)이다. <option> 은 글자만 받으므로 문자열로 바꿔 넣는다 */}
+              {revealHidden(device.label)}
             </option>
           ))}
         </Select>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { TargetResponse } from '@/api/targets'
-import { awsSensor, consoleTarget, dataNode, minutesAgo, nodeTarget, web01 } from '@/test/targets-fixtures'
-import { collectionState, formatPct, latestLog, orderTargets, responseParts, systemText, vulnText } from './target-format'
+import { awsSensor, consoleTarget, dataNode, dataNodeStopped, minutesAgo, nodeTarget, web01 } from '@/test/targets-fixtures'
+import { collectionState, formatPct, groupTargets, headBadge, latestLog, orderTargets, pendingHref, responseParts, summaryFlags, systemText, vulnText } from './target-format'
 
 const response = (extra: Partial<TargetResponse>): TargetResponse => ({ point: 'gateway', point_label: 'AWS 관문', applied: 0, unverified: 0, exempt: 0, report: null, ...extra })
 const texts = (r: TargetResponse) => responseParts(r).map((p) => p.text)
@@ -98,6 +98,70 @@ describe('수집 · 시스템 · 취약점 표기', () => {
     expect(vulnText({ ...base, collected_at: null, checked_at: null, stale: true })).toBe('조사 기록 없음')
     expect(vulnText({ ...base, checked_at: null })).toBe('취약점 대조 전')
     expect(vulnText({ ...base, vuln_total: 1234, vuln_kev: 5 })).toBe('취약점 1,234 · KEV 5')
+  })
+
+  it('수정 상태별 수(#72)가 모두 오면 수정판 있음 · 재부팅 대기 · 수정 여부 미확인 · KEV(0 도 적는다), 총수는 쓰지 않는다', () => {
+    const base = { asset_id: 'x', vuln_total: 14, vuln_kev: 1, collected_at: minutesAgo(10), checked_at: minutesAgo(5), stale: false, missing: false }
+    expect(vulnText({ ...base, vuln_fix_available: 6, vuln_reboot_pending: 1, vuln_fix_unknown: 3 })).toBe('수정판 있음 6 · 재부팅 대기 1 · 수정 여부 미확인 3 · KEV 1')
+    expect(vulnText({ ...base, vuln_kev: 0, vuln_fix_available: 0, vuln_reboot_pending: 0, vuln_fix_unknown: 1200 })).toBe('수정판 있음 0 · 재부팅 대기 0 · 수정 여부 미확인 1,200 · KEV 0')
+    // 셋 가운데 하나라도 없으면(이전 서버) 옛 표기
+    expect(vulnText({ ...base, vuln_fix_available: 6, vuln_reboot_pending: 1 })).toBe('취약점 14 · KEV 1')
+    expect(vulnText({ ...base, vuln_fix_available: 6, vuln_reboot_pending: 1, vuln_fix_unknown: null as never })).toBe('취약점 14 · KEV 1')
+    // 없음 · 조사 전 · 대조 전은 새 칸이 있어도 그 글이 앞선다
+    expect(vulnText({ ...base, missing: true, vuln_fix_available: 0, vuln_reboot_pending: 0, vuln_fix_unknown: 0 })).toBe('자산 정보 없음')
+    expect(vulnText({ ...base, checked_at: null, vuln_fix_available: 0, vuln_reboot_pending: 0, vuln_fix_unknown: 0 })).toBe('취약점 대조 전')
+  })
+})
+
+describe('무리 · 머리 배지 · 경고 배지 · 미판정 주소(#72)', () => {
+  const ids = (targets: { id: string }[]) => targets.map((t) => t.id)
+
+  it('보호 대상(web-01 · 등록 노드) · 관측 센서 · 관제 시스템으로 나누고 각 무리 안은 서버 순서다', () => {
+    const groups = groupTargets([awsSensor(), web01(), consoleTarget(), dataNode(), nodeTarget('web-03'), nodeTarget('web-02')])
+    expect(ids(groups.protected)).toEqual(['web-01', 'web-03', 'web-02'])
+    expect(ids(groups.sensors)).toEqual(['aws-sensor'])
+    expect(ids(groups.system)).toEqual(['console', 'data-node'])
+    expect(groupTargets([])).toEqual({ protected: [], sensors: [], system: [] })
+  })
+
+  it('kind 가 없는 응답은 고정 네 id 인지로 가르고, 고정 id 와 같은 등록 노드는 보호 대상이다', () => {
+    const groups = groupTargets([nodeTarget('web-05', { kind: undefined }), consoleTarget({ kind: undefined }), nodeTarget('console'), awsSensor({ kind: undefined })])
+    expect(ids(groups.protected)).toEqual(['web-05', 'console'])
+    expect(groups.protected[1].kind).toBe('node')
+    expect(ids(groups.sensors)).toEqual(['aws-sensor'])
+    expect(ids(groups.system)).toEqual(['console'])
+  })
+
+  it('머리 배지: 데이터 노드가 정상이어도 확인이 멈췄으면 주의, 아니면 수집 상태 그대로', () => {
+    expect(headBadge(dataNodeStopped())).toEqual({ label: '주의', tone: 'warning' })
+    expect(headBadge(dataNodeStopped(['enforcer']))).toEqual({ label: '주의', tone: 'warning' })
+    expect(headBadge(dataNodeStopped([]))).toEqual({ label: '정상', tone: 'success' })
+    // 서버가 이미 수신 없음이면 그대로(멈춤은 경고 배지가 말한다)
+    expect(headBadge(dataNode({ collection: { ...dataNode().collection, stopped: ['loader'] } }))).toEqual({ label: '수신 없음', tone: 'warning' })
+    expect(headBadge(awsSensor())).toEqual({ label: '정상', tone: 'success' })
+    expect(headBadge(consoleTarget())).toEqual({ label: '생존 상태 미확인', tone: 'neutral' })
+    expect(headBadge({ collection: { state: 'down' as never } })).toEqual({ label: '생존 상태 미확인', tone: 'neutral' })
+  })
+
+  it('경고 배지: 적용 실패 n(빨강) · 집행기 멈춤 · 적재기 멈춤, 0 과 해당 없음은 만들지 않고 집행기 멈춤은 한 번만', () => {
+    const flags = (t: Parameters<typeof summaryFlags>[0]) => summaryFlags(t).map((f) => [f.key, f.text, f.tone])
+    expect(flags(awsSensor())).toEqual([])
+    expect(flags(awsSensor({ response: { ...awsSensor().response, failed: 0, stalled: null } }))).toEqual([])
+    expect(flags(web01({ response: { ...web01().response, failed: 1234, stalled: '집행기 확인 기록 없음' } }))).toEqual([
+      ['failed', '적용 실패 1,234', 'danger'], ['enforcer', '집행기 멈춤', 'warning']])
+    expect(flags(dataNodeStopped())).toEqual([['loader', '적재기 멈춤', 'warning'], ['enforcer', '집행기 멈춤', 'warning']])
+    expect(flags({ response: { stalled: '멈춤' }, collection: { stopped: ['enforcer', 'loader', 'enforcer'] } })).toEqual([
+      ['enforcer', '집행기 멈춤', 'warning'], ['loader', '적재기 멈춤', 'warning']])
+    // 모르는 값 · 목록이 아닌 값은 무시한다
+    expect(flags({ response: {}, collection: { stopped: ['other' as never] } })).toEqual([])
+    expect(flags({ response: {}, collection: { stopped: 'loader' as never } })).toEqual([])
+  })
+
+  it('미판정 주소는 판정 전 · 장비 조건만(기간 없음)이고 값을 인코딩한다', () => {
+    expect(pendingHref('web-01')).toBe('/incidents?judged=false&device=web-01')
+    expect(pendingHref('_unconfirmed')).toBe('/incidents?judged=false&device=_unconfirmed')
+    expect(pendingHref('a&b=c d')).toBe('/incidents?judged=false&device=a%26b%3Dc+d')
+    expect(pendingHref('web-01')).not.toMatch(/since|until/)
   })
 })
 

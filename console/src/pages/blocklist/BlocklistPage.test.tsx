@@ -2,8 +2,10 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { BlocklistPage } from './BlocklistPage'
 import { applyLiveMessage } from '@/api/live'
+import { monitoringKeys } from '@/api/monitoring-keys'
+import type { ControlHealth, MonitorItem } from '@/api/health'
 import { noRetryClient, renderRoutes } from '@/test/render'
-import { blockEntry, json } from '@/test/monitoring-fixtures'
+import { AS_OF, blockEntry, json } from '@/test/monitoring-fixtures'
 import { expectInertDom, expectLongFolds, expectMixedRevealed, HOSTILE, LONG, MIXED } from '@/test/hostile-fixtures'
 
 afterEach(() => vi.unstubAllGlobals())
@@ -44,8 +46,13 @@ describe('차단 목록', () => {
     const { container } = renderRoutes([{ path: '/blocklist', element: <BlocklistPage /> }], '/blocklist', noRetryClient())
     expect(await screen.findByText('203.0.113.10')).toBeInTheDocument()
     // 집행 수를 막은 수로 잘못 읽지 않게 하는 한 줄은 본문에, 용어 · 집행 범위는 ⓘ 에
-    expect(screen.getByText(/^집행 수는 AWS 관문 기준이며 내부 방화벽 결과는 행마다 봅니다/).closest('[data-infotip]')).toBeNull()
+    expect(screen.getByText(/^AWS 관문은 집행 상태별로, 내부 방화벽은 실패 · 미확인만 셉니다/).closest('[data-infotip]')).toBeNull()
     expect(screen.getByRole('button', { name: '집행 범위 설명' })).toHaveAccessibleDescription(/AWS 관문은 허니팟 유입\(22 · 23 · 8080\)을, 내부 방화벽은 web-01 접근을 막습니다/)
+    expect(screen.getByRole('button', { name: '집행 범위 설명' })).toHaveAccessibleDescription(/미확인은 대기 · 확인 지연 · 기록 없음입니다\.$/)
+    // 내부 방화벽 칸(#72): 실패 1(203.0.113.10) · 미확인 1(203.0.113.11 기록 없음). 해제된 행은 세지 않는다
+    const count = (label: string) => screen.getByText(label, { selector: 'div' }).nextElementSibling as HTMLElement
+    expect([count('내부 방화벽 실패').textContent, count('내부 방화벽 미확인').textContent]).toEqual(['1건', '1건'])
+    expect(count('내부 방화벽 실패')).toHaveClass('text-warning')
     const points = (ip: string) => [...screen.getByText(ip).closest('li')!.querySelectorAll('[data-enforce-point]')]
       .map(el => [el.getAttribute('data-enforce-point'), el.getAttribute('data-point-state')])
     expect(points('203.0.113.10')).toEqual([['gateway', 'confirmed'], ['fw', 'failed']])
@@ -170,6 +177,8 @@ describe('차단 목록', () => {
     expect(await screen.findByText('198.51.100.1')).toBeInTheDocument()
     const count = (label: string) => screen.getByText(label, { selector: 'div' }).nextElementSibling?.textContent
     expect([count('활성 요청'), count('AWS 집행 확인'), count('AWS 집행 대기'), count('관문 불일치'), count('집행 제외')]).toEqual(['5건', '1건', '1건', '1건', '2건'])
+    // 지점 기록이 없는 집행 대상 행(확인 · 대기 · 불일치)은 내부 방화벽 미확인이다. 제외 · 해제 · 만료는 세지 않는다
+    expect([count('내부 방화벽 실패'), count('내부 방화벽 미확인')]).toEqual(['0건', '3건'])
     const states = [...container.querySelectorAll('[data-block-state]')].map(el => el.getAttribute('data-block-state'))
     expect(states.sort()).toEqual(['enforced', 'excluded', 'excluded', 'mismatch', 'pending'])
     const cell = (ip: string) => screen.getByText(ip).closest('li')!.querySelector('[data-block-state]')!.textContent!.replace('집행 상세', '')
@@ -183,6 +192,46 @@ describe('차단 목록', () => {
     expect(cell('198.51.100.7')).toBe('해제됨사람이 풂 · 관문에서 빠졌는지 확인 전 · nft관문 반영 · abcd1234 · 2026-09-23T06:00:00Z')
     fireEvent.click(screen.getByRole('button', { name: '만료 1' }))
     expect(cell('198.51.100.6')).toBe('만료됨만료가 지남 · 관문 목록에서 빠짐')
+  })
+
+  it('관제 상태 캐시에 내부 방화벽 집행기 멈춤이 있으면 두 칸 뒤에 집행기 멈춤을 붙이고 수는 그대로 둔다(#72)', async () => {
+    const rows = [
+      blockEntry({ actor_ip: '203.0.113.30', enforcement: { fw: { state: 'confirmed', since: AS_OF, mode: 'nft', note: null } } }),
+      blockEntry({ actor_ip: '203.0.113.31', enforcement: { fw: { state: 'failed', since: AS_OF, mode: 'nft', note: null } } }),
+    ]
+    const item = (key: string): MonitorItem => ({ key, level: 'alert', label: key, reason: '집행기 확인 중단 · 마지막 확인 12분 전', at: null, count: null })
+    const health = (items: MonitorItem[]): ControlHealth => ({ as_of: AS_OF, items, detect_paths: [] })
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+      const url = String(input)
+      if (url === '/api/me') return json({ username: 'tester', role: 'viewer' })
+      if (url.startsWith('/api/blocklist')) return json(rows)
+      return json({}, 404)
+    })
+    vi.stubGlobal('fetch', fetch)
+    const count = (label: string) => screen.getByText(label, { selector: 'div' }).nextElementSibling as HTMLElement
+
+    // 관문 집행기만 멈추면 붙이지 않는다
+    const client = noRetryClient()
+    client.setQueryData(monitoringKeys.health, health([item('enforcer:gateway')]))
+    const view = renderRoutes([{ path: '/blocklist', element: <BlocklistPage /> }], '/blocklist', client)
+    expect(await screen.findByText('203.0.113.30')).toBeInTheDocument()
+    expect(count('내부 방화벽 실패').textContent).toBe('1건')
+
+    // 틀이 받아 둔 캐시가 바뀌면 따라간다
+    act(() => client.setQueryData(monitoringKeys.health, health([item('enforcer:gateway'), item('enforcer:fw')])))
+    await waitFor(() => expect(count('내부 방화벽 실패').textContent).toBe('1건 · 집행기 멈춤'))
+    expect(count('내부 방화벽 미확인').textContent).toBe('0건 · 집행기 멈춤')
+    expect(within(count('내부 방화벽 미확인')).getByText('· 집행기 멈춤')).toHaveClass('text-warning')
+    expect(count('관문 불일치').textContent).toBe('0건')
+    // 관제 상태를 따로 묻지 않는다(캐시만 읽는다)
+    expect(fetch.mock.calls.some(([url]) => String(url).startsWith('/api/dashboard/monitor'))).toBe(false)
+    view.unmount()
+
+    // 캐시가 없으면(받기 전) 붙이지 않는다
+    renderRoutes([{ path: '/blocklist', element: <BlocklistPage /> }], '/blocklist', noRetryClient())
+    expect(await screen.findByText('203.0.113.30')).toBeInTheDocument()
+    expect(count('내부 방화벽 실패').textContent).toBe('1건')
+    expect(fetch.mock.calls.some(([url]) => String(url).startsWith('/api/dashboard/monitor'))).toBe(false)
   })
 
   it('차단 통보를 받으면 목록을 재조회한다', async () => {

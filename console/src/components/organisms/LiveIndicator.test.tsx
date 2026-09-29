@@ -13,9 +13,22 @@ describe('LiveIndicator', () => {
     const { container } = render(<LiveIndicator live={{ status: 'connected', retries: 0 }} />)
     const root = container.firstElementChild as HTMLElement
     expect(root).toHaveAttribute('data-live', 'connected')
-    expect(root).toHaveAttribute('title', '실시간 수신 중')
-    expect(root).toHaveTextContent('실시간 수신 중')
+    expect(root).toHaveAttribute('title', '실시간 통보 연결')
+    expect(root).toHaveTextContent('실시간 통보 연결')
     expect(consoleTag(root)).toBeNull()
+  })
+
+  it('이어져 있음은 웹소켓 연결만 뜻하므로 점은 정상 색이 아닌 idle 이다. 끊김 · 로그인 필요는 그대로 눈에 띈다', () => {
+    const signal = (status: 'connecting' | 'connected' | 'reconnecting' | 'closed') => {
+      const { container, unmount } = render(<LiveIndicator live={{ status, retries: 0 }} />)
+      const value = container.querySelector('[data-signal]')?.getAttribute('data-signal')
+      unmount()
+      return value
+    }
+    expect(signal('connecting')).toBe('idle')
+    expect(signal('connected')).toBe('idle')
+    expect(signal('reconnecting')).toBe('warn')
+    expect(signal('closed')).toBe('bad')
   })
 
   it('opsloop-console-a · b 는 콘솔 A · B 로 보인다', () => {
@@ -25,12 +38,12 @@ describe('LiveIndicator', () => {
     expect(consoleTag(root())).toHaveAttribute('data-console', '콘솔 A')
     expect(consoleTag(root())).not.toHaveAttribute('data-stale')
     expect(consoleTag(root())).not.toHaveClass('opacity-45')
-    expect(root()).toHaveAttribute('title', '실시간 수신 중 · 콘솔 A')
+    expect(root()).toHaveAttribute('title', '실시간 통보 연결 · 콘솔 A')
     expect(root().textContent).not.toContain('opsloop-console-a')
 
     rerender(<LiveIndicator live={{ status: 'connected', retries: 0, console: 'opsloop-console-b' }} />)
     expect(consoleTag(root())).toHaveTextContent('콘솔 B')
-    expect(root()).toHaveAttribute('title', '실시간 수신 중 · 콘솔 B')
+    expect(root()).toHaveAttribute('title', '실시간 통보 연결 · 콘솔 B')
   })
 
   it('끊기면 마지막 콘솔을 흐리게 남기고 낭독에는 마지막 연결이라 알린다', () => {
@@ -51,7 +64,7 @@ describe('LiveIndicator', () => {
     const root = container.firstElementChild as HTMLElement
     expect(consoleTag(root)).toHaveAttribute('data-console', '')
     expect(consoleTag(root)?.querySelector('[data-untrusted]')).toHaveTextContent('3f2a9c1b7d4e')
-    expect(root).toHaveAttribute('title', '실시간 수신 중 · 3f2a9c1b7d4e')
+    expect(root).toHaveAttribute('title', '실시간 통보 연결 · 3f2a9c1b7d4e')
   })
 
   it('악성 이름도 글자로만 그리고 숨은 문자는 표식으로, 긴 값은 64자에서 자른다', () => {

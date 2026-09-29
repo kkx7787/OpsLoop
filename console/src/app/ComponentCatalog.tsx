@@ -20,6 +20,7 @@ import {
   Kbd,
   LoadingState,
   NotFoundState,
+  OpsSummary,
   PageHeader,
   SegmentedControl,
   Select,
@@ -32,6 +33,7 @@ import {
   Time,
   UntrustedText,
   VerdictBadge,
+  type OpsView,
 } from '@/components'
 import { SEVERITIES, VERDICTS } from '@/lib/domain'
 
@@ -54,6 +56,22 @@ function Row({ children }: { children: ReactNode }) {
 }
 
 const NOW = Date.parse('2026-09-18T06:20:04Z')
+
+/** 관제 이상 요약(사이드바 · 상단바)의 다섯 상태: 조회 전 · 확인 불가 · 이상 · 일부 미확인 · 이상 없음 */
+const OPS_VIEWS: OpsView[] = [
+  { state: 'pending' },
+  { state: 'error' },
+  {
+    state: 'ok',
+    alerts: [
+      { key: 'loader', level: 'alert', label: '적재기', reason: '적재기 확인 중단 · 마지막 45분 전', at: null, count: null },
+      { key: 'gateway_mismatch', level: 'alert', label: '관문 불일치', reason: null, at: null, count: 1 },
+    ],
+    unknowns: [],
+  },
+  { state: 'ok', alerts: [], unknowns: [{ key: 'nodes', level: 'unknown', label: '노드 수신', reason: '노드 표를 읽을 수 없음', at: null, count: null }] },
+  { state: 'ok', alerts: [], unknowns: [] },
+]
 
 export function ComponentCatalog() {
   const [view, setView] = useState<'all' | 'origin' | 'segment' | 'rule'>('all')
@@ -137,14 +155,21 @@ export function ComponentCatalog() {
           <Badge tone="success">정상</Badge>
           <Badge tone="violet">자기 탐지</Badge>
           <span className="inline-flex items-center gap-2 text-xs text-ink-muted">
-            <StatusDot signal="ok" />
-            센서 3/3 수신 중
-          </span>
-          <span className="inline-flex items-center gap-2 text-xs text-ink-muted">
             <StatusDot signal="bad" />
             데이터 연결 끊김
           </span>
           <Kbd>/</Kbd>
+        </Row>
+        {/* 관제 이상 요약(#72): 사이드바 글 · 모바일 상단바 짧은 글. 누르면 대시보드로 간다 */}
+        <Row>
+          {OPS_VIEWS.map((view, i) => (
+            <OpsSummary key={`full-${i}`} view={view} />
+          ))}
+        </Row>
+        <Row>
+          {OPS_VIEWS.map((view, i) => (
+            <OpsSummary key={`compact-${i}`} view={view} compact />
+          ))}
         </Row>
         {/* CVE 배지(#52): 정보 색 · 둥근 테두리. 판정값 · 심각도 배지와 섞이지 않는다 */}
         <Row>

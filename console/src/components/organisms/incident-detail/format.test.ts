@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ActorBlock, BehaviorRow, RawLine } from '@/api/incidents'
-import { BLOCK_STATE_LABEL, BLOCK_STATE_TONE, blockState, blockStateHint, decisionSeconds, enforcementPoints, formatRawLine, formatValue, isActiveBlock, mergeHistory, sampleColumns, summarizeBehavior } from './format'
+import { BLOCK_STATE_LABEL, BLOCK_STATE_TONE, blockState, blockStateHint, decisionSeconds, enforcementPoints, formatRawLine, formatValue, isActiveBlock, mergeHistory, pointCounts, sampleColumns, summarizeBehavior } from './format'
 
 function row(extra: Partial<BehaviorRow> = {}): BehaviorRow {
   return { ts: '2026-09-18T06:00:30+00:00', sensor: 'hp-01', eventid: 'x', session: null, username: null, input: null, url: null, shasum: null, http_method: null, http_status: null, ...extra }
@@ -129,6 +129,31 @@ describe('enforcementPoints (이슈 #51)', () => {
     const bad = { enforcement: { gateway: { state: 'hacked' }, fw: { state: 'pending', since: 7, mode: ['nft'], note: {} }, other: { state: 'confirmed' } } }
     expect(enforcementPoints(bad as never)).toEqual([{ key: 'fw', label: '내부 방화벽', point: { state: 'pending', since: null, mode: null, note: null } }])
     expect(enforcementPoints({ enforcement: [] as never })).toEqual([])
+  })
+})
+
+describe('pointCounts (#72)', () => {
+  const now = Date.parse('2026-09-18T08:00:00+00:00')
+  const point = (state: string) => ({ state, since: null, mode: null, note: null }) as never
+
+  it('집행 확인 · 대기 · 관문 불일치 행만 지점 결과로 적용 · 실패 · 미확인을 센다(서버 BLOCKS_SQL 과 같은 정의)', () => {
+    const rows = [
+      block({ enforcement: { gateway: point('confirmed'), fw: point('failed') } }),
+      block({ enforced_at: null, enforcement: { gateway: point('pending'), fw: point('confirmed') } }),
+      block({ enforce_note: '관문 불일치 · x', enforcement: { fw: point('stale') } }),
+      // 기록 없음 · 모르는 값 · 모양이 틀린 값은 미확인
+      block({ enforcement: null }),
+      block({ enforcement: { fw: point('hacked') } }),
+      block({ enforcement: [] as never }),
+      // 해제 · 만료 · 만료 없음 · 집행 제외는 세지 않는다
+      block({ released_at: '2026-09-18T07:30:00+00:00', enforcement: { fw: point('confirmed') } }),
+      block({ expires_at: '2026-09-18T07:59:00+00:00', enforcement: { fw: point('failed') } }),
+      block({ expires_at: null, enforcement: { fw: point('failed') } }),
+      block({ enforce_note: '집행 제외 · 금지 대역', enforcement: { fw: point('confirmed') } }),
+    ]
+    expect(pointCounts(rows, now, 'fw')).toEqual({ applied: 1, failed: 1, unverified: 4 })
+    expect(pointCounts(rows, now, 'gateway')).toEqual({ applied: 1, failed: 0, unverified: 5 })
+    expect(pointCounts([], now, 'fw')).toEqual({ applied: 0, failed: 0, unverified: 0 })
   })
 })
 

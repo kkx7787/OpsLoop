@@ -3,15 +3,19 @@ import { useRef, useState, type ReactNode } from 'react'
 import { Outlet, useLocation, useMatches } from 'react-router'
 import { loginHref } from '@/api/client'
 import { isApiError } from '@/api/errors'
+import { controlHealthView, useControlHealth } from '@/api/health'
 import { useLiveUpdates } from '@/api/live'
 import { LiveContext } from '@/api/live-context'
+import { useNewIncidentToasts } from '@/api/new-incidents'
 import { parseMe, useMe } from '@/auth/useMe'
+import { useTabBadge } from '@/lib/useTabBadge'
 import { Button } from '../atoms/Button'
 import { buttonClasses } from '../atoms/button-styles'
 import { LiveIndicator } from '../organisms/LiveIndicator'
 import { MobileNav } from '../organisms/MobileNav'
 import type { NavGroup } from '../organisms/nav/nav-items'
-import { SensorSummary, type SensorSummaryProps } from '../organisms/nav/SensorSummary'
+import { OpsSummary } from '../organisms/nav/OpsSummary'
+import { NewIncidentToasts } from '../organisms/NewIncidentToasts'
 import { SideNav } from '../organisms/SideNav'
 import { ErrorState } from '../organisms/states/ErrorState'
 import { LoadingState } from '../organisms/states/LoadingState'
@@ -23,8 +27,6 @@ export interface AppLayoutProps {
   groups: readonly NavGroup[]
   /** 본문. 없으면 라우터의 <Outlet /> */
   children?: ReactNode
-  /** 센서 수신 요약 값. 실시간 갱신(3.6.5)이 넣는다. */
-  sensor?: Pick<SensorSummaryProps, 'received' | 'total'>
 }
 
 /**
@@ -33,11 +35,19 @@ export interface AppLayoutProps {
  * 이동이 막힌 경우 본문에 세션 만료 화면이 남는다. 받는 동안 관리 묶음은 막아 둔다.
  * 실시간 통보(WS /ws)는 여기서 한 번 잇고, 연결 상태와 붙은 콘솔은 상단바의 점(LiveIndicator)으로 보인다.
  * 세션이 끝나 웹소켓이 1008 로 닫히면 /api/me 를 다시 물어 401 → 로그인으로 간다.
+ * 로그인을 확인한 뒤에만 관제 이상(GET /api/dashboard/monitor)을 받아 사이드바 · 상단바 · 서랍에 같은 요약을 보인다(대시보드 띠와 같은 판정).
+ * 새 사건 통보는 보호 대상 장비가 확인된 사건만 본문 오른쪽 아래 알림으로 띄우고, 탭이 숨은 동안 띄운 수를 탭 제목 앞에 붙인다.
  * 인쇄(보고서 #58)에는 틀(건너뛰기 링크 · 사이드바 · 상단바)을 빼고 본문만 여백 없이 찍는다(print:hidden · print:p-0).
  */
-export function AppLayout({ groups, children, sensor }: AppLayoutProps) {
+export function AppLayout({ groups, children }: AppLayoutProps) {
   const me = useMe()
-  const live = useLiveUpdates()
+  // 비어 있거나 모양이 틀리면 로그인 안 된 것으로 본다. console(#43)은 선택이라 없거나 틀려도 견딘다
+  const user = parseMe(me.data)
+  const health = useControlHealth(user !== null)
+  const ops = controlHealthView(health)
+  const addUnseen = useTabBadge()
+  const toasts = useNewIncidentToasts(user !== null, { onShown: addUnseen })
+  const live = useLiveUpdates({ onMessage: toasts.onLiveMessage })
   const location = useLocation()
   const matches = useMatches()
   const queryClient = useQueryClient()
@@ -48,8 +58,6 @@ export function AppLayout({ groups, children, sensor }: AppLayoutProps) {
   const menuButtonRef = useRef<HTMLButtonElement>(null)
 
   const menuOpen = menuOpenKey === location.key
-  // 비어 있거나 모양이 틀리면 로그인 안 된 것으로 본다. console(#43)은 선택이라 없거나 틀려도 견딘다
-  const user = parseMe(me.data)
   const crumbs = breadcrumbsFor(groups, location.pathname, matches)
 
   function closeMenu() {
@@ -98,7 +106,7 @@ export function AppLayout({ groups, children, sensor }: AppLayoutProps) {
         groups={groups}
         userRole={user?.role}
         user={user}
-        sensor={<SensorSummary {...sensor} />}
+        ops={<OpsSummary view={ops} />}
         className="sticky top-0 hidden h-screen overflow-y-auto md:flex print:hidden"
       />
       <div className="flex min-w-0 flex-1 flex-col">
@@ -110,12 +118,14 @@ export function AppLayout({ groups, children, sensor }: AppLayoutProps) {
           onOpenMenu={() => setMenuOpenKey(location.key)}
           menuOpen={menuOpen}
           menuButtonRef={menuButtonRef}
-          sensor={<SensorSummary {...sensor} compact />}
+          ops={<OpsSummary view={ops} compact />}
           live={<LiveIndicator live={live} />}
         />
-        <main id="main" className="flex flex-1 flex-col gap-3 p-4 md:px-6 md:py-4 print:p-0">
+        {/* tabIndex -1: 건너뛰기 링크 · 마지막 알림을 키보드로 닫을 때 초점을 받는다 */}
+        <main id="main" tabIndex={-1} className="flex flex-1 flex-col gap-3 p-4 outline-none md:px-6 md:py-4 print:p-0">
           <LiveContext.Provider value={live}>{body}</LiveContext.Provider>
         </main>
+        <NewIncidentToasts toasts={toasts.toasts} onDismiss={toasts.dismiss} />
       </div>
       <MobileNav
         open={menuOpen}
@@ -123,7 +133,7 @@ export function AppLayout({ groups, children, sensor }: AppLayoutProps) {
         groups={groups}
         userRole={user?.role}
         user={user}
-        sensor={<SensorSummary {...sensor} />}
+        ops={<OpsSummary view={ops} onClick={closeMenu} />}
       />
     </div>
   )

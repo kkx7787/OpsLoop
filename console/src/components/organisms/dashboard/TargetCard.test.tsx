@@ -6,7 +6,7 @@ import { LiveContext } from '@/api/live-context'
 import type { Target } from '@/api/targets'
 import { expectInertDom, expectMixedRevealed, HOSTILE, MIXED } from '@/test/hostile-fixtures'
 import { hasHidden, revealHidden } from '@/lib/untrusted'
-import { awsSensor, consoleTarget, dataNode, LATEST_KEY, minutesAgo, nodeTarget, TARGETS_AS_OF, web01 } from '@/test/targets-fixtures'
+import { awsSensor, consoleTarget, dataNode, dataNodeStopped, LATEST_KEY, minutesAgo, nodeTarget, TARGETS_AS_OF, web01 } from '@/test/targets-fixtures'
 import { LABEL_MAX } from './target-format'
 import { TargetCard } from './TargetCard'
 
@@ -176,6 +176,45 @@ describe('TargetCard(#52)', () => {
     expect(within(row('보안')).getByTitle('Cowrie 미판정 10 · 웹 디코이 미판정 2 · AWS 관문 미판정 0')).toBeInTheDocument()
   })
 
+  it('미판정 N 은 그 장비의 미판정 목록(판정 전 · 장비 조건, 기간 없음)으로 잇고 글자는 그대로다(#72)', () => {
+    const { row } = renderCard(awsSensor())
+    const link = within(row('보안')).getByRole('link', { name: '미판정 12' })
+    expect(link).toHaveAttribute('href', '/incidents?judged=false&device=aws-sensor')
+    expect(row('보안').firstElementChild).toHaveTextContent(/^최근 1시간 신규 4 · 높음 이상 1 · 미판정 12$/)
+  })
+
+  it('미판정 0 은 링크 없이 글만(Q18), 등록 노드는 자기 id 로 잇는다', () => {
+    const web = renderCard(web01())
+    expect(within(web.row('보안')).queryByRole('link')).toBeNull()
+    expect(web.row('보안')).toHaveTextContent('최근 1시간 신규 0 · 높음 이상 0 · 미판정 0')
+    web.unmount()
+    const node = renderCard(nodeTarget('web-02'))
+    expect(within(node.row('보안')).getByRole('link', { name: '미판정 3' })).toHaveAttribute('href', '/incidents?judged=false&device=web-02')
+  })
+
+  it('데이터 노드 확인이 멈추면 머리 배지는 주의(주의색)이고 data-collection 은 서버 값(ok) 그대로다(#72)', () => {
+    const { card } = renderCard(dataNodeStopped())
+    const badge = card.querySelector('[data-collection-badge]')
+    expect(badge).toHaveTextContent('주의')
+    expect(badge).toHaveClass('bg-warning-soft')
+    expect(card).toHaveAttribute('data-collection', 'ok')
+    expect(within(card).queryByText('정상')).toBeNull()
+  })
+
+  it('넓은 카드(컨테이너 56rem 이상)는 두 단(수집 · 보안 · 최근 사건 | 시스템 · 대응 · 취약점)이고 인쇄는 한 단이다', () => {
+    const { card, row } = renderCard(web01())
+    expect(card).toHaveClass('@container', 'print:[container-type:normal]')
+    const dl = card.querySelector('dl') as HTMLElement
+    expect(dl).toHaveClass('flex', 'flex-col', '@4xl:grid', '@4xl:grid-flow-col', '@4xl:grid-cols-2', '@4xl:grid-rows-[repeat(3,auto)]')
+    const cells = ['수집', '보안', '최근 사건', '시스템', '대응', '취약점'].map((title) => row(title).parentElement as HTMLElement)
+    expect(cells.every((cell) => cell.parentElement === dl)).toBe(true)
+    // 둘째 단 첫 칸(시스템)은 위 선 대신 왼쪽 선이다
+    expect(cells[0]).not.toHaveClass('border-t')
+    expect(cells[3]).toHaveClass('border-t', '@4xl:border-t-0', '@4xl:border-l')
+    expect(cells[5]).toHaveClass('@4xl:border-l')
+    expect(cells[2]).not.toHaveClass('@4xl:border-l')
+  })
+
   it('최근 사건 한 줄은 상세로 잇고 심각도 · 규칙 · 출발지 · 시각 · CVE 배지를 보인다', () => {
     const { row } = renderCard(awsSensor(), { cti: { cves: 3, kev: 1, applicability: 'unknown', stale: false } })
     const link = within(row('최근 사건')).getByRole('link')
@@ -258,7 +297,7 @@ describe('TargetCard(#52)', () => {
     const aws = renderCard(awsSensor())
     const vulns = aws.row('취약점')
     expect(within(vulns).getByRole('link', { name: /honeypot-dmz/ })).toHaveAttribute('href', '/inventory?asset=honeypot-dmz')
-    expect(vulns).toHaveTextContent('honeypot-dmz 취약점 12 · KEV 1 · 조사 3시간 전')
+    expect(vulns).toHaveTextContent('honeypot-dmz 수정판 있음 6 · 재부팅 대기 1 · 수정 여부 미확인 3 · KEV 1 · 조사 3시간 전')
     expect(vulns).toHaveTextContent('gateway 자산 정보 없음')
     aws.unmount()
 
@@ -267,6 +306,7 @@ describe('TargetCard(#52)', () => {
     expect(console).not.toHaveTextContent('console-b 취약점 0')
 
     const web = renderCard(web01()).row('취약점')
+    expect(web).toHaveTextContent('web-01 수정판 있음 12 · 재부팅 대기 0 · 수정 여부 미확인 4 · KEV 0')
     expect(within(web).getByText('오래됨')).toHaveClass('bg-warning-soft')
   })
 

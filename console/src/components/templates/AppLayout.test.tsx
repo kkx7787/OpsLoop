@@ -1,7 +1,10 @@
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import type { RouteObject } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { monitoringKeys } from '@/api/monitoring-keys'
 import { NAV_GROUPS } from '@/app/nav'
+import { expectInertDom, HOSTILE } from '@/test/hostile-fixtures'
+import { controlHealth, json, MONITOR, monitorItem } from '@/test/monitoring-fixtures'
 import { noRetryClient, renderRoutes, stubHanging, stubMe } from '@/test/render'
 import { AppLayout } from './AppLayout'
 import { breadcrumbsFor, type RouteHandle } from './breadcrumbs'
@@ -24,7 +27,7 @@ function layoutRoutes(): RouteObject[] {
   return [
     {
       path: '/',
-      element: <AppLayout groups={NAV_GROUPS} sensor={{ received: 3, total: 3 }} />,
+      element: <AppLayout groups={NAV_GROUPS} />,
       children: [
         { index: true, element: <p>대시보드 본문</p> },
         { path: 'incidents', element: <p>인시던트 본문</p> },
@@ -61,7 +64,8 @@ describe('AppLayout', () => {
     const sidebar = screen.getByRole('complementary', { name: '사이드바' })
     expect(within(sidebar).getByText('han')).toBeInTheDocument()
     expect(within(sidebar).getByText('operator')).toBeInTheDocument()
-    expect(within(sidebar).getByText('센서 3/3 수신 중')).toBeInTheDocument()
+    // 관제 상태 조회는 이 가짜 서버에 없다(404) → 확인 불가
+    expect(await within(sidebar).findByRole('link', { name: '관제 상태 확인 불가' })).toHaveAttribute('href', '/')
     expect(within(sidebar).getByRole('link', { name: '인시던트' })).toHaveAttribute('aria-current', 'page')
     expect(sidebar.querySelectorAll('[data-gated="denied"]')).toHaveLength(3)
 
@@ -156,7 +160,7 @@ describe('AppLayout', () => {
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
-  it('실시간 연결 상태를 상단바에 점과 글로 보인다: 이어지면 수신 중, 끊기면 다시 연결 중', async () => {
+  it('실시간 연결 상태를 상단바에 점과 글로 보인다: 이어지면 통보 연결, 끊기면 다시 연결 중', async () => {
     vi.stubGlobal('WebSocket', FakeSocket)
     stubMe({ username: 'han', role: 'operator' })
     renderRoutes(layoutRoutes(), '/')
@@ -167,7 +171,7 @@ describe('AppLayout', () => {
     expect(within(banner).getByText('실시간 연결 중')).toBeInTheDocument()
 
     act(() => FakeSocket.last?.dispatchEvent(new Event('open')))
-    expect(within(banner).getByText('실시간 수신 중')).toBeInTheDocument()
+    expect(within(banner).getByText('실시간 통보 연결')).toBeInTheDocument()
 
     act(() => FakeSocket.last?.dispatchEvent(Object.assign(new Event('close'), { code: 1006 })))
     expect(within(banner).getByText('실시간 끊김 · 다시 연결 중')).toBeInTheDocument()
@@ -182,5 +186,150 @@ describe('AppLayout', () => {
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(screen.queryByRole('dialog')).toBeNull()
     expect(screen.getByRole('button', { name: '메뉴 열기' })).toHaveFocus()
+  })
+})
+
+/** /api/me 는 로그인 성공, /api/dashboard/monitor 는 monitor() 가 정한 응답, 그 밖은 404 */
+function stubLayout(monitor: () => Response | Promise<Response>) {
+  const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+    if (url.startsWith('/api/me')) return json({ username: 'han', role: 'operator' })
+    if (url.startsWith('/api/dashboard/monitor')) return monitor()
+    return json({ detail: '없는 경로' }, 404)
+  })
+  vi.stubGlobal('fetch', fetch)
+  return fetch
+}
+
+const monitorCalls = (fetch: { mock: { calls: unknown[][] } }) => fetch.mock.calls.filter(([input]) => String(input).startsWith('/api/dashboard/monitor')).length
+
+describe('AppLayout · 관제 이상 요약(#72)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('/api/me 성공 뒤에만 /api/dashboard/monitor 를 부른다(받는 중 · 401 에는 부르지 않는다)', async () => {
+    stubHanging()
+    const { unmount } = renderRoutes(layoutRoutes(), '/')
+    const hanging = vi.mocked(globalThis.fetch)
+    await waitFor(() => expect(hanging).toHaveBeenCalled())
+    expect(monitorCalls(hanging)).toBe(0)
+    // 받는 동안 사이드바는 조회 전 자리다
+    expect(within(screen.getByRole('complementary', { name: '사이드바' })).getByRole('link', { name: '관제 상태 조회 전' })).toBeInTheDocument()
+    unmount()
+    vi.unstubAllGlobals()
+
+    vi.stubGlobal('location', { assign: vi.fn<(url: string | URL) => void>(), pathname: '/', search: '', href: 'http://localhost/' })
+    const denied = stubMe({ detail: '인증이 필요합니다' }, 401)
+    const second = renderRoutes(layoutRoutes(), '/')
+    expect(await screen.findByRole('heading', { level: 1, name: '다시 로그인해 주세요' })).toBeInTheDocument()
+    expect(monitorCalls(denied)).toBe(0)
+    second.unmount()
+    vi.unstubAllGlobals()
+
+    const fetch = stubLayout(() => json(controlHealth()))
+    renderRoutes(layoutRoutes(), '/')
+    await screen.findByText('대시보드 본문')
+    await waitFor(() => expect(monitorCalls(fetch)).toBe(1))
+    expect(fetch).toHaveBeenCalledWith('/api/dashboard/monitor', expect.objectContaining({ method: 'GET', credentials: 'same-origin' }))
+  })
+
+  it('404 면 사이드바 · 상단바가 관제 상태 확인 불가다', async () => {
+    stubLayout(() => json({ detail: 'Not Found' }, 404))
+    renderRoutes(layoutRoutes(), '/')
+    await screen.findByText('대시보드 본문')
+    const sidebar = screen.getByRole('complementary', { name: '사이드바' })
+    const link = await within(sidebar).findByRole('link', { name: '관제 상태 확인 불가' })
+    expect(link).toHaveAttribute('data-signal', 'warn')
+    expect(within(screen.getByRole('banner')).getByRole('link', { name: '확인 불가' })).toHaveAttribute('href', '/')
+    // 본문 상태 화면과 섞이지 않는다(역할 없음)
+    expect(screen.queryByRole('status')).toBeNull()
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('이상이 있으면 관제 이상 n 과 말풍선 이름, 모름만 있으면 일부 미확인, 없으면 이상 없음. 서랍도 같은 글이다', async () => {
+    let body = controlHealth({ items: [MONITOR.loader, MONITOR.mismatch, MONITOR.nodes] })
+    stubLayout(() => json(body))
+    const client = noRetryClient()
+    renderRoutes(layoutRoutes(), '/', client)
+    await screen.findByText('대시보드 본문')
+    const sidebar = screen.getByRole('complementary', { name: '사이드바' })
+    const link = await within(sidebar).findByRole('link', { name: '관제 이상 2' })
+    expect(link).toHaveAttribute('title', '적재기 · 관문 불일치')
+    expect(within(screen.getByRole('banner')).getByRole('link', { name: '이상 2' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '메뉴 열기' }))
+    expect(within(screen.getByRole('dialog', { name: '메뉴' })).getByRole('link', { name: '관제 이상 2' })).toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    body = controlHealth({ items: [MONITOR.heartbeats] })
+    await act(() => client.refetchQueries({ queryKey: monitoringKeys.health }))
+    expect(await within(sidebar).findByRole('link', { name: '관제 상태 일부 미확인' })).toBeInTheDocument()
+
+    body = controlHealth()
+    await act(() => client.refetchQueries({ queryKey: monitoringKeys.health }))
+    expect(await within(sidebar).findByRole('link', { name: '관제 이상 없음' })).toBeInTheDocument()
+    expect(within(screen.getByRole('banner')).getByRole('link', { name: '이상 없음' })).toBeInTheDocument()
+  })
+
+  it('이상 2건을 받은 뒤 다음 조회가 503 이면(재시도 없음) 이전 항목을 지우고 확인 불가만 남는다', async () => {
+    let status = 200
+    stubLayout(() => (status === 200 ? json(controlHealth({ items: [MONITOR.loader, MONITOR.mismatch] })) : json({ detail: '콘솔 서버를 잠시 쓸 수 없습니다' }, status)))
+    const client = noRetryClient()
+    renderRoutes(layoutRoutes(), '/', client)
+    await screen.findByText('대시보드 본문')
+    const sidebar = screen.getByRole('complementary', { name: '사이드바' })
+    expect(await within(sidebar).findByRole('link', { name: '관제 이상 2' })).toBeInTheDocument()
+
+    status = 503
+    await act(() => client.refetchQueries({ queryKey: monitoringKeys.health }))
+    expect(await within(sidebar).findByRole('link', { name: '관제 상태 확인 불가' })).not.toHaveAttribute('title')
+    expect(screen.queryByText('관제 이상 2')).toBeNull()
+    expect(within(screen.getByRole('banner')).getByRole('link', { name: '확인 불가' })).toBeInTheDocument()
+    expect(screen.queryByText('이상 2')).toBeNull()
+
+    // 다시 받으면 돌아온다
+    status = 200
+    await act(() => client.refetchQueries({ queryKey: monitoringKeys.health }))
+    expect(await within(sidebar).findByRole('link', { name: '관제 이상 2' })).toBeInTheDocument()
+  })
+
+  it('한 번도 받지 못한 채 다시 조회하는 동안에도 사이드바 · 상단바는 확인 불가다(조회 전으로 바뀌지 않는다)', async () => {
+    let calls = 0
+    let hold: ((response: Response) => void) | undefined
+    stubLayout(() => (++calls === 1 ? json({ detail: 'DB unavailable' }, 503) : new Promise<Response>((resolve) => { hold = resolve })))
+    const client = noRetryClient()
+    renderRoutes(layoutRoutes(), '/', client)
+    await screen.findByText('대시보드 본문')
+    const sidebar = screen.getByRole('complementary', { name: '사이드바' })
+    expect(await within(sidebar).findByRole('link', { name: '관제 상태 확인 불가' })).toBeInTheDocument()
+    act(() => void client.refetchQueries({ queryKey: monitoringKeys.health }))
+    await waitFor(() => expect(calls).toBe(2))
+    expect(within(sidebar).getByRole('link', { name: '관제 상태 확인 불가' })).toBeInTheDocument()
+    expect(within(screen.getByRole('banner')).getByRole('link', { name: '확인 불가' })).toBeInTheDocument()
+    expect(screen.queryByText('관제 상태 조회 전')).toBeNull()
+    act(() => hold?.(json(controlHealth())))
+    expect(await within(sidebar).findByRole('link', { name: '관제 이상 없음' })).toBeInTheDocument()
+  })
+
+  it('서랍의 관제 요약을 누르면 대시보드로 가며 서랍이 닫히고 초점이 메뉴 단추로 돌아온다', async () => {
+    stubLayout(() => json(controlHealth({ items: [MONITOR.loader] })))
+    const { router } = renderRoutes(layoutRoutes(), '/incidents')
+    await screen.findByText('인시던트 본문')
+    fireEvent.click(screen.getByRole('button', { name: '메뉴 열기' }))
+    fireEvent.click(await within(screen.getByRole('dialog', { name: '메뉴' })).findByRole('link', { name: '관제 이상 1' }))
+    expect(await screen.findByText('대시보드 본문')).toBeInTheDocument()
+    expect(router.state.location.pathname).toBe('/')
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByRole('button', { name: '메뉴 열기' })).toHaveFocus()
+  })
+
+  it('악성 항목 이름도 말풍선에 글자로만 들어간다', async () => {
+    stubLayout(() => json(controlHealth({ items: [monitorItem({ key: 'loader', label: `${HOSTILE.rlo} ${HOSTILE.img} ${HOSTILE.decoy}` })] })))
+    renderRoutes(layoutRoutes(), '/')
+    await screen.findByText('대시보드 본문')
+    const sidebar = screen.getByRole('complementary', { name: '사이드바' })
+    const link = await within(sidebar).findByRole('link', { name: '관제 이상 1' })
+    expectInertDom(sidebar)
+    expect(link.getAttribute('title')).toContain('admin⟨U+202E⟩gnp.exe')
   })
 })

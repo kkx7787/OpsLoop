@@ -5,24 +5,25 @@ import { IconClose } from '../atoms/icons'
 import { Brand } from './nav/Brand'
 import { NavMenu } from './nav/NavMenu'
 import type { NavGroup } from './nav/nav-items'
-import { SensorSummary } from './nav/SensorSummary'
+import { OpsSummary } from './nav/OpsSummary'
 import { UserPanel } from './nav/UserPanel'
 
 export interface MobileNavProps {
   open: boolean
-  /** 닫기: Escape · 바깥 누름 · 닫기 단추 · 메뉴 항목 누름 */
+  /** 닫기: Escape · 바깥 누름 · 닫기 단추 · 메뉴 항목 · 관제 요약 누름 */
   onClose: () => void
   groups: readonly NavGroup[]
   userRole?: string | null
   user?: Me | null
-  sensor?: ReactNode
+  /** 관제 이상 요약(OpsSummary, 누르면 닫도록 onClick 을 넘긴다). 없으면 조회 전 자리 */
+  ops?: ReactNode
 }
 
 /**
  * 모바일 서랍. 왼쪽에서 280px 로 열리고 뒤는 어둡게 덮는다. 데스크톱(md 이상)에서는 그리지 않는다.
  * 열리면 닫기 단추에 초점을 두고 본문 스크롤을 멈춘다. 초점 되돌리기는 부르는 쪽(AppLayout)이 한다.
  */
-export function MobileNav({ open, onClose, groups, userRole, user, sensor }: MobileNavProps) {
+export function MobileNav({ open, onClose, groups, userRole, user, ops }: MobileNavProps) {
   const closeRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -84,7 +85,7 @@ export function MobileNav({ open, onClose, groups, userRole, user, sensor }: Mob
         </div>
         <NavMenu groups={groups} userRole={userRole} onNavigate={onClose} />
         <div className="mt-auto flex flex-col gap-3.5 px-1.5 pt-4 pb-5 shadow-hairline-up">
-          {sensor ?? <SensorSummary />}
+          {ops ?? <OpsSummary view={{ state: 'pending' }} onClick={onClose} />}
           <UserPanel user={user} />
         </div>
       </div>

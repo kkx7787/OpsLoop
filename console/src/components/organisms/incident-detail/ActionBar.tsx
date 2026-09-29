@@ -33,7 +33,7 @@ type Confirmable = Exclude<IncidentAction, 'acknowledge'>
  * 함께 해제'를 둔다(include_absorbed, 기본 끔). 흡수된 인시던트는 지워져 상세가 없으므로 첫 사건에서만 걸고 푼다.
  * 함께 차단하면 만료 전까지 새로 흡수되는 출발지도 서버가 같은 만료로 올린다(후속 차단). 흡수는 판정 · 차단 뒤에도
  * 붙으므로, 흡수 기록이 아직 없어도 흡수를 쓰는 규칙(absorbs)이면 선택을 보인다. 사람이 푼 곳 · 차단 금지 대역은 넣지 않는다.
- * 차단은 요청이다. 데이터 노드 집행기가 AWS 관문에 넘기고 관문이 허니팟 유입을 막으면 '집행 확인' 으로 바뀐다(이슈 #47).
+ * 차단은 요청이다. 데이터 노드 집행기가 두 지점(AWS 관문 · web-01 앞 내부 방화벽)에 넘기고, 실제 적용 결과는 지점별로 따로 본다(이슈 #47 · #51).
  * 이 출발지가 차단 금지 대역(actor.exempt)이면 차단 단추를 흐리고 까닭을 보인다. 서버도 400 과 같은 까닭으로 거부한다.
  * 결과는 useActionMutation 이 상세 캐시에 바로 반영한다(이력 추가 · 상태 전이).
  * 확인 양식은 무엇을 하는지 한 문장과 안전 경고(집행 제외 · 대량 해제 알림 · 넣지 않을 곳)만 본문에 두고,
@@ -56,7 +56,7 @@ export function ActionBar({ detail, className }: ActionBarProps) {
   const acked = detail.status !== 'open'
   const activeBlock = isActiveBlock(detail.actor.blocked)
   // 만료 없는 옛 차단이 살아 있다(운영 13건 꼴). 살아 있는 차단의 만료는 앞당기지 않으므로 다시 걸어도 만료가 그대로 없고
-  // 집행기는 만료 없는 행을 관문에 넘기지 않는다(집행 제외). 확인 창이 '몇 시간 동안 차단' 이라 하지 않는다
+  // 집행기는 만료 없는 행을 어느 지점에도 넘기지 않는다(집행 제외). 확인 창이 '몇 시간 동안 차단' 이라 하지 않는다
   const legacyBlock = activeBlock && !detail.actor.blocked?.expires_at
   // 함께 차단할 흡수 출발지(이 출발지 제외) · 함께 풀 흡수 차단. 첫 사건이 아니거나 이전 서버면 0
   const absorbedSources = detail.absorbed?.sources ?? 0
@@ -190,14 +190,14 @@ export function ActionBar({ detail, className }: ActionBarProps) {
                   차단합니다.{' '}
                   <InfoTip label="차단">
                     {activeBlock && '이미 살아 있는 차단이 있으면 만료를 앞당기지 않습니다. '}
-                    요청은 AWS 관문이 허니팟 유입에 반영하면 차단 목록에 집행 확인으로 바뀝니다.
+                    적용 대상: AWS 관문 · web-01 앞 내부 방화벽. 실제 적용 결과는 지점별로 확인합니다.
                   </InfoTip>
                 </span>
               </>
             )}
             {pending === 'block_ip' && legacyBlock && (
               <>
-                출발지 <span className="font-mono font-medium">{detail.actor_ip}</span> 에는 만료 없는 옛 차단이 살아 있어 관문 집행에서 빠집니다(집행 제외). 이 요청은 사유 · 요청자만 바꿉니다. 관문에서 막으려면 admin 이 해제한 뒤 다시{' '}
+                출발지 <span className="font-mono font-medium">{detail.actor_ip}</span> 에는 만료 없는 옛 차단이 살아 있어 두 지점 집행에서 빠집니다(집행 제외). 이 요청은 사유 · 요청자만 바꿉니다. 지점에서 막으려면 admin 이 해제한 뒤 다시{' '}
                 <span className="whitespace-nowrap">
                   차단합니다.{' '}
                   <InfoTip label="옛 차단">살아 있는 차단의 만료는 앞당기지 않아, 다시 걸어도 만료가 그대로 없습니다.</InfoTip>

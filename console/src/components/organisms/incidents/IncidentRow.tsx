@@ -9,6 +9,7 @@ import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { VerdictBadge } from '../../atoms/VerdictBadge'
 import { CtiBadge } from '../../molecules/CtiBadge'
+import { DeviceBadges } from '../../molecules/DeviceBadges'
 import { ElapsedTime } from './ElapsedTime'
 import { IncidentStatusLabel } from './IncidentStatusLabel'
 import { incidentHref, isPending, ROW_GRID, sourceOf } from './model'
@@ -86,7 +87,12 @@ export function IncidentRow({ incident, elapsedSeconds, rowIndex, cti, className
             대상 <UntrustedText value={incident.target} clip />
           </span>
         )}
-        <span className="text-xs text-ink-muted">{sensorOf(incident.rule_id)}</span>
+        {/* 관련 장비(#72). 이전 서버(devices 없음)는 규칙 번호 분류(발생원)를 그대로 보인다 */}
+        {incident.devices ? (
+          <DeviceBadges source={incident} mode="compact" className="flex-wrap" />
+        ) : (
+          <span className="text-xs text-ink-muted">{sensorOf(incident.rule_id)}</span>
+        )}
       </div>
       <div role="cell">
         <IncidentStatusLabel status={incident.status} />

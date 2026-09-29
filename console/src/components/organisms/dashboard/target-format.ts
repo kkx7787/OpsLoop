@@ -1,4 +1,18 @@
-import { targetKind, type CollectionState, type SystemState, type Target, type TargetAssetVulns, type TargetLog, type TargetMetrics, type TargetResponse } from '@/api/targets'
+import {
+  PROTECTED_IDS,
+  PROTECTED_KIND,
+  SENSOR_IDS,
+  SYSTEM_IDS,
+  targetKind,
+  type CollectionState,
+  type SystemState,
+  type Target,
+  type TargetAssetVulns,
+  type TargetCollection,
+  type TargetLog,
+  type TargetMetrics,
+  type TargetResponse,
+} from '@/api/targets'
 import { toDate } from '@/lib/time'
 import type { Tone } from '../../atoms/tones'
 
@@ -100,12 +114,21 @@ export function responseParts(response: TargetResponse): ResponsePart[] {
   return parts
 }
 
-/** 취약점 구역 자산 한 줄의 본문(시각 · 오래됨 표지는 카드가 붙인다) */
+const isCount = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n)
+
+/**
+ * 취약점 구역 자산 한 줄의 본문(시각 · 오래됨 표지는 카드가 붙인다). 수정 상태별 수가 모두 오면 그것으로(0 도 적는다),
+ * 아니면(이전 서버) 총수 · KEV. 총수는 자산 화면에 있다
+ */
 export function vulnText(asset: TargetAssetVulns): string {
   if (asset.missing) return '자산 정보 없음'
   if (!asset.collected_at) return '조사 기록 없음'
   // 배포판 대조 전의 0 은 '취약점 없음' 이 아니다
   if (!asset.checked_at) return '취약점 대조 전'
+  const { vuln_fix_available: fix, vuln_reboot_pending: reboot, vuln_fix_unknown: unknown } = asset
+  if (isCount(fix) && isCount(reboot) && isCount(unknown)) {
+    return `수정판 있음 ${count(fix)} · 재부팅 대기 ${count(reboot)} · 수정 여부 미확인 ${count(unknown)} · KEV ${count(asset.vuln_kev)}`
+  }
   return `취약점 ${count(asset.vuln_total)} · KEV ${count(asset.vuln_kev)}`
 }
 
@@ -125,7 +148,66 @@ export function orderTargets<T extends Pick<Target, 'id' | 'kind'>>(targets: rea
 /** 대상 이름을 그릴 최대 글자 수. 등록 노드 이름(hostname)의 상한(253)과 같다. 넘으면 자르고 전체는 말풍선으로 본다 */
 export const LABEL_MAX = 253
 
-/** 모바일 접힌 요약의 미판정 글 */
+/** 접힌 요약의 미판정 글 */
 export function pendingText(target: Pick<Target, 'security'>): string {
   return `미판정 ${count(target.security.pending)}`
+}
+
+/** 그 장비의 미판정 사건 목록(#72). 카드 수와 같은 기준(서버 device 필터)이고 기간은 넣지 않는다(카드 미판정은 기간 무관) */
+export function pendingHref(deviceId: string): string {
+  return `/incidents?${new URLSearchParams({ judged: 'false', device: deviceId })}`
+}
+
+/** 대시보드 무리(#72): 보호 대상(맨 위 카드) · 관측 센서 · 관제 시스템(아래 접힌 줄) */
+export interface TargetGroups<T> {
+  protected: T[]
+  sensors: T[]
+  system: T[]
+}
+
+/**
+ * 대상을 무리로 나눈다. 각 무리 안은 서버 순서 그대로다. kind 가 없으면 targetKind(고정 네 id 인지)로 가른다.
+ * 등록 노드는 모두 보호 대상이다. 모르는 고정 id 는 숨기지 않으려고 보호 대상에 둔다
+ */
+export function groupTargets<T extends Pick<Target, 'id' | 'kind'>>(targets: readonly T[]): TargetGroups<T> {
+  const groups: TargetGroups<T> = { protected: [], sensors: [], system: [] }
+  for (const target of targets) {
+    if (targetKind(target) === PROTECTED_KIND || (PROTECTED_IDS as readonly string[]).includes(target.id)) groups.protected.push(target)
+    else if ((SENSOR_IDS as readonly string[]).includes(target.id)) groups.sensors.push(target)
+    else if ((SYSTEM_IDS as readonly string[]).includes(target.id)) groups.system.push(target)
+    else groups.protected.push(target)
+  }
+  return groups
+}
+
+/** 머리 배지. 서버가 정상이라 했어도 데이터 노드의 확인(적재기 · 집행기)이 멈췄으면 '주의' 다. data-collection 은 서버 값 그대로 둔다 */
+export function headBadge(target: { collection: Pick<TargetCollection, 'state' | 'stopped'> }): { label: string; tone: Tone } {
+  const state = collectionState(target.collection.state)
+  if (state === 'ok' && Array.isArray(target.collection.stopped) && target.collection.stopped.length > 0) return { label: '주의', tone: 'warning' }
+  return { label: COLLECTION_LABEL[state], tone: COLLECTION_TONE[state] }
+}
+
+/** 접힌 요약 줄의 경고 배지 하나 */
+export interface SummaryFlag {
+  key: 'failed' | 'enforcer' | 'loader'
+  text: string
+  tone: Tone
+}
+
+/**
+ * 접힌 요약 줄의 경고 배지: 지점 적용 실패 n(빨강) · 집행기 멈춤 · 적재기 멈춤(주의색). 0 · 해당 없음은 만들지 않는다.
+ * 집행기 멈춤은 대응(stalled)과 데이터 노드 멈춤(stopped)에서 한 번만 나온다. 수집 끊김은 머리 배지 '수신 없음' 이 말한다(Q13)
+ */
+export function summaryFlags(target: { response: Pick<TargetResponse, 'failed' | 'stalled'>; collection: Pick<TargetCollection, 'stopped'> }): SummaryFlag[] {
+  const flags: SummaryFlag[] = []
+  const add = (flag: SummaryFlag) => {
+    if (!flags.some((f) => f.key === flag.key)) flags.push(flag)
+  }
+  if (positive(target.response.failed)) add({ key: 'failed', text: `적용 실패 ${count(target.response.failed)}`, tone: 'danger' })
+  if (target.response.stalled) add({ key: 'enforcer', text: '집행기 멈춤', tone: 'warning' })
+  for (const stop of Array.isArray(target.collection.stopped) ? target.collection.stopped : []) {
+    if (stop === 'loader') add({ key: 'loader', text: '적재기 멈춤', tone: 'warning' })
+    else if (stop === 'enforcer') add({ key: 'enforcer', text: '집행기 멈춤', tone: 'warning' })
+  }
+  return flags
 }

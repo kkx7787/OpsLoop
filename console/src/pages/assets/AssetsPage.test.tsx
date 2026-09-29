@@ -70,6 +70,9 @@ describe('자산 · 취약점', () => {
     expect(within(row('fw')).getByText('재부팅 대기')).toHaveAttribute('title', '설치된 최신 커널 6.8.0-142.142')
     expect(within(row('fw')).getByText('2건')).toBeInTheDocument()
     expect(within(row('fw')).getByText(/재부팅 25건/)).toBeInTheDocument()
+    // 수정 여부 미확인(#72)은 있을 때만 수정판 칸에 덧붙인다. 0건은 적지 않는다
+    expect(within(row('fw')).getByText('· 수정 여부 미확인 2건', { exact: false })).toBeInTheDocument()
+    expect(within(row('web-01')).queryByText(/수정 여부 미확인/)).toBeNull()
     expect(within(row('fw')).getByText('99.5%')).toBeInTheDocument()
     // 수집 실패 · 대조 전: 0건으로 보이지 않는다
     expect(within(row('console-b')).getByText('미수집')).toBeInTheDocument()
@@ -84,6 +87,15 @@ describe('자산 · 취약점', () => {
     expect(screen.queryByText(/공개 정보가 오래됐습니다/)).toBeNull()
     expect(screen.getByRole('link', { name: '수집 노드' })).toHaveAttribute('href', '/nodes')
     expect(screen.queryByRole('region', { name: /자산 상세$/ })).toBeNull()
+  })
+
+  it('이전 서버(수정 여부 미확인 칸 없음)는 수정판 칸을 지금처럼 보인다', async () => {
+    const { vuln_fix_unknown: _unknown, ...old } = assetRow({ asset_id: 'fw', vuln_fix_available: 3, vuln_reboot_pending: 25 })
+    setup('/inventory', { list: assetsResult({ rows: [old] }) })
+    const table = await screen.findByRole('region', { name: '자산 표' })
+    const cell = table.querySelector('[data-asset="fw"] td[data-label="수정판 · EPSS"]') as HTMLElement
+    expect(cell).toHaveTextContent(/^3건 · 재부팅 25건최고 EPSS/)
+    expect(cell).not.toHaveTextContent('수정 여부 미확인')
   })
 
   it('자산을 누르면 주소에 남고 상세(주요 패키지 · 이미지 · 배포판 취약점)가 열린다', async () => {

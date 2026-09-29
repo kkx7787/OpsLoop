@@ -1,3 +1,4 @@
+import { Fragment } from 'react'
 import type { IncidentDetail } from '@/api/incidents'
 import { cn } from '@/lib/cn'
 import { sensorOf, type Sensor } from '@/lib/domain'
@@ -5,6 +6,8 @@ import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { Time } from '../../atoms/Time'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { VerdictBadge } from '../../atoms/VerdictBadge'
+import { deviceKey, deviceView } from '../../molecules/device-format'
+import { DeviceBadges } from '../../molecules/DeviceBadges'
 import { InfoTip } from '../../molecules/InfoTip'
 import { PageHeader } from '../../molecules/PageHeader'
 import { ElapsedClock } from './ElapsedClock'
@@ -21,10 +24,16 @@ const SENSOR_NOTE: Partial<Record<Sensor, string>> = {
   '관제 자기 탐지': '관제 시스템 자신(콘솔 감사 기록 · 수집 경로)에서 발생한 건입니다. 침해사고 신고 기한이 걸려 critical 목표를 따릅니다.',
 }
 
+/** 관련 장비를 어떻게 얻었는지(#72). 장비 옆 도움말(ⓘ)로 펼친다 */
+const DEVICE_NOTE = '기존 근거(대상 열 · 근거 발생원 · 탐지와 같은 범위의 이벤트)로 조회 때 계산합니다. 로그 삭제나 매핑 기준이 바뀌면 달라질 수 있습니다.'
+
 /** 규칙·심각도를 먼저 읽고, 대상·발생 구간을 별도 줄에서 확인한다. 긴 사건 키는 펼쳐 본다. */
 export function IncidentHeader({ detail, className }: IncidentHeaderProps) {
   const sensor = sensorOf(detail.rule_id)
   const last = detail.verdicts[detail.verdicts.length - 1]
+  const devices = deviceView(detail)
+  // 장비 미확인일 때만 규칙상 추정 장비를 ⓘ 에 적는다. 배지에는 쓰지 않는다
+  const guessed = devices.unknown ? devices.fallback : []
   return (
     <div className={cn('flex min-w-0 flex-col gap-3', className)}>
       <PageHeader
@@ -48,6 +57,34 @@ export function IncidentHeader({ detail, className }: IncidentHeaderProps) {
               <UntrustedText value={detail.target} />
             </dd>
           </div>}
+          {!devices.legacy && (
+            <InfoTip
+              label="장비"
+              render={({ button, panel }) => (
+                <div className="flex min-w-0 flex-col gap-1">
+                  <dt className="text-ink-muted">장비 {button}</dt>
+                  <dd className="m-0">
+                    <DeviceBadges source={detail} mode="full" />
+                    {panel}
+                  </dd>
+                </div>
+              )}
+            >
+              {DEVICE_NOTE}
+              {guessed.length > 0 && (
+                <>
+                  {' '}이벤트로 장비를 고르지 못했습니다. 규칙상{' '}
+                  {guessed.map((d, i) => (
+                    <Fragment key={deviceKey(d)}>
+                      {i > 0 && ' · '}
+                      <UntrustedText value={d.label} fallback={d.id} />
+                    </Fragment>
+                  ))}{' '}
+                  일 수 있으나 확인하지 않았습니다.
+                </>
+              )}
+            </InfoTip>
+          )}
           <div className="flex flex-col gap-1">
             <dt className="text-ink-muted">발생 구간 · KST</dt>
             <dd className="m-0"><Time value={detail.first_ts} format="datetime" /> ~ <Time value={detail.last_ts} format="time" /></dd>

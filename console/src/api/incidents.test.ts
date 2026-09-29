@@ -6,6 +6,7 @@ import { noRetryClient } from '@/test/render'
 import {
   applyAction,
   applyVerdict,
+  fetchIncidents,
   flattenPages,
   incidentKeys,
   incidentPath,
@@ -13,6 +14,7 @@ import {
   normalizeFilters,
   PAGE_SIZE,
   ruleKeys,
+  UNCONFIRMED_DEVICE,
   useActionMutation,
   useIncident,
   useIncidentsInfinite,
@@ -123,6 +125,12 @@ describe('쿼리 키', () => {
   it('사건 키는 경로에 넣기 전에 부호화한다', () => {
     expect(incidentPath('R003|v2')).toBe('/api/incidents/R003%7Cv2')
   })
+
+  it('장비 필터는 다른 칸처럼 키 · 쿼리에 들고, 비면 빠진다', () => {
+    expect(normalizeFilters({ judged: false, device: 'web-01' })).toEqual({ judged: false, device: 'web-01' })
+    expect(normalizeFilters({ device: '' })).toEqual({})
+    expect(incidentKeys.list({ device: 'web-01' })).not.toEqual(incidentKeys.list({ device: UNCONFIRMED_DEVICE }))
+  })
 })
 
 describe('nextOffset', () => {
@@ -200,6 +208,22 @@ describe('applyVerdict · applyAction', () => {
 })
 
 // ---------------------------------------------------------------- 훅
+
+describe('fetchIncidents', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('장비 필터를 ?device= 로 보낸다(장비 미확인 예약값 포함)', async () => {
+    const fetch = stubFetch((url) => (url.startsWith('/api/incidents?') ? json(page(0, [], 0)) : undefined))
+    await fetchIncidents({ judged: false, device: 'web-01' })
+    await fetchIncidents({ judged: false, device: UNCONFIRMED_DEVICE })
+    expect(calledUrls(fetch)).toEqual([
+      '/api/incidents?judged=false&device=web-01&limit=50&offset=0',
+      '/api/incidents?judged=false&device=_unconfirmed&limit=50&offset=0',
+    ])
+  })
+})
 
 describe('useIncidentsInfinite', () => {
   afterEach(() => {
