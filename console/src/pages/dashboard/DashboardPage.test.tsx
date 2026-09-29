@@ -34,6 +34,11 @@ describe('대시보드', () => {
     renderPage()
     expect(await screen.findByText('6시간 12분')).toBeInTheDocument()
     expect(screen.getByText('판정 목표 초과')).toBeInTheDocument()
+    // 판정 목표 · 임박 기준은 수치 이름 옆 도움말(ⓘ)에 있고 본문 문단으로 되풀이하지 않는다
+    const target = screen.getByRole('button', { name: '판정 목표 설명' })
+    expect(target).toHaveAttribute('aria-expanded', 'false')
+    expect(target).toHaveAccessibleDescription(/critical 1시간 · high 4시간 · medium 12시간 · low 24시간이고, 관제 자기 탐지\(R2xx\) 사건은 1시간입니다\. 목표 임박은 목표 시간의 2\/3 를 넘긴 사건입니다/)
+    expect(screen.getAllByText(/critical 1시간/)).toHaveLength(1)
     expect(screen.getByRole('link', { name: /악성코드 투하/ })).toHaveAttribute('href', '/incidents/R003%7Cv2%7C192.0.2.8')
     expect(await screen.findByRole('region', { name: 'AWS 센서' })).toBeInTheDocument()
     expect(new Set(paths(fetch))).toEqual(new Set(['/api/stats/summary', '/api/dashboard/targets', '/api/cti/badges']))
@@ -58,6 +63,8 @@ describe('대시보드', () => {
     expect(screen.queryByRole('heading', { name: '규칙별 비조치율' })).toBeNull()
     expect(screen.queryByText('30.0%')).toBeNull()
     expect(screen.getByRole('link', { name: '규칙 화면에서 보기' })).toHaveAttribute('href', '/rules')
+    // 페이지 끝 줄은 수집 시각과 규칙 화면 링크만. 갱신 방식은 공통 띠가 알린다
+    expect(screen.getByText(/최근 원문 수집/)).not.toHaveTextContent(/웹소켓|30초/)
   })
 
   it('대상 카드 조회가 실패해도 수치 네 칸 · 판정 대기열은 그대로 보이고 카드 자리만 오류다', async () => {
@@ -104,11 +111,22 @@ describe('대시보드', () => {
     expect(aws.querySelector('[data-cti-badge]')).toBeNull()
   })
 
-  it('카드 합이 전체와 다른 까닭과 대상 미분류 사건을 숨기지 않는다', async () => {
+  it('카드 합이 전체와 다른 까닭은 관제 대상 제목 옆 도움말에, 대상 미분류 사건은 본문에 둔다', async () => {
     stubDashboard({ targets: targetsResult({ unmapped: { incidents_1h: 2, pending: 5 } }) })
-    renderPage()
-    expect(await screen.findByText(/카드 수치는 대상별입니다. 한 사건이 여러 대상에 걸칠 수 있어 합이 전체와 다릅니다./)).toBeInTheDocument()
+    const { container } = renderPage()
+    const tip = await screen.findByRole('button', { name: '관제 대상 설명' })
+    expect(tip).toHaveAccessibleDescription('카드 수치는 대상별입니다. 한 사건이 여러 대상에 걸칠 수 있어 합이 전체와 다릅니다.')
+    const board = screen.getByRole('region', { name: '관제 대상' })
+    expect(board).toContainElement(tip)
+    expect(container.querySelector('[data-targets-note]')).toBeNull()
     expect(screen.getByText('대상 미분류 사건: 최근 1시간 2 · 미판정 5')).toBeInTheDocument()
+  })
+
+  it('대상 카드를 받지 못하면 카드 합 도움말을 두지 않는다', async () => {
+    stubDashboard({ targets: () => json({ detail: '상태판 집계 실패' }, 503) })
+    renderPage()
+    await within(screen.getByRole('region', { name: '관제 대상' })).findByRole('alert')
+    expect(screen.queryByRole('button', { name: '관제 대상 설명' })).toBeNull()
   })
 
   it('미분류 사건이 없으면 그 줄을 그리지 않는다', async () => {
@@ -171,6 +189,15 @@ describe('대시보드', () => {
     stubDashboard({ summary: { ...MONITORING_SUMMARY, absorbed_unblocked: { sources: 12, incidents: 2, first_key: 'R006|v3|192.0.2.1|x' } } })
     renderPage()
     expect(await screen.findByText('판정 뒤 흡수 미차단 12곳 · 첫 사건 2건')).toBeInTheDocument()
+    // '첫 사건' 의 뜻은 그 줄 끝 도움말(ⓘ)에 있다
+    expect(screen.getByRole('button', { name: '첫 사건 설명' })).toHaveAccessibleDescription(/같은 페이로드의 출발지를 흡수한 사건입니다/)
+  })
+
+  it('흡수 미차단이 없으면 첫 사건 도움말을 두지 않는다', async () => {
+    stubDashboard({ summary: { ...MONITORING_SUMMARY, blocks: { enforced: 2, pending: 0, excluded: 13, mismatch: 1 } } })
+    renderPage()
+    expect(await screen.findByText('관문 불일치 1건')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '첫 사건 설명' })).toBeNull()
   })
 
   it('0건도 정상 수신 여부를 확인하도록 안내하며 비율을 만들어내지 않는다', async () => {

@@ -80,7 +80,7 @@ export function consoleTarget(extra: Partial<Target> = {}): Target {
     role: '콘솔 A · B (HAProxy 뒤)',
     collection: {
       state: 'unknown',
-      reason: '생존 신호 없음 · 현재 콘솔은 실시간 연결로 표시',
+      reason: '생존 신호를 보내지 않음',
       signal: null,
       logs: [{ key: 'console', label: '마지막 로그인 기록', last_at: minutesAgo(12) }],
       extra: [],

@@ -18,6 +18,7 @@ import { Time } from '@/components/atoms/Time'
 import { UntrustedText } from '@/components/atoms/UntrustedText'
 import { Banner, type BannerTone } from '@/components/molecules/Banner'
 import { FormField } from '@/components/molecules/FormField'
+import { InfoTip } from '@/components/molecules/InfoTip'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { MonitoringStatus } from '@/components/organisms/MonitoringStatus'
 import { ApiErrorState } from '@/components/organisms/states/ApiErrorState'
@@ -77,34 +78,38 @@ function changeLabel(change: Change): string {
   return change.kind === 'password' ? '비밀번호 재설정' : '삭제'
 }
 
-/** 확인 양식의 설명. 세션을 끊는 변경(역할 · 비활성 · 비밀번호)은 다시 로그인해야 한다는 것과 실시간 연결이 끊기는 시간을 밝힌다 */
-function consequence(change: Change): string {
-  const cut = ' 그 계정의 열린 세션은 끊겨 다시 로그인해야 합니다(실시간 연결은 30초 안에 끊깁니다).'
+/**
+ * 확인 양식의 설명(아이디 뒤에 붙는 문장). 세션 끊김 · 감사 기록 안내는 이 양식 한 곳에만 둔다(표 아래 · 결과 띠에서 되풀이하지 않는다).
+ * cut: 세션을 끊는 변경(역할 · 비활성 · 비밀번호). 실시간 연결이 끊기는 시간은 양식의 ⓘ 로 접는다
+ */
+function consequence(change: Change): { text: string; cut: boolean } {
+  const cut = ' 그 계정의 열린 세션은 끊겨 다시 로그인해야 합니다.'
   switch (change.kind) {
     case 'role':
-      return change.role === 'viewer'
-        ? ` 의 역할을 ${ROLE_LABEL.viewer}로 낮춥니다. 판정 · 차단 요청을 더는 할 수 없습니다.${cut}`
-        : ` 의 역할을 ${ROLE_LABEL.operator}로 바꿉니다. 판정 · 차단 요청을 할 수 있게 됩니다.${cut}`
+      return {
+        cut: true,
+        text: change.role === 'viewer'
+          ? ` 의 역할을 ${ROLE_LABEL.viewer}로 낮춥니다. 판정 · 차단 요청을 더는 할 수 없습니다.${cut}`
+          : ` 의 역할을 ${ROLE_LABEL.operator}로 바꿉니다. 판정 · 차단 요청을 할 수 있게 됩니다.${cut}`,
+      }
     case 'active':
       return change.active
-        ? ' 계정을 다시 활성합니다. 비활성 전에 받은 세션은 되살아나지 않아 새로 로그인해야 합니다.'
-        : ` 계정을 비활성합니다. 로그인할 수 없게 되며, 지우지 않으므로 판정 · 조치 이력의 주체는 그대로 남습니다.${cut}`
+        ? { cut: false, text: ' 계정을 다시 활성합니다. 새로 로그인해야 쓸 수 있습니다.' }
+        : { cut: true, text: ' 계정을 비활성합니다. 로그인할 수 없게 되며 열린 세션은 끊깁니다.' }
     case 'password':
-      return ` 의 비밀번호를 바꿉니다.${cut}`
+      return { cut: true, text: ` 의 비밀번호를 바꿉니다.${cut}` }
     case 'delete':
-      return ' 계정을 지웁니다. 되돌릴 수 없고, 판정 · 조치 · 로그인 기록이 있으면 서버가 거부합니다.'
+      return { cut: false, text: ' 계정을 지웁니다. 되돌릴 수 없습니다.' }
   }
 }
 
-/** 성공 띠(역할 · 활성). 이미 그 값이었으면(unchanged) 바뀐 것도 감사 행도 없다고 알린다 */
+/** 성공 띠(역할 · 활성). 이미 그 값이었으면(unchanged) 그렇다고 알린다. 세션 끊김은 확인 양식에서 이미 읽었으므로 되풀이하지 않는다 */
 function outcome(account: Account, change: Toggle, done: AccountChange): Notice {
   const name = <UntrustedText value={account.username} max={64} />
   const value = change.kind === 'role' ? ROLE_LABEL[change.role] : change.active ? '활성' : '비활성'
-  if (done.result === 'unchanged') return { tone: 'info', title: <>{name} 은(는) 이미 {value} 상태입니다</>, body: '바뀐 것이 없어 감사 기록도 남지 않았습니다.' }
-  if (change.kind === 'role') return { tone: 'success', title: <>{name} 의 역할을 {value}로 바꿨습니다</>, body: '그 계정의 열린 세션은 다시 로그인해야 합니다.' }
-  return change.active
-    ? { tone: 'success', title: <>{name} 계정을 재활성했습니다</>, body: '새로 로그인하면 쓸 수 있습니다.' }
-    : { tone: 'success', title: <>{name} 계정을 비활성했습니다</>, body: '열린 세션은 끊깁니다(실시간 연결은 30초 안).' }
+  if (done.result === 'unchanged') return { tone: 'info', title: <>{name} 은(는) 이미 {value} 상태입니다</> }
+  if (change.kind === 'role') return { tone: 'success', title: <>{name} 의 역할을 {value}로 바꿨습니다</> }
+  return { tone: 'success', title: change.active ? <>{name} 계정을 재활성했습니다</> : <>{name} 계정을 비활성했습니다</> }
 }
 
 /** 행 변경 하나를 보내고 성공 띠를 만든다. 비밀번호는 이 요청의 본문에만 싣는다 */
@@ -115,7 +120,7 @@ async function send(client: QueryClient, account: Account, change: Change, passw
     case 'active': return outcome(account, change, await setAccountActive(client, account.username, change.active))
     case 'password':
       await resetAccountPassword(client, account.username, password)
-      return { tone: 'success', title: <>{name} 의 비밀번호를 바꿨습니다</>, body: '그 계정의 열린 세션은 새 비밀번호로 다시 로그인해야 합니다.' }
+      return { tone: 'success', title: <>{name} 의 비밀번호를 바꿨습니다</> }
     case 'delete':
       await deleteAccount(client, account.username)
       return { tone: 'success', title: <>{name} 계정을 지웠습니다</> }
@@ -204,28 +209,46 @@ export function AccountsPage() {
   }
 
   return <div className="flex min-w-0 flex-col gap-4">
-    <PageHeader title="계정" description="관제사 · 조회자 계정을 추가 · 삭제하고 역할 · 활성 · 비밀번호를 바꿉니다. 관리자 계정은 명령줄에서 합니다." aside={allowed && <Button ref={addButton} variant="primary" aria-expanded={addOpen} aria-controls={addFormId} disabled={addOpen} disabledReason="아래 추가 양식이 열려 있습니다" onClick={() => setAddOpen(true)}>계정 추가</Button>} />
+    <PageHeader title="계정" description="관제사 · 조회자 계정을 추가 · 삭제하고 역할 · 활성 · 비밀번호를 바꿉니다." aside={allowed && <Button ref={addButton} variant="primary" aria-expanded={addOpen} aria-controls={addFormId} disabled={addOpen} disabledReason="아래 추가 양식이 열려 있습니다" onClick={() => setAddOpen(true)}>계정 추가</Button>} />
     {me.isPending ? <LoadingState /> : !allowed ? <ForbiddenState title="이 화면은 admin 만 볼 수 있습니다" requiredRoles="admin" currentRole={me.data?.role} /> : <>
       <MonitoringStatus updatedAt={query.dataUpdatedAt} error={query.data ? query.error : null} onRetry={() => void query.refetch()} busy={query.isFetching} />
       {notice && <Banner tone={notice.tone} title={notice.title} action={<Button size="sm" onClick={() => setNotice(null)}>닫기</Button>}>{notice.body}</Banner>}
       {addOpen && <AddAccountForm id={addFormId} busy={adding} blocked={anyBusy && !adding} onSubmit={add} onClose={() => setAddOpen(false)} />}
       {query.isPending ? <LoadingState title="계정 목록을 불러오는 중입니다" /> : !query.data ? <ApiErrorState error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} /> : <Card padding="none" className="min-w-0">
-        <CardHeader title="콘솔 계정" aside={`${query.data.accounts.length}개 · 시각 KST`} />
+        <InfoTip label="콘솔 계정" panelAs="div" panelClassName="mx-4 my-2" render={({ button, panel }) => <>
+          <CardHeader title="콘솔 계정" aside={<><span>{`${query.data.accounts.length}개 · 시각 KST`}</span><Link to="/audit">감사 기록</Link>{button}</>} />
+          {panel}
+        </>}>
+          <ul className="m-0 list-disc space-y-0.5 pl-4">
+            <li>변경 시각은 역할 · 활성 · 비밀번호가 마지막으로 바뀐 때이며, 그보다 먼저 받은 세션은 쓸 수 없습니다.</li>
+            <li>삭제는 판정 · 조치 · 로그인 기록이 없는 계정만 할 수 있습니다. 기록이 있으면 비활성해 이력의 주체를 남깁니다.</li>
+          </ul>
+        </InfoTip>
         <div ref={table} className="overflow-x-auto" role="region" aria-label="계정 표" tabIndex={0}><table className="responsive-table w-full text-left text-sm">
           <thead className="border-b border-line text-xs text-ink-muted"><tr>{HEAD.map(t => <th key={t} scope="col" className={`${cell} whitespace-nowrap`}>{t}</th>)}</tr></thead>
           <tbody className="divide-y divide-line">{query.data.accounts.map(a => <AccountRow key={a.username} account={a} busy={busy === a.username} anyBusy={anyBusy} onSubmit={submit} />)}</tbody>
         </table></div>
         {!query.data.accounts.length && <p className="p-4 text-sm text-ink-muted">계정이 없습니다.</p>}
-        <p className="m-0 border-t border-line px-4 py-3 text-xs leading-5 text-ink-muted">역할 변경 · 비활성 · 비밀번호 재설정은 그 계정의 열린 세션을 끊습니다(실시간 연결은 30초 안). 변경 시각보다 먼저 받은 세션은 쓸 수 없습니다. 삭제는 판정 · 조치 · 로그인 기록이 없는 계정만 되며, 있으면 비활성으로 막습니다. 변경은 <Link to="/audit">감사 기록</Link>에 대상 아이디로 남습니다. 30초마다 재조회</p>
       </Card>}
       <Card padding="none" className="min-w-0">
-        <CardHeader title="명령줄에서 하는 일" aside="콘솔 노드 · 소유자 접속" />
+        <InfoTip label="명령줄에서 하는 일" panelAs="div" panelClassName="mx-4 my-2" render={({ button, panel }) => <>
+          {/* 실행 위치(콘솔 노드 · 소유자 접속)는 본문 첫 줄에 한 번만 적는다 */}
+          <CardHeader title="명령줄에서 하는 일" aside={button} />
+          {panel}
+        </>}>
+          <ul className="m-0 list-disc space-y-0.5 pl-4">
+            <li>콘솔이 뚫려도 스스로 관리자가 될 수 없게, 관리자 계정과 본인 계정은 화면에서 바꾸지 않습니다.</li>
+            <li><code>--by</code> 에 적은 이름이 감사 기록의 행위자(<code>cli:이름</code>)로 남습니다.</li>
+            <li>명령은 비밀번호를 두 번 묻고(12자 이상) 인자 · 감사 기록에 남기지 않습니다.</li>
+            <li>마지막 활성 관리자는 낮추거나 비활성할 수 없습니다.</li>
+          </ul>
+        </InfoTip>
         <div className="flex flex-col gap-3 p-4 text-sm">
-          <p className="m-0 leading-6">관리자 계정의 추가 · 부여와 해제 · 비활성과 재활성 · 비밀번호, 본인 계정 변경은 화면에서 하지 않습니다. 콘솔이 뚫려도 스스로 관리자가 될 수 없게 하려는 경계입니다. 콘솔 노드의 API 컨테이너 안에서 소유자 접속(<code>DATABASE_URL</code>)으로 돌리며, <code>--by</code> 에 적은 이름이 감사 기록의 행위자(<code>cli:이름</code>)로 남습니다.</p>
+          <p className="m-0 leading-6">콘솔 노드의 API 컨테이너 안에서 소유자 접속(<code>DATABASE_URL</code>)으로 실행합니다.</p>
           <dl className="m-0 grid gap-x-4 gap-y-2 sm:grid-cols-[max-content_minmax(0,1fr)]">{CLI.map(([label, command]) => <Fragment key={label}>
             <dt className="text-ink-muted">{label}</dt><dd className="m-0 min-w-0"><code className="font-mono text-xs break-all">{command}</code></dd>
           </Fragment>)}</dl>
-          <p className="m-0 text-xs leading-5 text-ink-muted">명령은 비밀번호를 두 번 묻고(12자 이상) 인자 · 감사 기록에 남기지 않습니다. 마지막 활성 관리자는 낮추거나 비활성할 수 없습니다. 접속 방법은 운영 문서(infra/vmware/README.md)의 '콘솔 계정' 절을 따릅니다.</p>
+          <p className="m-0 text-xs leading-5 text-ink-muted">접속 방법은 운영 문서(infra/vmware/README.md)의 '콘솔 계정' 절을 따릅니다.</p>
         </div>
       </Card>
     </>}
@@ -295,10 +318,20 @@ function AddAccountForm({ id, busy, blocked, onSubmit, onClose }: {
       <div className="flex flex-wrap items-center gap-2 sm:col-span-2 xl:col-span-4">
         <Button type="submit" variant="primary" loading={busy} disabled={blocked} disabledReason={BUSY_REASON}>계정 추가</Button>
         <Button variant="ghost" onClick={onClose} disabled={busy}>닫기</Button>
-        <span className="text-xs text-ink-muted">관리자 계정은 명령줄에서 추가합니다.</span>
       </div>
     </form>
   </Card>
+}
+
+/** 확인 양식의 문장. 세션을 끊는 변경이면 세션 끊김 문장 바로 뒤에 ⓘ(실시간 연결이 끊기는 시간)를 두고 설명은 문단 아래에 펼친다 */
+function Consequence({ account, change }: { account: Account; change: Change }) {
+  const { text, cut } = consequence(change)
+  const name = <span className="font-medium break-all"><UntrustedText value={account.username} max={64} /></span>
+  if (!cut) return <p className="m-0 text-sm leading-6">{name}{text} 변경은 감사 기록에 남습니다.</p>
+  return <InfoTip label="세션 끊김" render={({ button, panel }) => <>
+    <p className="m-0 text-sm leading-6">{name}{text} {button} 변경은 감사 기록에 남습니다.</p>
+    {panel}
+  </>}>실시간 연결은 30초 안에 끊깁니다.</InfoTip>
 }
 
 function AccountRow({ account, busy, anyBusy, onSubmit }: { account: Account; busy: boolean; anyBusy: boolean; onSubmit: (account: Account, change: Change, password?: string) => Promise<boolean> }) {
@@ -362,7 +395,7 @@ function AccountRow({ account, busy, anyBusy, onSubmit }: { account: Account; bu
       {/* 폭 0 · 최소 100% 로 감싸 긴 설명이 표 열 너비를 바꾸지 않게 한다(양식을 열어도 위 행이 다시 배치되지 않는다) */}
       <td colSpan={HEAD.length} className="px-4 pb-3"><div className="w-0 min-w-full">
         <form id={formId} aria-label={`${name} ${changeLabel(shown)} 확인`} noValidate onSubmit={confirm} className="flex flex-col gap-3 rounded-panel border border-line bg-canvas p-3">
-          <p className="m-0 text-sm leading-6"><span className="font-medium break-all"><UntrustedText value={account.username} max={64} /></span>{consequence(shown)} 변경은 감사 기록에 남습니다.</p>
+          <Consequence account={account} change={shown} />
           {typing && <div className="grid gap-3 sm:max-w-xl sm:grid-cols-2">
             <PasswordFields password={password} confirm={again} errors={errors} label="새 비밀번호" readOnly={busy} onEdit={(field) => setErrors((e) => e[field] ? { ...e, [field]: undefined } : e)} />
           </div>}

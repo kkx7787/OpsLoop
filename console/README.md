@@ -34,6 +34,7 @@ src/auth/roles.ts      권한표(화면 설계 15장). can(role, action) · perm
 src/auth/useMe.ts      GET /api/me · parseMe(응답 검증 · console 은 선택) · usePermission(action)
 src/lib/useNow.ts      상단바 시계용 지금 시각
 src/components/        atoms · molecules · organisms · templates. index.ts 로 내보낸다
+  molecules/InfoTip    도움말 ⓘ(#65): 계산 기준 · 판단 근거를 접어 둔다. 누르면 바로 아래 펼침 · Esc 로 닫고 단추로 초점 복귀 · 마우스 올림으로는 안 열림 · 닫혀도 DOM 에 두어 aria-describedby 로 읽힘 · 인쇄는 기본 숨김(print="expand" 면 펼침) · variant="text" 는 '기준 보기' 단추. 안전 · 판정 경고는 넣지 않는다
   organisms/states/    상태 화면(불러오는 중 · 0건 · 403 · 세션 만료 · 오류 · 404 · ApiErrorState)
   organisms/nav/       메뉴 조각: nav-items(자료형 · findNavItem) · NavMenu · Brand · UserPanel(로그아웃 폼) · SensorSummary
   organisms/incidents/       인시던트 목록(S-03) 조각: 조건(filters · 주소 왕복) · 표 행 · 모바일 카드 · 높이 제한 목록 · 페이지 탐색 · 조건 막대 · 경과 시간
@@ -199,3 +200,11 @@ src/test/              vitest setup(WebSocket 은 아무 일도 하지 않는 �
 - 감사 기록(S-14): `console.account.created` · `.role.changed` · `.disabled` · `.enabled` · `.password.changed`(바뀐 사실만) · `.deleted` 를 계정 추가 · 역할 변경 · 비활성 · 재활성 · 비밀번호 변경 · 삭제로 보인다. DB 트리거가 화면 · 명령줄 · psql 변경을 모두 남기고 detail 의 `target=<아이디>` 로 대상 필터에 걸린다.
 - 아이디는 비신뢰 문자열로 그린다(`UntrustedText` 64자, 버튼 · 양식 이름은 `revealHidden`). 변경 본문에는 받은 원문 그대로 보낸다. 새 아이디는 형식 검사로 숨은 문자 · 태그를 보내기 전에 막는다.
 - 배포: 마이그레이션 `infra/migrations/20261001_console_accounts.sql` → `20261002_console_accounts_manage.sql`(#63) → `verify-db-roles.sh` → 콘솔 이미지(API 와 화면 빌드 함께) 순서다. 콘솔 B 는 꺼 두거나 같은 이미지로 올린다(옛 이미지는 비활성 · 역할 변경 · 추가 · 삭제 · 재설정 경로를 모른다). 명령은 `infra/vmware/README.md`.
+
+## 화면 문구 (#65)
+
+- 본문에 남기는 글: 제목 아래 한 줄(60자 안팎) · 표 캡션 한 줄 · 할 일을 알려 주는 빈 상태 · 오류 안내 · 안전과 판정 경고(집행 미확인 · 공개 정보 오래됨 · 대상 미분류 · 권한 없음 · 차단 금지 대역 · 판정 목표 초과). 경고는 한 문장으로, 사실만 적는다.
+- 도움말(ⓘ · `InfoTip`)로 접는 글: 계산 기준 · 판단 근거 · 예외. 그 값의 열 머리 · 배지 · 소제목 옆에 둔다. 좁은 화면에서는 표 머리(`responsive-table`)가 숨어 열 머리 ⓘ 도 보이지 않으므로, 좁은 화면에서도 봐야 하는 기준은 카드 머리 · 캡션 줄에 둔다. 경고는 ⓘ 안에 넣지 않는다.
+- 빼는 글: 라벨 · 단추와 같은 말, 화면을 보면 아는 말, 내부 표기(화면 번호 S-xx · 이슈 번호 · 파일 이름). 한 사실은 한 곳에만 쓴다.
+- 집행 지점의 실패 · 확인 지연 까닭은 지점이 보낸 오류 안내라 본문에 둔다. 화면이 덧붙인 집행기 멈춤 까닭(`CHECKER_STALE_NOTE`)만 배지 옆 ⓘ 로 접는다(멈춤 띠가 본문에 있다).
+- 시험: 경고 · 권한 · 빈 상태 문장은 본문에 있는지(`closest('[data-infotip]')` 가 없음)까지 확인한다. ⓘ 설명 상자는 닫혀 있어도 DOM 에 있어 글자만 찾으면 ⓘ 안으로 옮겨도 통과하기 때문이다.

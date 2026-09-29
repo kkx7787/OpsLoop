@@ -29,6 +29,13 @@ function renderCard(target: Target, options: { live?: LiveState; cti?: Parameter
   return { ...view, card, row }
 }
 
+/** 도움말(ⓘ) 단추가 여닫는 설명 상자 */
+function tipPanel(button: HTMLElement): HTMLElement {
+  const panel = document.getElementById(button.getAttribute('aria-controls') ?? '')
+  expect(panel).not.toBeNull()
+  return panel as HTMLElement
+}
+
 /** 홀로 선 숫자 0. '10분' · '2026' 의 0 은 아니다 */
 const ZERO = /(^|[^\d.,:-])0(?![\d.,:%-])/
 
@@ -47,37 +54,87 @@ describe('TargetCard(#52)', () => {
   })
 
   it('생존 신호가 있으면 신호 시각을 상대 표기와 기준 시각으로, 로그는 색 없이 옆에 적는다', () => {
-    const { row } = renderCard(awsSensor())
+    const { card, row } = renderCard(awsSensor())
     const collect = row('수집')
     expect(collect).toHaveTextContent('업로더 생존 신호 3분 전 · 09-28 18:57')
     expect(collect).toHaveTextContent('Cowrie 2분 전 · 웹 디코이 1시간 전 · AWS 관문 기록 없음')
-    expect(collect).toHaveTextContent('업로더 생존 신호 3분 전 · 최근 1시간 로그 있음')
     expect(collect).not.toHaveTextContent('생존 상태 미확인')
+    // 정상 판정의 까닭(서버)은 신호 줄 · 배지와 같은 말이라 '수집' 옆 도움말(ⓘ)에만 있고, 수신 없음 기준도 거기 있다
+    const tip = within(card).getByRole('button', { name: '수집 상태 설명' })
+    expect(tip).toHaveAttribute('aria-expanded', 'false')
+    const panel = tipPanel(tip)
+    expect(collect).toContainElement(panel)
+    expect(panel).toHaveTextContent('15분 넘게 새 신호가 없으면 수신 없음입니다. 업로더 생존 신호 3분 전 · 최근 1시간 로그 있음')
+    expect(panel).toContainElement(within(collect).getByText(/최근 1시간 로그 있음/))
+    expect(collect.querySelector('[data-signal]')).not.toHaveAttribute('title')
   })
 
-  it('생존 신호가 없는 대상은 마지막 로그 시각에 생존 상태 미확인을 붙인다', () => {
-    const { row } = renderCard(consoleTarget())
-    expect(row('수집')).toHaveTextContent('마지막 로그 12분 전 · 생존 상태 미확인')
+  it('생존 신호가 없는 대상은 마지막 로그 시각을 보이고, 미확인은 배지 한 곳에만 둔다', () => {
+    const { card, row } = renderCard(consoleTarget())
+    expect(within(card).getByText('생존 상태 미확인')).toHaveAttribute('data-collection-badge')
+    expect(row('수집')).toHaveTextContent('마지막 로그 12분 전')
+    expect(row('수집')).not.toHaveTextContent('생존 상태 미확인')
+    // 미확인의 까닭은 본문에 남는다(도움말로 숨기지 않는다). 신호가 없는 대상이라 도움말 단추도 없다
+    expect(row('수집')).toHaveTextContent('생존 신호를 보내지 않음')
+    expect(within(card).queryByRole('button', { name: '수집 상태 설명' })).toBeNull()
+  })
+
+  it('서버가 정상이라 했는데 생존 신호가 없으면 마지막 로그에 미확인을 붙인다(정상으로 읽히지 않게)', () => {
+    const target = awsSensor({ collection: { ...awsSensor().collection, state: 'ok', signal: null } })
+    const { card, row } = renderCard(target)
+    expect(within(card).getByText('정상')).toHaveAttribute('data-collection-badge')
+    expect(row('수집')).toHaveTextContent('마지막 로그 2분 전 · 생존 상태 미확인')
   })
 
   it('신호 표에 기록이 없으면 신호 없음과 마지막 로그를 함께 보인다', () => {
     const target = awsSensor({ collection: { ...awsSensor().collection, state: 'unknown', reason: '생존 신호 미기록', signal: { label: '업로더 생존 신호', seen_at: null, checked_at: null, stale_after_seconds: 900, problem: '없음' } } })
-    const { row } = renderCard(target)
+    const { card, row } = renderCard(target)
+    expect(within(card).getByText('생존 상태 미확인')).toHaveAttribute('data-collection-badge')
     expect(row('수집')).toHaveTextContent('업로더 생존 신호 기록 없음')
-    expect(row('수집')).toHaveTextContent('마지막 로그 2분 전 · 생존 상태 미확인')
+    expect(row('수집')).toHaveTextContent('마지막 로그 2분 전')
+    expect(row('수집')).not.toHaveTextContent('생존 상태 미확인')
     expect(row('수집')).toHaveTextContent('읽기 문제: 없음')
+    // 미확인의 까닭은 본문, 도움말에는 수신 없음 기준만 있다
+    const panel = tipPanel(within(card).getByRole('button', { name: '수집 상태 설명' }))
+    expect(panel).toHaveTextContent('15분 넘게 새 신호가 없으면 수신 없음입니다.')
+    expect(panel).not.toHaveTextContent('생존 신호 미기록')
+    expect(row('수집')).toHaveTextContent('생존 신호 미기록')
   })
 
-  it('로그가 없는 대상(데이터 노드)은 신호 기록 없음에 미확인을 붙이고 로그 줄을 두지 않는다', () => {
+  it('로그가 없는 대상(데이터 노드)은 신호 기록 없음을 적고 로그 줄을 두지 않는다', () => {
     const base = dataNode()
     const target = dataNode({ collection: { ...base.collection, state: 'unknown', reason: '탐지 실행 기록 없음', signal: { ...base.collection.signal!, seen_at: null } } })
-    const { row } = renderCard(target)
-    expect(row('수집')).toHaveTextContent('마지막 탐지 실행 기록 없음 · 생존 상태 미확인')
+    const { card, row } = renderCard(target)
+    expect(within(card).getByText('생존 상태 미확인')).toHaveAttribute('data-collection-badge')
+    expect(row('수집')).toHaveTextContent('마지막 탐지 실행 기록 없음')
+    expect(row('수집')).not.toHaveTextContent('생존 상태 미확인')
     expect(row('수집')).not.toHaveTextContent('로그 기록 없음')
     expect(row('수집')).toHaveTextContent('적재기 확인 1분 전 · 집행기 확인 기록 없음')
   })
 
-  it('서버가 수신 없음으로 판정한 대상에는 미확인을 덧붙이지 않는다', () => {
+  it('데이터 노드가 정상이어도 집행기 확인이 멈췄으면 멈춤은 본문에 남는다(까닭 줄만 도움말로 간다)', () => {
+    const base = dataNode()
+    const target = dataNode({
+      collection: {
+        ...base.collection,
+        state: 'ok',
+        reason: '마지막 탐지 실행 1분 전 · 집행기 확인 중단 · 마지막 12분 전',
+        signal: { ...base.collection.signal!, seen_at: minutesAgo(1) },
+        extra: [
+          { label: '적재기 확인', at: minutesAgo(1), note: null },
+          { label: '집행기 확인', at: minutesAgo(12), note: '멈춤' },
+        ],
+      },
+    })
+    const { card, row } = renderCard(target)
+    const panel = tipPanel(within(card).getByRole('button', { name: '수집 상태 설명' }))
+    expect(panel).toHaveTextContent('집행기 확인 중단 · 마지막 12분 전')
+    // 도움말 상자는 수집 칸 안에 있으므로, 상자에 없는 '(멈춤)' 이 칸에 보이면 본문이다
+    expect(row('수집')).toHaveTextContent('적재기 확인 1분 전 · 집행기 확인 12분 전 (멈춤)')
+    expect(panel).not.toHaveTextContent('(멈춤)')
+  })
+
+  it('서버가 수신 없음으로 판정한 대상에는 미확인을 덧붙이지 않고 까닭은 본문에 둔다', () => {
     const base = awsSensor()
     const target = awsSensor({ collection: { ...base.collection, state: 'no_signal', reason: '업로더 생존 신호 없음', signal: { ...base.collection.signal!, seen_at: null } } })
     const { card, row } = renderCard(target)
@@ -85,6 +142,8 @@ describe('TargetCard(#52)', () => {
     expect(row('수집')).toHaveTextContent('업로더 생존 신호 기록 없음')
     expect(row('수집')).toHaveTextContent('마지막 로그 2분 전')
     expect(row('수집')).not.toHaveTextContent('생존 상태 미확인')
+    expect(tipPanel(within(card).getByRole('button', { name: '수집 상태 설명' }))).not.toHaveTextContent('업로더 생존 신호 없음')
+    expect(row('수집')).toHaveTextContent('업로더 생존 신호 없음')
   })
 
   it('콘솔 카드의 현재 콘솔은 실시간 연결(hello)의 이름이다', () => {
@@ -152,25 +211,36 @@ describe('TargetCard(#52)', () => {
     expect(row('시스템')).toHaveTextContent('CPU 5% · 메모리 10% · 디스크 20% · 30분 전 오래됨')
   })
 
-  it('대응: 적용 확인(초록) · 미확인 · 정책상 제외와 지점 보고 시각, 차단 목록으로 잇는다', () => {
-    const { row } = renderCard(awsSensor())
+  it('대응: 적용 확인(초록) · 미확인 · 정책상 제외, 차단 목록으로 잇고 정상 보고 시각은 도움말에 둔다', () => {
+    const { card, row } = renderCard(awsSensor())
     const response = row('대응')
     expect(within(response).getByText('차단 적용 2 (AWS 관문)')).toHaveClass('bg-success-soft')
     expect(within(response).getByText('차단 적용 여부 미확인 1')).toHaveClass('bg-warning-soft')
     expect(within(response).getByText('정책상 차단 제외 3')).toBeInTheDocument()
-    expect(response).toHaveTextContent('AWS 관문 보고 2분 전')
     expect(within(response).getByRole('link')).toHaveAttribute('href', '/blocklist')
+    const panel = tipPanel(within(card).getByRole('button', { name: '집행 지점 보고 설명' }))
+    expect(response).toContainElement(panel)
+    expect(panel).toHaveTextContent('AWS 관문 보고 2분 전')
+    expect(panel).toContainElement(response.querySelector('[data-report]') as HTMLElement)
+  })
+
+  it('대응: 지점 보고 문제는 본문 줄로 남고 도움말 단추는 두지 않는다', () => {
+    const { card, row } = renderCard(web01())
+    expect(row('대응').querySelector('[data-report]')).toHaveTextContent('내부 방화벽 보고: 보고 파일 없음')
+    expect(within(card).queryByRole('button', { name: '집행 지점 보고 설명' })).toBeNull()
   })
 
   it('대응: 지점이 거부한 차단은 빨간 실패, 집행기 확인이 멈추면 초록 대신 미확인과 까닭(주의색)', () => {
     const failed = renderCard(web01({ response: { ...web01().response, applied: 1, failed: 2 } }))
     expect(within(failed.row('대응')).getByText('차단 적용 실패 2 (내부 방화벽)')).toHaveClass('bg-danger-soft')
     failed.unmount()
-    const { row } = renderCard(awsSensor({ response: { ...awsSensor().response, applied: 0, failed: 0, unverified: 3, stalled: '집행기 확인 중단 · 마지막 확인 12분 전' } }))
+    const { card, row } = renderCard(awsSensor({ response: { ...awsSensor().response, applied: 0, failed: 0, unverified: 3, stalled: '집행기 확인 중단 · 마지막 확인 12분 전' } }))
     const response = row('대응')
     expect(within(response).queryByText(/차단 적용 \d+ \(/)).not.toBeInTheDocument()
     expect(within(response).getByText('차단 적용 여부 미확인 3')).toHaveClass('bg-warning-soft')
     expect(within(response).getByText('집행기 확인 중단 · 마지막 확인 12분 전')).toHaveClass('text-warning')
+    // 멈춤 경고는 도움말(정상 보고 시각) 뒤로 숨지 않는다
+    expect(tipPanel(within(card).getByRole('button', { name: '집행 지점 보고 설명' }))).not.toHaveTextContent('집행기 확인 중단')
   })
 
   it.each([

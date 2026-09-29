@@ -35,15 +35,19 @@ export interface WatchCardProps {
 export function WatchCard({ data, pending, fetching, error, onRetry }: WatchCardProps) {
   const rows = data?.available ? data.rows : []
   const affected = rows.filter((r) => r.summary === 'affected').length
+  const stale = data?.available ? staleSources(data.freshness) : []
   return (
     <Card padding="none" className="min-w-0" role="region" aria-label="주목 CVE">
       <CardHeader
         title="주목 CVE"
-        aside={data?.available ? <span>{rows.length}건 · 해당 {affected}건 · <Time value={data.as_of} format="time" zone /> 기준</span> : undefined}
+        aside={data?.available ? <>
+          {stale.length > 0 && <Badge tone="warning" className="whitespace-normal">오래됨({stale.join(' · ')}) · 비해당 보류</Badge>}
+          <span>{rows.length}건 · 해당 {affected}건 · <Time value={data.as_of} format="time" zone /> 기준</span>
+        </> : undefined}
       />
       {pending ? <LoadingState className="m-4" /> : !data ? (
         isApiError(error) && error.status === 404
-          ? <p className="m-0 p-4 text-sm text-ink-muted">주목 CVE 정보가 없습니다. 콘솔 API 가 이 기능 이전 판일 수 있습니다.</p>
+          ? <p className="m-0 p-4 text-sm text-ink-muted">주목 CVE 정보가 없습니다(이전 판 콘솔 API).</p>
           : <ApiErrorState error={error} onRetry={onRetry} retrying={fetching} titleAs="h3" className="m-4" />
       ) : !data.available ? (
         <p className="m-0 p-4 text-sm text-ink-muted">주목 CVE 표가 아직 없습니다. 공개 취약점 정보의 수집 상태를 확인해 주세요.</p>
@@ -53,17 +57,13 @@ export function WatchCard({ data, pending, fetching, error, onRetry }: WatchCard
 }
 
 function WatchBody({ data, error }: { data: WatchResult; error: unknown }) {
-  const stale = staleSources(data.freshness)
   return <>
     <div className="flex flex-col gap-3 p-4">
-      <p className="m-0 text-xs leading-5 text-ink-muted">
-        널리 알려진 CVE 를 정해 두고 자산마다 설치 버전을 배포판(Ubuntu) 수정판과 견줍니다. 조사 · 조치 우선순위 참고용이며 판정 근거가 아닙니다.
-      </p>
+      <p className="m-0 text-xs leading-5 text-ink-muted">정해 둔 CVE 마다 자산의 설치 버전을 배포판(Ubuntu) 수정판과 견줍니다.</p>
       {error ? <Banner tone="danger" title="다시 받지 못했습니다">{describeError(error)} · 이전 결과를 보입니다</Banner> : null}
-      {stale.length > 0 && <Banner tone="warning">공개 정보가 오래돼 이 표의 비해당도 비해당으로 읽지 않습니다. 오래된 출처: {stale.join(' · ')}</Banner>}
     </div>
     {data.rows.length === 0
-      ? <p className="m-0 border-t border-line p-4 text-sm text-ink-muted">주목 CVE 목록이 비어 있습니다. 수집기의 목록(cti/watchlist.json)을 확인합니다.</p>
+      ? <p className="m-0 border-t border-line p-4 text-sm text-ink-muted">주목 CVE 목록이 비어 있습니다. 수집기의 주목 CVE 목록을 확인해 주세요.</p>
       : <WatchTable rows={data.rows} />}
   </>
 }

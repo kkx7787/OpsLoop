@@ -25,11 +25,44 @@ function httpReason(code: number): string {
   return '받는 쪽이 요청을 거부했습니다'
 }
 
-/** 실패 · 재시도 원인 한 줄. 성공이거나 원인이 없으면 빈 문자열 */
+/** 원인과 조치를 가른 것. 표 칸에는 원인만 두고 조치는 도움말(ⓘ)로 접는다. 조치는 이 파일의 고정 문장이라 비신뢰 값이 아니다 */
+export interface DeliveryProblemParts {
+  /** 원인. 모르는 오류면 서버가 준 원문(비신뢰) 그대로 */
+  cause: string
+  /** 조치 · 뒤 처리 안내. 없으면 빈 문자열 */
+  action: string
+}
+
+/** 아는 오류 이름의 안내. 'constructor' 같은 원형(prototype) 이름은 모르는 오류로 본다 */
+function known(error: string): string | undefined {
+  return Object.hasOwn(REASONS, error) ? REASONS[error] : undefined
+}
+
+/** 앞 마디(원인)와 ' · ' 뒤(조치)를 가른다. 고정 문장에만 쓴다 */
+function split(text: string): [string, string] {
+  const at = text.indexOf(' · ')
+  return at < 0 ? [text, ''] : [text.slice(0, at), text.slice(at + 3)]
+}
+
+/** 실패 · 재시도 원인과 조치. 성공이거나 원인이 없으면 둘 다 빈 문자열 */
+export function deliveryProblemParts(error: string | null | undefined, code: number | null | undefined): DeliveryProblemParts {
+  if (typeof code === 'number' && code >= 200 && code < 300) return { cause: '', action: '' }
+  if (typeof code === 'number') {
+    const [reason, action] = split(httpReason(code))
+    return { cause: `HTTP ${code} · ${reason}`, action }
+  }
+  if (!error) return { cause: '', action: '' }
+  const text = known(error)
+  if (!text) return { cause: error, action: '' }
+  const [reason, action] = split(text)
+  return { cause: `${reason} (${error})`, action }
+}
+
+/** 실패 · 재시도 원인 한 줄(원인 · 조치 전문). 시험 발송 실패 띠에 쓴다. 성공이거나 원인이 없으면 빈 문자열 */
 export function deliveryProblem(error: string | null | undefined, code: number | null | undefined): string {
   if (typeof code === 'number' && code >= 200 && code < 300) return ''
   if (typeof code === 'number') return `HTTP ${code} · ${httpReason(code)}`
   if (!error) return ''
-  const reason = REASONS[error]
+  const reason = known(error)
   return reason ? `${reason} (${error})` : error
 }

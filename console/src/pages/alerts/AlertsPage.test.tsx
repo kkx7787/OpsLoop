@@ -4,7 +4,7 @@ import { AlertsPage } from './AlertsPage'
 import { noRetryClient, renderRoutes } from '@/test/render'
 import { json } from '@/test/monitoring-fixtures'
 import { DEFAULT_TEMPLATE_HEADER, DEFAULT_TEMPLATE_ITEM, NOTIFY_EVENTS, notifyKeys, type Delivery, type NotifyChannel } from '@/api/notify'
-import { deliveryProblem } from '@/components/organisms/notify/problem'
+import { deliveryProblem, deliveryProblemParts } from '@/components/organisms/notify/problem'
 import { renderTemplate } from '@/components/organisms/notify/template'
 import { expectInertDom, expectLongFolds, expectMixedRevealed, HOSTILE, LONG, MIXED } from '@/test/hostile-fixtures'
 
@@ -75,6 +75,11 @@ describe('알림 설정', () => {
     // 실패도 언제였는지와 원인 안내를 보인다
     expect(within(daily).getByText('실패')).toBeInTheDocument()
     expect(within(daily).getByText(/이름 해석 실패/)).toBeInTheDocument()
+    // 조치는 원인 옆 ⓘ 로 접는다(닫혀 있어도 단추가 설명으로 읽는다)
+    expect(within(daily).getByRole('button', { name: '실패 조치 설명' })).toHaveAccessibleDescription('주소의 호스트 이름과 콘솔의 DNS 를 확인해 주세요')
+    // 통보 정책 기준은 카드 머리 ⓘ(좁은 화면에서도 보이게 열 머리가 아닌 카드 머리)
+    expect(screen.getByRole('button', { name: '통보 정책 설명' })).toHaveAccessibleDescription(/같은 종류의 첫 사건부터 묶음 시간 동안 모아 한 메시지로/)
+    expect(screen.getByRole('button', { name: '발송 이력 설명' })).toHaveAccessibleDescription(/1 · 5 · 15분 뒤 다시 보내고 3회를 넘기면 실패로 남습니다/)
     fireEvent.click(within(daily).getByText('연결 정보'))
     expect(within(daily).getAllByRole('time')).toHaveLength(2)
     expect(within(region).getByRole('switch', { name: 'SOC Teams 사용' })).toBeChecked()
@@ -107,6 +112,9 @@ describe('알림 설정', () => {
     fireEvent.change(within(form).getByLabelText(/^주소/), { target: { value: URL_TEAMS } })
     fireEvent.change(within(form).getByLabelText('최소 심각도'), { target: { value: 'high' } })
     fireEvent.change(within(form).getByLabelText('묶음 시간(초)'), { target: { value: '600' } })
+    const batch = within(form).getByLabelText('묶음 시간(초)')
+    expect(batch.getAttribute('aria-describedby')?.split(' ')).toContain(within(form).getByRole('button', { name: '묶음 시간 설명' }).getAttribute('aria-controls'))
+    expect(batch).toHaveAccessibleDescription('0 이면 바로 보냅니다. 같은 종류의 첫 사건부터 이 시간 동안 들어온 사건을 모아 한 메시지로 보냅니다.')
     fireEvent.click(within(form).getByLabelText('노드 수신 끊김'))
     fireEvent.change(within(form).getByLabelText('메시지 틀 · 머리말'), { target: { value: '[야간] {event_label} {count}건' } })
     fireEvent.click(within(form).getByRole('button', { name: '채널 추가' }))
@@ -138,6 +146,12 @@ describe('알림 설정', () => {
     const form = screen.getByRole('form', { name: '채널 수정 양식' })
     expect(within(form).getByLabelText(/^이름/)).toHaveFocus()
     expect(within(form).getByText(new RegExp(`기존 주소\\(${TEAMS_HOST.replaceAll('.', '\\.')} …9999\\)를 유지`))).toBeInTheDocument()
+    // 호스트 규칙 · 거부 조건은 주소 칸의 ⓘ 로 접는다(서버도 오류로 알려 준다)
+    expect(within(form).getByRole('button', { name: '채널 주소 설명' })).toHaveAccessibleDescription(/\*\.environment\.api\.powerplatform\.com 이어야 합니다/)
+    // 주소 칸은 한 줄 안내와 ⓘ 설명 상자를 직접 잇는다(도움말 문단째 이으면 ⓘ 단추 이름이 섞이고 접힌 내용은 브라우저가 읽지 않는다)
+    const url = within(form).getByLabelText(/^주소/)
+    expect(url.getAttribute('aria-describedby')?.split(' ')).toContain(within(form).getByRole('button', { name: '채널 주소 설명' }).getAttribute('aria-controls'))
+    expect(url).toHaveAccessibleDescription(/를 유지합니다\. .*powerplatform\.com 이어야 합니다.*끝 4자만 보입니다\.$/)
     fireEvent.change(within(form).getByLabelText(/^이름/), { target: { value: 'SOC Teams 2' } })
     fireEvent.click(within(form).getByRole('button', { name: '변경 저장' }))
     await waitFor(() => expect(calls(fetch, 'PUT', /^\/api\/notify\/channels\/1$/)).toHaveLength(1))
@@ -171,7 +185,9 @@ describe('알림 설정', () => {
     fireEvent.click(within(form).getByLabelText('노드 수신 끊김'))
     fireEvent.change(within(form).getByLabelText('등급'), { target: { value: 'daily' } })
     for (const label of ['최소 심각도', '묶음 시간(초)', '메시지 틀 · 항목 한 줄', '새 인시던트']) expect(within(form).queryByLabelText(label)).toBeNull()
-    expect(within(form).getByText(/매일 09:00 KST 에 미판정 수/)).toBeInTheDocument()
+    expect(within(form).getByText('매일 09:00 KST 에 미판정 요약을 한 번 보냅니다.')).toBeInTheDocument()
+    // 일일 요약의 {count} 는 미판정 수다(자리표시자 도움말)
+    expect(within(form).getByText('미판정 수')).toBeInTheDocument()
     const preview = within(form).getByRole('group', { name: '메시지 미리보기' })
     expect(preview).toHaveTextContent('[OpsLoop] 일일 요약 4건')
     expect(preview).toHaveTextContent('미판정 4건 · 최고 경과 3시간 전 · 목표 초과 1건 · 최근 24시간 사건 9건')
@@ -217,6 +233,15 @@ describe('알림 설정', () => {
     expect(deliveryProblem('ChannelDisabled', null)).toMatch(/중지/)
     expect(deliveryProblem('OSError', null)).toBe('OSError')
     expect(deliveryProblem(null, 202)).toBe('')
+    // 표 칸에는 원인만 두고 조치는 ⓘ 로 접는다
+    expect(deliveryProblemParts('gaierror', null)).toEqual({ cause: '이름 해석 실패 (gaierror)', action: '주소의 호스트 이름과 콘솔의 DNS 를 확인해 주세요' })
+    expect(deliveryProblemParts('HTTP 429', 429)).toEqual({ cause: 'HTTP 429 · Teams 전송 제한에 걸렸습니다', action: '잠시 뒤 자동으로 다시 보냅니다' })
+    expect(deliveryProblemParts('ChannelDisabled', null)).toEqual({ cause: '채널을 중지해 보내지 않았습니다 (ChannelDisabled)', action: '' })
+    expect(deliveryProblemParts('OSError', null)).toEqual({ cause: 'OSError', action: '' })
+    expect(deliveryProblemParts(null, 202)).toEqual({ cause: '', action: '' })
+    // 원형(prototype) 이름은 모르는 오류다
+    expect(deliveryProblemParts('constructor', null)).toEqual({ cause: 'constructor', action: '' })
+    expect(deliveryProblem('toString', null)).toBe('toString')
   })
 
   it('시험 발송 중에는 다른 행의 토글 · 시험 발송도 막아 둔다', async () => {
@@ -275,6 +300,7 @@ describe('알림 설정', () => {
     await waitFor(() => expect(fetch.mock.calls.some(([raw]) => { const u = new URL(String(raw), 'http://localhost'); return u.pathname === '/api/notify/deliveries' && u.searchParams.get('channel_id') === '1' && u.searchParams.get('status') === 'failed' && u.searchParams.get('limit') === '25' && u.searchParams.get('offset') === '0' })).toBe(true))
     expect(await screen.findByText(/HTTP 500 · 받는 쪽 서버 오류/)).toBeInTheDocument()
     expect(within(screen.getByRole('region', { name: '발송 이력 표' })).getByText('실패')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: '발송 이력 표' })).getByRole('button', { name: '실패 조치 설명' })).toHaveAccessibleDescription('잠시 뒤 자동으로 다시 보냅니다')
     fireEvent.click(screen.getByRole('button', { name: '다음' }))
     await waitFor(() => expect(fetch.mock.calls.some(([raw]) => { const u = new URL(String(raw), 'http://localhost'); return u.pathname === '/api/notify/deliveries' && u.searchParams.get('status') === 'failed' && u.searchParams.get('offset') === '25' })).toBe(true))
     expect(await screen.findByText('2 / 2페이지')).toBeInTheDocument()
@@ -296,7 +322,7 @@ describe('알림 설정', () => {
   it('조회 실패를 빈 목록으로 숨기지 않는다', async () => {
     setup('admin', { failure: true })
     expect(await screen.findByText('일시 오류 (HTTP 503)')).toBeInTheDocument()
-    expect(screen.queryByText('등록된 채널이 없습니다.')).toBeNull()
+    expect(screen.queryByText(/등록된 채널이 없습니다/)).toBeNull()
   })
 })
 

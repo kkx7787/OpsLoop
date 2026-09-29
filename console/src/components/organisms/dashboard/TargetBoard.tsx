@@ -9,6 +9,7 @@ import { Badge } from '../../atoms/Badge'
 import { Button } from '../../atoms/Button'
 import { Time } from '../../atoms/Time'
 import { UntrustedText } from '../../atoms/UntrustedText'
+import { InfoTip } from '../../molecules/InfoTip'
 import { ApiErrorState } from '../states/ApiErrorState'
 import { LoadingState } from '../states/LoadingState'
 import { COLLECTION_LABEL, COLLECTION_TONE, collectionState, LABEL_MAX, orderTargets, pendingText } from './target-format'
@@ -53,6 +54,7 @@ function useWide(): boolean {
  * 데스크톱은 카드 그리드(sm 이상 두 개 · 2xl 이상 네 개씩, 카드가 늘면 다음 줄로), 모바일은 대상마다 한 줄(이름 · 수집 상태 · 미판정)로
  * 접어 두고 누르면 카드를 펼친다. 등록 노드가 늘어도 접힌 줄만 늘어 가장 오래된 미판정이 첫 화면 가까이에 남는다.
  * 조회 실패는 이 자리만 오류로 보인다. 아래 수치 · 판정 대기열은 따로 조회하므로 막지 않는다.
+ * 카드 합이 전체와 다른 까닭은 제목 옆 도움말(ⓘ)에 둔다(카드를 받았을 때만).
  * 최근 사건의 CVE 배지는 목록과 같은 조회(useCtiBadges)로 카드마다의 최근 사건을 한 번에 받는다.
  */
 export function TargetBoard({ data, pending, fetching, error, updatedAt, onRetry, className }: TargetBoardProps) {
@@ -88,11 +90,28 @@ export function TargetBoard({ data, pending, fetching, error, updatedAt, onRetry
 
   return (
     <section aria-labelledby={titleId} className={cn('flex min-w-0 flex-col gap-2', className)}>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+      {data ? (
+        <InfoTip
+          label="관제 대상"
+          render={({ button, panel }) => (
+            <>
+              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                <h2 id={titleId} className="m-0 text-sm font-semibold tracking-heading">
+                  관제 대상
+                </h2>
+                {button}
+              </div>
+              {panel}
+            </>
+          )}
+        >
+          카드 수치는 대상별입니다. 한 사건이 여러 대상에 걸칠 수 있어 합이 전체와 다릅니다.
+        </InfoTip>
+      ) : (
         <h2 id={titleId} className="m-0 text-sm font-semibold tracking-heading">
           관제 대상
         </h2>
-      </div>
+      )}
       {data && error ? (
         <div role="status" className="flex flex-wrap items-center gap-2 rounded-panel bg-warning-soft px-3 py-2 text-xs text-warning">
           <span className="min-w-0 flex-1">
@@ -110,7 +129,7 @@ export function TargetBoard({ data, pending, fetching, error, updatedAt, onRetry
         </div>
       ) : null}
       {body}
-      {/* 기준 시각은 페이지 머리 하나만 둔다. 카드 합이 전체와 다른 까닭은 페이지 끝 각주(DashboardPage)에 둔다 */}
+      {/* 기준 시각은 페이지 머리 하나만 둔다 */}
       {data && (data.unmapped.incidents_1h > 0 || data.unmapped.pending > 0) && (
         <p className="m-0 text-xs font-medium text-ink" data-unmapped="">
           대상 미분류 사건: 최근 1시간 {data.unmapped.incidents_1h.toLocaleString('ko-KR')} · 미판정 {data.unmapped.pending.toLocaleString('ko-KR')}

@@ -4,9 +4,23 @@ import type { BlockCheckers } from '@/api/sources'
 import { Badge } from '../../atoms/Badge'
 import { Time } from '../../atoms/Time'
 import { UntrustedText } from '../../atoms/UntrustedText'
+import { Banner } from '../../molecules/Banner'
 import { EnforcePointList } from '../incident-detail/EnforcePointList'
 import { BLOCK_STATE_LABEL, BLOCK_STATE_TONE, blockState, blockStateHint, LIVE_BLOCK_STATES } from '../incident-detail/format'
 import { CHECKER_UNKNOWN_NOTE, checkedPoints, checkersUnknown } from './model'
+
+/**
+ * 집행기 확인 멈춤 띠(목록 · 상세). 집행 미확인 경고라 멈춘 지점과 사실만 본문에 한 줄로 둔다.
+ * 적용 확인을 '확인 지연'으로 바꾼 까닭은 지점 행 배지 옆 ⓘ(model.CHECKER_STALE_NOTE · EnforcePointList)에 있다
+ */
+export function CheckerStaleBanner({ points }: { points: readonly string[] }) {
+  if (!points.length) return null
+  return (
+    <Banner tone="warning" title="집행기 확인이 멈췄습니다">
+      {points.join(' · ')} · 10분 넘게 확인 없음
+    </Banner>
+  )
+}
 
 /**
  * 출발지의 지금 차단 상태(차단 목록 행 하나). 상태 나눔은 사건 상세 · 차단 목록과 같다(format.blockState).
@@ -72,6 +86,7 @@ export function SourceBlockDetail({ block, checkers, now, exempt, exemptRange }:
       ) : (
         <span className="text-sm text-ink-muted">차단한 적 없음</span>
       )}
+      {/* 금지 대역이면 어느 대역인지만 적는다('차단하지 않음'은 이름과 같은 말). 표를 읽을 수 없으면 머리 표지('금지 대역 확인 불가')가 알린다 */}
       {(exempt === true || exemptRange) && (
         <p className="m-0 text-xs break-words text-ink-muted" data-block-exempt>
           차단 금지 대역
@@ -80,11 +95,9 @@ export function SourceBlockDetail({ block, checkers, now, exempt, exemptRange }:
               {' '}
               <span className="font-mono">{exemptRange.cidr}</span>(<UntrustedText value={exemptRange.note} max={64} />)
             </>
-          )}{' '}
-          · 이 출발지는 차단하지 않습니다
+          )}
         </p>
       )}
-      {exempt === null && <p className="m-0 text-xs text-warning">차단 금지 대역 표를 읽을 수 없어 금지 대역인지 확인할 수 없습니다</p>}
       {checkersUnknown(checkers) && <p className="m-0 text-xs text-ink-muted">{CHECKER_UNKNOWN_NOTE}</p>}
     </div>
   )

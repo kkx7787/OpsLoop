@@ -6,6 +6,7 @@ import { Badge } from '../../atoms/Badge'
 import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { Time } from '../../atoms/Time'
 import { UntrustedText } from '../../atoms/UntrustedText'
+import { InfoTip } from '../../molecules/InfoTip'
 import { DetailSection } from './DetailSection'
 import { BLOCK_STATE_LABEL, BLOCK_STATE_TONE, blockState, blockStateHint, enforcementPoints, incidentHref, LIVE_BLOCK_STATES } from './format'
 import { EnforcePointList } from './EnforcePointList'
@@ -25,6 +26,7 @@ export interface ActorSectionProps {
  * ③ 행위자 이력: 최초 · 최근 관측, 누적 이벤트, 관측된 센서, 다른 규칙 탐지, 차단 이력, 같은 페이로드 흡수,
  * 같은 출발지의 다른 사건.
  * 허니팟 · 디코이 접속 이력은 결정적 근거다. 그 자산에 접근한 출발지가 정상 사용자일 가능성은 사실상 없다(화면 설계 5장).
+ *  그 근거는 '관측된 센서' 옆 도움말(ⓘ)에 둔다. 흡수 기록 수 · 후속 차단의 기준도 흡수 제목 옆 도움말에 둔다
  * 첫 사건이면 같은 페이로드로 흡수된 다른 출발지도 이 사건의 행위자로 보인다. 흡수된 인시던트는 지워져 상세가 없다.
  */
 export function ActorSection({ actor, related, actorIp, absorbed, className }: ActorSectionProps) {
@@ -33,7 +35,7 @@ export function ActorSection({ actor, related, actorIp, absorbed, className }: A
   return (
     <DetailSection number="③" title="행위자 이력" aside={actorIp && <span className="font-mono">{actorIp}</span>} className={className}>
       {actorIp === null ? (
-        <p className="m-0 text-xs text-ink-muted">출발지가 없는 사건입니다. 대상(계정 · 노드) 기준의 이력은 아직 모으지 않습니다.</p>
+        <p className="m-0 text-xs text-ink-muted">출발지가 없는 사건입니다.</p>
       ) : (
         <>
           <dl className="m-0 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4">
@@ -44,7 +46,19 @@ export function ActorSection({ actor, related, actorIp, absorbed, className }: A
           </dl>
 
           <div className="flex flex-col gap-1.5">
-            <span className="text-xs text-ink-muted">관측된 센서 · 허니팟 · 디코이 접속 이력은 결정적 근거다</span>
+            <InfoTip
+              label="관측된 센서"
+              render={({ button, panel }) => (
+                <>
+                  <span className="text-xs text-ink-muted">
+                    관측된 센서 {button}
+                  </span>
+                  {panel}
+                </>
+              )}
+            >
+              허니팟 · 디코이 접속 이력은 결정적 근거입니다. 그 자산에 접근한 출발지가 정상 사용자일 가능성은 사실상 없습니다.
+            </InfoTip>
             {history?.sensors && history.sensors.length > 0 ? (
               <ul className="m-0 flex list-none flex-wrap gap-1.5 p-0" aria-label="관측된 센서">
                 {history.sensors.map((sensor, i) => (
@@ -78,7 +92,7 @@ export function ActorSection({ actor, related, actorIp, absorbed, className }: A
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <span className="text-xs text-ink-muted">차단 이력 · 요청과 집행 지점의 결과</span>
+            <span className="text-xs text-ink-muted">차단 이력</span>
             {blocked && state ? (
               <>
                 <dl className="m-0 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3" data-block-state={state}>
@@ -182,23 +196,40 @@ function shortPayload(payload: string): string {
  */
 function AbsorbedList({ absorbed }: { absorbed: AbsorbedInfo }) {
   const { items, total, sources, blocked, follow } = absorbed
+  // 후속 차단: 첫 사건의 마지막 판정이 위협이면(이전 서버는 verdict 없음) 차단 중, 판정 전이면 대기, 위협이 아니면 멈춤
+  const following = follow && (follow.verdict === undefined || follow.verdict === 'threat')
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-xs text-ink-muted">
-        <strong className="font-semibold text-ink">같은 페이로드 흡수 {sources}곳</strong> · 기록 {total}건(억제 포함)
-        {blocked > 0 && ` · 이 사건의 흡수 차단 ${blocked}곳 유지 중`}
-      </span>
-      {follow && (follow.verdict === undefined || follow.verdict === 'threat') && (
+      <InfoTip
+        label="같은 페이로드 흡수"
+        render={({ button, panel }) => (
+          <>
+            <span className="text-xs text-ink-muted">
+              <strong className="font-semibold text-ink">같은 페이로드 흡수 {sources}곳</strong> ·{' '}
+              <span className="whitespace-nowrap">
+                기록 {total}건 {button}
+              </span>
+              {blocked > 0 && ` · 이 사건의 흡수 차단 ${blocked}곳 유지 중`}
+            </span>
+            {panel}
+          </>
+        )}
+      >
+        <span className="block">기록 수에는 흡수된 사건과 같은 출발지 · 같은 구간이라 억제한 낮은 알림도 들어갑니다.</span>
+        {follow && (
+          <span className="block">
+            후속 차단: 첫 사건의 마지막 판정이 위협이면 새로 흡수되는 출발지도 <Time value={follow.expires_at} format="datetime" /> 까지 차단합니다.
+          </span>
+        )}
+      </InfoTip>
+      {following && (
         <span className="text-xs text-ink-muted">
-          후속 차단 중 · 새로 흡수되는 출발지도 <Time value={follow.expires_at} format="datetime" /> 까지 차단합니다
+          후속 차단 중 · <Time value={follow.expires_at} format="datetime" /> 까지
         </span>
       )}
-      {follow && follow.verdict !== undefined && follow.verdict !== 'threat' && (
+      {follow && !following && (
         <span className="text-xs text-warning">
-          {follow.verdict === null
-            ? '후속 차단 대기 · 첫 사건에 위협 판정이 기록되면 새로 흡수되는 출발지를 '
-            : '후속 차단 멈춤 · 첫 사건의 마지막 판정이 위협이 아니어서 새로 흡수되는 출발지는 차단하지 않습니다. 다시 위협으로 판정하면 '}
-          <Time value={follow.expires_at} format="datetime" /> 까지 차단합니다
+          {follow.verdict === null ? '후속 차단 대기 · 첫 사건에 위협 판정이 없습니다' : '후속 차단 멈춤 · 첫 사건의 마지막 판정이 위협이 아닙니다'}
         </span>
       )}
       {items.length > 0 && <div className={`${TABLE.wrap} max-h-80`}>

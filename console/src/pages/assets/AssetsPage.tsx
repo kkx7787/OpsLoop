@@ -6,6 +6,7 @@ import { Button } from '@/components/atoms/Button'
 import { Time } from '@/components/atoms/Time'
 import { buttonClasses } from '@/components/atoms/button-styles'
 import { Banner } from '@/components/molecules/Banner'
+import { InfoTip } from '@/components/molecules/InfoTip'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { AssetDetailSection, AssetTable, CtiFreshnessFacts, staleSources, WatchCard } from '@/components/organisms/assets'
 import { ApiErrorState } from '@/components/organisms/states/ApiErrorState'
@@ -52,17 +53,23 @@ export function AssetsPage() {
   const stale = staleSources(data?.freshness)
 
   return <div className="flex min-w-0 flex-col gap-4">
-    <PageHeader title="자산 · 취약점" description="자산별 취약점과 수정 상태를 확인합니다. KEV · EPSS 는 조사 우선순위 참고용이며 판정 근거가 아닙니다." aside={<Link className={buttonClasses({})} to="/nodes">수집 노드</Link>} />
+    <InfoTip label="자산 · 취약점" render={({ button, panel }) => (
+      <PageHeader title="자산 · 취약점" badges={button} description={<>자산별 취약점과 수정 상태를 확인합니다.{panel}</>} aside={<Link className={buttonClasses({})} to="/nodes">수집 노드</Link>} />
+    )}>KEV · EPSS · 주목 CVE 는 조사 · 조치 우선순위 참고용이며 사건 판정의 근거가 아닙니다.</InfoTip>
     {data && assets.error ? <Banner tone="danger" title="데이터를 갱신하지 못했습니다" action={<Button onClick={() => void assets.refetch()} loading={assets.isFetching}>다시 조회</Button>}>
       {describeError(assets.error)} · 이전 결과 유지 · 마지막 조회 <Time value={assets.dataUpdatedAt} format="time" zone />
     </Banner> : null}
     {assets.isPending ? <LoadingState /> : !data ? <ApiErrorState error={assets.error} onRetry={() => void assets.refetch()} retrying={assets.isFetching} /> : !data.available ? (
-      <EmptyState title="공개 취약점 정보 표가 아직 없습니다" description="취약점 정보와 자산 정보를 아직 받지 못했습니다. 수집 상태를 확인해 주세요." />
+      <EmptyState title="공개 취약점 정보 표가 아직 없습니다" description="수집 상태를 확인해 주세요." />
     ) : <>
       {stale.length > 0 && <Banner tone="warning">공개 정보가 오래됐습니다. 비해당으로 읽지 않습니다. 오래된 출처: {stale.join(' · ')}</Banner>}
       {data.freshness && <details className="rounded-panel border border-line px-3 py-2 text-xs text-ink-muted">
         <summary className="cursor-pointer">공개 정보 신선도 · <Time value={data.as_of} format="time" zone /> 조회 기준</summary>
         <div className="mt-3"><CtiFreshnessFacts freshness={data.freshness} /></div>
+        <ul className="m-0 mt-3 list-none space-y-0.5 p-0 leading-5">
+          <li>48시간 넘게 새로 받지 못하면 오래됨입니다.</li>
+          <li>배포판 대조는 Ubuntu 보안 정보(OSV) 기준이며, 직접 설치한 프로그램은 대조하지 않습니다(미확인).</li>
+        </ul>
       </details>}
       {selected && <div ref={detailRef} tabIndex={-1} className="scroll-mt-16 outline-none"><AssetDetailSection
         assetId={selected}
@@ -78,9 +85,6 @@ export function AssetsPage() {
         onClose={() => select('')}
       /></div>}
       <div ref={assetListRef}><AssetTable rows={data.rows ?? []} selected={selected} onSelect={select} /></div>
-      <p className="m-0 text-xs leading-5 text-ink-muted">
-        수집이 48시간을 넘으면 오래됨으로 보고 비해당으로 읽지 않습니다. 배포판 대조는 Ubuntu 보안 정보(OSV) 기준이며, 컨테이너 이미지 안의 패키지 · 직접 설치한 프로그램은 대조하지 않습니다(미확인).
-      </p>
     </>}
     <WatchCard data={watch.data} pending={watch.isPending} fetching={watch.isFetching} error={watch.error} onRetry={() => void watch.refetch()} />
   </div>

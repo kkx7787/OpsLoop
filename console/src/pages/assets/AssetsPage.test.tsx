@@ -79,6 +79,8 @@ describe('자산 · 취약점', () => {
     expect(within(row('console-b')).getByText(/^수집 ·/)).toHaveTextContent(/^수집 · 연결 실패/)
 
     expect(screen.getByText('KEV 수집')).toBeInTheDocument()
+    // 오래됨 기준 · 대조 범위는 신선도 접힘 안에 둔다
+    expect(screen.getByText('48시간 넘게 새로 받지 못하면 오래됨입니다.').closest('details')).toHaveTextContent('공개 정보 신선도')
     expect(screen.queryByText(/공개 정보가 오래됐습니다/)).toBeNull()
     expect(screen.getByRole('link', { name: '수집 노드' })).toHaveAttribute('href', '/nodes')
     expect(screen.queryByRole('region', { name: /자산 상세$/ })).toBeNull()
@@ -95,7 +97,7 @@ describe('자산 · 취약점', () => {
     expect(await detail.findByText('openssh-server')).toBeInTheDocument()
     expect(detail.getByText('1:9.6p1-3ubuntu13.19')).toBeInTheDocument()
     expect(detail.getByText('opsloop-console:5adc7de')).toBeInTheDocument()
-    expect(detail.getByText(/이미지 안의 패키지는 조사하지 않아 취약점 대조에 들어가지 않습니다/)).toBeInTheDocument()
+    expect(detail.getByText(/이미지 안 패키지는 대조 안 함\(미확인\)/)).toBeInTheDocument()
     expect(detailUrls()).toEqual(['/api/assets/fw?filter=all&limit=50&offset=0'])
 
     const rows = within(detail.getByRole('region', { name: '배포판 취약점 표' })).getAllByRole('row').slice(1)
@@ -213,9 +215,13 @@ describe('자산 · 취약점', () => {
       list: assetsResult({ freshness: { ...f, osv: { ...f.osv, stale: true } } }),
       detail: { ...base, asset: { ...base.asset, stale: true, last_error: '연결 실패: 시간 초과', check_error: '지원하지 않는 배포판' } },
     })
-    expect(await screen.findByText(/공개 정보가 오래됐습니다\. 비해당으로 읽지 않습니다\. 오래된 출처: 배포판 대조/)).toBeInTheDocument()
+    // 판정 경고는 본문 띠다. 도움말(ⓘ) 설명 상자 안에 들어가면 안 된다
+    const pageStale = await screen.findByText(/공개 정보가 오래됐습니다\. 비해당으로 읽지 않습니다\. 오래된 출처: 배포판 대조/)
+    expect(pageStale.closest('[data-infotip]')).toBeNull()
     const detail = within(await screen.findByRole('region', { name: 'fw 자산 상세' }))
-    expect(await detail.findByText(/자산 정보가 오래됐습니다/)).toHaveTextContent('비해당으로 읽지 않습니다')
+    const assetStale = await detail.findByText(/자산 정보가 오래됐습니다/)
+    expect(assetStale).toHaveTextContent('비해당으로 읽지 않습니다')
+    expect(assetStale.closest('[data-infotip]')).toBeNull()
     expect(detail.getByText('마지막 수집 실패')).toBeInTheDocument()
     expect(detail.getByText('배포판 대조 실패')).toBeInTheDocument()
   })
@@ -231,6 +237,7 @@ describe('자산 · 취약점', () => {
   it('CTI 표가 없으면(available=false) 마이그레이션 안내를 보인다', async () => {
     setup('/inventory', { list: { as_of: '2026-09-25T03:00:00Z', available: false, freshness: null, rows: [] } })
     expect(await screen.findByRole('heading', { name: '공개 취약점 정보 표가 아직 없습니다' })).toBeInTheDocument()
+    expect(screen.getByText('수집 상태를 확인해 주세요.')).toBeInTheDocument()
     expect(screen.queryByRole('region', { name: '자산 표' })).toBeNull()
   })
 })
@@ -244,7 +251,10 @@ describe('주목 CVE', () => {
     const assetTable = await screen.findByRole('region', { name: '자산 표' })
     expect(assetTable.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(within(card).getByText(/3건 · 해당 1건/)).toBeInTheDocument()
-    expect(within(card).getByText(/판정 근거가 아닙니다/)).toBeInTheDocument()
+    expect(within(card).getByText('정해 둔 CVE 마다 자산의 설치 버전을 배포판(Ubuntu) 수정판과 견줍니다.')).toBeInTheDocument()
+    // '판정 근거 아님' 은 제목 옆 ⓘ 한 곳에만 둔다
+    expect(within(card).queryByText(/판정 근거가 아닙니다/)).toBeNull()
+    expect(screen.getByRole('button', { name: '자산 · 취약점 설명' })).toHaveAccessibleDescription(/주목 CVE 는 조사 · 조치 우선순위 참고용이며 사건 판정의 근거가 아닙니다/)
 
     const rows = Array.from(table.querySelectorAll('tr[data-cve]')) as HTMLElement[]
     expect(rows.map((r) => r.dataset.cve)).toEqual(['CVE-2026-53266', 'CVE-2024-6387', 'CVE-2021-3156'])
@@ -309,11 +319,14 @@ describe('주목 CVE', () => {
     expect(within(sudo).getByText('배포판 기록이 없어 영향 패키지를 모릅니다.')).toBeInTheDocument()
   })
 
-  it('공개 정보가 오래되면 카드 안에 비해당으로 읽지 말라는 띠를 보인다', async () => {
+  it('공개 정보가 오래되면 카드 머리에 비해당 보류 표지를 보인다', async () => {
     const f = freshness()
     setup('/inventory', { watch: watchResult({ freshness: { ...f, osv: { ...f.osv, stale: true } } }) })
     const card = await screen.findByRole('region', { name: '주목 CVE' })
-    expect(await within(card).findByText(/이 표의 비해당도 비해당으로 읽지 않습니다\. 오래된 출처: 배포판 대조/)).toBeInTheDocument()
+    // 오래됨 경고는 도움말 뒤에 숨기지 않고 카드 머리 표지로 늘 보인다(출처 · 비해당 보류)
+    const badge = await within(card).findByText('오래됨(배포판 대조) · 비해당 보류')
+    expect(badge.closest('[data-infotip]')).toBeNull()
+    expect(within(card).getByRole('heading', { name: '주목 CVE' }).parentElement).toContainElement(badge)
   })
 
   it('주목 CVE 조회가 실패해도 자산 표는 그대로이고 카드 안에만 오류 · 다시 시도가 보인다', async () => {
@@ -339,7 +352,10 @@ describe('주목 CVE', () => {
 
     setup('/inventory', { watch: watchResult({ rows: [] }) })
     const cards = await screen.findAllByRole('region', { name: '주목 CVE' })
-    expect(await within(cards.at(-1) as HTMLElement).findByText(/주목 CVE 목록이 비어 있습니다/)).toBeInTheDocument()
+    // 빈 목록은 할 일(수집기 목록 확인)을 알려 준다. 내부 파일 이름은 적지 않는다
+    const emptyList = await within(cards.at(-1) as HTMLElement).findByText(/주목 CVE 목록이 비어 있습니다/)
+    expect(emptyList).toHaveTextContent('수집기의 주목 CVE 목록을 확인해 주세요.')
+    expect(emptyList).not.toHaveTextContent('watchlist.json')
   })
 
   it('첫 조회 중에는 카드 안에 불러오는 중을 보인다', async () => {

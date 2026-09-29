@@ -135,6 +135,13 @@ function routes(): RouteObject[] {
   ]
 }
 
+/** 도움말(ⓘ) 단추가 여닫는 설명 상자 */
+function tipPanel(button: HTMLElement): HTMLElement {
+  const panel = document.getElementById(button.getAttribute('aria-controls') ?? '')
+  expect(panel).not.toBeNull()
+  return panel as HTMLElement
+}
+
 /** fetch 호출 가운데 이 주소 · 방식으로 나간 것의 본문 */
 function sentBody(fetch: ReturnType<typeof stubApi>, url: string, method: string): Record<string, unknown> | undefined {
   const call = fetch.mock.calls.find(([input, init]) => input === url && init?.method === method)
@@ -165,7 +172,9 @@ describe('IncidentDetailPage', () => {
     // 머리글: 심각도 · 상태 · 발생원 · 출발지 · 경과(판정 목표)
     expect(screen.getByText('critical')).toHaveAttribute('data-severity', 'critical')
     expect(screen.getAllByText('신규')[0]).toHaveAttribute('data-status', 'open')
-    expect(screen.getByText('발생원 허니팟')).toBeInTheDocument()
+    expect(screen.getByText('발생원 허니팟')).not.toHaveAttribute('title')
+    // 발생원의 뜻은 마우스 올림 말풍선이 아니라 옆 도움말(ⓘ)로 키보드 · 터치에서도 본다
+    expect(screen.getByRole('button', { name: '발생원 허니팟 설명' })).toHaveAccessibleDescription('노출을 의도한 자산에서 발생한 건입니다. 침해사고 신고 대상이 아닙니다.')
     expect(screen.getByText(/판정 목표 1시간/)).toBeInTheDocument()
 
     for (const name of ['규칙이 본 것', '규칙이 보지 않은 증거', '행위자 이력', '원문 로그', '조치와 판정']) {
@@ -176,6 +185,9 @@ describe('IncidentDetailPage', () => {
     const evidence = screen.getByRole('region', { name: '규칙이 본 것' })
     expect(within(evidence).getByText('순환 규칙')).toBeInTheDocument()
     expect(within(evidence).getByText(/규칙 조건이 파일 이동이고/)).toBeInTheDocument()
+    // 경고 띠에는 무엇이 겹치는지만, 품질 지표를 무엇으로 보는지는 도움말에
+    expect(within(evidence).getByRole('status')).not.toHaveTextContent('중복률')
+    expect(within(evidence).getByRole('button', { name: '순환 규칙 설명' })).toHaveAccessibleDescription('이 규칙은 정탐률이 품질 지표가 되지 못해 중복률을 봅니다.')
     expect(within(evidence).getByText('abc123')).toBeInTheDocument()
     expect(within(evidence).getByText('최대 3건')).toBeInTheDocument()
 
@@ -187,12 +199,16 @@ describe('IncidentDetailPage', () => {
     // ③ 이력 · 차단 · 관련 사건 링크
     const actor = screen.getByRole('region', { name: '행위자 이력' })
     expect(within(actor).getByText('120건')).toBeInTheDocument()
+    expect(within(actor).getByText('관측된 센서')).toBeInTheDocument()
+    expect(within(actor).getByRole('button', { name: '관측된 센서 설명' })).toHaveAccessibleDescription(/허니팟 · 디코이 접속 이력은 결정적 근거입니다/)
+    expect(within(actor).getByText('차단 이력')).toBeInTheDocument()
     expect(within(actor).getByText('집행 확인', { selector: 'span' })).toBeInTheDocument()
     expect(within(actor).getByRole('link', { name: 'R001' })).toHaveAttribute('href', `/incidents/${encodeURIComponent(RELATED_KEY)}`)
 
-    // ④ 원문은 접혀 있고 펼치면 줄이 보인다
+    // ④ 원문은 접혀 있고(머리의 줄 수 · 펼치기만) 펼치면 줄이 보인다
     const raw = screen.getByRole('region', { name: '원문 로그' })
     expect(within(raw).queryByText(/CMD: wget/)).toBeNull()
+    expect(raw).not.toHaveTextContent('접혀 있습니다')
     fireEvent.click(within(raw).getByRole('button', { name: '펼치기' }))
     expect(within(raw).getByText(/CMD: wget/)).toBeInTheDocument()
   })
@@ -236,17 +252,37 @@ describe('IncidentDetailPage', () => {
     const history = panel.getByRole('table', { name: '판정 · 조치 이력' })
     expect(within(history).getByText('실제 위협')).toHaveAttribute('data-verdict', 'threat')
     expect(within(history).getByText('로그인 뒤 wget 으로 파일 투하')).toBeInTheDocument()
+    // 제안이 없던 판정은 제안 칸을 글로 채우지 않는다
+    expect(history).not.toHaveTextContent('제안 기록 없음')
+    expect(within(history).getByText(/^소요 /)).toBeInTheDocument()
     expect(screen.getAllByText('종결')[0]).toHaveAttribute('data-status', 'resolved')
     expect(screen.getByText(/^판정까지 /)).toBeInTheDocument()
   })
 
-  it('사유가 비어 있으면 경고만 하고 기록한다', async () => {
+  it('판정값은 뜻 한 줄만 늘 보이고, 예 · 세는 법은 선택지 옆 도움말에 있다(누르면 판정값이 골라지지 않는다)', async () => {
+    stubApi()
+    renderRoutes(routes(), PATH)
+    const { panel } = await readyPanel()
+    // 라디오 이름은 판정값과 뜻뿐이다(도움말 단추 이름이 섞이지 않는다)
+    const radio = panel.getByRole('radio', { name: /^실제 위협\s?행위로 침해 또는 침해 시도가 확인됐다$/ })
+    const tip = panel.getByRole('button', { name: '실제 위협 설명' })
+    expect(tip).toHaveAccessibleDescription('예: 로그인 뒤 명령 실행 · 파일 투하 · 다른 호스트로 경유 · 대량 자원 소모')
+    fireEvent.click(tip)
+    expect(tip).toHaveAttribute('aria-expanded', 'true')
+    expect(radio).not.toBeChecked()
+    expect(panel.getByRole('button', { name: '양성 정탐 설명' })).toHaveAccessibleDescription(/오탐으로 세지 않는다/)
+    // 사유 칸 도움말 문장은 없다(입력 예시와 빈 사유 경고가 대신한다)
+    expect(panel.getByLabelText('사유')).not.toHaveAttribute('aria-describedby')
+  })
+
+  it('사유가 비어 있으면 판정값을 고른 뒤 경고만 하고 기록한다', async () => {
     const fetch = stubApi()
     renderRoutes(routes(), PATH)
     const { panel } = await readyPanel()
 
-    expect(panel.getByText(/사유가 비어 있습니다/)).toBeInTheDocument()
+    expect(panel.queryByText('사유 없이 기록됩니다.')).toBeNull()
     fireEvent.click(panel.getByRole('radio', { name: /^미결/ }))
+    expect(panel.getByText('사유 없이 기록됩니다.')).toHaveAttribute('role', 'status')
     fireEvent.click(panel.getByRole('button', { name: '판정 기록' }))
 
     await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/verdict`, 'POST')).toBeDefined())
@@ -268,7 +304,7 @@ describe('IncidentDetailPage', () => {
 
     const confirm = within(panel.getByRole('form', { name: '차단 확인' }))
     fireEvent.change(confirm.getByLabelText('만료'), { target: { value: '168' } })
-    fireEvent.change(confirm.getByLabelText('메모'), { target: { value: '세션 3개에서 명령 실행' } })
+    fireEvent.change(confirm.getByLabelText('메모 (선택)'), { target: { value: '세션 3개에서 명령 실행' } })
     fireEvent.click(confirm.getByRole('button', { name: '차단 확정' }))
 
     await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toBeDefined())
@@ -286,7 +322,10 @@ describe('IncidentDetailPage', () => {
     renderRoutes(routes(), PATH)
     const { region, panel } = await readyPanel()
     expect(region.querySelector('[data-gated="denied"]')).not.toBeNull()
-    expect(panel.getByText(/조회 전용 계정/)).toBeInTheDocument()
+    // 권한 안내 글은 조치 바 한 곳. 판정 패널의 까닭은 말풍선 · 낭독으로만 남는다
+    expect(panel.getByText(/조회 전용 계정/)).toHaveTextContent('조회 전용 계정입니다. 조치 · 판정은 operator · admin 이 합니다.')
+    expect(region.querySelector('[data-gated="denied"]')).toHaveAttribute('title', '이 동작(판정)은 operator · admin 만 할 수 있습니다 · 현재 역할 viewer')
+    expect(panel.getByText('이 동작(판정)은 operator · admin 만 할 수 있습니다 · 현재 역할 viewer')).toHaveClass('sr-only')
     for (const name of ['확인', '차단', '차단 해제', '규칙 억제']) {
       expect(panel.queryByRole('button', { name })).toBeNull()
     }
@@ -358,7 +397,11 @@ describe('IncidentDetailPage', () => {
     stubApi({ body: { detail: '인시던트를 찾을 수 없습니다' }, status: 404 })
     renderRoutes(routes(), PATH, noRetryClient())
     expect(await screen.findByRole('heading', { level: 1, name: '인시던트를 찾을 수 없습니다' })).toBeInTheDocument()
-    expect(screen.getByText('S-04 · 404')).toBeInTheDocument()
+    expect(screen.getByText('404')).toBeInTheDocument()
+    expect(screen.queryByText(/S-04/)).toBeNull()
+    // 서버 설명이 제목과 같으면 되풀이하지 않는다
+    expect(screen.getAllByText(/인시던트를 찾을 수 없습니다/)).toHaveLength(1)
+    expect(screen.getByText(/키가 바뀌었거나 다른 콘솔의 사건일 수 있습니다/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '인시던트 목록으로' })).toHaveAttribute('href', '/incidents')
     expect(screen.queryByRole('region', { name: '조치와 판정' })).toBeNull()
   })
@@ -372,11 +415,11 @@ describe('IncidentDetailPage', () => {
       ? Promise.resolve(json({ detail: '차단 요청을 저장할 수 없습니다' }, 503))
       : original(input, init))
     fireEvent.click(panel.getByRole('button', { name: '차단' }))
-    fireEvent.change(panel.getByLabelText('메모'), { target: { value: '재시도용 메모' } })
+    fireEvent.change(panel.getByLabelText('메모 (선택)'), { target: { value: '재시도용 메모' } })
     fireEvent.click(panel.getByRole('button', { name: '차단 확정' }))
     expect(await panel.findByText('조치를 기록하지 못했습니다')).toBeInTheDocument()
     expect(panel.getByRole('alert')).toHaveTextContent('차단 요청을 저장할 수 없습니다 (HTTP 503)')
-    expect(panel.getByLabelText('메모')).toHaveValue('재시도용 메모')
+    expect(panel.getByLabelText('메모 (선택)')).toHaveValue('재시도용 메모')
     expect(panel.getByText('아직 판정 · 조치 기록이 없습니다.')).toBeInTheDocument()
   })
 
@@ -399,7 +442,9 @@ describe('IncidentDetailPage', () => {
     renderRoutes(routes(), PATH)
     const actor = await screen.findByRole('region', { name: '행위자 이력' })
     expect(within(actor).getByText('같은 페이로드 흡수 2곳')).toBeInTheDocument()
-    expect(within(actor).getByText(/이 사건의 흡수 차단 3곳 유지 중/)).toBeInTheDocument()
+    expect(within(actor).getByText(/이 사건의 흡수 차단 3곳 유지 중/)).toHaveTextContent('같은 페이로드 흡수 2곳 · 기록 250건 · 이 사건의 흡수 차단 3곳 유지 중')
+    // 기록 수에 억제 알림이 든다는 기준은 도움말에
+    expect(within(actor).getByRole('button', { name: '같은 페이로드 흡수 설명' })).toHaveAccessibleDescription(/억제한 낮은 알림도 들어갑니다/)
     const table = within(actor).getByRole('table', { name: '같은 페이로드 흡수' })
     const rows = within(table).getAllByRole('row').slice(1)
     expect(rows).toHaveLength(3)
@@ -455,11 +500,17 @@ describe('IncidentDetailPage', () => {
     stubApi({ role: 'admin', body: detail({ absorbed: absorbed({ skipped: ['198.51.100.9'], skipped_total: 1, unblockable: 2, follow }) }) })
     renderRoutes(routes(), PATH)
     const { panel } = await readyPanel()
-    expect(within(screen.getByRole('region', { name: '행위자 이력' })).getByText(/후속 차단 중 · 새로 흡수되는 출발지도/)).toBeInTheDocument()
+    const actor = within(screen.getByRole('region', { name: '행위자 이력' }))
+    expect(actor.getByText(/^후속 차단 중 · /)).toHaveTextContent('후속 차단 중 · 2026-09-19 16:00:00 까지')
+    expect(actor.getByRole('button', { name: '같은 페이로드 흡수 설명' })).toHaveAccessibleDescription(/후속 차단: 첫 사건의 마지막 판정이 위협이면 새로 흡수되는 출발지도 2026-09-19 16:00:00 까지 차단합니다/)
     fireEvent.click(panel.getByRole('button', { name: '차단' }))
     const block = within(panel.getByRole('form', { name: '차단 확인' }))
+    // 넣지 않을 곳은 본문, 함께 차단의 동작 규칙은 선택 옆 도움말
     expect(block.getByText(/사람이 푼 1곳\(198\.51\.100\.9\)은 다시 걸지 않습니다/)).toBeInTheDocument()
     expect(block.getByText(/차단 금지 대역\(사설 · 예약 · 인프라 주소\) 2곳은 넣지 않습니다/)).toBeInTheDocument()
+    const rule = block.getByRole('button', { name: '흡수된 출발지 2곳도 함께 차단 설명' })
+    expect(rule).toHaveAccessibleDescription(/같은 만료로 올리고, 만료 전까지 새로 흡수되는 출발지도/)
+    expect(block.getByRole('checkbox', { name: '흡수된 출발지 2곳도 함께 차단' })).toHaveAccessibleDescription(/다시 걸지 않습니다.*같은 만료로 올리고/)
     fireEvent.click(panel.getByRole('button', { name: '취소' }))
     fireEvent.click(panel.getByRole('button', { name: '차단 해제' }))
     expect(within(panel.getByRole('form', { name: '차단 해제 확인' })).getByRole('checkbox', { name: '흡수 차단 3곳도 함께 해제 · 후속 차단 중지' })).toBeInTheDocument()
@@ -471,7 +522,8 @@ describe('IncidentDetailPage', () => {
     const { panel } = await readyPanel()
     fireEvent.click(panel.getByRole('button', { name: '차단 해제' }))
     const confirm = within(panel.getByRole('form', { name: '차단 해제 확인' }))
-    expect(confirm.getByText(/차단 대량 해제\(R201\) 알림이 뜹니다/)).toBeInTheDocument()
+    expect(confirm.getByText('3곳 이상을 한꺼번에 풀면 차단 대량 해제(R201) 알림이 뜹니다.')).toBeInTheDocument()
+    expect(confirm.getByRole('button', { name: '흡수 차단 3곳도 함께 해제 설명' })).toHaveAccessibleDescription(/의도된 감사입니다. 흡수 판단 전체가 틀렸을 때만 쓰고/)
     fireEvent.click(confirm.getByRole('checkbox', { name: '흡수 차단 3곳도 함께 해제' }))
     fireEvent.click(confirm.getByRole('button', { name: '차단 해제 확정' }))
     await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'unblock_ip', include_absorbed: true }))
@@ -492,6 +544,7 @@ describe('IncidentDetailPage', () => {
     expect(check).toBeChecked()
     expect(check).toBeDisabled()
     expect(confirm.queryByText(/R201/)).toBeNull()
+    expect(confirm.getByRole('button', { name: '흡수 차단 2곳도 함께 해제 설명' })).toHaveAccessibleDescription('흡수 판단 전체가 틀렸을 때만 씁니다. 평소에는 만료로 풀리게 둡니다.')
     fireEvent.click(confirm.getByRole('button', { name: '차단 해제 확정' }))
     await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'unblock_ip', include_absorbed: true }))
   })
@@ -504,7 +557,9 @@ describe('IncidentDetailPage', () => {
     expect(screen.getByText('발생원 관제 자기 탐지')).toBeInTheDocument()
     // 관제 자기 탐지 건은 심각도와 관계없이 critical 목표(1시간)
     expect(screen.getByText(/판정 목표 1시간/)).toBeInTheDocument()
-    expect(screen.getByText(/출발지가 없는 사건이라/)).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: '규칙이 보지 않은 증거' })).getByText('출발지가 없어 같은 출발지의 행위를 모을 수 없습니다.')).toBeInTheDocument()
+    expect(within(screen.getByRole('region', { name: '행위자 이력' })).getByText('출발지가 없는 사건입니다.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '발생원 관제 자기 탐지 설명' })).toHaveAccessibleDescription(/침해사고 신고 기한이 걸려 critical 목표를 따릅니다/)
     expect(screen.queryByText('순환 규칙')).toBeNull()
     const block = await within(screen.getByRole('region', { name: '조치와 판정' })).findByRole('button', { name: '차단' })
     expect(block).toHaveAttribute('title', '출발지가 없는 사건은 차단할 수 없습니다')
@@ -530,7 +585,11 @@ describe('IncidentDetailPage · ⑥ 취약점 연계', () => {
     expect(within(block).getByText('GeoServer')).toBeInTheDocument()
     expect(within(block).getByText('OSGeo')).toBeInTheDocument()
     expect(within(block).getByText('분석가 대응')).toBeInTheDocument()
-    expect(within(block).getByText('KEV 에 이 제품 항목 1건 · 아래 CVE 표에 함께 보입니다')).toBeInTheDocument()
+    expect(within(block).getByText('KEV 에 이 제품 항목 1건')).toBeInTheDocument()
+    // 분석가 대응의 근거 문장은 대응 방식 표지 옆 도움말에
+    const basis = within(block).getByRole('button', { name: 'GeoServer 대응 근거 설명' })
+    expect(basis).toHaveAccessibleDescription('GeoServer 기본 배포의 웹 관리 화면이 /geoserver/web/ 아래에 있다.')
+    expect(block).toContainElement(tipPanel(basis))
 
     // 자산 적용: 디코이 → 비해당(모의 서비스), 오래된 자산 → 미확인
     const rows = within(panel.getByRole('table', { name: 'GeoServer 자산 적용' })).getAllByRole('row').slice(1)
@@ -552,11 +611,17 @@ describe('IncidentDetailPage · ⑥ 취약점 연계', () => {
     expect(within(cveRow).getByText(/94\.4%/)).toBeInTheDocument()
     expect(within(cveRow).getByText('(백분위 99.9)')).toBeInTheDocument()
 
-    // 신선도(KST)
-    expect(panel.getByText('KEV 수집')).toBeInTheDocument()
-    expect(panel.getByText('2026-09-25 11:00')).toBeInTheDocument()
-    expect(panel.getByText('배포판 대조')).toBeInTheDocument()
+    // 신선도(KST)는 구역 끝에 접혀 있고 펼치면 보인다
+    const fresh = panel.getByRole('button', { name: '취약점 연계 공개 정보 신선도' })
+    expect(fresh).toHaveAttribute('aria-expanded', 'false')
+    const facts = tipPanel(fresh)
+    expect(facts).toContainElement(panel.getByText('KEV 수집'))
+    expect(within(facts).getByText('2026-09-25 11:00')).toBeInTheDocument()
+    expect(within(facts).getByText('배포판 대조')).toBeInTheDocument()
+    fireEvent.click(fresh)
+    expect(fresh).toHaveAttribute('aria-expanded', 'true')
     expect(panel.getByRole('link', { name: '자산 · 취약점' })).toHaveAttribute('href', '/inventory')
+    expect(region).not.toHaveTextContent('자산별 설치 패키지')
 
     // 머리글의 심각도 표기(소문자)는 여전히 하나뿐이다
     expect(screen.getByText('critical')).toHaveAttribute('data-severity', 'critical')
@@ -613,10 +678,16 @@ describe('IncidentDetailPage · ⑥ 취약점 연계', () => {
     expect(mapping).toHaveAttribute('data-mapping', 'sigma')
     expect(mapping.className).toContain('text-violet')
     expect(within(block).getByText('응답 코드 200 · 301 일 때만')).toBeInTheDocument()
-    expect(within(block).getByText(/DRL 1\.1 로 배포된 것을 변환했다/)).toBeInTheDocument()
+    // 공개 규칙의 근거 문장은 아래 원본 규칙 출처와 같은 말이라 그리지 않는다
+    expect(within(block).queryByText(/DRL 1\.1 로 배포된 것을 변환했다/)).toBeNull()
+    expect(within(block).queryByRole('button', { name: /대응 근거 설명$/ })).toBeNull()
 
     const source = block.querySelector('[data-sigma-source]') as HTMLElement
     expect(source).toHaveTextContent('원본 규칙: CVE-2021-41773 Exploitation Attempt · 3007fec6-e761-4319-91af-e32e20ac43f5')
+    // 작성 · 위치 · 변환 메모는 '출처 보기' 로 접혀 있다
+    const more = within(source).getByRole('button', { name: '원본 규칙 출처 보기' })
+    expect(more).toHaveAttribute('aria-expanded', 'false')
+    expect(tipPanel(more)).toHaveTextContent('작성 daffainfo, Florian Roth')
     expect(source).toHaveTextContent('작성 daffainfo, Florian Roth · 성숙도 test · 등급 high · 라이선스 DRL-1.1')
     const link = within(source).getByRole('link', { name: SIGMA_URL })
     expect(link).toHaveAttribute('href', SIGMA_URL)
@@ -663,7 +734,7 @@ describe('IncidentDetailPage · ⑥ 취약점 연계', () => {
     stubApi({ cti: { detail: '인시던트를 찾을 수 없습니다' }, ctiStatus: 404 })
     renderRoutes(routes(), PATH, noRetryClient())
     const region = await screen.findByRole('region', { name: '취약점 연계' })
-    expect(within(region).getByText(/취약점 연계 정보가 없습니다/)).toBeInTheDocument()
+    expect(within(region).getByText('취약점 연계 정보가 없습니다. 콘솔 API 가 이 기능 이전 판일 수 있습니다.')).toBeInTheDocument()
     expect(within(region).queryByRole('alert')).toBeNull()
     expect(screen.getByRole('heading', { level: 1, name: 'R003 악성코드 투하' })).toBeInTheDocument()
     expect(screen.getByRole('region', { name: '조치와 판정' })).toBeInTheDocument()
@@ -690,16 +761,18 @@ describe('IncidentDetailPage · ⑥ 취약점 연계', () => {
     stubApi({ cti: ctiFor({ stale: true, freshness: { ...f, kev: { ...f.kev, stale: true }, assets: { ...f.assets, stale_assets: ['fw'] } } }) })
     renderRoutes(routes(), PATH)
     const panel = within(await screen.findByRole('region', { name: '취약점 연계' }))
+    // 신선도는 접혀 있으므로 어느 출처가 오래됐는지는 띠가 본문에서 알린다
     expect(panel.getByText(/공개 정보가 오래됐습니다\. 비해당으로 읽지 않습니다\./)).toHaveTextContent('오래된 출처: KEV')
-    expect(panel.getAllByText('오래됨')).toHaveLength(2)
-    expect(panel.getByText('오래됨 · fw')).toBeInTheDocument()
+    const facts = tipPanel(panel.getByRole('button', { name: '취약점 연계 공개 정보 신선도' }))
+    expect(within(facts).getAllByText('오래됨')).toHaveLength(2)
+    expect(within(facts).getByText('오래됨 · fw')).toBeInTheDocument()
   })
 
   it('서명 규칙 사건인데 CTI 표가 없으면(available=false) 적용 안내를 보인다', async () => {
     stubApi({ cti: { as_of: '2026-09-18T08:00:00Z', incident_key: KEY, applicable: true, available: false } })
     renderRoutes(routes(), PATH)
     const region = await screen.findByRole('region', { name: '취약점 연계' })
-    expect(within(region).getByText(/공개 취약점 정보 표가 아직 없습니다/)).toBeInTheDocument()
+    expect(within(region).getByText('공개 취약점 정보 표가 아직 없습니다. 관리자에게 수집 상태를 확인해 주세요.')).toBeInTheDocument()
   })
 })
 
@@ -774,7 +847,8 @@ describe('IncidentDetailPage · 차단 집행(#47)', () => {
     expect(button).toHaveAttribute('aria-disabled', 'true')
     fireEvent.click(button)
     expect(panel.queryByRole('form', { name: '차단 확인' })).toBeNull()
-    expect(panel.getByText('차단 금지 대역 15.164.37.49/32(AWS 관문 EIP)에 들어 차단할 수 없습니다. 인프라 · 사설 · 예약 주소는 막지 않습니다.')).toBeInTheDocument()
+    expect(panel.getByText(/^차단 금지 대역 15\.164\.37\.49\/32\(AWS 관문 EIP\)에 들어 차단할 수 없습니다/, { selector: 'p' })).toHaveTextContent(/^차단 금지 대역 15\.164\.37\.49\/32\(AWS 관문 EIP\)에 들어 차단할 수 없습니다\. /)
+    expect(panel.getByRole('button', { name: '차단 금지 대역 설명' })).toHaveAccessibleDescription('인프라 · 사설 · 예약 주소는 막지 않습니다.')
     const actor = screen.getByRole('region', { name: '행위자 이력' })
     expect(actor.querySelector('[data-block-exempt]')).toHaveTextContent('차단 금지 대역 15.164.37.49/32(AWS 관문 EIP) · 이 출발지는 차단하지 않습니다')
     expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toBeUndefined()
@@ -796,10 +870,14 @@ describe('IncidentDetailPage · 차단 집행(#47)', () => {
     renderRoutes(routes(), PATH)
     const { panel } = await readyPanel()
     fireEvent.click(panel.getByRole('button', { name: '차단' }))
-    const form = within(panel.getByRole('form', { name: '차단 확인' }))
-    expect(form.getByText(/만료 없는 옛 차단이 살아 있습니다\. 다시 걸어도 만료를 앞당기지 않으므로 만료가 그대로 없고 관문 집행에서 빠집니다\(집행 제외\)/)).toBeInTheDocument()
-    expect(form.getByText(/admin 이 해제한 뒤 다시 차단합니다/)).toBeInTheDocument()
-    expect(form.queryByText(/동안 차단합니다/)).toBeNull()
+    const box = panel.getByRole('form', { name: '차단 확인' })
+    const form = within(box)
+    const sentence = box.querySelector('p') as HTMLElement
+    expect(sentence).toHaveTextContent(/^출발지 4\.4\.66\.84 에는 만료 없는 옛 차단이 살아 있어 관문 집행에서 빠집니다\(집행 제외\)\. 이 요청은 사유 · 요청자만 바꿉니다\. 관문에서 막으려면 admin 이 해제한 뒤 다시 차단합니다\./)
+    // 만료 칸이 보여도 이 요청이 무엇을 바꾸는지(요청의 효과)는 ⓘ 가 아니라 본문에 있다
+    expect(form.getByText(/이 요청은 사유 · 요청자만 바꿉니다/).closest('[data-infotip]')).toBeNull()
+    expect(form.getByRole('button', { name: '옛 차단 설명' })).toHaveAccessibleDescription('살아 있는 차단의 만료는 앞당기지 않아, 다시 걸어도 만료가 그대로 없습니다.')
+    expect(sentence).not.toHaveTextContent('동안 차단합니다')
     expect(form.queryByText(/집행 확인으로 바뀝니다/)).toBeNull()
   })
 
@@ -808,15 +886,23 @@ describe('IncidentDetailPage · 차단 집행(#47)', () => {
     renderRoutes(routes(), PATH)
     const { panel } = await readyPanel()
     fireEvent.click(panel.getByRole('button', { name: '차단' }))
-    expect(within(panel.getByRole('form', { name: '차단 확인' })).getByText(/AWS 관문이 허니팟 유입에 반영하면 차단 목록에 집행 확인으로 바뀝니다/)).toBeInTheDocument()
+    const box = panel.getByRole('form', { name: '차단 확인' })
+    const form = within(box)
+    const sentence = box.querySelector('p') as HTMLElement
+    expect(sentence).toHaveTextContent(/^출발지 4\.4\.66\.84 를 1일 \(24시간\) 동안 차단합니다\./)
+    expect(sentence).not.toHaveTextContent('만료되면 저절로 풀립니다')
+    // 처리 과정 · 예외는 문장 끝 도움말. 살아 있는 차단이 있으면 만료를 앞당기지 않는다는 예외도 거기 있다
+    expect(form.getByRole('button', { name: '차단 설명' })).toHaveAccessibleDescription('이미 살아 있는 차단이 있으면 만료를 앞당기지 않습니다. 요청은 AWS 관문이 허니팟 유입에 반영하면 차단 목록에 집행 확인으로 바뀝니다.')
   })
 
   it('후속 차단은 첫 사건 판정이 위협이 아니면 멈춤 · 판정 전이면 대기로 보인다', async () => {
-    for (const [verdict, text] of [['false_positive', /^후속 차단 멈춤 · 첫 사건의 마지막 판정이 위협이 아니어서/], [null, /^후속 차단 대기 · 첫 사건에 위협 판정이 기록되면/], ['threat', /^후속 차단 중 · 새로 흡수되는/]] as const) {
+    for (const [verdict, text, tone] of [['false_positive', '후속 차단 멈춤 · 첫 사건의 마지막 판정이 위협이 아닙니다', 'text-warning'], [null, '후속 차단 대기 · 첫 사건에 위협 판정이 없습니다', 'text-warning'], ['threat', /^후속 차단 중 · /, 'text-ink-muted']] as const) {
       stubApi({ body: detail({ absorbed: absorbed({ follow: { expires_at: '2026-09-19T07:00:00+00:00', requested_by: 'han', verdict } }) }) })
       const { unmount } = renderRoutes(routes(), PATH)
       const actor = within(await screen.findByRole('region', { name: '행위자 이력' }))
-      expect(actor.getByText(text)).toBeInTheDocument()
+      expect(actor.getByText(text)).toHaveClass(tone)
+      // 다시 위협으로 판정하면 이어진다는 조건 · 만료는 도움말에
+      expect(actor.getByRole('button', { name: '같은 페이로드 흡수 설명' })).toHaveAccessibleDescription(/첫 사건의 마지막 판정이 위협이면 새로 흡수되는 출발지도 2026-09-19 16:00:00 까지 차단합니다/)
       unmount()
       vi.unstubAllGlobals()
     }

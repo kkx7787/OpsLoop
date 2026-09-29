@@ -6,7 +6,7 @@ export type StateTone = 'info' | 'warning' | 'danger'
 
 export interface StateViewProps extends Omit<ComponentProps<'section'>, 'title'> {
   tone?: StateTone
-  /** 머리말(S-03 · 결과 0건 / 공통 · 403) */
+  /** 머리말(403 · 세션 만료처럼 짧은 분류) */
   eyebrow?: ReactNode
   title: ReactNode
   description?: ReactNode

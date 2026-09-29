@@ -12,9 +12,13 @@ export interface DetailSectionProps extends Omit<ComponentProps<'div'>, 'title'>
   padding?: 'none' | 'md'
 }
 
-/** 상세 화면(S-04)의 구역 카드 하나. 제목이 구역의 이름이 되어 낭독기가 구역 단위로 옮겨 다닐 수 있다 */
+/**
+ * 상세 화면(S-04)의 구역 카드 하나. 제목이 구역의 이름이 되어 낭독기가 구역 단위로 옮겨 다닐 수 있다.
+ * 본문이 없으면(접힌 원문) 머리만 그린다(빈 여백 · 머리 아래 선을 두지 않는다)
+ */
 export function DetailSection({ number, title, aside, padding = 'md', className, children, ...rest }: DetailSectionProps) {
   const titleId = useId()
+  const empty = children === null || children === undefined || children === false
   return (
     <Card padding="none" role="region" aria-labelledby={titleId} className={cn('flex min-w-0 flex-col', className)} {...rest}>
       <CardHeader
@@ -27,8 +31,9 @@ export function DetailSection({ number, title, aside, padding = 'md', className,
           </span>
         }
         aside={aside}
+        className={empty ? 'rounded-b-card border-b-0' : undefined}
       />
-      <div className={cn('flex min-w-0 flex-col gap-3', padding === 'md' && 'p-4')}>{children}</div>
+      {!empty && <div className={cn('flex min-w-0 flex-col gap-3', padding === 'md' && 'p-4')}>{children}</div>}
     </Card>
   )
 }

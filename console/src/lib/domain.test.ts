@@ -9,6 +9,7 @@ import {
   isCircularRule,
   sensorOf,
   VERDICT_DESCRIPTION,
+  VERDICT_EXAMPLE,
   VERDICT_TARGET_SECONDS,
   VERDICTS,
   verdictTargetSeconds,
@@ -87,14 +88,18 @@ describe('조치 표기', () => {
   })
 })
 
-describe('VERDICT_DESCRIPTION', () => {
-  it('판정값 다섯 개 모두 한 줄 설명이 있다', () => {
+describe('VERDICT_DESCRIPTION · VERDICT_EXAMPLE', () => {
+  it('판정값 다섯 개 모두 한 줄 뜻(늘 보임)과 예 · 세는 법(도움말)이 있다', () => {
     for (const v of VERDICTS) {
       expect(VERDICT_DESCRIPTION[v]).toBeTruthy()
       expect(VERDICT_DESCRIPTION[v]).not.toContain('\n')
+      // 뜻은 한 구절이다. 예시는 도움말로 옮겼다
+      expect(VERDICT_DESCRIPTION[v]).not.toContain('—')
+      expect(VERDICT_EXAMPLE[v]).toBeTruthy()
+      expect(VERDICT_EXAMPLE[v]).not.toContain('\n')
     }
-    expect(VERDICT_DESCRIPTION.benign_positive).toContain('오탐으로 세지 않는다')
-    expect(VERDICT_DESCRIPTION.undetermined).toContain('지표에서는 뺀다')
+    expect(VERDICT_EXAMPLE.benign_positive).toContain('오탐으로 세지 않는다')
+    expect(VERDICT_EXAMPLE.undetermined).toContain('지표에서는 뺀다')
   })
 })
 

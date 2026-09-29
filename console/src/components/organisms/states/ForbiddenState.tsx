@@ -21,7 +21,7 @@ export function ForbiddenState({
   currentRole,
   detail,
   onBack,
-  eyebrow = '공통 · 403',
+  eyebrow = '403',
   description,
   actions,
   icon,

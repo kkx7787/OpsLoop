@@ -4,7 +4,7 @@ import type { BlocksSection, CtiSection, OpsSection, OverviewSection, PeriodRepo
 export const REPORT_AS_OF = '2026-09-29T08:00:00Z'
 
 export const OVERVIEW_SECTION: OverviewSection = {
-  available: true, basis: 'mixed', notes: ['사건 수 · 상위 출발지: 발생 시각(first_ts)이 기간 안인 사건', '잔량 · 목표 초과: 출력 시각 기준(대시보드와 같다)'],
+  available: true, basis: 'mixed', notes: ['사건 수 · 상위 출발지: 발생 시각이 기간 안인 사건', '잔량 · 목표 초과: 출력 시각 기준. 목표 시간은 발생 시각부터 잰다'],
   incidents: { total: 120, by_severity: { critical: 3, high: 20, medium: 60, low: 37 }, by_origin: { R0xx: 90, R1xx: 25, R2xx: 5, R3xx: 0, other: 0 }, test_source: 4 },
   verdicts: { total: 80, by_verdict: { threat: 10, non_actionable: 50, false_positive: 5, benign_positive: 3, undetermined: 12 }, test_source: 1 },
   backlog: { unjudged: 40, undetermined: 12, overdue: 7, warning: 2, oldest_seconds: 93_600 },

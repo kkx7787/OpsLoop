@@ -18,13 +18,13 @@ export interface AssetTableProps {
 }
 
 /**
- * 자산 표(표시만). 조회 · 선택 상태는 페이지가 갖는다. 자산 이름을 누르면 상세가 열린다.
+ * 자산 표(표시만). 조회 · 선택 상태는 페이지가 갖는다. 자산 이름(단추)을 누르면 상세가 열린다.
  * 대조 전인 자산은 취약점 수를 0 으로 보이지 않고 '대조 전'으로 적는다(0건은 '없음'으로 읽히기 때문이다).
  */
 export function AssetTable({ rows, selected, onSelect }: AssetTableProps) {
   return (
     <Card padding="none" className="min-w-0">
-      <CardHeader title={`자산 ${rows.length}대`} aside="자산 이름을 누르면 상세가 열립니다" />
+      <CardHeader title={`자산 ${rows.length}대`} />
       <div className="overflow-x-auto" role="region" aria-label="자산 표" tabIndex={0}>
         <table className="responsive-table w-full table-fixed text-left text-sm">
           <thead className="border-b border-line text-xs text-ink-muted">

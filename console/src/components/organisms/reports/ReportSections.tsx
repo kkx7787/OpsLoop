@@ -15,11 +15,14 @@ import { Card, CardHeader } from '../../atoms/Card'
 import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { Time } from '../../atoms/Time'
 import { UntrustedText } from '../../atoms/UntrustedText'
+import { InfoTip } from '../../molecules/InfoTip'
 import { COLLECTION_LABEL, COLLECTION_TONE, collectionState, formatPct, responseParts } from '../dashboard/target-format'
 
 /**
  * 기간 보고서의 구역(S-11 · #58). 페이지(pages/reports)가 계약 순서대로 조립한다.
  * 종이에 그대로 찍히도록 그래프 없이 표만 쓰고, 스크롤 상자 · details 접힘 · 펼치기 단추에 넣지 않는다.
+ * 예외는 구역 끝 기준 설명(notes) 하나다. 화면에서는 '기준 보기'(InfoTip text)로 접고, 종이에는 늘 펼쳐 찍는다(print="expand").
+ * 표 제목의 괄호는 짧은 정의만 둔다(기간 · 기록 출처 같은 긴 기준은 notes 에 있다).
  * 비신뢰 문자열(출발지 · 규칙 버전 사유 · 센서 · 수집 사유(업로더가 보고한 문제 포함) · 자산 · 외부 CVE 자료)은 UntrustedText clip 으로 앞 500자까지만 그린다(펼치기 단추가 인쇄되지 않게).
  * 빈 값은 '—'. 좁은 화면은 responsive-table 이 행을 쌓고, 인쇄는 index.css 의 @media print 가 표로 되돌린다.
  */
@@ -110,7 +113,7 @@ function Overview({ s }: { s: OverviewSection }) {
 function Rules({ s }: { s: RulesSection }) {
   const absorbed = new Map(s.absorbed?.rules.map(r => [`${r.rule_id}:${r.rule_version}`, r]))
   return <>
-    <SubTable title="규칙별 판정 (기간 사건 · 사건별 마지막 판정)" head={['규칙 · 버전', '사건', '판정', '판정 분포', '비조치율', '오탐률', '흡수 · 억제']} empty={!s.rows.length && '기간에 집계된 사건이 없습니다.'}>
+    <SubTable title="규칙별 판정 (사건별 마지막 판정)" head={['규칙 · 버전', '사건', '판정', '판정 분포', '비조치율', '오탐률', '흡수 · 억제']} empty={!s.rows.length && '기간에 집계된 사건이 없습니다.'}>
       {s.rows.map(r => {
         const a = absorbed.get(`${r.rule_id}:${r.rule_version}`)
         return <tr key={`${r.rule_id}:${r.rule_version}`}>
@@ -124,7 +127,7 @@ function Rules({ s }: { s: RulesSection }) {
         </tr>
       })}
     </SubTable>
-    {s.absorbed ? <CountRow title="흡수 · 억제 (기간 기록 · 사건 수에 없음)" cells={[['흡수', num(s.absorbed.absorbed)], ['억제', num(s.absorbed.suppressed)]]} />
+    {s.absorbed ? <CountRow title="흡수 · 억제 (사건 수에 없음)" cells={[['흡수', num(s.absorbed.absorbed)], ['억제', num(s.absorbed.suppressed)]]} />
       : <Missing>흡수 기록을 읽을 수 없어 흡수 · 억제 수를 싣지 않았습니다.</Missing>}
     <SubTable title="기간 중 만든 규칙 버전" head={['버전', '만든 시각 (KST)', '규칙', '사유']} empty={!s.versions.length && '기간 중 새 규칙 버전이 없습니다.'}>
       {s.versions.map(v => <tr key={v.rule_version}>
@@ -141,11 +144,11 @@ function Blocks({ s }: { s: BlocksSection }) {
   const { requests: r, enforcement: e, states } = s
   return <>
     <CountRow title="기간 조치 (사건 조치 기록)" cells={[['차단 요청', num(s.actions.block_ip)], ['차단 해제', num(s.actions.unblock_ip)]]} />
-    <CountRow title="새 차단 요청의 요청자 (기간 · 감사 기록)" cells={[['합계', num(r.total)], ['콘솔 사용자', num(r.console)], ['triage', num(r.triage)], ['system', num(r.system)], ['미기록', num(r.unknown)]]} />
-    <SubTable title="기간 차단 감사 이벤트" aside="종류별 수 · 행위자와 내용은 싣지 않음" head={['종류', '건수']} empty={!s.audit.length && '기간에 차단 감사 기록이 없습니다.'}>
+    <CountRow title="새 차단 요청의 요청자 (감사 기록)" cells={[['합계', num(r.total)], ['콘솔 사용자', num(r.console)], ['triage', num(r.triage)], ['system', num(r.system)], ['미기록', num(r.unknown)]]} />
+    <SubTable title="기간 차단 감사 이벤트" aside="종류별 수" head={['종류', '건수']} empty={!s.audit.length && '기간에 차단 감사 기록이 없습니다.'}>
       {s.audit.map(a => <tr key={a.eventid}><td className={cell}>{AUDIT_EVENT_LABEL[a.eventid] ?? <UntrustedText value={a.eventid} clip />}</td><td data-label="건수" className={numCell}>{num(a.count)}</td></tr>)}
     </SubTable>
-    <CountRow title="집행 지연 (기간 새 차단 요청 · 요청 → 관문 반영)" cells={[['새 요청', num(e.created)], ['집행 확인', num(e.enforced)], ['중앙값', seconds(e.p50_seconds)], ['최대', seconds(e.max_seconds)]]} />
+    <CountRow title="집행 지연 (요청 → 관문 반영)" cells={[['새 요청', num(e.created)], ['집행 확인', num(e.enforced)], ['중앙값', seconds(e.p50_seconds)], ['최대', seconds(e.max_seconds)]]} />
     <CountRow title="차단 집행 상태 (출력 시점)" cells={[['살아 있는 요청', num(states.total)], ['집행 확인', num(states.enforced)], ['집행 대기', num(states.pending)], ['집행 제외', num(states.excluded)], ['관문 불일치', num(states.mismatch)]]} />
   </>
 }
@@ -190,7 +193,7 @@ function Cti({ s }: { s: CtiSection }) {
     {watch ? <CountRow title="주목 CVE (출력 시점)" aside={watch.affected_cves.length ? <UntrustedText value={`해당: ${watch.affected_cves.join(', ')}`} clip /> : undefined}
       cells={[['전체', num(watch.total)], ...APPLICABILITY_STATUSES.map(st => [APPLICABILITY_LABEL[st], num(watch[st])] as const)]} />
       : <Missing>주목 CVE 표를 읽을 수 없어 주목 CVE 를 싣지 않았습니다.</Missing>}
-    <SubTable title="기간 중 KEV 등재 · 우리 자산 해당" aside={`기간 등재 ${num(kev.total)}건 중 ${num(kev.ours.length)}건`} head={['CVE', '이름', 'KEV 등재일', '해당 자산']} empty={!kev.ours.length && '기간 중 KEV 에 오른 것 가운데 우리 자산에 걸린 것이 없습니다.'}>
+    <SubTable title="기간 중 KEV 등재 · 우리 자산 해당" aside={`기간 등재 ${num(kev.total)}건 중 ${num(kev.ours.length)}건`} head={['CVE', '이름', 'KEV 등재일', '해당 자산']} empty={!kev.ours.length && '해당 없음'}>
       {kev.ours.map(k => <tr key={k.cve_id}>
         <td className={`${cell} font-mono`}><UntrustedText value={k.cve_id} clip /></td>
         <td data-label="이름" className={cell}><UntrustedText value={k.name} clip fallback="—" /></td>
@@ -208,7 +211,7 @@ function Cti({ s }: { s: CtiSection }) {
 function Ops({ s }: { s: OpsSection }) {
   const n = s.notify
   return <>
-    <SubTable title="감사 이벤트 (기간)" aside="종류별 수 · 행위자와 내용은 싣지 않음" head={['종류', '건수']} empty={!s.audit.length && '기간에 감사 기록이 없습니다.'}>
+    <SubTable title="감사 이벤트 (기간)" aside="종류별 수" head={['종류', '건수']} empty={!s.audit.length && '기간에 감사 기록이 없습니다.'}>
       {s.audit.map(a => <tr key={a.eventid}><td className={cell}>{AUDIT_EVENT_LABEL[a.eventid] ?? <UntrustedText value={a.eventid} clip />}</td><td data-label="건수" className={numCell}>{num(a.count)}</td></tr>)}
     </SubTable>
     <CountRow title="로그인 · 알림 발송 (기간)" cells={[['콘솔 로그인 실패', num(s.login_failed)], ['알림 발송', num(n?.total)], ['발송 실패', num(n?.failed)], ['발송 지연 중앙값', seconds(n?.p50_seconds)]]} />
@@ -242,17 +245,22 @@ export interface ReportSectionCardProps {
 }
 
 /**
- * 구역 한 장. 머리 오른쪽에 기준(기간 집계 · 출력 시점 값)을 적고, 끝에 기준 설명(notes)을 작은 글씨로 싣는다.
- * 표 권한이 없어 만들지 못한 구역은 사유 한 줄만 보인다(다른 구역은 그대로 나온다).
+ * 구역 한 장. 머리 오른쪽에 기준(기간 집계 · 출력 시점 값)을 적고, 끝에 기준 설명(notes)을 둔다.
+ * notes 는 화면에서 '기준 보기'로 접고 종이에는 늘 펼쳐 찍는다(구역마다 2~8줄이라 화면에서는 표를 가린다).
+ * 표 권한이 없어 만들지 못한 구역은 사유 한 줄만 보인다(머리 오른쪽 '만들지 못함'과 되풀이하지 않는다. 다른 구역은 그대로 나온다).
  */
 export function ReportSectionCard({ name, section, className }: ReportSectionCardProps) {
   const title = SECTION_LABEL[name]
   return <Card padding="none" className={cn('min-w-0', className)}>
     <section aria-label={title}>
       <CardHeader title={title} aside={section.available ? BASIS_LABEL[section.basis] : '만들지 못함'} />
-      {!section.available ? <p className="m-0 px-4 py-3 text-sm">이 구역을 만들지 못했습니다 · {section.reason}</p> : <>
+      {!section.available ? <p className="m-0 px-4 py-3 text-sm">{section.reason}</p> : <>
         <div className="flex flex-col gap-1 pb-3"><SectionBody name={name} section={section} /></div>
-        {section.notes.length > 0 && <ul className="m-0 list-none space-y-0.5 border-t border-line px-4 py-2.5 text-xs leading-5 text-ink-muted">{section.notes.map(note => <li key={note}>{note}</li>)}</ul>}
+        {section.notes.length > 0 && <div className="border-t border-line px-4 py-2.5">
+          <InfoTip variant="text" label={title} print="expand" panelAs="div" panelClassName="print:mt-0">
+            <ul className="m-0 list-none space-y-0.5 p-0">{section.notes.map(note => <li key={note}>{note}</li>)}</ul>
+          </InfoTip>
+        </div>}
       </>}
     </section>
   </Card>

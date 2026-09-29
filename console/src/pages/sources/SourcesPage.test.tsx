@@ -91,10 +91,24 @@ describe('출발지 목록', () => {
     expect(within(internal).getByText('web-01')).toBeInTheDocument()
     // 금지 대역 표를 읽을 수 없으면 추측하지 않고 확인 불가
     const v6 = screen.getByRole('link', { name: '2001:db8::5' }).closest('tr')!
-    expect(within(v6).getByText('금지 대역 확인 불가')).toBeInTheDocument()
+    // 경고라 도움말(ⓘ) 안이 아니라 본문 표지로 보인다
+    expect(within(v6).getByText('금지 대역 확인 불가').closest('[data-infotip]')).toBeNull()
     // 관측 시각이 없으면 비워 둔다
     expect(v6.querySelector('[data-last-seen]')).toHaveTextContent('마지막 관측 —')
+    // 금지 대역 확인 불가는 표지로 본문에 두고, 까닭만 ⓘ 로 둔다(ⓘ 를 눌러도 행 이동이 아니다)
+    const why = within(v6).getByRole('button', { name: '금지 대역 확인 불가 설명' })
+    expect(why).toHaveAccessibleDescription(/차단 금지 대역 표를 읽을 수 없어/)
+    fireEvent.click(why)
+    expect(why).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.queryByText('출발지 상세 본문')).toBeNull()
+    // 펼친 설명을 눌러도 행 이동이 아니다(읽다가 누르면 화면이 바뀌지 않게)
+    fireEvent.click(within(v6).getByText(/차단 금지 대역 표를 읽을 수 없어/))
+    expect(screen.queryByText('출발지 상세 본문')).toBeNull()
+    // 표 캡션은 한 줄. 판정 분포 · 차단 상태의 계산 기준은 그 열 머리 ⓘ 에 있다
     expect(screen.getByText(/주소가 있는 사건의 출발지만 보입니다/)).toBeInTheDocument()
+    expect(screen.queryByText(/차단 상태는 지금 차단 목록 행 기준입니다/)).toBeNull()
+    expect(screen.getByRole('button', { name: '판정 분포 설명' })).toHaveAccessibleDescription(/사건마다 마지막 판정입니다. 같은 페이로드 흡수로 지워진 사건은 세지 않습니다/)
+    expect(screen.getByRole('columnheader', { name: /^차단 상태/ })).toHaveAccessibleDescription('지금 차단 목록 행 기준입니다.')
   })
 
   it('주소 링크 · 행 누름은 상세로 간다(IPv6 도 쿼리로 부호화)', async () => {
@@ -196,13 +210,15 @@ describe('출발지 목록', () => {
   })
 
   it('지문 조건 목록이 비면 수집이 아니라 사건 있는 출발지만 보인다는 것을 알리고 지문 조건을 빼게 한다', async () => {
-    const { router } = setup('/sources?include_test=true&fp_kind=user_agent&fp=zgrab', { sources: () => json(sourcesResult([])) })
+    const { router, container } = setup('/sources?include_test=true&fp_kind=user_agent&fp=zgrab', { sources: () => json(sourcesResult([])) })
     expect(await screen.findByText('이 지문을 쓴 출발지 가운데 사건이 있는 곳이 없습니다')).toBeInTheDocument()
-    expect(screen.getByText('출발지 목록은 사건 있는 출발지만 보입니다 · 지문 조건을 빼면 다른 출발지를 봅니다')).toBeInTheDocument()
+    // '사건 있는 출발지만'은 제목과 표 캡션이 말한다. 수집 상태를 의심하게 하지 않는다
+    expect(screen.getByText(/주소가 있는 사건의 출발지만 보입니다/)).toBeInTheDocument()
     expect(screen.queryByText(/수집 상태부터 확인/)).toBeNull()
     expect(screen.queryByRole('link', { name: '수집 노드 보기' })).toBeNull()
-    // 지문 안내 줄도 사건 있는 출발지만이라고 적는다
-    expect(screen.getByText(/이 지문을 쓴 출발지 가운데 사건 있는 출발지만 보입니다/)).toBeInTheDocument()
+    // 지문 조건 띠: '같은 지문 ≠ 같은 행위자'는 본문 한 줄, 근거는 ⓘ
+    expect(container.querySelector('[data-same-tool]')).toHaveTextContent(/^같은 지문이 같은 행위자라는 뜻은 아닙니다/)
+    expect(screen.getByRole('button', { name: '도구 지문 조건 설명' })).toHaveAccessibleDescription(/흔한 라이브러리 · 도구.*판정은 사건마다 합니다/)
     fireEvent.click(screen.getByRole('button', { name: '지문 조건 빼기' }))
     await waitFor(() => expect(router.state.location.search).toBe('?include_test=true'))
   })
@@ -217,18 +233,22 @@ describe('출발지 목록', () => {
     setup('/sources', { sources: () => json(sourcesResult(ITEMS, { checkers: { gateway_stale: true, fw_stale: null } })) })
     const row = (await screen.findByRole('link', { name: '198.51.100.23' })).closest('tr')!
     expect(screen.getByText('집행기 확인이 멈췄습니다')).toBeInTheDocument()
-    const gateway = row.querySelector('[data-enforce-point="gateway"]')!
+    // 띠는 멈춘 지점과 사실 한 줄(집행 미확인 경고라 본문. 도움말 안이 아니다)
+    expect(screen.getByText(/AWS 관문 · 10분 넘게 확인 없음$/).closest('[data-infotip]')).toBeNull()
+    const gateway = row.querySelector<HTMLElement>('[data-enforce-point="gateway"]')!
     expect(gateway).toHaveAttribute('data-point-state', 'stale')
     expect(gateway.textContent).toContain('확인 지연')
-    // 내부 방화벽은 확인 기록을 읽을 수 없다(null). 멈춤으로 추측하지 않고 보고된 그대로 두되 까닭을 적는다
+    // 적용 확인을 확인 지연으로 바꾼 까닭은 본문 줄이 아니라 배지 옆 ⓘ
+    expect(within(gateway).getByRole('button', { name: /설명$/ })).toHaveAccessibleDescription(/마지막 적용 확인을 믿지 않습니다/)
+    // 내부 방화벽은 확인 기록을 읽을 수 없다(null). 멈춤으로 추측하지 않고 보고된 그대로 두되 그렇다고 본문에 적는다
     expect(row.querySelector('[data-enforce-point="fw"]')).toHaveAttribute('data-point-state', 'pending')
-    expect(screen.getByText(/집행기 확인 기록을 읽을 수 없어 지점 결과를 보고된 그대로 보입니다/)).toBeInTheDocument()
+    expect(screen.getByText('집행기 확인 기록을 읽을 수 없음 · 지점 결과는 보고된 그대로').closest('[data-infotip]')).toBeNull()
   })
 
   it('집행기 확인 상태를 알면 확인 불가 안내를 붙이지 않는다', async () => {
     setup('/sources')
     await screen.findByRole('link', { name: '198.51.100.23' })
-    expect(screen.queryByText(/집행기 확인 기록을 읽을 수 없어/)).toBeNull()
+    expect(screen.queryByText(/집행기 확인 기록을 읽을 수 없음/)).toBeNull()
     expect(screen.queryByText('집행기 확인이 멈췄습니다')).toBeNull()
   })
 })
@@ -241,17 +261,25 @@ describe('도구 지문 탭', () => {
     await waitFor(() => expect(router.state.location.search).toBe('?q=198.&tab=fingerprints'))
     expect(await screen.findByRole('link', { name: HASSH })).toBeInTheDocument()
     expect(Object.fromEntries(lastRequest(fetch, '/api/sources/fingerprints'))).toEqual({ kind: 'hassh', limit: '25', offset: '0' })
-    expect(screen.getAllByText(/같은 지문이 같은 행위자라는 뜻은 아닙니다/).length).toBeGreaterThan(0)
+    // 어디서 꺼낸 지문인지와 같은 지문 주의는 종류 옆 ⓘ 로 둔다(본문 띠는 지문 조건 목록 한 곳)
+    const kindTip = screen.getByRole('button', { name: 'HASSH 지문 설명' })
+    expect(kindTip).toHaveAccessibleDescription(/cowrie\.client\.kex.*같은 지문이 같은 행위자라는 뜻은 아닙니다/)
+    expect(kindTip).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(kindTip)
+    expect(kindTip).toHaveAttribute('aria-expanded', 'true')
     const row = screen.getByRole('link', { name: HASSH }).closest('tr')!
     expect(within(row).getByText('12곳')).toBeInTheDocument()
     expect(within(row).getByText('340회')).toBeInTheDocument()
     expect(within(row).getByText('9곳')).toBeInTheDocument()
-    expect(screen.getByText(/값을 누르면 그 지문을 쓴 출발지 가운데 사건 있는 출발지를 봅니다/)).toBeInTheDocument()
+    // 칸의 뜻은 표 아래 문단이 아니라 그 열 머리 ⓘ 에 있다
+    expect(screen.getByRole('button', { name: '연결 설명' })).toHaveAccessibleDescription('그 지문이 나온 이벤트 수입니다.')
+    expect(screen.getByRole('button', { name: '사건 있는 출발지 설명' })).toHaveAccessibleDescription(/사건이 하나라도 있는 곳입니다/)
+    expect(screen.queryByText(/값을 누르면/)).toBeNull()
 
     fireEvent.click(screen.getByRole('button', { name: 'User-Agent' }))
     await waitFor(() => expect(router.state.location.search).toBe('?q=198.&tab=fingerprints&kind=user_agent'))
     await waitFor(() => expect(lastRequest(fetch, '/api/sources/fingerprints').get('kind')).toBe('user_agent'))
-    expect(screen.getByText('웹 디코이 요청의 User-Agent')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'User-Agent 지문 설명' })).toHaveAccessibleDescription(/^웹 디코이 요청의 User-Agent입니다/)
 
     fireEvent.click(screen.getByRole('button', { name: '출발지' }))
     await waitFor(() => expect(router.state.location.search).toBe('?q=198.&kind=user_agent'))
@@ -288,10 +316,10 @@ describe('도구 지문 탭', () => {
     expect(screen.queryByRole('link', { name: zero })).toBeNull()
     const row = screen.getByText(zero).closest('tr')!
     expect(within(row).queryByRole('link')).toBeNull()
-    expect(within(row).getByText('사건 있는 출발지 없음 · 출발지 목록에 나오지 않습니다')).toBeInTheDocument()
     expect(within(row).getByText('0곳')).toBeInTheDocument()
-    // 사건 있는 출발지가 있는 값에는 그 안내가 없다
-    expect(within(screen.getByRole('link', { name: HASSH }).closest('tr')!).queryByText(/사건 있는 출발지 없음/)).toBeNull()
+    // 까닭은 행마다 되풀이하지 않고 '사건 있는 출발지' 열 머리 ⓘ 에 한 번 적는다
+    expect(within(row).queryByText(/출발지 목록에 나오지 않습니다/)).toBeNull()
+    expect(screen.getByRole('columnheader', { name: /^사건 있는 출발지/ })).toHaveAccessibleDescription(/출발지 목록에는 이 출발지만 나오므로 0곳인 값은 누를 수 없습니다/)
   })
 
   it('offset 이 서버 상한을 넘는 쪽은 상한 안으로 잘라 묻는다', async () => {
@@ -309,23 +337,28 @@ describe('도구 지문 탭', () => {
     expect(offsets.every((offset) => offset <= 1_000_000)).toBe(true)
   })
 
-  it('실시간 연결이 끊기면 지문 탭은 주기 조회가 없다고 알린다(출발지 탭은 30초 주기 조회)', async () => {
+  it('실시간 연결이 끊기면 지문 탭은 주기 조회가 없다고 알린다(출발지 탭은 공통 띠)', async () => {
     const { router } = setup('/sources?tab=fingerprints', { live: { status: 'reconnecting', retries: 1 } })
     expect(await screen.findByRole('link', { name: HASSH })).toBeInTheDocument()
     expect(screen.getByText('실시간 연결이 끊겼습니다')).toBeInTheDocument()
-    expect(screen.getByText(/도구 지문은 주기 조회를 하지 않아 그 전에는 지금 조회로 새로 받습니다/)).toBeInTheDocument()
+    expect(screen.getByText(/다시 연결될 때까지 도구 지문은 저절로 갱신되지 않습니다$/)).toBeInTheDocument()
     expect(screen.queryByText(/30초마다/)).toBeNull()
     expect(screen.getByRole('button', { name: '지금 조회' })).toBeInTheDocument()
 
+    // 출발지 탭은 주기 조회가 있어 공통 띠(MonitoringStatus)로 돌아간다. 지문 탭 문장은 빠진다
     fireEvent.click(screen.getByRole('button', { name: '출발지' }))
     await waitFor(() => expect(router.state.location.search).toBe(''))
-    expect(await screen.findByText(/현재 화면은 30초마다 별도로 조회합니다/)).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: '198.51.100.23' })).toBeInTheDocument()
+    expect(screen.getByText('실시간 연결이 끊겼습니다')).toBeInTheDocument()
+    expect(screen.getByText(/30초마다/)).toBeInTheDocument()
+    expect(screen.queryByText(/도구 지문은 저절로 갱신되지 않습니다/)).toBeNull()
   })
 
-  it('지문 기록이 없으면 어디서 꺼내는지와 함께 0건을 알린다', async () => {
+  it('지문 기록이 없으면 수집 확인을 안내하고, 어디서 꺼내는지는 종류 옆 ⓘ 로 보인다', async () => {
     setup('/sources?tab=fingerprints&kind=ssh_version', { fingerprints: () => json(fingerprintsResult([], { kind: 'ssh_version' })) })
     expect(await screen.findByText('SSH 버전 지문 기록이 없습니다')).toBeInTheDocument()
-    expect(screen.getAllByText(/cowrie\.client\.version/).length).toBeGreaterThan(0)
+    expect(screen.getByText('0건이 정상인지 수집 상태부터 확인해 주세요')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'SSH 버전 지문 설명' })).toHaveAccessibleDescription(/cowrie\.client\.version/)
   })
 })
 

@@ -123,8 +123,12 @@ export function targetLabel(id: string): string | null {
   return Object.hasOwn(TARGET_LABEL, id) ? TARGET_LABEL[id] : null
 }
 
-/** 집행기 확인이 멈춘 지점의 '적용 확인'을 바꾸는 까닭(targets.py response_block 과 같은 판단) */
-export const CHECKER_STALE_NOTE = '집행기 확인이 10분 넘게 멈춤 · 마지막 적용 확인은 믿지 않음'
+/**
+ * 집행기 확인이 멈춘 지점의 '적용 확인'을 바꾸는 까닭(targets.py response_block 과 같은 판단).
+ * 판단 근거라 '확인 지연' 배지 옆 도움말(ⓘ · EnforcePointList)로 보인다. 멈춘 사실은 멈춤 띠(CheckerStaleBanner)가 본문에 적는다.
+ * AWS 관문 · 내부 방화벽 두 지점이 같이 쓰므로 지점 이름을 넣지 않는다
+ */
+export const CHECKER_STALE_NOTE = '집행기 확인이 10분 넘게 멈춰 마지막 적용 확인을 믿지 않습니다. 그사이 이 지점이 규칙을 잃어도 드러나지 않습니다.'
 
 /**
  * 차단 행의 지점별 결과에 집행기 확인 상태를 더한다. 집행기가 멈춘 지점의 '적용 확인'은 '확인 지연'으로 보인다
@@ -134,12 +138,17 @@ export function checkedPoints(block: Pick<ActorBlock, 'enforcement'> | null | un
   return enforcementPoints(block).map((row) => {
     const stale = row.key === 'gateway' ? checkers?.gateway_stale : checkers?.fw_stale
     if (stale !== true || row.point.state !== 'confirmed') return row
-    return { ...row, point: { ...row.point, state: 'stale', note: CHECKER_STALE_NOTE } }
+    return { ...row, point: { ...row.point, state: 'stale', note: CHECKER_STALE_NOTE }, noteTip: true }
   })
 }
 
-/** 생존 신호 표를 읽을 수 없어(null) 멈춤을 가릴 수 없을 때의 안내. 목록 · 상세가 같이 쓴다 */
-export const CHECKER_UNKNOWN_NOTE = '집행기 확인 기록을 읽을 수 없어 지점 결과를 보고된 그대로 보입니다'
+/** 생존 신호 표를 읽을 수 없어(null) 멈춤을 가릴 수 없을 때의 안내(집행 미확인 경고라 본문에 둔다). 목록 · 상세가 같이 쓴다 */
+export const CHECKER_UNKNOWN_NOTE = '집행기 확인 기록을 읽을 수 없음 · 지점 결과는 보고된 그대로'
+
+/** 같은 지문 주의. 본문에는 지문 조건 띠(출발지 탭) 한 곳에만 두고, 지문 탭 · 상세는 도움말(ⓘ)로 둔다 */
+export const SAME_TOOL_NOTE = '같은 지문이 같은 행위자라는 뜻은 아닙니다'
+/** 같은 지문 주의의 근거(도움말) */
+export const SAME_TOOL_REASON = '흔한 라이브러리 · 도구(Go · paramiko · curl 등)는 지문이 겹칩니다. 묶음은 조사 참고용이고 판정은 사건마다 합니다.'
 
 /** 집행기 확인 상태를 모르는 지점이 있는가(표 권한 없음 · 마이그레이션 전) */
 export function checkersUnknown(checkers: BlockCheckers | undefined): boolean {

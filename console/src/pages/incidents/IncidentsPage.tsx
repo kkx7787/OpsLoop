@@ -73,7 +73,6 @@ export function IncidentsPage() {
   } else if (!list || list.items.length === 0) {
     body = (
       <EmptyState
-        eyebrow="S-03 · 결과 0건"
         title={active > 0 ? '조건에 맞는 인시던트가 없습니다' : '인시던트가 없습니다'}
         description={active > 0 ? `${active}개 조건 적용 중 · 0건이 정상인지 수집 상태부터 확인해 주세요` : '0건이 정상인지 수집 상태부터 확인해 주세요'}
         actions={<>

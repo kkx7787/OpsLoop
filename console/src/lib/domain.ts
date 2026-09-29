@@ -151,11 +151,20 @@ export const ACTION_STATUS: Partial<Record<IncidentAction, IncidentStatus>> = {
   suppress_rule: 'suppressed',
 }
 
-/** 판정값의 뜻 한 줄(판정 기준 문서 2장). 판정 패널의 도움말과 제안 설명에 쓴다. */
+/** 판정값의 뜻 한 줄(판정 기준 문서 2장). 판정 패널의 선택지 아래에 늘 보인다. */
 export const VERDICT_DESCRIPTION: Record<Verdict, string> = {
-  threat: '행위로 침해 또는 침해 시도가 확인됐다 — 로그인 뒤 명령 실행 · 파일 투하 · 다른 호스트로 경유 · 대량 자원 소모',
-  non_actionable: '규칙은 의도대로 맞았으나 조치할 것이 없다 — 시도만 하고 끊김 · 단발성 탐색 · 이미 차단된 출발지의 이전 활동',
-  false_positive: '규칙이 겨냥한 현상이 아닌 것을 잡았다 — 우리 운영 행위 · 파이프라인 사정으로 생긴 신호 · 조건의 논리 결함',
-  benign_positive: '정확히 탐지했고 행위자에게 악의도 없다 — 조사 목적이 확인된 기관의 스캐너. 오탐으로 세지 않는다',
-  undetermined: '근거가 부족해 판단이 서지 않는다 — 보았고 판단하지 못했다는 기록만 남기고 지표에서는 뺀다',
+  threat: '행위로 침해 또는 침해 시도가 확인됐다',
+  non_actionable: '규칙은 의도대로 맞았으나 조치할 것이 없다',
+  false_positive: '규칙이 겨냥한 현상이 아닌 것을 잡았다',
+  benign_positive: '정확히 탐지했고 행위자에게 악의도 없다',
+  undetermined: '근거가 부족해 판단이 서지 않는다',
+}
+
+/** 판정값의 예와 지표에서 세는 법(판정 기준 문서 2장). 판정 패널 선택지 옆 도움말(ⓘ)로 펼친다. */
+export const VERDICT_EXAMPLE: Record<Verdict, string> = {
+  threat: '예: 로그인 뒤 명령 실행 · 파일 투하 · 다른 호스트로 경유 · 대량 자원 소모',
+  non_actionable: '예: 시도만 하고 끊김 · 단발성 탐색 · 이미 차단된 출발지의 이전 활동',
+  false_positive: '예: 우리 운영 행위 · 파이프라인 사정으로 생긴 신호 · 조건의 논리 결함',
+  benign_positive: '예: 조사 목적이 확인된 기관의 스캐너. 오탐으로 세지 않는다',
+  undetermined: '보았고 판단하지 못했다는 기록만 남기고 지표에서는 뺀다',
 }

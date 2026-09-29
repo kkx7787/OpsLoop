@@ -79,7 +79,7 @@ export function AppLayout({ groups, children, sensor }: AppLayoutProps) {
       <SessionExpiredState
         size="page"
         titleAs="h1"
-        description="서버가 로그인 정보를 주지 않았습니다. 다시 로그인해 주세요."
+        description="서버가 로그인 정보를 주지 않았습니다."
       />
     )
   } else {
@@ -145,9 +145,9 @@ function MeError({ error, onRetry, retrying }: MeErrorProps) {
       <ErrorState
         size="page"
         titleAs="h1"
-        eyebrow="공통 · 서버 불일치"
+        eyebrow="서버 불일치"
         title="콘솔 서버가 로그인 정보를 주지 않습니다"
-        description="서버에 /api/me 가 없습니다(app/web.py 이전 버전). 콘솔 서버 배포를 확인해 주세요."
+        description="콘솔 서버 버전이 화면과 맞지 않습니다. 배포를 확인해 주세요."
         actions={
           <>
             <a href={loginHref()} className={buttonClasses({ variant: 'primary', size: 'lg' })}>

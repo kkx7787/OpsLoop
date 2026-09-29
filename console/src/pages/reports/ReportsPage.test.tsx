@@ -40,6 +40,9 @@ describe('보고서 조건', () => {
     expect(within(form).getByRole('radio', { name: '최근 7일' })).toBeChecked()
     expect(within(form).getAllByRole('checkbox').every((box) => (box as HTMLInputElement).checked)).toBe(true)
     expect(reportCalls(fetch)).toEqual([])
+    // 기간 끝 기준 · 다시 만들기 동작은 본문 대신 ⓘ
+    expect(within(form).getByRole('button', { name: '기간 설명' })).toHaveAccessibleDescription(/기간 끝은 보고서를 만든 시각\(출력 시각\)입니다/)
+    expect(within(form).getByRole('button', { name: '보고서 만들기 설명' })).toHaveAccessibleDescription(/저절로 다시 조회하지 않습니다/)
     fireEvent.click(within(form).getByRole('radio', { name: '최근 14일' }))
     for (const name of ['규칙별 판정 · 비조치율', '차단 · 집행', '관제 대상 · 수집', '운영 기록']) fireEvent.click(within(form).getByRole('checkbox', { name }))
     fireEvent.click(within(form).getByRole('button', { name: '보고서 만들기' }))
@@ -105,6 +108,8 @@ describe('보고서 조건', () => {
     await screen.findByRole('region', { name: '요약 · 운영 부담' })
     expect(screen.queryByRole('checkbox', { name: '운영 기록' })).toBeNull()
     expect(screen.getAllByRole('checkbox')).toHaveLength(5)
+    // 권한 안내는 도움말(ⓘ) 안이 아니라 본문
+    expect(screen.getByText('운영 기록은 관리자만 실을 수 있습니다.').closest('[data-infotip]')).toBeNull()
     expect(screen.getByText('운영 기록은 관리자만 실을 수 있어 뺐습니다')).toBeInTheDocument()
     expect(reportCalls(fetch).map((url) => url.searchParams.getAll('sections'))).toEqual([['overview']])
     expect(screen.queryByRole('region', { name: '운영 기록' })).toBeNull()
@@ -166,25 +171,36 @@ describe('구역', () => {
     const top = within(overview).getByRole('table', { name: '상위 출발지' })
     expect(within(top).getByRole('link', { name: '198.51.100.7' })).toHaveAttribute('href', '/sources/detail?ip=198.51.100.7')
     expect(cells(top, '198.51.100.9')).toEqual(['198.51.100.9', '12', 'medium', '—'])
-    // 구역 끝의 기준 설명
-    expect(within(overview).getByText('잔량 · 목표 초과: 출력 시각 기준(대시보드와 같다)')).toBeInTheDocument()
+    // 구역 끝의 기준 설명(notes)은 화면에서 '기준 보기'로 접고, 종이에는 늘 펼쳐 찍는다(단추는 찍지 않는다)
+    const basis = within(overview).getByRole('button', { name: '요약 · 운영 부담 기준 보기' })
+    const notes = within(overview).getByText('잔량 · 목표 초과: 출력 시각 기준. 목표 시간은 발생 시각부터 잰다').closest('[data-infotip]')!
+    expect(basis).toHaveAttribute('aria-expanded', 'false')
+    expect(basis).toHaveAttribute('aria-controls', notes.id)
+    expect(basis).toHaveClass('print:hidden')
+    expect(notes).toHaveClass('hidden', 'print:block')
+    fireEvent.click(basis)
+    expect(basis).toHaveAttribute('aria-expanded', 'true')
+    expect(notes).not.toHaveClass('hidden')
+    expect(notes).toHaveClass('print:block')
+    // 구역마다 하나씩
+    expect(screen.getAllByRole('button', { name: / 기준 보기$/ })).toHaveLength(6)
   })
 
   it('규칙 · 차단 · 대상 · 취약점 · 운영 기록 구역을 표로 싣는다', async () => {
     setup('/reports?period=7d')
     const rules = await screen.findByRole('region', { name: '규칙별 판정 · 비조치율' })
-    const quality = within(rules).getByRole('table', { name: '규칙별 판정 (기간 사건 · 사건별 마지막 판정)' })
+    const quality = within(rules).getByRole('table', { name: '규칙별 판정 (사건별 마지막 판정)' })
     expect(within(within(quality).getByText('R003').closest('tr')!).getByText('순환 규칙')).toBeInTheDocument()
     expect(within(quality).getByText('비조치 26 / 유효 판정 28')).toBeInTheDocument()
     // 흡수 · 억제는 규칙별(없으면 0) · 합계
     expect(within(quality).getByText('R001').closest('tr')!.lastElementChild).toHaveTextContent('12 · 3')
     expect(within(quality).getByText('R003').closest('tr')!.lastElementChild).toHaveTextContent('0 · 0')
-    expect(rowOf(within(rules).getByRole('table', { name: '흡수 · 억제 (기간 기록 · 사건 수에 없음)' }))).toEqual(['12', '3'])
+    expect(rowOf(within(rules).getByRole('table', { name: '흡수 · 억제 (사건 수에 없음)' }))).toEqual(['12', '3'])
 
     const blocks = screen.getByRole('region', { name: '차단 · 집행' })
-    expect(rowOf(within(blocks).getByRole('table', { name: '새 차단 요청의 요청자 (기간 · 감사 기록)' }))).toEqual(['9', '6', '3', '0', '0'])
+    expect(rowOf(within(blocks).getByRole('table', { name: '새 차단 요청의 요청자 (감사 기록)' }))).toEqual(['9', '6', '3', '0', '0'])
     expect(within(within(blocks).getByRole('table', { name: '기간 차단 감사 이벤트' })).getByText('차단 연장')).toBeInTheDocument()
-    expect(rowOf(within(blocks).getByRole('table', { name: '집행 지연 (기간 새 차단 요청 · 요청 → 관문 반영)' }))).toEqual(['9', '8', '42초', '5분 10초'])
+    expect(rowOf(within(blocks).getByRole('table', { name: '집행 지연 (요청 → 관문 반영)' }))).toEqual(['9', '8', '42초', '5분 10초'])
 
     const targets = screen.getByRole('region', { name: '관제 대상 · 수집' })
     expect(within(targets).getByText('AWS 센서').closest('tr')).toHaveTextContent('차단 적용 3 (수집 관문) · 차단 적용 여부 미확인 1')
@@ -195,6 +211,7 @@ describe('구역', () => {
     const cti = screen.getByRole('region', { name: '취약점 · CVE' })
     expect(rowOf(within(cti).getByRole('table', { name: '주목 CVE (출력 시점)' }))).toEqual(['3', '1', '1', '1'])
     expect(within(cti).getByText('기간 등재 4건 중 1건')).toBeInTheDocument()
+    expect(within(cti).queryByText('해당 없음')).toBeNull()
 
     const ops = screen.getByRole('region', { name: '운영 기록' })
     expect(cells(within(ops).getByRole('table', { name: '알림 발송 (기간 · 시험 발송 제외)' }), '판정 지연')).toEqual(['판정 지연', '실패', '2'])
@@ -216,12 +233,21 @@ describe('구역', () => {
     expect(rowOf(within(ops).getByRole('table', { name: '로그인 · 알림 발송 (기간)' }))).toEqual(['9', '—', '—', '—'])
   })
 
+  it('기간 중 KEV 등재가 우리 자산에 걸리지 않았으면 해당 없음으로 적는다', async () => {
+    setup('/reports?period=7d&s=cti', { report: periodReport({ sections: { cti: { ...CTI_SECTION, kev_added: { total: 4, ours: [] } } } }) })
+    const cti = await screen.findByRole('region', { name: '취약점 · CVE' })
+    expect(within(cti).getByText('기간 등재 4건 중 0건')).toBeInTheDocument()
+    expect(within(cti).getByText('해당 없음')).toBeInTheDocument()
+  })
+
   it('만들지 못한 구역은 사유를 한 줄로 보이고 다른 구역은 그대로 싣는다', async () => {
     const report = periodReport()
     setup('/reports?period=7d', { report: { ...report, sections: { ...report.sections, cti: { available: false, reason: 'CTI 표를 읽을 권한이 없습니다' } } } })
     const cti = await screen.findByRole('region', { name: '취약점 · CVE' })
-    expect(within(cti).getByText('이 구역을 만들지 못했습니다 · CTI 표를 읽을 권한이 없습니다')).toBeInTheDocument()
+    // '만들지 못함'은 머리 오른쪽에 한 번, 본문은 사유만
+    expect(within(cti).getByText('CTI 표를 읽을 권한이 없습니다')).toBeInTheDocument()
     expect(within(cti).getByText('만들지 못함')).toBeInTheDocument()
+    expect(within(cti).queryByRole('button', { name: /기준 보기/ })).toBeNull()
     expect(within(cti).queryByRole('table')).toBeNull()
     expect(within(screen.getByRole('region', { name: '보고서 머리' })).getByText('취약점 · CVE · 만들지 못함')).toBeInTheDocument()
     expect(within(screen.getByRole('region', { name: '요약 · 운영 부담' })).getAllByRole('table').length).toBeGreaterThan(0)

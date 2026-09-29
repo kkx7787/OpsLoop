@@ -71,6 +71,8 @@ describe('집행기 확인', () => {
       ['gateway', 'stale', CHECKER_STALE_NOTE],
       ['fw', 'pending', null],
     ])
+    // 화면이 덧붙인 까닭(판단 근거)만 ⓘ 로 접는다. 지점 결과 그대로인 행은 표시가 없다
+    expect(checkedPoints(LIVE_BLOCK, { gateway_stale: true, fw_stale: true }).map((row) => row.noteTip ?? false)).toEqual([true, false])
     expect(checkedPoints(LIVE_BLOCK, { gateway_stale: null, fw_stale: null }).map((row) => row.point.state)).toEqual(['confirmed', 'pending'])
     expect(checkedPoints(null, undefined)).toEqual([])
     expect(staleCheckers({ gateway_stale: true, fw_stale: null })).toEqual(['AWS 관문'])

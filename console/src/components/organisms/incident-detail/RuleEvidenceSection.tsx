@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import type { IncidentDetail } from '@/api/incidents'
 import { Banner } from '../../molecules/Banner'
+import { InfoTip } from '../../molecules/InfoTip'
 import { Time } from '../../atoms/Time'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { DetailSection } from './DetailSection'
@@ -21,6 +22,7 @@ const KEY_MAX = 64
 /**
  * ① 규칙이 본 것: 관측값 · 임계치와 비교된 값 · 신호 수 · 세션 수 · 규칙이 남긴 표본.
  * 순환 규칙(R002 · R003 · R004 · R006, lib/domain CIRCULAR_RULES)은 판정 근거와 규칙 조건이 겹친다는 사실을 먼저 보인다(화면 설계 5장).
+ * 띠에는 서버 문장(무엇이 겹치는지)만 두고, 품질 지표를 무엇으로 보는지는 도움말(ⓘ)로 띠 아래에 펼친다(띠는 낭독 알림 자리라 밖에 둔다).
  */
 export function RuleEvidenceSection({ detail, className }: RuleEvidenceSectionProps) {
   const evidence = detail.evidence
@@ -33,9 +35,20 @@ export function RuleEvidenceSection({ detail, className }: RuleEvidenceSectionPr
   return (
     <DetailSection number="①" title="규칙이 본 것" aside={<span>규칙 {detail.rule_id} {detail.rule_version}</span>} className={className}>
       {detail.circular && (
-        <Banner tone="warning" title="순환 규칙">
-          {detail.circular}. 이 규칙에서는 정탐률이 품질 지표가 되지 못하고 중복률을 본다.
-        </Banner>
+        <InfoTip
+          label="순환 규칙"
+          render={({ button, panel }) => (
+            <div className="flex flex-col">
+              <Banner tone="warning" title="순환 규칙">
+                {detail.circular}
+                <span className="whitespace-nowrap">. {button}</span>
+              </Banner>
+              {panel}
+            </div>
+          )}
+        >
+          이 규칙은 정탐률이 품질 지표가 되지 못해 중복률을 봅니다.
+        </InfoTip>
       )}
 
       <dl className="m-0 grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4">

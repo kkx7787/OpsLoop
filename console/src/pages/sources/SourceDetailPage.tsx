@@ -3,10 +3,10 @@ import { isApiError } from '@/api/errors'
 import { isIpAddress, useSourceDetail } from '@/api/sources'
 import { buttonClasses } from '@/components/atoms/button-styles'
 import { UntrustedText } from '@/components/atoms/UntrustedText'
-import { Banner } from '@/components/molecules/Banner'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { MonitoringStatus } from '@/components/organisms/MonitoringStatus'
 import { SourceMarks } from '@/components/organisms/sources/SourceBadges'
+import { CheckerStaleBanner } from '@/components/organisms/sources/SourceBlock'
 import {
   SourceActionsSection,
   SourceBlockSection,
@@ -44,7 +44,6 @@ export function SourceDetailPage() {
         <NotFoundState
           size="page"
           titleAs="h1"
-          eyebrow="S-09 · 404"
           title="이 출발지의 기록이 없습니다"
           description={<>{error.detail}. <code className="font-mono text-xs break-all text-ink">{raw}</code></>}
           actions={<Link to="/sources" className={buttonClasses({ size: 'lg' })}>출발지 목록으로</Link>}
@@ -55,24 +54,19 @@ export function SourceDetailPage() {
   }
 
   const detail = query.data
-  const stale = staleCheckers(detail.checkers)
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <PageHeader
         title={<span className="font-mono break-all">{detail.ip}</span>}
         badges={<SourceMarks testSource={detail.summary?.test_source} exempt={sourceExempt(detail)} />}
-        description="이 주소의 사건 흐름 · 이벤트 종류 · 도구 지문 · 차단 상태 · 조치 이력을 모아 봅니다. 판정 · 조치는 사건에서 합니다."
+        description="판정 · 조치는 사건에서 합니다."
         aside={<>
           {detail.incidents_total > 0 && <Link to={incidentsOfHref(detail.ip)} className={buttonClasses({ variant: 'primary', size: 'sm' })}>사건 목록에서 보기</Link>}
           <Link to="/sources" className={buttonClasses({ size: 'sm' })}>출발지 목록</Link>
         </>}
       />
       <MonitoringStatus updatedAt={query.dataUpdatedAt} error={query.error} onRetry={() => void query.refetch()} busy={query.isFetching} />
-      {stale.length > 0 && (
-        <Banner tone="warning" title="집행기 확인이 멈췄습니다">
-          {stale.join(' · ')} · 10분 넘게 확인이 없어 그 지점의 '적용 확인'을 '확인 지연'으로 보입니다
-        </Banner>
-      )}
+      <CheckerStaleBanner points={staleCheckers(detail.checkers)} />
       <SourceSummarySection detail={detail} />
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px] xl:items-start">
         <div className="flex min-w-0 flex-col gap-3">
@@ -95,7 +89,6 @@ function InvalidAddress({ value }: { value: string }) {
     <ErrorState
       size="page"
       titleAs="h1"
-      eyebrow="S-09 · 422"
       title="출발지 주소가 올바르지 않습니다"
       description={<>IPv4 · IPv6 주소 하나만 볼 수 있습니다. <code className="font-mono text-xs break-all text-ink"><UntrustedText value={value} max={64} fallback="주소 없음" /></code></>}
       actions={<Link to="/sources" className={buttonClasses({ size: 'lg' })}>출발지 목록으로</Link>}
