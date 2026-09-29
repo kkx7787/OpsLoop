@@ -1,4 +1,4 @@
-"""관제 대상별 상태판(targets.py · 이슈 #52) 시험. DB 없이 돈다.  python3 -m unittest discover -s app
+"""관제 대상별 상태판(targets.py · 이슈 #52 · #64 · #72) 시험. DB 없이 돈다.  python3 -m unittest discover -s app
 
 보는 것
   1. 사건 → 대상 매핑(resolve): node:<id> · user:… · 근거의 발생원 · 규칙의 발생원 후보(sensors ∪ 이벤트 접두) ·
@@ -16,9 +16,12 @@
   5. 라우터: main 앱에 붙음 · 세션 없으면 401 · 표 · 권한이 없는 DB 에서도 200(미확인) · 집행 제외 말머리가 main 과 같다 ·
      nodes 를 읽을 수 없으면 고정 네 대상만(web-01 수신 미확인) · 등록 노드 카드는 고정 대상 뒤에 web-01 카드와 같은 필드로
   6. 등록 노드(이슈 #64): 발생원 · node:<id> 가 그 노드 카드로 감(고정 발생원이 먼저) · 노드 에이전트 이벤트(sshd. · nginx.)는
-     등록 노드가 있으면 이벤트로 고르고 고르지 못하면 전처럼 web-01(실제 규칙 파일 전부가 고르지 못할 때의 값이 같음) ·
+     등록 노드가 있으면 이벤트로 고르고 고르지 못하면 web-01 대체 추정(실제 규칙 파일에서 바뀌는 것은 n1 R101 뿐) ·
      카드로 붙일 노드(폐기 · 고정 대상 id · 고정 발생원 · 겹치는 발생원 제외, node_id 순, 이름은 hostname) · 수집(그 노드 로그) ·
      자원 지표(보내는 노드만, 행 없으면 미수집) · 취약점(같은 이름의 자산만) · 대응(지점 없음) · 집계
+  7. 관련 장비(이슈 #72): 연결 근거(확인 · 규칙 범위 · 대체 추정) 판정표와 실제 규칙 파일 전부 · shown · 옛 모양 ·
+     장비 표기(이름 · 무리 · 로그 종류 · 정렬 · 상태) · 대체 추정을 뺀 집계 · 먼저 처리할 사건(앞 · 뒤 묶음) ·
+     관제 이상(적재기 · 집행기 · 탐지 경로 · 적용 실패 · 관문 불일치 · 노드 수신) · 데이터 노드 멈춤 구조 값 · 취약점 수정 상태별 수
 main 이 필요한 시험은 test_web 을 먼저 불러 asyncpg 가 없는 곳에서도 가짜를 넣는다(main 보다 먼저).
 """
 import json
@@ -419,20 +422,27 @@ class BlocksTests(unittest.TestCase):
                                          "problem": "보고 파일 없음"})
 
     def test_취약점은_자산이_없으면_0_이_아니라_missing_이다(self):
-        assets = {"web-01": {"vuln_total": 5, "vuln_kev": 1, "collected_at": NOW - timedelta(hours=1),
+        assets = {"web-01": {"vuln_total": 5, "vuln_kev": 1, "vuln_fix_available": 2, "vuln_reboot_pending": 1,
+                             "vuln_fix_unknown": 1, "collected_at": NOW - timedelta(hours=1),
                              "checked_at": NOW - timedelta(hours=1)},
-                  "honeypot-dmz": {"vuln_total": 2, "vuln_kev": 0, "collected_at": NOW - timedelta(hours=49),
-                                   "checked_at": None}}
+                  "honeypot-dmz": {"vuln_total": 2, "vuln_kev": 0, "vuln_fix_available": 0, "vuln_reboot_pending": 0,
+                                   "vuln_fix_unknown": 2, "collected_at": NOW - timedelta(hours=49), "checked_at": None}}
         self.assertEqual(t.vulns_block("web-01", False, assets, NOW), {"available": False, "assets": []})
         web = t.vulns_block("web-01", True, assets, NOW)
-        self.assertEqual(web["assets"], [{"asset_id": "web-01", "vuln_total": 5, "vuln_kev": 1,
+        self.assertEqual(web["assets"], [{"asset_id": "web-01", "vuln_total": 5, "vuln_kev": 1, "vuln_fix_available": 2,
+                                          "vuln_reboot_pending": 1, "vuln_fix_unknown": 1,
                                           "collected_at": (NOW - timedelta(hours=1)).isoformat(),
                                           "checked_at": (NOW - timedelta(hours=1)).isoformat(),
                                           "stale": False, "missing": False}])
         aws = t.vulns_block("aws-sensor", True, assets, NOW)["assets"]
         self.assertEqual([(a["asset_id"], a["stale"], a["missing"]) for a in aws],
                          [("honeypot-dmz", True, False), ("gateway", True, True)])
-        self.assertEqual((aws[1]["vuln_total"], aws[1]["vuln_kev"], aws[1]["collected_at"]), (0, 0, None))
+        # 자산이 없으면 새 세 칸(수정판 있음 · 재부팅 대기 · 수정 여부 미확인)도 0 이다
+        self.assertEqual({k: v for k, v in aws[1].items() if k.startswith("vuln_")},
+                         {"vuln_total": 0, "vuln_kev": 0, "vuln_fix_available": 0, "vuln_reboot_pending": 0,
+                          "vuln_fix_unknown": 0})
+        self.assertEqual(aws[1]["collected_at"], None)
+        self.assertEqual(aws[0]["vuln_fix_unknown"], 2)
         self.assertEqual([a["asset_id"] for a in t.vulns_block("console", True, {}, NOW)["assets"]],
                          ["console-a", "console-b"])
         self.assertEqual([a["asset_id"] for a in t.vulns_block("data-node", True, {}, NOW)["assets"]], ["data-01"])
@@ -510,11 +520,57 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(t.ENFORCE_EXCLUDED, self.main.ENFORCE_EXCLUDED)
         self.assertIn(f"NOT LIKE '{self.main.ENFORCE_EXCLUDED}%'", t.BLOCKS_SQL)
 
+    def test_관문_불일치_말머리는_main_과_같고_차단_질의에_불일치_칸이_있다(self):
+        self.assertEqual(t.ENFORCE_MISMATCH, self.main.ENFORCE_MISMATCH)
+        self.assertIn(f"FILTER (WHERE enforce_note LIKE '{self.main.ENFORCE_MISMATCH}%') AS mismatch", t.BLOCKS_SQL)
+        self.assertIn(f"enforce_note LIKE '{self.main.ENFORCE_MISMATCH}%' THEN 'mismatch'", self.main.BLOCK_STATES_SQL)
+
     def test_세션이_없으면_401_이다(self):
-        response = self.client.get("/api/dashboard/targets")
-        self.assertEqual((response.status_code, response.json()), (401, {"detail": "인증이 필요합니다"}))
+        for path in ("/api/dashboard/targets", "/api/dashboard/monitor"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual((response.status_code, response.json()), (401, {"detail": "인증이 필요합니다"}))
         self.assertEqual(self.pool.calls, [])
         self.assertEqual(self.accounts.calls, [], "세션이 없으면 계정도 조회하지 않는다")
+
+    def test_표가_없는_DB_에서_먼저_처리할_사건은_비어_있다(self):
+        self.client.cookies.set(self.auth.COOKIE, self.auth.issue("han", "viewer"))
+        body = self.client.get("/api/dashboard/targets").json()
+        self.assertEqual(body["queue"], {"total": 0, "front": 0, "back": 0, "unconfirmed": 0, "overdue": 0, "items": []})
+        self.assertIn(t.PENDING_ROWS, self.pool.calls)
+        # 데이터 노드만 멈춤 구조 값이 있다. 생존 신호 표를 읽을 수 없으면 비어 있다
+        self.assertEqual([x["collection"].get("stopped") for x in body["targets"]], [None, None, None, []])
+
+    def test_관제_이상은_표가_없으면_모름이고_탐지_경로는_멈춤이다(self):
+        self.client.cookies.set(self.auth.COOKIE, self.auth.issue("han", "viewer"))
+        response = self.client.get("/api/dashboard/monitor")
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["as_of"], NOW.isoformat())
+        self.assertEqual([(x["key"], x["level"]) for x in body["items"]],
+                         [("heartbeats", "unknown"), ("detect:honeypot", "alert"), ("detect:bridge", "alert"),
+                          ("nodes", "unknown")])
+        for item in body["items"]:
+            self.assertEqual(set(item), {"key", "level", "label", "reason", "at", "count"})
+        self.assertEqual([(p["key"], p["stale"], p["reason"], p["versions"]) for p in body["detect_paths"]],
+                         [("honeypot", True, "24시간 안 실행 기록 없음", []), ("bridge", True, "24시간 안 실행 기록 없음", [])])
+        # 한 트랜잭션(반복 읽기 · 읽기 전용)이고 질의는 8개 이하(now 포함)다. 없는 표는 읽지 않는다
+        self.assertEqual([c for c in self.pool.calls if isinstance(c, tuple)],
+                         [("transaction", {"isolation": "repeatable_read", "readonly": True})])
+        self.assertLessEqual(len([c for c in self.pool.calls if isinstance(c, str)]), 8)
+        for sql in (t.HEARTBEATS_SQL, t.NODES_SQL, t.NODE_SQL):
+            self.assertNotIn(sql, self.pool.calls)
+        self.assertIn(t.DETECT_PATHS_SQL, self.pool.calls)
+
+    def test_관제_이상은_등록_노드가_모두_끊기면_이상이다(self):
+        self.pool.conn = type("Conn", (NodesConn,), {"ROWS": [
+            node_row("web-01", reception="silent", seen=12), node_row("web-02", reception="silent", seen=30),
+            node_row("web-03", status="pending", reception="waiting", seen=None)]})
+        self.client.cookies.set(self.auth.COOKIE, self.auth.issue("han", "viewer"))
+        items = self.client.get("/api/dashboard/monitor").json()["items"]
+        self.assertEqual(items[-1], {"key": "nodes_silent", "level": "alert", "label": "노드 수신",
+                                     "reason": "활성 노드 2대 모두 10분 넘게 수신 없음", "at": None, "count": 2})
+        self.assertIn(t.NODES_SQL, self.pool.calls)
 
     def test_표_권한이_없는_DB_에서도_미확인으로_답한다(self):
         self.client.cookies.set(self.auth.COOKIE, self.auth.issue("han", "viewer"))
@@ -578,9 +634,11 @@ class RouterTests(unittest.TestCase):
 
     def test_경로는_상태판_처리기로_간다(self):
         from starlette.routing import Match
-        scope = {"type": "http", "path": "/api/dashboard/targets", "method": "GET", "root_path": "", "headers": []}
-        route = next(r for r in self.main.app.routes if r.matches(scope)[0] == Match.FULL)
-        self.assertIs(route.endpoint, t.dashboard_targets)
+        for path, endpoint in (("/api/dashboard/targets", t.dashboard_targets),
+                               ("/api/dashboard/monitor", t.dashboard_monitor)):
+            scope = {"type": "http", "path": path, "method": "GET", "root_path": "", "headers": []}
+            route = next(r for r in self.main.app.routes if r.matches(scope)[0] == Match.FULL)
+            self.assertIs(route.endpoint, endpoint)
 
 
 # ----------------------------------------------------------------------
@@ -632,17 +690,20 @@ class NodeResolveTests(unittest.TestCase):
         self.assertEqual(t.resolve(None, None, cowrie_and_node), ({("aws-sensor", "cowrie")}, False))
         self.assertEqual(t.resolve(None, None, cowrie_and_node, NODES), ({("aws-sensor", "cowrie")}, t.EVENTS))
 
-    def test_실제_규칙_파일은_등록_노드가_있어도_고르지_못할_때의_값이_같다(self):
-        changed = set()
+    def test_실제_규칙_파일은_등록_노드가_있으면_고르지_못할_때_대체_추정이다(self):
+        changed = {}
         for version, rule_id, s in file_rules():
-            before, join = t.resolve(None, None, s)
-            after, join_after = t.resolve(None, None, s, NODES)
+            before, join = t.resolve_links(None, None, s)
+            after, join_after = t.resolve_links(None, None, s, NODES)
             with self.subTest(version=version, rule=rule_id):
-                self.assertEqual(after, before)
-                if join_after != join:
-                    changed.add((version, rule_id, join, join_after))
-        # 노드 에이전트 이벤트만 보는 규칙(n1 R101)만 이벤트로 고르게 바뀐다
-        self.assertEqual(changed, {("n1", "R101", False, t.EVENTS)})
+                self.assertEqual(set(after), set(before))       # 붙인 곳(옛 resolve 값)은 같다
+                if (after, join_after) != (before, join):
+                    changed[(version, rule_id)] = (before, join, after, join_after)
+        # 노드 에이전트 이벤트만 보는 규칙(n1 R101)만 바뀐다: 등록 노드가 없으면 web-01 규칙 범위, 있으면 이벤트로 고르고
+        #   고르지 못하면 web-01 대체 추정이다(카드 · 장비 필터에서 빠져 장비 미확인)
+        self.assertEqual(changed, {("n1", "R101"): ({("web-01", None): t.RULE_SCOPE}, False,
+                                                    {("web-01", None): t.FALLBACK}, t.EVENTS)})
+        self.assertEqual(t.shown(changed[("n1", "R101")][2]), set())
 
     def test_집계는_등록_노드_카드를_함께_센다(self):
         rows = [incident("a", 5, severity="high"), incident("b", 5), incident("c", 5)]
@@ -706,9 +767,11 @@ class NodeCardTests(unittest.TestCase):
         self.assertEqual(t.system_block("web-01", True, None, NOW), {"state": "no_data", "metrics": None})
 
     def test_취약점은_같은_이름의_자산만_잇고_대응은_지점이_없다(self):
-        assets = {"web-02": {"vuln_total": 3, "vuln_kev": 1, "collected_at": NOW - timedelta(hours=1), "checked_at": None}}
+        assets = {"web-02": {"vuln_total": 3, "vuln_kev": 1, "vuln_fix_available": 1, "vuln_reboot_pending": 0,
+                             "vuln_fix_unknown": 2, "collected_at": NOW - timedelta(hours=1), "checked_at": None}}
         self.assertEqual(t.vulns_block("web-02", True, assets, NOW)["assets"], [{
-            "asset_id": "web-02", "vuln_total": 3, "vuln_kev": 1, "collected_at": (NOW - timedelta(hours=1)).isoformat(),
+            "asset_id": "web-02", "vuln_total": 3, "vuln_kev": 1, "vuln_fix_available": 1, "vuln_reboot_pending": 0,
+            "vuln_fix_unknown": 2, "collected_at": (NOW - timedelta(hours=1)).isoformat(),
             "checked_at": None, "stale": False, "missing": False}])
         self.assertEqual(t.vulns_block("web-03", True, assets, NOW), {"available": True, "assets": []})
         self.assertEqual(t.vulns_block("web-02", False, assets, NOW), {"available": False, "assets": []})
@@ -717,6 +780,402 @@ class NodeCardTests(unittest.TestCase):
         self.assertEqual(t.response_block("web-02", blocks, 1, {}, NOW, True),
                          {"point": None, "point_label": None, "applied": None, "failed": None, "unverified": None,
                           "exempt": 1, "report": None, "stalled": None})
+
+
+# ----------------------------------------------------------------------
+#  7. 관련 장비 · 먼저 처리할 사건 · 관제 이상 (이슈 #72)
+# ----------------------------------------------------------------------
+
+C, S, F = t.CONFIRMED, t.RULE_SCOPE, t.FALLBACK
+AWS, WEB = "aws-sensor", "web-01"
+CARDS = [{"id": "web-02", "label": "web02.lab", "sensor": "web-02", "node": None}]
+
+
+def file_spec(version, rule_id):
+    return next(s for v, rid, s in file_rules() if (v, rid) == (version, rule_id))
+
+
+class ResolveLinksTests(unittest.TestCase):
+    def test_사건_자체가_가리키면_확인이다(self):
+        self.assertEqual(t.resolve_links("node:web-02", None, spec(), NODES), ({("web-02", None): C}, False))
+        self.assertEqual(t.resolve_links("node:web-01", None, spec(), NODES), ({(WEB, None): C}, False))
+        self.assertEqual(t.resolve_links("user:han", None, None), ({("console", None): C}, False))
+        self.assertEqual(t.resolve_links(None, json.dumps(["decoy", "web-02"]), spec(eventids=["nginx.request"]), NODES),
+                         ({(AWS, "decoy"): C, ("web-02", None): C}, False))
+
+    def test_폐기_모르는_노드_정의_없음은_붙이지_못한다(self):
+        self.assertEqual(t.resolve_links("node:probe-01", None, spec(), NODES), ({}, False))
+        self.assertEqual(t.resolve_links("node:web-09", None, spec(eventids=["cowrie.login.failed"])), ({}, False))
+        self.assertEqual(t.resolve_links(None, None, None), ({}, False))
+        self.assertEqual(t.resolve_links(None, None, spec("node_silence")), ({}, False))
+
+    def test_후보가_한_대상이면_규칙_범위다(self):
+        for version, rule_id, pair in [("v3", "R001", (AWS, "cowrie")), ("v3", "R003", (AWS, "cowrie")),
+                                       ("v3", "R004", (AWS, "cowrie")), ("v3", "R006", (AWS, "cowrie")),
+                                       ("w2", "R103", (AWS, "decoy")), ("s1", "R202", ("data-node", None)),
+                                       ("n1", "R101", (WEB, None))]:
+            with self.subTest(version=version, rule=rule_id):
+                self.assertEqual(t.resolve_links(None, None, file_spec(version, rule_id)), ({pair: S}, False))
+
+    def test_나눔만_여럿이면_대상은_규칙_범위이고_이벤트로_고른다(self):
+        self.assertEqual(t.resolve_links(None, None, spec(eventids=["cowrie.login.failed", "decoy.login.failed"])),
+                         ({(AWS, None): S}, t.EVENTS))
+
+    def test_등록_노드로_섞였을_뿐이면_고르지_못할_때_대체_추정이다(self):
+        self.assertEqual(t.resolve_links(None, None, file_spec("n1", "R101"), NODES), ({(WEB, None): F}, t.EVENTS))
+        # 고정 발생원만으로도 섞인 규칙은 붙인 곳 없이 이벤트로 고른다
+        self.assertEqual(t.resolve_links(None, None, file_spec("w2", "R101"), NODES), ({}, t.EVENTS))
+        self.assertEqual(t.resolve_links(None, None, file_spec("w2", "R101")), ({}, t.EVENTS))
+
+    def test_세션_규칙은_규칙_범위_기준선은_대체_추정이다(self):
+        self.assertEqual(t.resolve_links(None, None, file_spec("v3", "R002")), ({(AWS, None): S}, t.SESSIONS))
+        # 기준선(R005)은 Cowrie · 디코이 · 콘솔을 함께 센다. 한 장비만 보는 규칙이 아니라 Cowrie 는 추정이다
+        self.assertEqual(t.resolve_links(None, None, file_spec("v3", "R005")), ({(AWS, "cowrie"): F}, False))
+        self.assertEqual(t.resolve_links(None, None, spec("key_plant")), ({(AWS, "cowrie"): F}, False))
+
+    def test_실제_규칙_파일_근거표(self):
+        # 등록 노드 없음 · {web-02: web-02} 두 경우. 목록에 없는 규칙은 v1 값을 쓴다(v1 · v2 · v3 가 같다)
+        honeypot = {"R001": ({(AWS, "cowrie"): S}, False), "R002": ({(AWS, None): S}, t.SESSIONS),
+                    "R003": ({(AWS, "cowrie"): S}, False), "R004": ({(AWS, "cowrie"): S}, False),
+                    "R005": ({(AWS, "cowrie"): F}, False), "R006": ({(AWS, "cowrie"): S}, False)}
+        joins = ({}, t.EVENTS)
+        expected = {("w2", "R101"): joins, ("w2", "R102"): joins, ("w2", "R104"): joins, ("c1", "R105"): joins,
+                    ("c1", "R106"): joins, ("sg1", "R107"): joins, ("w2", "R103"): ({(AWS, "decoy"): S}, False),
+                    ("a1", "R201"): ({("console", None): S}, False), ("s1", "R202"): ({("data-node", None): S}, False),
+                    ("i2", "R301"): ({}, False)}
+        # 옛 resolve 값(ResolveTests 의 표 · 등록 노드가 있어도 n1 R101 은 전처럼 web-01). legacy_pairs 는 이것과 같아야 한다
+        old_honeypot = {"R001": {(AWS, "cowrie")}, "R002": {(AWS, None)}, "R003": {(AWS, "cowrie")},
+                        "R004": {(AWS, "cowrie")}, "R005": {(AWS, "cowrie")}, "R006": {(AWS, "cowrie")}}
+        old = {("w2", "R103"): {(AWS, "decoy")}, ("a1", "R201"): {("console", None)},
+               ("s1", "R202"): {("data-node", None)}, ("i2", "R301"): set(), ("n1", "R101"): {(WEB, None)},
+               **{key: set() for key, want in expected.items() if want == joins}}
+        for nodes in (None, NODES):
+            for version, rule_id, s in file_rules():
+                want = expected.get((version, rule_id)) or honeypot.get(rule_id)
+                if (version, rule_id) == ("n1", "R101"):
+                    want = ({(WEB, None): F}, t.EVENTS) if nodes else ({(WEB, None): S}, False)
+                with self.subTest(nodes=bool(nodes), version=version, rule=rule_id):
+                    links, need = t.resolve_links(None, None, s, nodes)
+                    self.assertEqual((links, need), want)
+                    # 옛 모양(legacy_pairs)은 옛 resolve 값과 같다
+                    self.assertEqual(t.legacy_pairs(links), old.get((version, rule_id), old_honeypot.get(rule_id)))
+        # R301 은 대상(node:<id>)으로만 붙는다(확인)
+        self.assertEqual(t.resolve_links("node:web-01", None, file_spec("i2", "R301")), ({(WEB, None): C}, False))
+        self.assertEqual(t.resolve_links("user:han", None, file_spec("a1", "R201")), ({("console", None): C}, False))
+
+    def test_shown_은_대체_추정을_빼고_나눔이_있으면_대상만_짝을_뺀다(self):
+        bare_r002 = {(AWS, None): S, (AWS, "cowrie"): F}
+        self.assertEqual(t.shown(bare_r002), {(AWS, None)})
+        self.assertEqual(t.shown_targets(bare_r002), {AWS})
+        self.assertEqual(t.shown({(AWS, None): S, (AWS, "decoy"): C}), {(AWS, "decoy")})
+        self.assertEqual(t.shown({(WEB, None): F}), set())
+        self.assertEqual(t.shown({}), set())
+        # 옛 모양: 세션으로 고르지 못한 R002 는 전처럼 Cowrie · 대체 추정도 붙인 곳이다
+        self.assertEqual(t.legacy_pairs(bare_r002), {(AWS, "cowrie")})
+        self.assertEqual(t.legacy_pairs({(WEB, None): F}), {(WEB, None)})
+
+    def test_장비_필터_조건은_shown_대상이다(self):
+        self.assertTrue(t.device_matches(AWS, {(AWS, None): S, (AWS, "cowrie"): F}))
+        self.assertFalse(t.device_matches(WEB, {(WEB, None): F}))
+        self.assertTrue(t.device_matches(t.UNCONFIRMED, {(WEB, None): F}))
+        self.assertTrue(t.device_matches(t.UNCONFIRMED, {}))
+        self.assertFalse(t.device_matches(t.UNCONFIRMED, {("console", None): C}))
+        self.assertFalse(t.device_matches("web-09", {(WEB, None): C}))
+
+
+class DeviceTests(unittest.TestCase):
+    def test_보호_대상이_먼저이고_여러_장비를_싣는다(self):
+        # w2 R102 에서 web-01 과 디코이 이벤트를 모두 찾은 사건
+        got = t.devices_of({(AWS, "decoy"): C, (WEB, None): C}, file_spec("w2", "R102"), [])
+        self.assertEqual(got, {"devices": [
+            {"id": WEB, "part": None, "label": "web-01", "group": "protected", "logs": ["웹 접근"], "basis": C},
+            {"id": AWS, "part": "decoy", "label": "웹 디코이", "group": "sensor", "logs": ["웹 요청"], "basis": C}],
+            "device_state": "confirmed", "device_fallback": []})
+
+    def test_정렬은_보호_대상_관측_센서_관제_시스템이다(self):
+        links = {("data-node", None): S, ("console", None): C, (AWS, "gateway"): S, (AWS, "cowrie"): S,
+                 ("web-03", None): C, ("web-02", None): C, (WEB, None): S}
+        cards = CARDS + [{"id": "web-03", "label": "web-03", "sensor": "web-03", "node": None}]
+        got = t.devices_of(links, None, cards)["devices"]
+        self.assertEqual([(d["id"], d["part"], d["group"]) for d in got],
+                         [(WEB, None, "protected"), ("web-02", None, "protected"), ("web-03", None, "protected"),
+                          (AWS, "cowrie", "sensor"), (AWS, "gateway", "sensor"),
+                          ("console", None, "monitor"), ("data-node", None, "monitor")])
+        self.assertEqual([d["logs"] for d in got], [[]] * 7)          # 규칙 정의가 없으면 로그 종류도 없다
+        self.assertEqual(t.devices_of(links, None, cards)["device_state"], "confirmed")
+
+    def test_대체_추정만_있으면_장비_미확인이고_추정은_따로_싣는다(self):
+        got = t.devices_of({(AWS, "cowrie"): F}, file_spec("v3", "R005"), [])
+        self.assertEqual(got, {"devices": [], "device_state": "unconfirmed", "device_fallback": [
+            {"id": AWS, "part": "cowrie", "label": "Cowrie", "group": "sensor", "logs": ["SSH 세션"], "basis": F}]})
+        got = t.devices_of({(WEB, None): F}, file_spec("n1", "R101"), CARDS)
+        self.assertEqual((got["devices"], got["device_state"]), ([], "unconfirmed"))
+        self.assertEqual([(d["label"], d["logs"]) for d in got["device_fallback"]], [("web-01", ["SSH 인증"])])
+        self.assertEqual(t.devices_of({}, None, []), {"devices": [], "device_state": "unconfirmed", "device_fallback": []})
+
+    def test_세션을_고르지_못한_R002_는_AWS_센서_세션_기록이다(self):
+        got = t.devices_of({(AWS, None): S, (AWS, "cowrie"): F}, file_spec("v3", "R002"), [])
+        self.assertEqual(got["devices"], [{"id": AWS, "part": None, "label": "AWS 센서", "group": "sensor",
+                                           "logs": ["세션 기록"], "basis": S}])
+        self.assertEqual(got["device_state"], "rule_scope")
+        self.assertEqual([(d["label"], d["logs"], d["basis"]) for d in got["device_fallback"]], [("Cowrie", ["SSH 세션"], F)])
+        # 세션으로 찾은 나눔
+        got = t.devices_of({(AWS, "decoy"): C}, file_spec("v3", "R002"), [])
+        self.assertEqual([(d["label"], d["logs"]) for d in got["devices"]], [("웹 디코이", ["웹 요청"])])
+
+    def test_로그_종류(self):
+        cases = [
+            # (링크, 규칙, 카드, [(이름, 로그 종류)])
+            ({(WEB, None): C}, file_spec("i2", "R301"), [], [("web-01", ["지표 수신"])]),
+            ({("web-02", None): C}, file_spec("i2", "R301"), CARDS, [("web02.lab", ["지표 수신"])]),
+            ({("console", None): C}, file_spec("a1", "R201"), [], [("관제 콘솔", ["감사 기록"])]),
+            ({("data-node", None): S}, file_spec("s1", "R202"), [], [("데이터 노드", ["수집 관문", "원장 가져오기"])]),
+            ({(AWS, "cowrie"): S}, file_spec("v3", "R001"), [], [("Cowrie", ["SSH 세션"])]),
+            ({(AWS, "decoy"): S}, file_spec("w2", "R103"), [], [("웹 디코이", ["웹 요청"])]),
+            # 등록 노드 카드는 hostname 이름 · 보호 대상이고 노드 에이전트 이벤트(sshd. · nginx.)를 본다
+            ({("web-02", None): C}, file_spec("n1", "R101"), CARDS, [("web02.lab", ["SSH 인증"])]),
+            ({("web-02", None): C, (AWS, "decoy"): C}, file_spec("c1", "R106"), CARDS,
+             [("web02.lab", ["웹 접근"]), ("웹 디코이", ["웹 요청"])]),
+            # 섞인 규칙: 장비마다 그 장비의 이벤트만
+            ({(WEB, None): C, ("console", None): C, (AWS, "decoy"): C}, file_spec("w2", "R101"), [],
+             [("web-01", ["SSH 인증"]), ("웹 디코이", ["웹 요청"]), ("관제 콘솔", ["콘솔 기록"])]),
+            ({("console", None): C}, file_spec("w2", "R104"), [], [("관제 콘솔", ["콘솔 기록"])]),
+            ({(AWS, "gateway"): C}, file_spec("w2", "R102"), [], [("AWS 관문", ["관문 기록"])]),
+        ]
+        for links, s, cards, want in cases:
+            with self.subTest(links=sorted(links, key=str)):
+                got = t.devices_of(links, s, cards)["devices"]
+                self.assertEqual([(d["label"], d["logs"]) for d in got], want)
+        self.assertEqual(t.log_kinds(WEB, None, None, []), [])
+        self.assertEqual(t.device_group("web-02", CARDS), "protected")
+
+    def test_장비_선택지는_행과_관계없이_보호_대상_관측_센서_관제_시스템_순이다(self):
+        self.assertEqual(t.device_options(CARDS), [
+            {"id": WEB, "label": "web-01", "group": "protected"}, {"id": "web-02", "label": "web02.lab", "group": "protected"},
+            {"id": AWS, "label": "AWS 센서", "group": "sensor"}, {"id": "console", "label": "관제 콘솔", "group": "monitor"},
+            {"id": "data-node", "label": "데이터 노드", "group": "monitor"}])
+        self.assertEqual([o["id"] for o in t.device_options([])], [WEB, AWS, "console", "data-node"])
+
+
+class ShownTallyTests(unittest.TestCase):
+    def test_대체_추정은_장비_미확인으로_세고_세션_규칙은_나눔에서만_빠진다(self):
+        rows = [incident("r005", 5, rule="R005"), incident("n-bare", 5, rule="R101"), incident("s-bare", 5, rule="R002"),
+                incident("s-decoy", 5, rule="R002")]
+        links = {"r005": {(AWS, "cowrie"): F}, "n-bare": {(WEB, None): F},
+                 "s-bare": {(AWS, None): S, (AWS, "cowrie"): F}, "s-decoy": {(AWS, "decoy"): C}}
+        per, unmapped = t.tally(rows, {k: t.shown(v) for k, v in links.items()}, NOW)
+        self.assertEqual(unmapped, {"incidents_1h": 2, "pending": 2})
+        self.assertEqual((per[AWS]["incidents_1h"], per[AWS]["pending"]), (2, 2))
+        self.assertEqual({k: v["pending"] for k, v in per[AWS]["parts"].items()}, {"cowrie": 0, "decoy": 1, "gateway": 0})
+        self.assertEqual(per[WEB]["pending"], 0)
+        # 옛 모양이면 모두 붙었다(카드 수가 바뀌는 경우)
+        per, unmapped = t.tally(rows, {k: t.legacy_pairs(v) for k, v in links.items()}, NOW)
+        self.assertEqual((unmapped["pending"], per[AWS]["parts"]["cowrie"]["pending"], per[WEB]["pending"]), (0, 2, 1))
+
+
+def pending_row(key, minutes, rule="R001", version="v3", severity="medium", overdue=False, actor="198.51.100.1",
+                target=None):
+    """PENDING_ROWS 한 행과 같은 꼴."""
+    return {"incident_key": key, "rule_id": rule, "rule_version": version, "rule_name": f"{rule} 규칙",
+            "severity": severity, "actor_ip": actor, "target": target, "first_ts": NOW - timedelta(minutes=minutes),
+            "pending_seconds": minutes * 60.0, "target_seconds": 43200, "overdue": overdue}
+
+
+class QueueTests(unittest.TestCase):
+    def test_묶음은_장비로_가른다(self):
+        self.assertEqual(t.lane_of({}), "front")                                           # 장비 미확인
+        self.assertEqual(t.lane_of({(AWS, "cowrie"): F}), "front")                         # 대체 추정뿐 = 장비 미확인
+        self.assertEqual(t.lane_of({("data-node", None): S}), "front")                     # R202
+        self.assertEqual(t.lane_of({("console", None): C}), "front")                       # R201
+        self.assertEqual(t.lane_of({("web-02", None): C}), "front")                        # R301 노드
+        self.assertEqual(t.lane_of({(WEB, None): C, (AWS, "decoy"): C}), "front")
+        self.assertEqual(t.lane_of({(AWS, "cowrie"): S}), "back")
+        self.assertEqual(t.lane_of({(AWS, None): S, (AWS, "cowrie"): F}), "back")
+
+    def test_앞_묶음_먼저_오래된_순이고_합계_8건에서_자른다(self):
+        rows = [pending_row(f"b{i}", 1000 + i) for i in range(5)]                          # 허니팟(뒤), 더 오래됨
+        rows += [pending_row(f"f{i}", 10 * i, rule="R202", version="s1", overdue=i == 0) for i in range(5)]
+        rows += [pending_row("same-b", 50, rule="R202", version="s1"), pending_row("same-a", 50, rule="R202", version="s1")]
+        links = {**{f"b{i}": {(AWS, "cowrie"): S} for i in range(5)},
+                 **{f"f{i}": {("data-node", None): S} for i in range(5)},
+                 "same-a": {("data-node", None): S}, "same-b": {("data-node", None): S}}
+        specs = {("s1", "R202"): file_spec("s1", "R202"), ("v3", "R001"): file_spec("v3", "R001")}
+        q = t.queue_of(rows, links, specs, [])
+        self.assertEqual({k: q[k] for k in ("total", "front", "back", "unconfirmed", "overdue")},
+                         {"total": 12, "front": 7, "back": 5, "unconfirmed": 0, "overdue": 1})
+        # 같은 묶음 안은 첫 시각 → 키 순. 앞 7건 뒤에 뒤 묶음 1건
+        self.assertEqual([x["incident_key"] for x in q["items"]],
+                         ["same-a", "same-b", "f4", "f3", "f2", "f1", "f0", "b4"])
+        self.assertEqual([x["lane"] for x in q["items"]], ["front"] * 7 + ["back"])
+        first = q["items"][0]
+        self.assertEqual(set(first), {"incident_key", "rule_id", "rule_name", "severity", "actor_ip", "target", "first_ts",
+                                      "pending_seconds", "target_seconds", "overdue", "lane", "devices", "device_state",
+                                      "device_fallback"})
+        self.assertEqual((first["first_ts"], first["pending_seconds"], first["device_state"]),
+                         ((NOW - timedelta(minutes=50)).isoformat(), 3000.0, "rule_scope"))
+        self.assertEqual([(d["label"], d["logs"]) for d in first["devices"]], [("데이터 노드", ["수집 관문", "원장 가져오기"])])
+        json.dumps(q)
+
+    def test_매핑에_없는_사건은_장비_미확인_앞_묶음이다(self):
+        q = t.queue_of([pending_row("x", 5, rule="R999", version="zz"), pending_row("y", 9)], {"y": {(AWS, "cowrie"): S}},
+                       {}, [], size=1)
+        self.assertEqual((q["total"], q["front"], q["back"], q["unconfirmed"]), (2, 1, 1, 1))
+        self.assertEqual([(x["incident_key"], x["device_state"]) for x in q["items"]], [("x", "unconfirmed")])
+        self.assertEqual(t.queue_of([], {}, {}, []),
+                         {"total": 0, "front": 0, "back": 0, "unconfirmed": 0, "overdue": 0, "items": []})
+
+
+def run_row(version, minutes, honeypot):
+    """DETECT_PATHS_SQL 한 행."""
+    return {"rule_version": version, "last_at": NOW - timedelta(minutes=minutes), "honeypot": honeypot}
+
+
+BLOCK_ROW = {"gateway_applied": 3, "gateway_failed": 0, "gateway_unverified": 1,
+             "fw_applied": 1, "fw_failed": 2, "fw_unverified": 0, "mismatch": 0}
+
+
+class MonitorTests(unittest.TestCase):
+    def fresh(self):
+        return [hb("uploader:i-01", checked=1), hb("block:gateway", kind="block_report", role="gateway", checked=1),
+                hb("block:fw", kind="block_report", role="fw", checked=1)]
+
+    def points(self, heartbeats, blocks=None, available=True):
+        reports = t.reports_of(heartbeats)
+        return {p: t.point_counts(p, blocks, reports.get(p), NOW, available) for p in t.POINT_LABELS}
+
+    def paths(self):
+        return t.detect_paths([run_row("v3", 2, True), run_row("c1", 1, False)], NOW)
+
+    def items(self, heartbeats=None, blocks=None, mismatch=0, node_rows=(), readable=True, paths=None, available=True):
+        heartbeats = self.fresh() if heartbeats is None else heartbeats
+        return t.monitor_items(t.checkers(NOW, available, heartbeats), self.points(heartbeats, blocks, available), mismatch,
+                               list(node_rows), readable, self.paths() if paths is None else paths, available)
+
+    def test_적재기_30분_집행기_10분_경계는_정각이_정상이다(self):
+        def stopped(rows):
+            return [(x["key"], x["note"], x["stopped"]) for x in t.checkers(NOW, True, rows)]
+        self.assertEqual(stopped([hb("uploader:i-01", checked=30), hb("block:gateway", kind="block_report", role="gateway",
+                                                                     checked=10)]),
+                         [("loader", None, None), ("enforcer", None, None)])
+        rows = [hb("uploader:i-01") | {"checked_at": NOW - timedelta(seconds=1801)},
+                hb("block:gateway", kind="block_report", role="gateway") | {"checked_at": NOW - timedelta(seconds=601)}]
+        self.assertEqual(stopped(rows), [("loader", "멈춤", "적재기 확인 중단 · 마지막 30분 전"),
+                                         ("enforcer", "멈춤", "집행기 확인 중단 · 마지막 10분 전")])
+        self.assertEqual(stopped([]), [("loader", "기록 없음", None), ("enforcer", "기록 없음", None)])
+        self.assertEqual([x["note"] for x in t.checkers(NOW, False, [])], ["생존 신호 표를 읽을 수 없음"] * 2)
+
+    def test_지점별_수는_카드_대응과_같은_정의다(self):
+        report = hb("block:fw", kind="block_report", role="fw", checked=1)
+        self.assertEqual(t.point_counts("gateway", BLOCK_ROW, None, NOW, False),
+                         {"point": "gateway", "label": "AWS 관문", "applied": 3, "failed": 0, "unverified": 1,
+                          "stalled": None})
+        self.assertEqual(t.point_counts("fw", BLOCK_ROW, report, NOW, True),
+                         {"point": "fw", "label": "내부 방화벽", "applied": 1, "failed": 2, "unverified": 0, "stalled": None})
+        # 집행기 확인이 없으면 적용 · 실패를 미확인에 합친다
+        self.assertEqual(t.point_counts("gateway", BLOCK_ROW, None, NOW, True),
+                         {"point": "gateway", "label": "AWS 관문", "applied": 0, "failed": 0, "unverified": 4,
+                          "stalled": "집행기 확인 기록 없음"})
+        for tid, point in (("aws-sensor", "gateway"), ("web-01", "fw")):
+            for reports, available in (({}, True), ({"fw": report}, True), ({}, False)):
+                with self.subTest(target=tid, reports=list(reports), available=available):
+                    card = t.response_block(tid, BLOCK_ROW, 0, reports, NOW, available)
+                    counts = t.point_counts(point, BLOCK_ROW, reports.get(point), NOW, available)
+                    self.assertEqual({k: card[k] for k in ("applied", "failed", "unverified", "stalled")},
+                                     {k: counts[k] for k in ("applied", "failed", "unverified", "stalled")})
+        self.assertEqual(t.point_counts("fw", None, None, NOW, False)["applied"], 0)
+
+    def test_이상이_없으면_빈_목록이다(self):
+        self.assertEqual(self.items(blocks={**BLOCK_ROW, "fw_failed": 0}, node_rows=[node_row("web-01")]), [])
+
+    def test_적용_실패와_관문_불일치(self):
+        items = self.items(blocks=BLOCK_ROW, mismatch=2, node_rows=[node_row("web-01")])
+        self.assertEqual(items, [
+            {"key": "block_failed:fw", "level": "alert", "label": "내부 방화벽 적용 실패", "reason": None, "at": None, "count": 2},
+            {"key": "gateway_mismatch", "level": "alert", "label": "관문 불일치", "reason": None, "at": None, "count": 2}])
+        # 집행기가 멈추면 실패도 미확인에 합친다(멈춤 항목만 남는다)
+        rows = [r for r in self.fresh() if r["source"] != "block:fw"]
+        self.assertEqual([(x["key"], x["reason"]) for x in self.items(heartbeats=rows, blocks=BLOCK_ROW,
+                                                                      node_rows=[node_row("web-01")])],
+                         [("enforcer:fw", "집행기 확인 기록 없음")])
+
+    def test_멈춤_항목의_순서와_글(self):
+        rows = [hb("uploader:i-01") | {"checked_at": NOW - timedelta(minutes=45)},
+                hb("block:gateway", kind="block_report", role="gateway", checked=12)]
+        paths = t.detect_paths([run_row("v3", 20, True)], NOW)
+        items = self.items(heartbeats=rows, blocks=BLOCK_ROW, mismatch=1, readable=False, paths=paths)
+        self.assertEqual([(x["key"], x["level"], x["label"]) for x in items], [
+            ("loader", "alert", "적재기"), ("enforcer:gateway", "alert", "AWS 관문 집행기"),
+            ("enforcer:fw", "alert", "내부 방화벽 집행기"), ("detect:honeypot", "alert", "허니팟 탐지(5분)"),
+            ("detect:bridge", "alert", "노드 · 관제 탐지(1분)"), ("gateway_mismatch", "alert", "관문 불일치"),
+            ("nodes", "unknown", "노드 수신")])
+        self.assertEqual([x["reason"] for x in items], [
+            "적재기 확인 중단 · 마지막 45분 전", "집행기 확인 중단 · 마지막 확인 12분 전", "집행기 확인 기록 없음",
+            "마지막 실행 20분 전", "24시간 안 실행 기록 없음", None, "노드 표를 읽을 수 없음"])
+        self.assertEqual((items[0]["at"], items[3]["at"]),
+                         ((NOW - timedelta(minutes=45)).isoformat(), (NOW - timedelta(minutes=20)).isoformat()))
+
+    def test_생존_신호_표를_읽을_수_없으면_적재기_집행기는_판정하지_않는다(self):
+        items = self.items(heartbeats=[], blocks=BLOCK_ROW, available=False, node_rows=[node_row("web-01")])
+        self.assertEqual([(x["key"], x["level"], x["reason"]) for x in items],
+                         [("heartbeats", "unknown", "생존 신호 표를 읽을 수 없음"), ("block_failed:fw", "alert", None)])
+        # 표는 읽는데 적재기 행이 없으면 모름이다
+        rows = [r for r in self.fresh() if r["kind"] != "uploader"]
+        self.assertEqual([(x["key"], x["level"], x["reason"]) for x in self.items(heartbeats=rows,
+                                                                                  node_rows=[node_row("web-01")])],
+                         [("loader", "unknown", "적재기 확인 기록 없음")])
+
+    def test_활성_노드가_모두_끊겼을_때만_노드_수신_이상이다(self):
+        silent, normal = node_row("web-01", reception="silent", seen=11), node_row("web-02", reception="normal")
+        waiting = node_row("web-03", status="pending", reception="waiting", seen=None)
+        revoked = node_row("probe-01", status="revoked", reception="revoked")
+        blocks = {**BLOCK_ROW, "fw_failed": 0}
+        for rows, want in [([silent, waiting, revoked], [("nodes_silent", "활성 노드 1대 모두 10분 넘게 수신 없음", 1)]),
+                           ([silent, node_row("web-02", reception="silent")],
+                            [("nodes_silent", "활성 노드 2대 모두 10분 넘게 수신 없음", 2)]),
+                           ([silent, normal], []), ([waiting, revoked], []), ([], [])]:
+            with self.subTest(rows=[r["node_id"] for r in rows]):
+                self.assertEqual([(x["key"], x["reason"], x["count"]) for x in self.items(blocks=blocks, node_rows=rows)],
+                                 want)
+
+    def test_탐지_경로(self):
+        # 허니팟은 경로 최댓값: 옛 버전(v1)이 멈춰도 v3 가 돌면 정상이다
+        rows = [run_row("c1", 1, False), run_row("v1", 600, True), run_row("v3", 2, True), run_row("w2", 16, False)]
+        honeypot, bridge = t.detect_paths(rows, NOW)
+        self.assertEqual({k: honeypot[k] for k in ("key", "label", "last_at", "stale", "reason")},
+                         {"key": "honeypot", "label": "허니팟 탐지(5분)", "last_at": (NOW - timedelta(minutes=2)).isoformat(),
+                          "stale": False, "reason": None})
+        self.assertEqual([(v["rule_version"], v["stale"]) for v in honeypot["versions"]], [("v1", True), ("v3", False)])
+        # 1분 다리는 버전별: w2 가 15분 넘게 멈췄다
+        self.assertEqual((bridge["stale"], bridge["reason"], bridge["last_at"]),
+                         (True, "w2 마지막 실행 16분 전", (NOW - timedelta(minutes=1)).isoformat()))
+        self.assertEqual([(v["rule_version"], v["stale"]) for v in bridge["versions"]], [("c1", False), ("w2", True)])
+        # 15분 경계: 정각은 정상
+        edge = [{"rule_version": "v3", "last_at": NOW - timedelta(seconds=900), "honeypot": True},
+                {"rule_version": "c1", "last_at": NOW - timedelta(seconds=901), "honeypot": False}]
+        self.assertEqual([(p["stale"], p["reason"]) for p in t.detect_paths(edge, NOW)],
+                         [(False, None), (True, "c1 마지막 실행 15분 전")])
+        # 24시간 안 행이 없으면 멈춤이다
+        self.assertEqual([(p["stale"], p["last_at"], p["reason"]) for p in t.detect_paths([], NOW)],
+                         [(True, None, "24시간 안 실행 기록 없음")] * 2)
+
+    def test_데이터_노드_멈춤_구조_값(self):
+        started = NOW - timedelta(minutes=4)
+        c = t.data_collection(NOW, started, True, self.fresh())
+        self.assertEqual((c["state"], c["reason"], c["stopped"]), ("ok", "마지막 탐지 실행 4분 전", []))
+        # 내부 방화벽 보고(block:fw)만 없으면 집행기 멈춤이다(관제 이상 enforcer:fw 와 같은 판정). 문장 · state 는 그대로다
+        rows = [r for r in self.fresh() if r["source"] != "block:fw"]
+        c = t.data_collection(NOW, started, True, rows)
+        self.assertEqual((c["state"], c["reason"], c["stopped"]), ("ok", "마지막 탐지 실행 4분 전", ["enforcer"]))
+        self.assertIn("enforcer:fw", [x["key"] for x in self.items(heartbeats=rows, node_rows=[node_row("web-01")])])
+        # 적재기 확인 중단 · 탐지 실행 없음이어도 state 는 새로 만들지 않는다
+        rows = [hb("uploader:i-01", checked=31), *self.fresh()[1:]]
+        c = t.data_collection(NOW, NOW - timedelta(minutes=20), True, rows)
+        self.assertEqual((c["state"], c["reason"], c["stopped"]),
+                         ("no_signal", "마지막 탐지 실행 20분 전 · 15분 넘게 실행 없음 · 적재기 확인 중단 · 마지막 31분 전",
+                          ["loader"]))
+        rows = [hb("uploader:i-01", checked=31), hb("block:gateway", kind="block_report", role="gateway", checked=11)]
+        self.assertEqual(t.data_collection(NOW, started, True, rows)["stopped"], ["loader", "enforcer"])
+        self.assertEqual(t.data_collection(NOW, None, False, [])["stopped"], [])
 
 
 if __name__ == "__main__":

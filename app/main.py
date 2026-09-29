@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field, field_validator
 
 import auth
 import cti
+import targets
 import web
 from proposals import CIRCULAR_RULES, SSH_RULES, propose
 from dashboard import dashboard_metrics
@@ -326,6 +327,17 @@ async def health():
                 raise
 
 
+# 목록 장비 필터 값: 장비 미확인(targets.UNCONFIRMED) 또는 대상 id(고정 넷 · 등록 노드 id 형식). 형식 밖은 DB 에 닿기 전에 422
+DEVICE_PATTERN = r"^(?:_unconfirmed|[a-z0-9][a-z0-9-]{0,62})$"
+# 목록 한 쪽의 열. 근거(sensors · sessions)는 장비 계산에만 쓰고 내보내지 않는다
+PAGE_COLUMNS = f"""i.incident_key, i.rule_id, i.rule_version, i.rule_name, i.severity,
+                   host(i.actor_ip) AS actor_ip, i.target, i.first_ts, i.last_ts,
+                   i.signal_count, i.session_count, i.status, i.created_at,
+                   v.verdict,
+                   extract(epoch FROM (now() - i.first_ts))::bigint AS pending_seconds,
+                   {targets.EVIDENCE_COLUMNS}"""
+
+
 @app.get("/api/incidents")
 async def list_incidents(
     status: Optional[STATUSES] = None,
@@ -337,6 +349,7 @@ async def list_incidents(
     since: Optional[datetime] = None,
     until: Optional[datetime] = None,
     judged: Optional[bool] = None,
+    device: Optional[str] = Query(None, pattern=DEVICE_PATTERN),
     sort: Literal["pending", "severity", "recent"] = "pending",
     limit: int = Query(50, ge=1, le=500),
     # 상한이 없으면 int64 를 넘는 값이 DB 에 닿아 422 가 아니라 500 이 된다(cti.MAX_OFFSET, 이슈 #62)
@@ -346,6 +359,7 @@ async def list_incidents(
 
     판정이 사람의 일인 이상 가장 오래 밀린 건이 가장 위험하다. 심각도순으로
     두면 낮은 등급의 오래된 건이 영영 아래에 깔린다. (화면 설계 4장)
+    항목마다 관련 장비(devices · device_state · device_fallback)를 싣는다. 조회 때 기존 근거로 계산하고 저장하지 않는다.
     """
     # 출발지는 주소여야 한다. 그대로 ::inet 으로 넘기면 캐스팅 오류가 500 이 된다(화면이 주소창의 actor_ip 를 읽는다, 이슈 #58).
     #   IPv6 영역 표기(fe80::1%eth0)는 파이썬은 받지만 inet 이 받지 않아 함께 거른다. 빈 값은 전처럼 조건 없음이다
@@ -362,6 +376,20 @@ async def list_incidents(
         if value and "\x00" in value:
             raise HTTPException(422, f"{name} 에 NUL 글자를 넣을 수 없습니다")
 
+    async with app.state.pool.acquire() as c, c.transaction(isolation="repeatable_read", readonly=True):
+        return await incident_page(c, status=status, severity=severity, rule_id=rule_id, rule_version=rule_version,
+                                   actor_ip=actor_ip, target=target, since=since, until=until, judged=judged,
+                                   device=device, sort=sort, limit=limit, offset=offset)
+
+
+async def incident_page(c, *, status=None, severity=None, rule_id=None, rule_version=None, actor_ip=None, target=None,
+                        since=None, until=None, judged=None, device=None, sort="pending", limit=50, offset=0) -> dict:
+    """사건 목록 한 쪽(입력 검사 뒤). 부른 쪽이 반복 읽기 트랜잭션을 연다.
+
+    장비 필터(device)는 쪽을 나누기 전에 거른다. 조건에 맞는 사건을 가볍게(키 · 근거만) 모두 읽어 장비를 한 번 계산하고, 그 장비가
+    shown 에 든 사건만 순서대로 남긴 뒤 쪽 키만 다시 읽는다. 전체 수는 키 수라 중복이 없다(사건 키가 PK 다).
+    대상별 카드 수(targets.tally)와 같은 매핑 · 같은 기준이다."""
+    as_of = await c.fetchval("SELECT now()")
     where, params = [], []
 
     def add(clause, value):
@@ -387,32 +415,55 @@ async def list_incidents(
         "recent":   "i.first_ts DESC",
     }[sort] + ", i.incident_key ASC"  # 같은 시각·등급도 페이지 사이 순서가 바뀌지 않게 한다.
     # 최근 판정 하나만 붙인다. 재판정이 생겨도 목록에는 마지막 판단이 보여야 한다.
-    base = f"""FROM incidents i
-        LEFT JOIN LATERAL (
+    latest = """LEFT JOIN LATERAL (
             SELECT verdict FROM verdicts WHERE incident_key = i.incident_key
-            ORDER BY created_at DESC, id DESC LIMIT 1) v ON true
+            ORDER BY created_at DESC, id DESC LIMIT 1) v ON true"""
+    base = f"""FROM incidents i
+        {latest}
         {w}"""
-    params.extend([limit, offset])
 
-    async with app.state.pool.acquire() as c:
-        total = await c.fetchval(f"SELECT count(*) {base}", *params[:-2])
-        # 필터 선택지는 필터링된 첫 쪽에 없는 규칙도 포함한다. 별도 API를 요구하지 않는다.
-        rules = await c.fetch("""
-            SELECT DISTINCT ON (rule_id) rule_id, rule_name FROM incidents
-            ORDER BY rule_id, last_ts DESC, incident_key""")
+    # 필터 선택지는 필터링된 첫 쪽에 없는 규칙도 포함한다. 별도 API를 요구하지 않는다.
+    rules_sql = """
+        SELECT DISTINCT ON (rule_id) rule_id, rule_name FROM incidents
+        ORDER BY rule_id, last_ts DESC, incident_key"""
+    if device is None:
+        total = await c.fetchval(f"SELECT count(*) {base}", *params)
+        rules = await c.fetch(rules_sql)
         rows = await c.fetch(f"""
-            SELECT i.incident_key, i.rule_id, i.rule_version, i.rule_name, i.severity,
-                   host(i.actor_ip) AS actor_ip, i.target, i.first_ts, i.last_ts,
-                   i.signal_count, i.session_count, i.status, i.created_at,
-                   v.verdict,
-                   extract(epoch FROM (now() - i.first_ts))::bigint AS pending_seconds
+            SELECT {PAGE_COLUMNS}
             {base}
             ORDER BY {order}
-            LIMIT ${len(params) - 1} OFFSET ${len(params)}""", *params)
+            LIMIT ${len(params) + 1} OFFSET ${len(params) + 2}""", *params, limit, offset)
+        devices, cards = await targets.incident_devices(c, rows, as_of)
+    else:
+        rules = await c.fetch(rules_sql)
+        # 가벼운 질의: 조건에 맞는 사건 전부의 키 · 근거(쪽 질의와 같은 조건 · 순서)
+        light = [dict(r) for r in await c.fetch(f"""
+            SELECT i.incident_key, i.rule_id, i.rule_version, host(i.actor_ip) AS actor_ip, i.target, i.first_ts,
+                   i.last_ts, {targets.EVIDENCE_COLUMNS}
+            {base}
+            ORDER BY {order}""", *params)]
+        _, cards = await targets.read_nodes(c, as_of)
+        links, specs = await targets.link_incidents(c, light, targets.node_sources(cards))
+        keys = [r["incident_key"] for r in light if targets.device_matches(device, links[r["incident_key"]])]
+        total, page = len(keys), keys[offset:offset + limit]
+        found = {r["incident_key"]: r for r in await c.fetch(f"""
+            SELECT {PAGE_COLUMNS}
+            FROM incidents i
+            {latest}
+            WHERE i.incident_key = ANY($1::text[])""", page)} if page else {}
+        rows = [found[key] for key in page if key in found]
+        rule_of = {r["incident_key"]: (r["rule_version"], r["rule_id"]) for r in light}
+        devices = {key: targets.devices_of(links[key], specs.get(rule_of[key]), cards) for key in page}
 
-    return {"total": total, "limit": limit, "offset": offset,
-            "items": [row_to_dict(r) for r in rows],
-            "rules": [row_to_dict(r) for r in rules]}
+    items = []
+    for r in rows:
+        item = row_to_dict(r)
+        for key in ("sensors", "sessions"):
+            item.pop(key, None)
+        items.append(item | devices[r["incident_key"]])
+    return {"total": total, "limit": limit, "offset": offset, "items": items,
+            "rules": [row_to_dict(r) for r in rules], "device_options": targets.device_options(cards)}
 
 
 @app.get("/api/incidents/{incident_key:path}")
@@ -427,6 +478,18 @@ async def get_incident(incident_key: str):
             FROM incidents WHERE incident_key = $1""", incident_key)
         if inc is None:
             raise HTTPException(404, "인시던트를 찾을 수 없습니다")
+
+        # 관련 장비(목록 항목과 같은 계산). 근거는 evidence 가 객체일 때만 쓰고, sensors · sessions 는 목록의
+        # EVIDENCE_COLUMNS 처럼 배열일 때만 넘긴다(글자 값을 다시 JSON 으로 읽으면 목록과 다른 장비 · 500 이 된다)
+        as_of = await c.fetchval("SELECT now()")
+        ev = json.loads(inc["evidence"]) if isinstance(inc["evidence"], str) else inc["evidence"]
+        ev = ev if isinstance(ev, dict) else {}
+        sensors, sessions = ev.get("sensors"), ev.get("sessions")
+        devices, _ = await targets.incident_devices(c, [{
+            "incident_key": inc["incident_key"], "rule_id": inc.get("rule_id"), "rule_version": inc.get("rule_version"),
+            "actor_ip": inc.get("actor_ip"), "target": inc.get("target"), "first_ts": inc["first_ts"],
+            "last_ts": inc["last_ts"], "sensors": sensors if isinstance(sensors, list) else None,
+            "sessions": sessions if isinstance(sessions, list) else None}], as_of)
 
         actions = await c.fetch(
             "SELECT id, action, operator, note, created_at FROM actions "
@@ -562,6 +625,7 @@ async def get_incident(incident_key: str):
     }
     d["circular"] = CIRCULAR.get(inc["rule_id"])
     d["proposal"] = propose(inc["rule_id"], {r["eventid"]: r["n"] for r in counts}, covered)
+    d |= devices[inc["incident_key"]]
     return d
 
 
@@ -617,6 +681,11 @@ async def summary():
         # 없으므로, 함께 차단을 고르지 않았으면 여기서만 드러난다. 흡수 기록 표가 없는 DB(v3 전)에서는 생략한다
         unblocked = await c.fetchrow(UNBLOCKED_AFTER_VERDICT_SQL, await block_nets(c)) \
             if await c.fetchval("SELECT to_regclass('incident_absorbed') IS NOT NULL") else None
+        # 지점별 적용 결과(상태판 카드 대응과 같은 정의 targets.point_counts). 집행기가 멈추면 적용 · 실패를 미확인에 합친다
+        heartbeats_available = bool(await c.fetchval(targets.HEARTBEATS_READABLE_SQL))
+        reports = targets.reports_of([dict(r) for r in await c.fetch(targets.HEARTBEATS_SQL)]) \
+            if heartbeats_available else {}
+        by_point = await c.fetchrow(targets.BLOCKS_SQL, as_of)
 
     return {
         **metrics,
@@ -630,6 +699,9 @@ async def summary():
         # 살아 있는 차단 요청 수와 그 집행 상태. 요청 수는 실제로 막은 수가 아니다(집행 확인만 관문이 반영했다)
         "blocked_ips": blocks["total"],
         "blocks": {k: blocks[k] for k in ("enforced", "pending", "excluded", "mismatch")},
+        # 지점별 합 = blocked_ips − blocks.excluded (만료 없음 · 집행 제외는 어느 지점도 집행하지 않는다)
+        "blocks_by_point": [targets.point_counts(p, by_point, reports.get(p), as_of, heartbeats_available)
+                            for p in targets.POINT_LABELS],
         **({"absorbed_unblocked": dict(unblocked)} if unblocked else {}),
     }
 

@@ -2,8 +2,8 @@
 """잘못된 입력은 500 이 아니라 422 다 (이슈 #62). DB 없이 돈다.  python3 app/test_inputs.py
 
 보는 것
-  1. 사건 목록(GET /api/incidents): offset 상한(cti.MAX_OFFSET) · rule_id · rule_version · target 의 NUL 과 길이는
-     DB 에 닿기 전에 422. 상한까지는 받는다
+  1. 사건 목록(GET /api/incidents): offset 상한(cti.MAX_OFFSET) · rule_id · rule_version · target 의 NUL 과 길이 ·
+     장비(device) 형식 밖은 DB 에 닿기 전에 422. 상한까지는 받는다. 장비 조건은 가벼운 질의로 거른 뒤 쪽 키만 읽는다
   2. 조치(POST …/actions): 해제할 출발지의 IPv6 영역 표기(fe80::1%eth0)는 422(sources.parse_ip 와 같은 기준).
      메모 · 판정 사유의 NUL 도 422
   3. 본문의 짝 없는 서로게이트(원문 바이트 \\ud800): 판정 · 조치 · 노드 등록 모두 422 이고 본문은 type · loc · msg 만
@@ -145,6 +145,41 @@ class IncidentListTests(AppBase):
         sql, args = next((c[1], c[2]) for c in self.pool.calls if c[0] == "fetch" and "pending_seconds" in c[1])
         self.assertIn("i.rule_id = $1", sql)
         self.assertEqual(args[:3], ("R107", "sg1", "node:web-01"))
+
+    def test_장비_형식_밖은_DB_에_닿기_전에_422(self):
+        for value in ("WEB-01", "a" * 64, "web\x00", "../x", "_x", "-web", "web-01\n", "_unconfirmed-x"):
+            with self.subTest(device=value):
+                self.assert_masked(self.client.get("/api/incidents", params={"device": value}), value)
+        self.assert_no_db()
+        for value in ("web-01", "_unconfirmed", "a" * 63, "0"):
+            with self.subTest(device=value):
+                self.assertEqual(self.client.get("/api/incidents", params={"device": value}).status_code, 200)
+
+    def test_장비_조건은_가벼운_질의_다음에_쪽_키만_읽는다(self):
+        light = {"incident_key": "k1", "rule_id": "R301", "rule_version": "i2", "actor_ip": None, "target": "node:web-01",
+                 "first_ts": T0, "last_ts": T0, "sensors": None, "sessions": None}
+        page = light | {"rule_name": "노드 무응답", "severity": "high", "signal_count": 1, "session_count": 0,
+                        "status": "open", "created_at": T0, "verdict": None, "pending_seconds": 60}
+        self.pool.by_sql = {"pending_seconds": [page], "FROM incidents i": [light]}
+        response = self.client.get("/api/incidents", params={"judged": "false", "device": "web-01", "limit": 10})
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual((body["total"], [x["incident_key"] for x in body["items"]]), (1, ["k1"]))
+        item = body["items"][0]
+        self.assertEqual((item["device_state"], [d["id"] for d in item["devices"]], item["device_fallback"]),
+                         ("confirmed", ["web-01"], []))
+        self.assertNotIn("sensors", item)
+        self.assertEqual([o["id"] for o in body["device_options"]], ["web-01", "aws-sensor", "console", "data-node"])
+        fetched = [(i, c[1], c[2]) for i, c in enumerate(self.pool.calls) if c[0] == "fetch" and "FROM incidents i" in c[1]]
+        [(li, light_sql, light_args), (pi, page_sql, page_args)] = fetched
+        self.assertLess(li, pi)
+        self.assertNotIn("pending_seconds", light_sql)
+        self.assertIn("v.verdict IS NULL", light_sql)
+        self.assertEqual(light_args, ())
+        self.assertIn("i.incident_key = ANY($1::text[])", page_sql)
+        self.assertEqual(page_args, (["k1"],))
+        # 전체 수는 키 수다(count 질의를 따로 하지 않는다)
+        self.assertFalse([c for c in self.pool.calls if c[0] == "fetchval" and "FROM incidents i" in c[1]])
 
     def test_질의_인자_422_도_입력값을_싣지_않는다(self):
         response = self.client.get("/api/incidents", params={"limit": 0, "status": "<b>x</b>"})

@@ -1,4 +1,4 @@
-"""관제 대상별 상태판(targets.py · 이슈 #52)의 PostgreSQL 시험.  OPSLOOP_TEST_DATABASE_URL=... python3 -m unittest discover -s app
+"""관제 대상별 상태판(targets.py · 이슈 #52 · #64 · #72)의 PostgreSQL 시험.  OPSLOOP_TEST_DATABASE_URL=... python3 -m unittest discover -s app
 
 연결 전용 임시 표만 쓰고 search_path=pg_temp 로 운영 표를 가린다. 생존 신호 표(sensor_heartbeats)는 계약서 1장 DDL 을
 그대로 임시 표로 만든다(트리거 · 권한은 infra/test_status_board_db.py 가 본다). CTI 표는 마이그레이션(20260925_cti.sql)의
@@ -15,11 +15,14 @@
     block_exempt) · 차단 보고 신호
   - 취약점: 자산별 수 · KEV · 오래됨(48시간) · 자산 없음 · CTI 표 없음
   - 표가 없는 DB: 생존 신호 표 없음 → heartbeats_available=false · 미확인. node_metrics 없음 → no_privilege
-  - 등록 노드(이슈 #64): 노드를 하나 더 등록하면 카드가 하나 늘고(고정 대상 뒤 · node_id 순, 폐기 노드는 없음) 고정 네 대상 ·
-    미분류는 그대로다. 그 노드의 이벤트(수집 · 로그) · 사건(발생원 · node:<id> · 노드 에이전트 이벤트)이 그 카드로 가고
-    미분류에서 빠진다. web-01 의 노드 에이전트 사건은 이벤트로 고르고 고르지 못해도 web-01 이다.
+  - 등록 노드(이슈 #64): 노드를 하나 더 등록하면 카드가 하나 늘고(고정 대상 뒤 · node_id 순, 폐기 노드는 없음) web-01 을 뺀
+    고정 대상은 그대로다. 그 노드의 이벤트(수집 · 로그) · 사건(발생원 · node:<id> · 노드 에이전트 이벤트)이 그 카드로 가고
+    미분류에서 빠진다. web-01 의 노드 에이전트 사건은 이벤트로 고르고, 고르지 못하면 대체 추정(장비 미확인)이다.
     nodes 는 운영 콘솔처럼 열 권한만 있어도 읽고, 권한 · 표가 없으면 고정 네 대상만이다(web-01 수신은 미확인.
     카드 열 hostname 만 없으면 web-01 은 그대로)
+  - 관련 장비(이슈 #72): 카드 미판정 수 = 장비 필터 목록 수(고정 네 대상 · 등록 노드 · 장비 미확인, 대체 추정 사건 포함) ·
+    장비 필터는 쪽을 나누기 전에 거름 · 연결 근거 · 상세와 목록의 장비가 같음 · 탐지 경로 판별(실제 규칙 정의) ·
+    관제 이상 · 먼저 처리할 사건이 요약과 같은 기준 · 취약점 수정 상태별 수
 """
 import json
 import os
@@ -28,9 +31,11 @@ from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import operations as ops
 import targets as t
+from dashboard import dashboard_metrics
 
 ROOT = Path(__file__).resolve().parents[1]
 CTI_MIGRATION = ROOT / "infra" / "migrations" / "20260925_cti.sql"
@@ -39,8 +44,8 @@ RULE_FILES = sorted((ROOT / "detector").glob("rules*.json"))
 BASE_TABLES = """
     CREATE TEMP TABLE incidents (incident_key text PRIMARY KEY, rule_id text NOT NULL, rule_version text NOT NULL,
         rule_name text, severity text NOT NULL, actor_ip inet, target text, first_ts timestamptz NOT NULL,
-        last_ts timestamptz NOT NULL, signal_count integer DEFAULT 1, evidence jsonb, status text DEFAULT 'open',
-        created_at timestamptz DEFAULT now());
+        last_ts timestamptz NOT NULL, signal_count integer DEFAULT 1, session_count integer DEFAULT 0, evidence jsonb,
+        status text DEFAULT 'open', created_at timestamptz DEFAULT now());
     CREATE TEMP TABLE verdicts (id bigserial PRIMARY KEY, incident_key text NOT NULL, verdict text NOT NULL,
         created_at timestamptz DEFAULT now());
     CREATE TEMP TABLE rule_versions (rule_version text PRIMARY KEY, definition jsonb NOT NULL);
@@ -78,6 +83,24 @@ HEARTBEATS_TABLE = """
         problem    text
     );
 """
+
+
+# 상세(main.get_incident)가 더 읽는 표 · 열(test_proposals_db 와 같은 꼴). 상세와 목록의 장비를 견줄 때만 더한다
+DETAIL_TABLES = """
+    ALTER TABLE verdicts ADD COLUMN reason text, ADD COLUMN observed_value double precision, ADD COLUMN operator text,
+        ADD COLUMN proposed text, ADD COLUMN decision_seconds integer;
+    ALTER TABLE events ADD COLUMN username text, ADD COLUMN password text, ADD COLUMN input text, ADD COLUMN shasum text,
+        ADD COLUMN http_method text, ADD COLUMN user_agent text, ADD COLUMN message text;
+    CREATE TEMP TABLE actions (id bigint GENERATED ALWAYS AS IDENTITY, incident_key text, action text,
+        operator text, note text, created_at timestamptz DEFAULT now());
+    CREATE TEMP TABLE incident_absorbed (first_key text, member_key text, kind text, via_key text,
+        rule_id text, rule_version text, actor_ip inet, first_ts timestamptz, last_ts timestamptz,
+        signal_count integer, sessions text[] DEFAULT '{}', payloads text[] DEFAULT '{}',
+        recorded_at timestamptz DEFAULT now());
+    CREATE TEMP TABLE absorbed_blocks (first_key text PRIMARY KEY, expires_at timestamptz NOT NULL,
+        requested_by text, created_at timestamptz DEFAULT now(), released_at timestamptz, released_by text);
+"""
+DEVICE_KEYS = ("devices", "device_state", "device_fallback")
 
 
 def cti_tables() -> str:
@@ -416,12 +439,24 @@ class TargetsDatabaseTests(Base):
                          (0, 0, 4, "집행기 확인 중단 · 마지막 확인 10분 전"))
         self.assertEqual((web["applied"], web["failed"], web["unverified"], web["stalled"]), (0, 0, 4, "집행기 확인 기록 없음"))
         self.assertEqual(self.target(body, "data-node")["collection"]["extra"][1]["note"], "멈춤")
+        self.assertEqual(self.target(body, "data-node")["collection"]["stopped"], ["enforcer"])
+
+    async def test_내부_방화벽_보고만_없어도_데이터_노드는_집행기_멈춤이다(self):
+        self.assertEqual(self.target(await self.view(), "data-node")["collection"]["stopped"], [])
+        await self.conn.execute("DELETE FROM sensor_heartbeats WHERE source = 'block:fw'")
+        data = self.target(await self.view(), "data-node")["collection"]
+        # 관문 집행기는 확인 중이라 문장 · state 는 그대로다. 주의 표시(stopped)는 관제 이상 enforcer:fw 와 같은 판정이다
+        self.assertEqual((data["state"], data["reason"], data["stopped"]), ("ok", "마지막 탐지 실행 4분 전", ["enforcer"]))
+        items = (await t.monitor_view(self.conn, self.now))["items"]
+        self.assertEqual([(x["key"], x["reason"]) for x in items if x["key"].startswith("enforcer:")],
+                         [("enforcer:fw", "집행기 확인 기록 없음")])
 
     async def test_취약점(self):
         body = await self.view()
         web = self.target(body, "web-01")["vulns"]
         self.assertEqual(web, {"available": True, "assets": [{
-            "asset_id": "web-01", "vuln_total": 2, "vuln_kev": 1, "collected_at": t.cti.iso(self.ago(3600)),
+            "asset_id": "web-01", "vuln_total": 2, "vuln_kev": 1, "vuln_fix_available": 2, "vuln_reboot_pending": 0,
+            "vuln_fix_unknown": 0, "collected_at": t.cti.iso(self.ago(3600)),
             "checked_at": t.cti.iso(self.ago(3600)), "stale": False, "missing": False}]})
         aws = self.target(body, "aws-sensor")["vulns"]["assets"]
         self.assertEqual([(a["asset_id"], a["stale"], a["missing"], a["vuln_total"]) for a in aws],
@@ -429,6 +464,22 @@ class TargetsDatabaseTests(Base):
         console = self.target(body, "console")["vulns"]["assets"]
         self.assertEqual([(a["asset_id"], a["missing"]) for a in console], [("console-a", False), ("console-b", True)])
         self.assertEqual(self.target(body, "data-node")["vulns"]["assets"][0]["missing"], True)
+        # 수정 상태 네 값(fix_available · reboot_pending · no_fix · unknown). 수정판 없음은 따로 세지 않는다(전체에만 든다)
+        snap = await self.conn.fetchval("SELECT id FROM cti_snapshots")
+        for osv, cve, state in [("UBUNTU-CVE-2026-90001", "CVE-2026-90001", "reboot_pending"),
+                                ("UBUNTU-CVE-2026-90002", "CVE-2026-90002", "no_fix"),
+                                ("UBUNTU-CVE-2026-90003", "CVE-2026-90003", "unknown"),
+                                ("UBUNTU-CVE-2026-90004", "CVE-2026-90004", "unknown")]:
+            await self.conn.execute("INSERT INTO cti_osv (osv_id, cve_id, snapshot_id) VALUES ($1, $2, $3)", osv, cve, snap)
+            await self.conn.execute("""INSERT INTO asset_vulnerabilities (asset_id, source_package, version, osv_id, cve_id,
+                fix_state, snapshot_id) VALUES ('web-01', 'openssl', '1', $1, $2, $3, $4)""", osv, cve, state, snap)
+        web = self.target(await self.view(), "web-01")["vulns"]["assets"][0]
+        self.assertEqual({k: v for k, v in web.items() if k.startswith("vuln_")},
+                         {"vuln_total": 6, "vuln_kev": 1, "vuln_fix_available": 2, "vuln_reboot_pending": 1,
+                          "vuln_fix_unknown": 2})
+        # 자산 화면(cti.asset_row)도 같은 수다
+        row = await self.conn.fetchrow(t.cti.ASSETS_SQL, "web-01")
+        self.assertEqual(t.cti.asset_row(row, self.now)["vuln_fix_unknown"], 2)
 
     async def test_출발지_빈도_규칙은_탐지와_같은_조건으로_발생원을_고른다(self):
         # R102 w2(404 · 제외 경로 · 창 600초 · 임계치 5). web-01 404 다섯 건으로 떴고, 같은 창의 디코이 요청은 200 · 제외 경로다
@@ -508,14 +559,23 @@ class TargetsDatabaseTests(Base):
         self.assertEqual([(x["id"], x["kind"]) for x in body["targets"]],
                          [("aws-sensor", "fixed"), ("web-01", "fixed"), ("console", "fixed"), ("data-node", "fixed"),
                           ("web-02", "node"), ("web-03", "node")])
-        # 고정 네 대상(web-01 값 포함) · 미분류는 노드를 등록하기 전과 같다. n1 R101 은 이제 이벤트로 고르고(web-01),
-        #   이벤트가 없는 사건은 전처럼 web-01 이다
-        self.assertEqual(body["targets"][:4], before["targets"][:4])
-        self.assertEqual(body["unmapped"], before["unmapped"])
+        # web-01 을 뺀 고정 대상은 노드를 등록하기 전과 같다. n1 R101 은 이제 이벤트로 고르고(n-web01 은 web-01 확인),
+        #   이벤트가 없는 사건(n-bare)은 web-01 대체 추정이라 web-01 카드에서 빠져 장비 미확인으로 간다
+        self.assertEqual([x for x in body["targets"][:4] if x["id"] != "web-01"],
+                         [x for x in before["targets"][:4] if x["id"] != "web-01"])
+        self.assertEqual(body["unmapped"], {"incidents_1h": before["unmapped"]["incidents_1h"] + 1,
+                                            "pending": before["unmapped"]["pending"] + 1})
         joins = [json.loads(args[0]) for sql, args in conn.fetched if sql == t.JOIN_SQL]
         self.assertEqual(len(joins), 1)
         self.assertEqual(sorted(i["k"] for i in joins[0]), ["n-bare", "n-web01", "w-mixed", "w-none", "w-upload"])
-        self.assertEqual(self.target(body, "web-01")["security"]["pending"], 4)      # 전의 2 + n-web01 · n-bare
+        self.assertEqual(self.target(before, "web-01")["security"]["pending"], 4)    # 등록 전: 2 + n-web01 · n-bare(규칙 범위)
+        self.assertEqual(self.target(body, "web-01")["security"]["pending"], 3)      # 전의 2 + n-web01
+        import main
+        bare = next(x for x in (await main.incident_page(self.conn, device=t.UNCONFIRMED, limit=500))["items"]
+                    if x["incident_key"] == "n-bare")
+        self.assertEqual((bare["devices"], bare["device_state"]), ([], "unconfirmed"))
+        self.assertEqual([(d["id"], d["basis"], d["logs"]) for d in bare["device_fallback"]],
+                         [("web-01", "fallback", ["SSH 인증"])])
         web02 = self.target(body, "web-02")
         self.assertEqual((web02["label"], web02["role"]), ("web02.lab", "등록 노드"))
         self.assertEqual((web02["collection"]["state"], web02["collection"]["reason"]),
@@ -621,7 +681,151 @@ class TargetsDatabaseTests(Base):
         self.assertIsInstance(body["as_of"], str)
         self.assertEqual(body["window_seconds"], 3600)
         self.assertEqual(len(body["targets"]), 4)
+        self.assertEqual(body["queue"]["total"], 9)
         json.dumps(body)
+        monitor = await t.dashboard_monitor(self.request)
+        self.assertIsInstance(monitor["as_of"], str)
+        json.dumps(monitor)
+
+    async def test_카드_미판정_수는_장비_필터_목록_수와_같다(self):
+        import main
+        # 대체 추정이 생기는 사건: 기준선(R005, 출발지 없음) · 세션 근거 없는 R002 · 등록 노드가 있을 때 이벤트 없는 n1 R101.
+        #   등록 노드 web-02 와 그 노드의 사건(node:web-02)도 넣는다
+        await self.incident("r005", "R005", "v3", "medium", None, 400)
+        await self.incident("s-bare", "R002", "v3", "high", "192.0.2.40", 300, evidence={})
+        await self.incident("n-bare", "R101", "n1", "low", "198.51.100.41", 900)
+        await self.incident("s-web02", "R301", "i2", "high", None, 600, None, "node:web-02")
+        await self.node("web-02", hostname="web02.lab", sensor="web-02")
+        # 같은 연결 · 두 조회 사이에 쓰기 없음
+        body = await self.view()
+        lists = {}
+        for device in ["aws-sensor", "web-01", "console", "data-node", "web-02", t.UNCONFIRMED]:
+            page = await main.incident_page(self.conn, judged=False, device=device, limit=500)
+            lists[device] = [x["incident_key"] for x in page["items"]]
+            want = body["unmapped"]["pending"] if device == t.UNCONFIRMED else \
+                self.target(body, device)["security"]["pending"]
+            with self.subTest(device=device):
+                self.assertEqual((page["total"], len(lists[device])), (want, want))
+        self.assertEqual(lists["web-02"], ["s-web02"])
+        self.assertIn("s-bare", lists["aws-sensor"])
+        self.assertNotIn("r005", lists["aws-sensor"])
+        self.assertNotIn("n-bare", lists["web-01"])
+        self.assertEqual(sorted(lists[t.UNCONFIRMED]), ["n-bare", "nodef", "r005", "w-none"])
+        # 여러 장비에 붙은 사건은 그 장비 목록마다 한 번씩
+        for device in ("web-01", "aws-sensor"):
+            self.assertEqual(lists[device].count("w-mixed"), 1)
+        # 모르는 장비는 0 건이다
+        self.assertEqual((await main.incident_page(self.conn, device="web-09"))["total"], 0)
+
+    async def test_장비_필터는_쪽을_나누기_전에_거른다(self):
+        import main
+        full = await main.incident_page(self.conn, device="aws-sensor", limit=500)
+        keys = [x["incident_key"] for x in full["items"]]
+        self.assertEqual(full["total"], len(keys))
+        self.assertGreaterEqual(len(keys), 5)
+        paged = []
+        for offset in range(len(keys) + 1):
+            page = await main.incident_page(self.conn, device="aws-sensor", limit=1, offset=offset)
+            self.assertEqual(page["total"], full["total"])
+            paged += [x["incident_key"] for x in page["items"]]
+        self.assertEqual(paged, keys)          # 겹치거나 빠지지 않는다
+        # 정렬(미판정 · 최근)은 필터 없는 목록의 부분열이다
+        for sort in ("pending", "recent"):
+            everything = [x["incident_key"] for x in (await main.incident_page(self.conn, sort=sort, limit=500))["items"]]
+            for device in ("aws-sensor", "web-01", t.UNCONFIRMED):
+                picked = [x["incident_key"]
+                          for x in (await main.incident_page(self.conn, sort=sort, device=device, limit=500))["items"]]
+                with self.subTest(sort=sort, device=device):
+                    self.assertTrue(picked)
+                    self.assertEqual(picked, [k for k in everything if k in set(picked)])
+
+    async def test_연결_근거와_상세의_장비는_목록과_같다(self):
+        import main
+        await self.incident("s-bare", "R002", "v3", "high", "192.0.2.40", 300, evidence={})
+        # 근거의 sensors · sessions 가 배열이 아니면(글자) 목록 · 상세 모두 없는 것으로 본다(JSON 으로 다시 읽지 않는다)
+        await self.incident("ev-str", "R001", "v3", "medium", "192.0.2.41", 300, evidence={"sensors": "cowrie"})
+        await self.incident("ev-json", "R001", "v3", "medium", "192.0.2.42", 300, evidence={"sensors": json.dumps(["web-01"])})
+        await self.incident("ev-sess", "R002", "v3", "high", "192.0.2.43", 300, evidence={"sessions": "x"})
+        page = await main.incident_page(self.conn, limit=500)
+        items = {x["incident_key"]: x for x in page["items"]}
+        self.assertEqual({k: items[k]["device_state"] for k in ("w-mixed", "cve", "node", "audit", "self", "w-none",
+                                                                  "nodef", "s-bare")},
+                         {"w-mixed": "confirmed", "cve": "confirmed", "node": "confirmed", "audit": "confirmed",
+                          "self": "rule_scope", "w-none": "unconfirmed", "nodef": "unconfirmed", "s-bare": "rule_scope"})
+        self.assertEqual([(d["id"], d["part"], d["basis"], d["logs"]) for d in items["w-mixed"]["devices"]],
+                         [("web-01", None, "confirmed", ["SSH 인증"]), ("aws-sensor", "decoy", "confirmed", ["웹 요청"])])
+        self.assertEqual([(d["label"], d["logs"]) for d in items["self"]["devices"]],
+                         [("데이터 노드", ["수집 관문", "원장 가져오기"])])
+        self.assertEqual([(d["id"], d["part"], d["basis"]) for d in items["s-bare"]["devices"]],
+                         [("aws-sensor", None, "rule_scope")])
+        self.assertEqual([(d["id"], d["part"], d["basis"]) for d in items["s-bare"]["device_fallback"]],
+                         [("aws-sensor", "cowrie", "fallback")])
+        for key in ("ev-str", "ev-json"):
+            self.assertEqual([(d["id"], d["part"], d["basis"]) for d in items[key]["devices"]],
+                             [("aws-sensor", "cowrie", "rule_scope")])
+        self.assertEqual({k: items["ev-sess"][k] for k in DEVICE_KEYS}, {k: items["s-bare"][k] for k in DEVICE_KEYS})
+        self.assertFalse({"sensors", "sessions"} & set(items["cve"]))
+        self.assertEqual([o["id"] for o in page["device_options"]], ["web-01", "aws-sensor", "console", "data-node"])
+        # 상세는 목록 항목과 같은 장비를 싣는다
+        await self.conn.execute(DETAIL_TABLES)
+        with patch.object(main.app.state, "pool", SimpleNamespace(acquire=self.acquire), create=True):
+            for key in ("w-mixed", "cve", "node", "audit", "self", "w-none", "nodef", "s-bare",
+                        "ev-str", "ev-json", "ev-sess"):
+                detail = await main.get_incident(key)
+                with self.subTest(key=key):
+                    self.assertEqual({k: detail[k] for k in DEVICE_KEYS}, {k: items[key][k] for k in DEVICE_KEYS})
+
+    async def test_탐지_경로는_규칙_정의로_가르고_24시간_안만_읽는다(self):
+        await self.conn.execute("DELETE FROM detector_runs")
+        for version, seconds in [("v3", 60), ("v3", 1200), ("v1", 7200), ("s1", 30), ("w2", 1000), ("a1", 45),
+                                 ("i2", 50), ("c1", 70), ("sg1", 80), ("zz", 100), ("n1", 90000)]:
+            await self.conn.execute("INSERT INTO detector_runs (rule_version, started_at, finished_at) VALUES ($1, $2, $2)",
+                                    version, self.ago(seconds))
+        rows = await self.conn.fetch(t.DETECT_PATHS_SQL, self.now)
+        # 규칙 id 가 모두 R0xx 인 버전만 허니팟이다. 규칙 정의가 없는 버전(zz)은 허니팟이 아니다. 25시간 전(n1)은 읽지 않는다
+        self.assertEqual({r["rule_version"]: r["honeypot"] for r in rows},
+                         {"v1": True, "v3": True, "a1": False, "c1": False, "i2": False, "s1": False, "sg1": False,
+                          "w2": False, "zz": False})
+        self.assertEqual(next(r["last_at"] for r in rows if r["rule_version"] == "v3"), self.ago(60))
+        honeypot, bridge = t.detect_paths(rows, self.now)
+        self.assertEqual((honeypot["stale"], [v["rule_version"] for v in honeypot["versions"]]), (False, ["v1", "v3"]))
+        self.assertEqual((bridge["stale"], bridge["reason"]), (True, "w2 마지막 실행 16분 전"))
+        monitor = await t.monitor_view(self.conn, self.now)
+        self.assertEqual(monitor["detect_paths"], [honeypot, bridge])
+        self.assertEqual([x["key"] for x in monitor["items"] if x["key"].startswith("detect:")], ["detect:bridge"])
+
+    async def test_관제_이상과_먼저_처리할_사건은_요약과_같은_기준이다(self):
+        import main
+        import test_dashboard_db
+        await self.conn.execute("""INSERT INTO blocklist (actor_ip, expires_at, enforce_note) VALUES
+            ('203.0.113.20', $1, '관문 불일치 · 관문 상태가 7분 전'), ('203.0.113.21', NULL, '관문 불일치 · 만료 없음')""",
+                                self.now + timedelta(hours=1))
+        schema = await test_dashboard_db.with_test_source(self.conn)     # 요약의 규칙 품질이 is_test_source 를 쓴다
+        try:
+            with patch.object(main.app.state, "pool", SimpleNamespace(acquire=self.acquire), create=True):
+                summary = await main.summary()
+            monitor = await t.monitor_view(self.conn, self.now)
+            view = await t.targets_view(self.conn, self.now, queue=True)
+            metrics = await dashboard_metrics(self.conn, self.now)
+        finally:
+            await self.conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+        mismatch = next(x for x in monitor["items"] if x["key"] == "gateway_mismatch")
+        self.assertEqual((mismatch["count"], summary["blocks"]["mismatch"]), (1, 1))
+        # 요약의 지점별 수 = 카드 대응
+        for point, tid in (("gateway", "aws-sensor"), ("fw", "web-01")):
+            card = self.target(view, tid)["response"]
+            got = next(x for x in summary["blocks_by_point"] if x["point"] == point)
+            self.assertEqual({k: got[k] for k in ("applied", "failed", "unverified", "stalled")},
+                             {k: card[k] for k in ("applied", "failed", "unverified", "stalled")})
+        # 먼저 처리할 사건: 미판정 전체(대시보드 판정 대기와 같은 수)를 앞 · 뒤로 가른다
+        queue = view["queue"]
+        self.assertEqual(queue["total"], metrics["pending"]["total"])
+        self.assertEqual({k: queue[k] for k in ("total", "front", "back", "unconfirmed")},
+                         {"total": 9, "front": 6, "back": 3, "unconfirmed": 2})
+        self.assertEqual([(x["incident_key"], x["lane"]) for x in queue["items"]],
+                         [("node", "front"), ("w-mixed", "front"), ("w-none", "front"), ("nodef", "front"),
+                          ("self", "front"), ("audit", "front"), ("old-pending", "back"), ("c-out", "back")])
+        self.assertEqual(queue["overdue"], metrics["pending"]["overdue"])
 
 
 @unittest.skipUnless(os.environ.get("OPSLOOP_TEST_DATABASE_URL"), "PostgreSQL 시험 연결 미지정")

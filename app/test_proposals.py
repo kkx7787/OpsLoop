@@ -1,5 +1,6 @@
 """화면 제안 정책과 상세 API의 이력 반환 계약. python3 -m unittest discover -s app"""
 import asyncio
+import json
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -85,6 +86,43 @@ class DetailContractTests(unittest.TestCase):
         self.assertEqual(response["verdicts"][0]["proposed"], "threat")
         self.assertEqual(response["verdicts"][0]["decision_seconds"], 125)
         self.assertIsNone(response["proposal"]["verdict"])
+        # 관련 장비: 가짜 행에 규칙 버전 · 대상이 없어도 장비 미확인으로 싣는다(목록 항목과 같은 모양)
+        self.assertEqual((response["devices"], response["device_state"], response["device_fallback"]),
+                         ([], "unconfirmed", []))
+
+    def test_근거의_sensors_sessions_는_배열일_때만_쓴다(self):
+        # 목록(EVIDENCE_COLUMNS)과 같은 기준. 글자 값을 JSON 으로 다시 읽지 않는다(500 이나 목록과 다른 장비가 되지 않게)
+        import test_web
+        main = test_web.main
+        r002 = {"rule_version": "v3", "rule_id": "R002", "type": "session_compound", "sensors": None,
+                "eventids": None, "eventid": None, "eventid_like": None}
+        bare = ([("aws-sensor", None, "rule_scope")], "rule_scope", [("aws-sensor", "cowrie", "fallback")])
+        for evidence, rules, want in [({"sensors": "decoy"}, [], ([], "unconfirmed", [])),
+                                      ({"sensors": json.dumps(["web-01"])}, [], ([], "unconfirmed", [])),
+                                      ({"sessions": "x"}, [r002], bare)]:
+            conn = AsyncMock()
+            conn.fetchrow.return_value = {"incident_key": "k", "actor_ip": None, "rule_id": "R002", "rule_version": "v3",
+                                          "first_ts": None, "last_ts": None, "evidence": json.dumps(evidence)}
+            conn.fetchval.return_value = None
+
+            async def fetch(sql, *_args, rules=rules):
+                return rules if sql == main.targets.RULES_SQL else []
+
+            conn.fetch.side_effect = fetch
+
+            class Pool:
+                def acquire(self, conn=conn):
+                    class Acquire:
+                        async def __aenter__(self):
+                            return conn
+                        async def __aexit__(self, *_args):
+                            return False
+                    return Acquire()
+
+            with self.subTest(evidence=evidence), patch.object(main.app.state, "pool", Pool(), create=True):
+                response = asyncio.run(main.get_incident("k"))
+                self.assertEqual(([(d["id"], d["part"], d["basis"]) for d in response["devices"]], response["device_state"],
+                                  [(d["id"], d["part"], d["basis"]) for d in response["device_fallback"]]), want)
 
     def test_duplicate_basis_is_limited_to_same_rule_version(self):
         # DB 없이 계약만 본다. 중복 후보 조회에 이 사건의 규칙 버전이 조건으로 들어가야 한다.

@@ -131,12 +131,14 @@ ASSETS_SQL = f"""
            a.checked_at, a.check_error,
            coalesce(v.total, 0) AS vuln_total, coalesce(v.kev, 0) AS vuln_kev,
            coalesce(v.fix_available, 0) AS vuln_fix_available, coalesce(v.reboot_pending, 0) AS vuln_reboot_pending,
+           coalesce(v.fix_unknown, 0) AS vuln_fix_unknown,
            v.max_epss
     FROM asset_inventory a
     LEFT JOIN LATERAL (
         SELECT count(*) AS total, count(k.cve_id) AS kev,
                count(*) FILTER (WHERE av.fix_state = 'fix_available') AS fix_available,
                count(*) FILTER (WHERE av.fix_state = 'reboot_pending') AS reboot_pending,
+               count(*) FILTER (WHERE av.fix_state = 'unknown') AS fix_unknown,
                max(c.epss) AS max_epss
         FROM asset_vulnerabilities av
         LEFT JOIN cti_kev k ON k.cve_id = av.cve_id
@@ -740,6 +742,7 @@ def asset_row(row, now) -> dict:
         "checked_at": iso(row["checked_at"]), "check_error": row["check_error"],
         "vuln_total": row["vuln_total"], "vuln_kev": row["vuln_kev"],
         "vuln_fix_available": row["vuln_fix_available"], "vuln_reboot_pending": row["vuln_reboot_pending"],
+        "vuln_fix_unknown": row["vuln_fix_unknown"],
         "max_epss": score(row["max_epss"]),
     }
 

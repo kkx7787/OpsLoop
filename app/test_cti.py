@@ -546,7 +546,7 @@ class ShapeTests(unittest.TestCase):
                "collected_at": NOW - timedelta(hours=50), "received_at": NOW, "last_attempt_at": NOW, "last_error": None,
                "os": json.dumps(UBUNTU), "kernel": json.dumps({"running_version": "1", "installed": [{"version": "2"}]}),
                "images": "[]", "packages": 812, "checked_at": None, "check_error": "지원하지 않는 배포판",
-               "vuln_total": 3, "vuln_kev": 1, "vuln_fix_available": 1, "vuln_reboot_pending": 1,
+               "vuln_total": 3, "vuln_kev": 1, "vuln_fix_available": 1, "vuln_reboot_pending": 1, "vuln_fix_unknown": 1,
                "max_epss": 0.8000000119209290}
         got = cti.asset_row(row, NOW)
         self.assertTrue(got["stale"])
@@ -554,6 +554,11 @@ class ShapeTests(unittest.TestCase):
         self.assertEqual((got["os_pretty"], got["packages"], got["images"], got["max_epss"]),
                          ("Ubuntu 24.04.5 LTS", 812, 0, 0.8))
         self.assertEqual(got["collected_at"], "2026-09-23T01:00:00+00:00")
+        # 수정 상태별 수(수정판 있음 · 재부팅 대기 · 수정 여부 미확인)는 그대로 싣는다
+        self.assertEqual({k: got[k] for k in ("vuln_total", "vuln_kev", "vuln_fix_available", "vuln_reboot_pending",
+                                               "vuln_fix_unknown")},
+                         {"vuln_total": 3, "vuln_kev": 1, "vuln_fix_available": 1, "vuln_reboot_pending": 1,
+                          "vuln_fix_unknown": 1})
         keys = cti.key_packages([{"name": "sudo", "version": "1"}, {"name": "libc6", "version": "2"},
                                  {"name": "libc6", "version": "3"}, {"name": "openssh-server", "version": "4"}])
         self.assertEqual(keys, [{"name": "openssh-server", "version": "4"}, {"name": "sudo", "version": "1"},
