@@ -1,0 +1,22 @@
+{
+ "c1 R105": {
+  "signatures": 8,
+  "signals": 25,
+  "median_ms": 2.7
+ },
+ "c1 R106": {
+  "signatures": 5,
+  "signals": 0,
+  "median_ms": 15.8
+ },
+ "sg1 R107": {
+  "signatures": 11,
+  "signals": 0,
+  "median_ms": 56.0
+ },
+ "sgx R107": {
+  "signatures": 94,
+  "signals": 0,
+  "median_ms": 297.2
+ }
+}

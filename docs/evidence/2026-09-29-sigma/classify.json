@@ -1,0 +1,1149 @@
+[
+ {
+  "path": "rules/web/webserver_generic/web_f5_tm_utility_bash_api_request.yml",
+  "id": "85254a62-22be-4239-b79c-2ec17e566c37",
+  "title": "F5 BIG-IP iControl Rest API Command Execution - Webserver",
+  "fields": [
+   "cs-method",
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules/web/webserver_generic/web_iis_tilt_shortname_scan.yml",
+  "id": "7cb02516-6d95-4ffc-8eee-162075e111ac",
+  "title": "Successful IIS Shortname Fuzzing Scan",
+  "fields": [
+   "cs-method",
+   "cs-uri-query",
+   "sc-status"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules/web/webserver_generic/web_java_payload_in_access_logs.yml",
+  "id": "583aa0a2-30b1-4d62-8bf3-ab73689efe6c",
+  "title": "Java Payload Strings",
+  "fields": [],
+  "keywords": true,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules/web/webserver_generic/web_jndi_exploit.yml",
+  "id": "412d55bc-7737-4d25-9542-5b396867ce55",
+  "title": "JNDIExploit Pattern",
+  "fields": [],
+  "keywords": true,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules/web/webserver_generic/web_path_traversal_exploitation_attempt.yml",
+  "id": "7745c2ea-24a5-4290-b680-04359cb84b35",
+  "title": "Path Traversal Exploitation Attempts",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules/web/webserver_generic/web_source_code_enumeration.yml",
+  "id": "953d460b-f810-420a-97a2-cfca4c98e602",
+  "title": "Source Code Enumeration Detection by Keyword",
+  "fields": [],
+  "keywords": true,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules/web/webserver_generic/web_sql_injection_in_access_logs.yml",
+  "id": "5513deaf-f49a-46c2-a6c8-3f111b5cb453",
+  "title": "SQL Injection Strings In URI",
+  "fields": [
+   "cs-method",
+   "sc-status"
+  ],
+  "keywords": true,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules/web/webserver_generic/web_ssti_in_access_logs.yml",
+  "id": "ada3bc4f-f0fd-42b9-ba91-e105e8af7342",
+  "title": "Server Side Template Injection Strings",
+  "fields": [
+   "cs-method",
+   "sc-status"
+  ],
+  "keywords": true,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules/web/webserver_generic/web_susp_useragents.yml",
+  "id": "19aa4f58-94ca-45ff-bc34-92e533c0994a",
+  "title": "Suspicious User-Agents Related To Recon Tools",
+  "fields": [
+   "cs-user-agent"
+  ],
+  "keywords": false,
+  "other_fields": [
+   "cs-user-agent"
+  ],
+  "null_values": false,
+  "pure": false
+ },
+ {
+  "path": "rules/web/webserver_generic/web_susp_windows_path_uri.yml",
+  "id": "9f6a34b4-2688-4eb7-a7f5-e39fef573d0e",
+  "title": "Suspicious Windows Strings In URI",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules/web/webserver_generic/web_webshell_regeorg.yml",
+  "id": "2ea44a60-cfda-11ea-87d0-0242ac130003",
+  "title": "Webshell ReGeorg Detection Via Web Logs",
+  "fields": [
+   "cs-method",
+   "cs-referer",
+   "cs-uri-query",
+   "cs-user-agent"
+  ],
+  "keywords": false,
+  "other_fields": [
+   "cs-referer",
+   "cs-user-agent"
+  ],
+  "null_values": true,
+  "pure": false
+ },
+ {
+  "path": "rules/web/webserver_generic/web_win_webshells_in_access_logs.yml",
+  "id": "7ff9db12-1b94-4a79-ba68-a2402c5d6729",
+  "title": "Windows Webshell Strings",
+  "fields": [
+   "cs-method"
+  ],
+  "keywords": true,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules/web/webserver_generic/web_xss_in_access_logs.yml",
+  "id": "65354b83-a2ea-4ea6-8414-3ab38be0d409",
+  "title": "Cross Site Scripting Strings",
+  "fields": [
+   "cs-method",
+   "sc-status"
+  ],
+  "keywords": true,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2010/Exploits/CVE-2010-5278/web_cve_2010_5278_exploitation_attempt.yml",
+  "id": "a4a899e8-fd7a-49dd-b5a8-7044def72d61",
+  "title": "CVE-2010-5278 Exploitation Attempt",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2014/Exploits/CVE-2014-6287/web_cve_2014_6287_hfs_rce.yml",
+  "id": "a133193c-2daa-4a29-8022-018695fcf0ae",
+  "title": "Rejetto HTTP File Server RCE",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2018/Exploits/CVE-2018-13379/web_cve_2018_13379_fortinet_preauth_read_exploit.yml",
+  "id": "a2e97350-4285-43f2-a63f-d0daff291738",
+  "title": "Fortinet CVE-2018-13379 Exploitation",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2018/Exploits/CVE-2018-2894/web_cve_2018_2894_weblogic_exploit.yml",
+  "id": "37e8369b-43bb-4bf8-83b6-6dd43bda2000",
+  "title": "Oracle WebLogic Exploit",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2019/Exploits/CVE-2019-11510/web_cve_2019_11510_pulsesecure_exploit.yml",
+  "id": "2dbc10d7-a797-49a8-8776-49efa6442e60",
+  "title": "Pulse Secure Attack CVE-2019-11510",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2019/Exploits/CVE-2019-19781/web_cve_2019_19781_citrix_exploit.yml",
+  "id": "ac5a6409-8c89-44c2-8d64-668c29a2d756",
+  "title": "Citrix Netscaler Attack CVE-2019-19781",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2019/Exploits/CVE-2019-3398/web_cve_2019_3398_confluence.yml",
+  "id": "e9bc39ae-978a-4e49-91ab-5bd481fc668b",
+  "title": "Confluence Exploitation CVE-2019-3398",
+  "fields": [
+   "cs-method",
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2020/Exploits/CVE-2020-0688/web_cve_2020_0688_exchange_exploit.yml",
+  "id": "7c64e577-d72e-4c3d-9d75-8de6d1f9146a",
+  "title": "CVE-2020-0688 Exploitation Attempt",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2020/Exploits/CVE-2020-0688/web_cve_2020_0688_msexchange.yml",
+  "id": "fce2c2e2-0fb5-41ab-a14c-5391e1fd70a5",
+  "title": "CVE-2020-0688 Exchange Exploitation via Web Log",
+  "fields": [
+   "cs-method",
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2020/Exploits/CVE-2020-10148/web_cve_2020_10148_solarwinds_exploit.yml",
+  "id": "5a35116f-43bc-4901-b62d-ef131f42a9af",
+  "title": "CVE-2020-10148 SolarWinds Orion API Auth Bypass",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2020/Exploits/CVE-2020-14882/web_cve_2020_14882_weblogic_exploit.yml",
+  "id": "85d466b0-d74c-4514-84d3-2bdd3327588b",
+  "title": "Oracle WebLogic Exploit CVE-2020-14882",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2020/Exploits/CVE-2020-28188/web_cve_2020_28188_terramaster_rce_exploit.yml",
+  "id": "15c312b9-00d0-4feb-8870-7d940a4bdc5e",
+  "title": "TerraMaster TOS CVE-2020-28188",
+  "fields": [
+   "cs-method",
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2020/Exploits/CVE-2020-3452/web_cve_2020_3452_cisco_asa_ftd.yml",
+  "id": "aba47adc-4847-4970-95c1-61dce62a8b29",
+  "title": "Cisco ASA FTD Exploit CVE-2020-3452",
+  "fields": [
+   "cs-uri-query",
+   "sc-status"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2020/Exploits/CVE-2020-5902/web_cve_2020_5902_f5_bigip.yml",
+  "id": "44b53b1c-e60f-4a7b-948e-3435a7918478",
+  "title": "CVE-2020-5902 F5 BIG-IP Exploitation Attempt",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2020/Exploits/CVE-2020-8193/web_cve_2020_8193_8195_citrix_exploit.yml",
+  "id": "0d0d9a8a-a49e-4e27-b061-7ce4b936cfb7",
+  "title": "Citrix ADS Exploitation CVE-2020-8193 CVE-2020-8195",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2020/TA/SolarWinds-Supply-Chain/web_solarwinds_supernova_webshell.yml",
+  "id": "a2cee20b-eacc-459f-861d-c02e5d12f1db",
+  "title": "Solarwinds SUPERNOVA Webshell Access",
+  "fields": [
+   "cs-uri-query",
+   "sc-status"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/CVE-2021-20090/web_cve_2021_20090_2021_20091_arcadyan_router_exploit.yml",
+  "id": "f0500377-bc70-425d-ac8c-e956cd906871",
+  "title": "Arcadyan Router Exploitations",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/CVE-2021-2109/web_cve_2021_2109_weblogic_rce_exploit.yml",
+  "id": "687f6504-7f44-4549-91fc-f07bab065821",
+  "title": "Oracle WebLogic Exploit CVE-2021-2109",
+  "fields": [
+   "cs-method",
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/CVE-2021-21972/web_cve_2021_21972_vsphere_unauth_rce_exploit.yml",
+  "id": "179ed852-0f9b-4009-93a7-68475910fd86",
+  "title": "CVE-2021-21972 VSphere Exploitation",
+  "fields": [
+   "cs-method",
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/CVE-2021-21978/web_cve_2021_21978_vmware_view_planner_exploit.yml",
+  "id": "77586a7f-7ea4-4c41-b19c-820140b84ca9",
+  "title": "CVE-2021-21978 Exploitation Attempt",
+  "fields": [
+   "cs-method",
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/CVE-2021-22005/web_cve_2021_22005_vmware_file_upload.yml",
+  "id": "b014ea07-8ea0-4859-b517-50a4e5b7ecec",
+  "title": "VMware vCenter Server File Upload CVE-2021-22005",
+  "fields": [
+   "cs-method",
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/CVE-2021-22123/web_cve_2021_22123_fortinet_exploit.yml",
+  "id": "f425637f-891c-4191-a6c4-3bb1b70513b4",
+  "title": "Fortinet CVE-2021-22123 Exploitation",
+  "fields": [
+   "cs-method",
+   "cs-referer",
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [
+   "cs-referer"
+  ],
+  "null_values": true,
+  "pure": false
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/CVE-2021-22893/web_cve_2021_22893_pulse_secure_rce_exploit.yml",
+  "id": "5525edac-f599-4bfd-b926-3fa69860e766",
+  "title": "Pulse Connect Secure RCE Attack CVE-2021-22893",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/CVE-2021-26084/web_cve_2021_26084_confluence_rce_exploit.yml",
+  "id": "38825179-3c78-4fed-b222-2e2166b926b1",
+  "title": "Potential CVE-2021-26084 Exploitation Attempt",
+  "fields": [
+   "cs-method",
+   "cs-uri-query",
+   "cs-username",
+   "sc-status"
+  ],
+  "keywords": true,
+  "other_fields": [
+   "cs-username"
+  ],
+  "null_values": false,
+  "pure": false
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/CVE-2021-26814/web_cve_2021_26814_wzuh_rce.yml",
+  "id": "b9888738-29ed-4c54-96a4-f38c57b84bb3",
+  "title": "Exploitation of CVE-2021-26814 in Wazuh",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/CVE-2021-26858/web_cve_2021_26858_iis_rce.yml",
+  "id": "effee1f6-a932-4297-a81f-acb44064fa3a",
+  "title": "ProxyLogon Reset Virtual Directories Based On IIS Log",
+  "fields": [
+   "",
+   "cs-method",
+   "cs-uri-query",
+   "cs-uri-stem",
+   "cs-username",
+   "sc-status"
+  ],
+  "keywords": false,
+  "other_fields": [
+   "",
+   "cs-username"
+  ],
+  "null_values": false,
+  "pure": false
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/CVE-2021-27905/web_cve_2021_27905_apache_solr_exploit.yml",
+  "id": "0bbcd74b-0596-41a4-94a0-4e88a76ffdb3",
+  "title": "Potential CVE-2021-27905 Exploitation Attempt",
+  "fields": [
+   "cs-method",
+   "cs-uri-query",
+   "sc-status"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/CVE-2021-28480/web_cve_2021_28480_exchange_exploit.yml",
+  "id": "a2a9d722-0acb-4096-bccc-daaf91a5037b",
+  "title": "Exchange Exploitation CVE-2021-28480",
+  "fields": [
+   "cs-method",
+   "cs-uri-query",
+   "sc-status"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/CVE-2021-33766/web_cve_2021_33766_msexchange_proxytoken.yml",
+  "id": "56973b50-3382-4b56-bdf5-f51a3183797a",
+  "title": "CVE-2021-33766 Exchange ProxyToken Exploitation",
+  "fields": [
+   "cs-method",
+   "cs-uri-query",
+   "sc-status"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/CVE-2021-40539/web_cve_2021_40539_adselfservice.yml",
+  "id": "6702b13c-e421-44cc-ab33-42cc25570f11",
+  "title": "ADSelfService Exploitation",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/CVE-2021-40539/web_cve_2021_40539_manageengine_adselfservice_exploit.yml",
+  "id": "fcbb4a77-f368-4945-b046-4499a1da69d1",
+  "title": "CVE-2021-40539 Zoho ManageEngine ADSelfService Plus Exploit",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/CVE-2021-41773/web_cve_2021_41773_apache_path_traversal.yml",
+  "id": "3007fec6-e761-4319-91af-e32e20ac43f5",
+  "title": "CVE-2021-41773 Exploitation Attempt",
+  "fields": [
+   "cs-uri-query",
+   "sc-status"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/CVE-2021-42237/web_cve_2021_42237_sitecore_report_ashx.yml",
+  "id": "20c6ed1c-f7f0-4ea3-aa65-4f198e6acb0f",
+  "title": "Sitecore Pre-Auth RCE CVE-2021-42237",
+  "fields": [
+   "cs-method",
+   "cs-uri-query",
+   "sc-status"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/CVE-2021-43798/web_cve_2021_43798_grafana.yml",
+  "id": "7b72b328-5708-414f-9a2a-6a6867c26e16",
+  "title": "Grafana Path Traversal Exploitation CVE-2021-43798",
+  "fields": [
+   "cs-uri-query",
+   "sc-status"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/CVE-2021-44228/web_cve_2021_44228_log4j.yml",
+  "id": "5ea8faa8-db8b-45be-89b0-151b84c82702",
+  "title": "Log4j RCE CVE-2021-44228 Generic",
+  "fields": [],
+  "keywords": true,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/CVE-2021-44228/web_cve_2021_44228_log4j_fields.yml",
+  "id": "9be472ed-893c-4ec0-94da-312d2765f654",
+  "title": "Log4j RCE CVE-2021-44228 in Fields",
+  "fields": [
+   "cs-referer",
+   "cs-uri-query",
+   "cs-user-agent"
+  ],
+  "keywords": false,
+  "other_fields": [
+   "cs-referer",
+   "cs-user-agent"
+  ],
+  "null_values": false,
+  "pure": false
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/ProxyShell-Exploit/web_exchange_proxyshell.yml",
+  "id": "23eee45e-933b-49f9-ae1b-df706d2d52ef",
+  "title": "Exchange ProxyShell Pattern",
+  "fields": [
+   "cs-uri-query",
+   "sc-status"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/ProxyShell-Exploit/web_exchange_proxyshell_successful.yml",
+  "id": "992be1eb-e5da-437e-9a54-6d13b57bb4d8",
+  "title": "Successful Exchange ProxyShell Attack",
+  "fields": [
+   "cs-uri-query",
+   "sc-status"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2021/Exploits/VisualDoor-Exploit/web_sonicwall_jarrewrite_exploit.yml",
+  "id": "6f55f047-112b-4101-ad32-43913f52db46",
+  "title": "SonicWall SSL/VPN Jarrewrite Exploitation",
+  "fields": [
+   "cs-uri-query",
+   "cs-user-agent"
+  ],
+  "keywords": false,
+  "other_fields": [
+   "cs-user-agent"
+  ],
+  "null_values": false,
+  "pure": false
+ },
+ {
+  "path": "rules-emerging-threats/2021/TA/HAFNIUM/web_exchange_exploitation_hafnium.yml",
+  "id": "67bce556-312f-4c81-9162-c3c9ff2599b2",
+  "title": "Exchange Exploitation Used by HAFNIUM",
+  "fields": [
+   "cs-method",
+   "cs-uri-query",
+   "cs-user-agent"
+  ],
+  "keywords": false,
+  "other_fields": [
+   "cs-user-agent"
+  ],
+  "null_values": false,
+  "pure": false
+ },
+ {
+  "path": "rules-emerging-threats/2021/TA/UNC2546/web_unc2546_dewmode_php_webshell.yml",
+  "id": "fdf96c90-42d5-4406-8a9c-14a2c9a016b5",
+  "title": "DEWMODE Webshell Access",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2022/Exploits/CVE-2022-21587/web_cve_2022_21587_oracle_ebs.yml",
+  "id": "d033cb8a-8669-4a8e-a974-48d4185a8503",
+  "title": "Potential CVE-2022-21587 Exploitation Attempt",
+  "fields": [
+   "cs-method",
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2022/Exploits/CVE-2022-27925/web_cve_2022_27925_exploit.yml",
+  "id": "dd218fb6-4d02-42dc-85f0-a0a376072efd",
+  "title": "Zimbra Collaboration Suite Email Server Unauthenticated RCE",
+  "fields": [
+   "cs-method",
+   "cs-uri-query",
+   "sc-status"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2022/Exploits/CVE-2022-31656/web_cve_2022_31656_auth_bypass.yml",
+  "id": "fcf1101d-07c9-49b2-ad81-7e421ff96d80",
+  "title": "CVE-2022-31656 VMware Workspace ONE Access Auth Bypass",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2022/Exploits/CVE-2022-31659/web_cve_2022_31659_vmware_rce.yml",
+  "id": "efdb2003-a922-48aa-8f37-8b80021a9706",
+  "title": "CVE-2022-31659 VMware Workspace ONE Access RCE",
+  "fields": [
+   "cs-method",
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2022/Exploits/CVE-2022-33891/web_cve_2022_33891_spark_shell_command_injection.yml",
+  "id": "1a9a04fd-02d1-465c-abad-d733fd409f9c",
+  "title": "Apache Spark Shell Command Injection - Weblogs",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2022/Exploits/CVE-2022-36804/web_cve_2022_36804_atlassian_bitbucket_command_injection.yml",
+  "id": "65c0a0ab-d675-4441-bd6b-d3db226a2685",
+  "title": "Atlassian Bitbucket Command Injection Via Archive API",
+  "fields": [
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2022/Exploits/CVE-2022-41082/web_cve_2022_36804_exchange_owassrf_exploitation.yml",
+  "id": "181f49fa-0b21-4665-a98c-a57025ebb8c7",
+  "title": "Potential OWASSRF Exploitation Attempt - Webserver",
+  "fields": [
+   "cs-method",
+   "cs-uri-query",
+   "cs-user-agent",
+   "sc-status"
+  ],
+  "keywords": false,
+  "other_fields": [
+   "cs-user-agent"
+  ],
+  "null_values": false,
+  "pure": false
+ },
+ {
+  "path": "rules-emerging-threats/2022/Exploits/CVE-2022-41082/web_cve_2022_36804_exchange_owassrf_poc_exploitation.yml",
+  "id": "92d78c63-5a5c-4c40-9b60-463810ffb082",
+  "title": "OWASSRF Exploitation Attempt Using Public POC - Webserver",
+  "fields": [
+   "cs-method",
+   "cs-uri-query",
+   "cs-user-agent",
+   "sc-status"
+  ],
+  "keywords": false,
+  "other_fields": [
+   "cs-user-agent"
+  ],
+  "null_values": false,
+  "pure": false
+ },
+ {
+  "path": "rules-emerging-threats/2022/Exploits/CVE-2022-44877/web_cve_2022_44877_exploitation_attempt.yml",
+  "id": "1b2eeb27-949b-4704-8bfa-d8e5cfa045a1",
+  "title": "Potential Centos Web Panel Exploitation Attempt - CVE-2022-44877",
+  "fields": [
+   "cs-method",
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2022/Exploits/CVE-2022-46169/web_cve_2022_46169_cacti_exploitation_attempt.yml",
+  "id": "738cb115-881f-4df3-82cc-56ab02fc5192",
+  "title": "Potential CVE-2022-46169 Exploitation Attempt",
+  "fields": [
+   "cs-method",
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2023/Exploits/CVE-2023-22518/web_exploit_cve_2023_22518_confluence_auth_bypass.yml",
+  "id": "a902d249-9b9c-4dc4-8fd0-fbe528ef965c",
+  "title": "CVE-2023-22518 Exploitation Attempt - Vulnerable Endpoint Connection (Webserver)",
+  "fields": [
+   "cs-method",
+   "cs-uri-query",
+   "sc-status"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2023/Exploits/CVE-2023-23752/web_cve_2023_23752_joomla_exploit_attempt.yml",
+  "id": "0e1ebc5a-15d0-4bf6-8199-b2535397433a",
+  "title": "Potential CVE-2023-23752 Exploitation Attempt",
+  "fields": [
+   "cs-method",
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2023/Exploits/CVE-2023-25157/web_cve_2023_25157_geoserver_sql_injection.yml",
+  "id": "c0341543-5ed0-4475-aabc-7eea8c52aa66",
+  "title": "Potential CVE-2023-25157 Exploitation Attempt",
+  "fields": [
+   "cs-method",
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2023/Exploits/CVE-2023-25717/web_cve_2023_25717_ruckus_wireless_admin_exploit_attempt.yml",
+  "id": "043c1609-0e32-4462-a6f2-5a0c2da3fafe",
+  "title": "Potential CVE-2023-25717 Exploitation Attempt",
+  "fields": [
+   "cs-method",
+   "cs-uri-query"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2023/Exploits/CVE-2023-27997/web_cve_2023_27997_pre_authentication_rce.yml",
+  "id": "31e4e649-7394-4fd2-9ae7-dbc61eebb550",
+  "title": "Potential CVE-2023-27997 Exploitation Indicators",
+  "fields": [
+   "cs-method",
+   "cs-uri-query"
+  ],
+  "keywords": true,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2023/Exploits/CVE-2023-34362-MOVEit-Transfer-Exploit/web_cve_2023_34362_known_payload_request.yml.yml",
+  "id": "435e41f2-48eb-4c95-8a2b-ed24b50ec30b",
+  "title": "MOVEit CVE-2023-34362 Exploitation Attempt - Potential Web Shell Request",
+  "fields": [
+   "cs-method",
+   "cs-uri-stem"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2023/Exploits/CVE-2023-43261/web_exploit_cve_2023_43261_milesight_information_disclosure.yml",
+  "id": "a2bcca38-9f3a-4d5e-b603-0c587e8569d7",
+  "title": "Potential Information Disclosure CVE-2023-43261 Exploitation - Web",
+  "fields": [
+   "cs-method",
+   "cs-uri-stem",
+   "sc-status"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2023/Exploits/CVE-2023-46214/web_cve_2023_46214_rce_splunk_enterprise.yml",
+  "id": "04017cd5-621e-4ec4-a762-1f042fe3d3e5",
+  "title": "Potential CVE-2023-46214 Exploitation Attempt",
+  "fields": [
+   "cs-method",
+   "cs-uri-query",
+   "sc-status"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2023/Exploits/CVE-2023-46214/web_cve_2023_46214_rce_splunk_enterprise_poc.yml",
+  "id": "ba5268de-4dd4-4d5c-8a90-2b5e6dc1aff8",
+  "title": "Exploitation Attempt Of CVE-2023-46214 Using Public POC Code",
+  "fields": [
+   "cs-method",
+   "cs-uri-query",
+   "cs-uri-stem",
+   "sc-status"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2023/Exploits/CVE-2023-46747/web_cve_2023_46747_f5_remote_code_execution.yml",
+  "id": "e9928831-ba14-42ea-a4bc-33d352b9929a",
+  "title": "CVE-2023-46747 Exploitation Activity - Webserver",
+  "fields": [
+   "",
+   "cs-method",
+   "cs-uri-stem"
+  ],
+  "keywords": false,
+  "other_fields": [
+   ""
+  ],
+  "null_values": false,
+  "pure": false
+ },
+ {
+  "path": "rules-emerging-threats/2023/Exploits/CVE-2023-4966/web_exploit_cve_2023_4966_citrix_sensitive_information_disclosure_exploit.yml",
+  "id": "87c83d8e-5390-44ce-aa4a-d3b37e54d0a0",
+  "title": "CVE-2023-4966 Potential Exploitation Attempt - Citrix ADC Sensitive Information Disclosure - Webserver",
+  "fields": [
+   "cs-method",
+   "cs-uri-stem",
+   "sc-status"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2023/Exploits/CVE-2023-4966/web_exploit_cve_2023_4966_citrix_sensitive_information_disclosure_exploit_attempt.yml",
+  "id": "a4e068b5-e27c-4f21-85b3-e69e5a4f7ce1",
+  "title": "CVE-2023-4966 Exploitation Attempt - Citrix ADC Sensitive Information Disclosure - Webserver",
+  "fields": [
+   "cs-host",
+   "cs-method",
+   "cs-uri-stem"
+  ],
+  "keywords": false,
+  "other_fields": [
+   "cs-host"
+  ],
+  "null_values": false,
+  "pure": false
+ },
+ {
+  "path": "rules-emerging-threats/2024/Exploits/CVE-2024-1212/web_exploit_cve_2024_1212_.yml",
+  "id": "eafb8bd5-7605-4bfe-a9ec-0442bc151f15",
+  "title": "CVE-2024-1212 Exploitation - Progress Kemp LoadMaster Unauthenticated Command Injection",
+  "fields": [
+   "cs-method",
+   "cs-uri-stem"
+  ],
+  "keywords": true,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2024/Exploits/CVE-2024-1709/web_exploit_cve_2024_1709_screenconnect.yml",
+  "id": "d27eabad-9068-401a-b0d6-9eac744d6e67",
+  "title": "CVE-2024-1709 - ScreenConnect Authentication Bypass Exploitation",
+  "fields": [
+   "cs-uri-stem"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2025/Exploits/CVE-2025-31324/web_lnx_exploit_cve_2025_31324_sap_netviewer_webshell.yml",
+  "id": "94e12f41-6cb3-45c5-97b1-c783a7bf2e72",
+  "title": "Potential SAP NetViewer Webshell Command Execution",
+  "fields": [
+   "cs-uri-query",
+   "cs-uri-stem"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2025/Exploits/CVE-2025-31324/web_lnx_exploit_cve_2025_31324_sap_netviewer_webshell_uploaded.yml",
+  "id": "639b893f-f93a-4e53-a7c8-f08cf73fe7f7",
+  "title": "Potential Java WebShell Upload in SAP NetViewer Server",
+  "fields": [
+   "cs-content-type",
+   "cs-method",
+   "cs-uri-stem"
+  ],
+  "keywords": false,
+  "other_fields": [
+   "cs-content-type"
+  ],
+  "null_values": false,
+  "pure": false
+ },
+ {
+  "path": "rules-emerging-threats/2025/Exploits/CVE-2025-4427/web_invanti_epmm_cve_2025_4427_and_cve_2025_4428.yml",
+  "id": "41956f7c-7a6b-46d6-b6bb-da6eb2e83fbe",
+  "title": "Potential Exploitation of CVE-2025-4427/4428 Ivanti EPMM Pre-Auth RCE",
+  "fields": [
+   "cs-uri-query",
+   "cs-uri-stem"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2025/Exploits/CVE-2025-53770/web_win_iis_exploit_cve_2025_53770.yml",
+  "id": "48d053db-6a56-4866-b60d-0975647050ed",
+  "title": "SharePoint ToolShell CVE-2025-53770 Exploitation - Web IIS",
+  "fields": [
+   "cs-method",
+   "cs-referer",
+   "cs-uri-query",
+   "cs-uri-stem"
+  ],
+  "keywords": false,
+  "other_fields": [
+   "cs-referer"
+  ],
+  "null_values": false,
+  "pure": false
+ },
+ {
+  "path": "rules-emerging-threats/2026/Exploits/CVE-2026-63030/web_exploit_cve_2026_63030_batch_rest_route_abuse.yml",
+  "id": "b8d5f301-2c49-4e6d-af83-4a5b6c7d8e9f",
+  "title": "WordPress Wp2shell REST Batch Endpoint Exploitation",
+  "fields": [
+   "cs-method",
+   "cs-uri-query",
+   "sc-status"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": false,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2026/Exploits/CVE-2026-63030/web_exploit_cve_2026_63030_webshell_plugin_access.yml",
+  "id": "c9e6f412-3d50-4f7e-bf94-5b6c7d8e9f0a",
+  "title": "WordPress Wp2shell Webshell Plugin Access",
+  "fields": [
+   "cs-uri-query",
+   "cs-uri-stem"
+  ],
+  "keywords": false,
+  "other_fields": [],
+  "null_values": true,
+  "pure": true
+ },
+ {
+  "path": "rules-emerging-threats/2026/Exploits/CVE-2026-63030/web_exploit_cve_2026_63030_wp2shell_tool_useragent.yml",
+  "id": "a7c4e2f9-1b38-4d5c-9e72-3f4a5b6c7d8e",
+  "title": "WordPress Wp2shell Exploitation Tool User-Agent",
+  "fields": [
+   "cs-user-agent"
+  ],
+  "keywords": false,
+  "other_fields": [
+   "cs-user-agent"
+  ],
+  "null_values": false,
+  "pure": false
+ },
+ {
+  "path": "rules-emerging-threats/2026/Malware/RedTail-Cryptominer/web_malware_redtail_useragent.yml",
+  "id": "6fd25dd1-527b-47c8-baa4-2a0e77279c6f",
+  "title": "RedTail Cryptominer User-Agent",
+  "fields": [
+   "cs-user-agent"
+  ],
+  "keywords": false,
+  "other_fields": [
+   "cs-user-agent"
+  ],
+  "null_values": false,
+  "pure": false
+ }
+]

@@ -1,0 +1,2850 @@
+{
+  "rule_version": "sgx",
+  "note": "실험용 (이슈 #54 리플레이). SigmaHQ/sigma 커밋 07ec293a51695cb1131a2e05260247872b31e1e1 의 webserver 규칙 가운데 변환되는 76개 전부를 선정 없이 옮겼다. 운영에 쓰지 않는다(다리의 RULESETS 에 넣지 않고 detector/ 에 두지 않는다). product 는 원본 제목, vendor 는 Sigma 이고 자산 조건은 없다. 규칙 라이선스는 DRL 1.1 이다.",
+  "derived_from": {
+    "generator": "detector/sigma_convert.py lab",
+    "source": "https://github.com/SigmaHQ/sigma",
+    "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+    "license": "DRL-1.1"
+  },
+  "aggregation": {
+    "window_gap_seconds": 900,
+    "comment": "c1 과 같은 15분에서 시작한다. 같은 출발지가 15분 안에 여러 공개 규칙에 맞으면 사건 하나에 서명 여럿이 남는다."
+  },
+  "rules": [
+    {
+      "id": "R107",
+      "name": "공개 규칙(Sigma) 웹 공격 요청 (실험 전체)",
+      "severity": "medium",
+      "type": "url_signature",
+      "enabled": true,
+      "params": {
+        "eventids": [
+          "nginx.request",
+          "decoy.request"
+        ],
+        "signatures": [
+          {
+            "id": "sg-f5-tm-utility-bash-api-request",
+            "pattern": "^.*/mgmt/tm/util/bash$",
+            "methods": [
+              "POST"
+            ],
+            "product": "F5 BIG-IP iControl Rest API Command Execution - Webserver",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "85254a62-22be-4239-b79c-2ec17e566c37",
+              "title": "F5 BIG-IP iControl Rest API Command Execution - Webserver",
+              "path": "rules/web/webserver_generic/web_f5_tm_utility_bash_api_request.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules/web/webserver_generic/web_f5_tm_utility_bash_api_request.yml",
+              "author": "Nasreddine Bencherchali (Nextron Systems), Thurein Oo",
+              "status": "test",
+              "level": "medium",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'F5 BIG-IP iControl Rest API Command Execution - Webserver'(85254a62-22be-4239-b79c-2ec17e566c37) · 작성 Nasreddine Bencherchali (Nextron Systems), Thurein Oo · test/medium · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-iis-tilt-shortname-scan",
+            "pattern": "^.*~1.*$",
+            "all_patterns": [
+              "^.*a\\.aspx$"
+            ],
+            "methods": [
+              "GET",
+              "OPTIONS"
+            ],
+            "statuses": [
+              200,
+              301
+            ],
+            "product": "Successful IIS Shortname Fuzzing Scan",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "7cb02516-6d95-4ffc-8eee-162075e111ac",
+              "title": "Successful IIS Shortname Fuzzing Scan",
+              "path": "rules/web/webserver_generic/web_iis_tilt_shortname_scan.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules/web/webserver_generic/web_iis_tilt_shortname_scan.yml",
+              "author": "frack113",
+              "status": "test",
+              "level": "medium",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Successful IIS Shortname Fuzzing Scan'(7cb02516-6d95-4ffc-8eee-162075e111ac) · 작성 frack113 · test/medium · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-java-payload-in-access-logs",
+            "pattern": "^.*(%24%7B%28%23a%3D%40|\\$\\{\\(#a=@|%24%7B%40java|\\$\\{@java|u0022java|%2F%24%7B%23|/\\$\\{#|new\\+java\\.|getRuntime\\(\\)\\.exec\\(|getRuntime%28%29\\.exec%28).*$",
+            "product": "Java Payload Strings",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2022-26134",
+              "CVE-2021-26084"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "583aa0a2-30b1-4d62-8bf3-ab73689efe6c",
+              "title": "Java Payload Strings",
+              "path": "rules/web/webserver_generic/web_java_payload_in_access_logs.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules/web/webserver_generic/web_java_payload_in_access_logs.yml",
+              "author": "frack113, Harjot Singh, \"@cyb3rjy0t\" (update)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Java Payload Strings'(583aa0a2-30b1-4d62-8bf3-ab73689efe6c) · 작성 frack113, Harjot Singh, \"@cyb3rjy0t\" (update) · test/high · DRL 1.1 로 배포된 것을 변환했다. keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐)."
+          },
+          {
+            "id": "sg-jndi-exploit",
+            "pattern": "^.*(/Basic/Command/Base64/|/Basic/ReverseShell/|/Basic/TomcatMemshell|/Basic/JettyMemshell|/Basic/WeblogicMemshell|/Basic/JBossMemshell|/Basic/WebsphereMemshell|/Basic/SpringMemshell|/Deserialization/URLDNS/|/Deserialization/CommonsCollections1/Dnslog/|/Deserialization/CommonsCollections2/Command/Base64/|/Deserialization/CommonsBeanutils1/ReverseShell/|/Deserialization/Jre8u20/TomcatMemshell|/TomcatBypass/Dnslog/|/TomcatBypass/Command/|/TomcatBypass/ReverseShell/|/TomcatBypass/TomcatMemshell|/TomcatBypass/SpringMemshell|/GroovyBypass/Command/|/WebsphereBypass/Upload/).*$",
+            "product": "JNDIExploit Pattern",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "412d55bc-7737-4d25-9542-5b396867ce55",
+              "title": "JNDIExploit Pattern",
+              "path": "rules/web/webserver_generic/web_jndi_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules/web/webserver_generic/web_jndi_exploit.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'JNDIExploit Pattern'(412d55bc-7737-4d25-9542-5b396867ce55) · 작성 Florian Roth (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐)."
+          },
+          {
+            "id": "sg-path-traversal-exploitation-attempt",
+            "pattern": "^.*(\\.\\./\\.\\./\\.\\./\\.\\./\\.\\./lib/password|\\.\\./\\.\\./\\.\\./\\.\\./windows/|\\.\\./\\.\\./\\.\\./etc/|\\.\\.%252f\\.\\.%252f\\.\\.%252fetc%252f|\\.\\.%c0%af\\.\\.%c0%af\\.\\.%c0%afetc%c0%af|%252e%252e%252fetc%252f).*$",
+            "product": "Path Traversal Exploitation Attempts",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "7745c2ea-24a5-4290-b680-04359cb84b35",
+              "title": "Path Traversal Exploitation Attempts",
+              "path": "rules/web/webserver_generic/web_path_traversal_exploitation_attempt.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules/web/webserver_generic/web_path_traversal_exploitation_attempt.yml",
+              "author": "Subhash Popuri (@pbssubhash), Florian Roth (Nextron Systems), Thurein Oo, Nasreddine Bencherchali (Nextron Systems)",
+              "status": "test",
+              "level": "medium",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Path Traversal Exploitation Attempts'(7745c2ea-24a5-4290-b680-04359cb84b35) · 작성 Subhash Popuri (@pbssubhash), Florian Roth (Nextron Systems), Thurein Oo, Nasreddine Bencherchali (Nextron Systems) · test/medium · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-source-code-enumeration",
+            "pattern": "^.*\\.git/.*$",
+            "product": "Source Code Enumeration Detection by Keyword",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "953d460b-f810-420a-97a2-cfca4c98e602",
+              "title": "Source Code Enumeration Detection by Keyword",
+              "path": "rules/web/webserver_generic/web_source_code_enumeration.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules/web/webserver_generic/web_source_code_enumeration.yml",
+              "author": "James Ahearn",
+              "status": "test",
+              "level": "medium",
+              "license": "DRL-1.1",
+              "notes": [
+                "keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Source Code Enumeration Detection by Keyword'(953d460b-f810-420a-97a2-cfca4c98e602) · 작성 James Ahearn · test/medium · DRL 1.1 로 배포된 것을 변환했다. keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐)."
+          },
+          {
+            "id": "sg-sql-injection-in-access-logs",
+            "pattern": "^.*(@@version|%271%27%3D%271|=select |=select\\(|=select%20|concat_ws\\(|CONCAT\\(0x|from mysql\\.innodb_table_stats|from%20mysql\\.innodb_table_stats|group_concat\\(|information_schema\\.tables|json_arrayagg\\(|or 1=1#|or%201=1#|order by |order%20by%20|select .* |select database\\(\\)|select version\\(\\)|select%20.*%20|select%20database\\(\\)|select%20version\\(\\)|select%28sleep%2810%29|SELECTCHAR\\(|table_schema|UNION ALL SELECT|UNION SELECT|UNION%20ALL%20SELECT|UNION%20SELECT|'1'='1).*$",
+            "methods": [
+              "GET"
+            ],
+            "product": "SQL Injection Strings In URI",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "5513deaf-f49a-46c2-a6c8-3f111b5cb453",
+              "title": "SQL Injection Strings In URI",
+              "path": "rules/web/webserver_generic/web_sql_injection_in_access_logs.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules/web/webserver_generic/web_sql_injection_in_access_logs.yml",
+              "author": "Saw Win Naung, Nasreddine Bencherchali (Nextron Systems), Thurein Oo (Yoma Bank)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "응답 코드 부정 조건 sc-status 을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐).",
+                "keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'SQL Injection Strings In URI'(5513deaf-f49a-46c2-a6c8-3f111b5cb453) · 작성 Saw Win Naung, Nasreddine Bencherchali (Nextron Systems), Thurein Oo (Yoma Bank) · test/high · DRL 1.1 로 배포된 것을 변환했다. 응답 코드 부정 조건 sc-status 을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐)."
+          },
+          {
+            "id": "sg-ssti-in-access-logs",
+            "pattern": "^.*(=\\{\\{|=%7B%7B|=\\$\\{|=\\$%7B|=<%=|=%3C%25=|=@\\(|freemarker\\.template\\.utility\\.Execute|\\.getClass\\(\\)\\.forName\\('javax\\.script\\.ScriptEngineManager'\\)|T\\(org\\.apache\\.commons\\.io\\.IOUtils\\)).*$",
+            "methods": [
+              "GET"
+            ],
+            "product": "Server Side Template Injection Strings",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "ada3bc4f-f0fd-42b9-ba91-e105e8af7342",
+              "title": "Server Side Template Injection Strings",
+              "path": "rules/web/webserver_generic/web_ssti_in_access_logs.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules/web/webserver_generic/web_ssti_in_access_logs.yml",
+              "author": "Nasreddine Bencherchali (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "응답 코드 부정 조건 sc-status 을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐).",
+                "keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Server Side Template Injection Strings'(ada3bc4f-f0fd-42b9-ba91-e105e8af7342) · 작성 Nasreddine Bencherchali (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 응답 코드 부정 조건 sc-status 을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐)."
+          },
+          {
+            "id": "sg-susp-windows-path-uri",
+            "pattern": "^.*(=C:/Users|=C:/Program%20Files|=C:/Windows|=C%3A%5CUsers|=C%3A%5CProgram%20Files|=C%3A%5CWindows).*$",
+            "product": "Suspicious Windows Strings In URI",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "9f6a34b4-2688-4eb7-a7f5-e39fef573d0e",
+              "title": "Suspicious Windows Strings In URI",
+              "path": "rules/web/webserver_generic/web_susp_windows_path_uri.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules/web/webserver_generic/web_susp_windows_path_uri.yml",
+              "author": "Nasreddine Bencherchali (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Suspicious Windows Strings In URI'(9f6a34b4-2688-4eb7-a7f5-e39fef573d0e) · 작성 Nasreddine Bencherchali (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-win-webshells-in-access-logs",
+            "pattern": "^.*(=whoami|=net%20user|=net\\+user|=net%2Buser|=cmd%20/c%|=cmd\\+/c\\+|=cmd%2B/c%|=cmd%20/r%|=cmd\\+/r\\+|=cmd%2B/r%|=cmd%20/k%|=cmd\\+/k\\+|=cmd%2B/k%|=powershell%|=powershell\\+|=tasklist%|=tasklist\\+|=wmic%|=wmic\\+|=ssh%|=ssh\\+|=python%|=python\\+|=python3%|=python3\\+|=ipconfig|=wget%|=wget\\+|=curl%|=curl\\+|=certutil|=copy%20%5C%5C|=dsquery%|=dsquery\\+|=nltest%|=nltest\\+).*$",
+            "methods": [
+              "GET"
+            ],
+            "product": "Windows Webshell Strings",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "7ff9db12-1b94-4a79-ba68-a2402c5d6729",
+              "title": "Windows Webshell Strings",
+              "path": "rules/web/webserver_generic/web_win_webshells_in_access_logs.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules/web/webserver_generic/web_win_webshells_in_access_logs.yml",
+              "author": "Florian Roth (Nextron Systems), Nasreddine Bencherchali (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Windows Webshell Strings'(7ff9db12-1b94-4a79-ba68-a2402c5d6729) · 작성 Florian Roth (Nextron Systems), Nasreddine Bencherchali (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐)."
+          },
+          {
+            "id": "sg-xss-in-access-logs",
+            "pattern": "^.*(=<script>|=%3Cscript%3E|=%253Cscript%253E|<iframe |%3Ciframe |<svg |%3Csvg |document\\.cookie|document\\.domain| onerror=| onresize=| onload=\"|onmouseover=|\\$\\{alert|javascript:alert|javascript%3Aalert).*$",
+            "methods": [
+              "GET"
+            ],
+            "product": "Cross Site Scripting Strings",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "65354b83-a2ea-4ea6-8414-3ab38be0d409",
+              "title": "Cross Site Scripting Strings",
+              "path": "rules/web/webserver_generic/web_xss_in_access_logs.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules/web/webserver_generic/web_xss_in_access_logs.yml",
+              "author": "Saw Win Naung, Nasreddine Bencherchali",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "응답 코드 부정 조건 sc-status 을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐).",
+                "keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Cross Site Scripting Strings'(65354b83-a2ea-4ea6-8414-3ab38be0d409) · 작성 Saw Win Naung, Nasreddine Bencherchali · test/high · DRL 1.1 로 배포된 것을 변환했다. 응답 코드 부정 조건 sc-status 을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2010-5278-exploitation-attempt",
+            "pattern": "^.*/manager/controllers/default/resource/tvs\\.php.class_key=\\.\\./\\.\\./\\.\\./\\.\\./\\.\\./\\.\\./\\.\\./\\.\\./\\.\\./\\.\\./windows/win\\.ini%00.*$",
+            "product": "CVE-2010-5278 Exploitation Attempt",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2010-5278"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "a4a899e8-fd7a-49dd-b5a8-7044def72d61",
+              "title": "CVE-2010-5278 Exploitation Attempt",
+              "path": "rules-emerging-threats/2010/Exploits/CVE-2010-5278/web_cve_2010_5278_exploitation_attempt.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2010/Exploits/CVE-2010-5278/web_cve_2010_5278_exploitation_attempt.yml",
+              "author": "Subhash Popuri (@pbssubhash)",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'CVE-2010-5278 Exploitation Attempt'(a4a899e8-fd7a-49dd-b5a8-7044def72d61) · 작성 Subhash Popuri (@pbssubhash) · test/critical · DRL 1.1 로 배포된 것을 변환했다. 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2014-6287-hfs-rce",
+            "pattern": "^.*.search=%00\\{\\..*$",
+            "all_patterns": [
+              "^.*(save\\||powershell|cmd\\.exe|cmd /c|cmd /r|cmd /k|cscript|wscript|python|C:\\\\Users\\\\Public\\\\|%comspec%).*$"
+            ],
+            "product": "Rejetto HTTP File Server RCE",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2014-6287"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "a133193c-2daa-4a29-8022-018695fcf0ae",
+              "title": "Rejetto HTTP File Server RCE",
+              "path": "rules-emerging-threats/2014/Exploits/CVE-2014-6287/web_cve_2014_6287_hfs_rce.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2014/Exploits/CVE-2014-6287/web_cve_2014_6287_hfs_rce.yml",
+              "author": "Nasreddine Bencherchali (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Rejetto HTTP File Server RCE'(a133193c-2daa-4a29-8022-018695fcf0ae) · 작성 Nasreddine Bencherchali (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2018-13379-fortinet-preauth-read",
+            "pattern": "^.*lang=/\\.\\./\\.\\./.*$",
+            "all_patterns": [
+              "^.*/dev/cmdb/sslvpn_websession.*$"
+            ],
+            "product": "Fortinet CVE-2018-13379 Exploitation",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2018-13379"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "a2e97350-4285-43f2-a63f-d0daff291738",
+              "title": "Fortinet CVE-2018-13379 Exploitation",
+              "path": "rules-emerging-threats/2018/Exploits/CVE-2018-13379/web_cve_2018_13379_fortinet_preauth_read_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2018/Exploits/CVE-2018-13379/web_cve_2018_13379_fortinet_preauth_read_exploit.yml",
+              "author": "Bhabesh Raj",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Fortinet CVE-2018-13379 Exploitation'(a2e97350-4285-43f2-a63f-d0daff291738) · 작성 Bhabesh Raj · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2018-2894-weblogic-exploit",
+            "pattern": "^.*/config/keystore/.*\\.js.*$",
+            "product": "Oracle WebLogic Exploit",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2018-2894"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "37e8369b-43bb-4bf8-83b6-6dd43bda2000",
+              "title": "Oracle WebLogic Exploit",
+              "path": "rules-emerging-threats/2018/Exploits/CVE-2018-2894/web_cve_2018_2894_weblogic_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2018/Exploits/CVE-2018-2894/web_cve_2018_2894_weblogic_exploit.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Oracle WebLogic Exploit'(37e8369b-43bb-4bf8-83b6-6dd43bda2000) · 작성 Florian Roth (Nextron Systems) · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2019-11510-pulsesecure-exploit",
+            "pattern": "^.*./dana/html5acc/guacamole/.*$",
+            "product": "Pulse Secure Attack CVE-2019-11510",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2019-11510"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "2dbc10d7-a797-49a8-8776-49efa6442e60",
+              "title": "Pulse Secure Attack CVE-2019-11510",
+              "path": "rules-emerging-threats/2019/Exploits/CVE-2019-11510/web_cve_2019_11510_pulsesecure_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2019/Exploits/CVE-2019-11510/web_cve_2019_11510_pulsesecure_exploit.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Pulse Secure Attack CVE-2019-11510'(2dbc10d7-a797-49a8-8776-49efa6442e60) · 작성 Florian Roth (Nextron Systems) · test/critical · DRL 1.1 로 배포된 것을 변환했다. 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2019-19781-citrix-exploit-1",
+            "pattern": "^.*/\\.\\./vpns/.*$",
+            "product": "Citrix Netscaler Attack CVE-2019-19781",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2019-19781"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "ac5a6409-8c89-44c2-8d64-668c29a2d756",
+              "title": "Citrix Netscaler Attack CVE-2019-19781",
+              "path": "rules-emerging-threats/2019/Exploits/CVE-2019-19781/web_cve_2019_19781_citrix_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2019/Exploits/CVE-2019-19781/web_cve_2019_19781_citrix_exploit.yml",
+              "author": "Arnim Rupp, Florian Roth",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 3개 가운데 1번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Citrix Netscaler Attack CVE-2019-19781'(ac5a6409-8c89-44c2-8d64-668c29a2d756) · 작성 Arnim Rupp, Florian Roth · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 3개 가운데 1번째다."
+          },
+          {
+            "id": "sg-cve-2019-19781-citrix-exploit-2",
+            "pattern": "^.*/vpns/cfg/smb\\.conf$",
+            "product": "Citrix Netscaler Attack CVE-2019-19781",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2019-19781"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "ac5a6409-8c89-44c2-8d64-668c29a2d756",
+              "title": "Citrix Netscaler Attack CVE-2019-19781",
+              "path": "rules-emerging-threats/2019/Exploits/CVE-2019-19781/web_cve_2019_19781_citrix_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2019/Exploits/CVE-2019-19781/web_cve_2019_19781_citrix_exploit.yml",
+              "author": "Arnim Rupp, Florian Roth",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 3개 가운데 2번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Citrix Netscaler Attack CVE-2019-19781'(ac5a6409-8c89-44c2-8d64-668c29a2d756) · 작성 Arnim Rupp, Florian Roth · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 3개 가운데 2번째다."
+          },
+          {
+            "id": "sg-cve-2019-19781-citrix-exploit-3",
+            "pattern": "^.*/vpns/portal/scripts/.*$",
+            "all_patterns": [
+              "^.*\\.pl.*$"
+            ],
+            "product": "Citrix Netscaler Attack CVE-2019-19781",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2019-19781"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "ac5a6409-8c89-44c2-8d64-668c29a2d756",
+              "title": "Citrix Netscaler Attack CVE-2019-19781",
+              "path": "rules-emerging-threats/2019/Exploits/CVE-2019-19781/web_cve_2019_19781_citrix_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2019/Exploits/CVE-2019-19781/web_cve_2019_19781_citrix_exploit.yml",
+              "author": "Arnim Rupp, Florian Roth",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 3개 가운데 3번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Citrix Netscaler Attack CVE-2019-19781'(ac5a6409-8c89-44c2-8d64-668c29a2d756) · 작성 Arnim Rupp, Florian Roth · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 3개 가운데 3번째다."
+          },
+          {
+            "id": "sg-cve-2019-3398-confluence",
+            "pattern": "^.*/upload\\.action.*$",
+            "all_patterns": [
+              "^.*filename=\\.\\./\\.\\./\\.\\./\\.\\./.*$"
+            ],
+            "methods": [
+              "POST"
+            ],
+            "product": "Confluence Exploitation CVE-2019-3398",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2019-3398"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "e9bc39ae-978a-4e49-91ab-5bd481fc668b",
+              "title": "Confluence Exploitation CVE-2019-3398",
+              "path": "rules-emerging-threats/2019/Exploits/CVE-2019-3398/web_cve_2019_3398_confluence.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2019/Exploits/CVE-2019-3398/web_cve_2019_3398_confluence.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Confluence Exploitation CVE-2019-3398'(e9bc39ae-978a-4e49-91ab-5bd481fc668b) · 작성 Florian Roth (Nextron Systems) · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2020-0688-exchange-exploit",
+            "pattern": "^.*/ecp/default\\.aspx.*$",
+            "all_patterns": [
+              "^.*__VIEWSTATEGENERATOR=.*$",
+              "^.*__VIEWSTATE=.*$"
+            ],
+            "product": "CVE-2020-0688 Exploitation Attempt",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2020-0688"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "7c64e577-d72e-4c3d-9d75-8de6d1f9146a",
+              "title": "CVE-2020-0688 Exploitation Attempt",
+              "path": "rules-emerging-threats/2020/Exploits/CVE-2020-0688/web_cve_2020_0688_exchange_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2020/Exploits/CVE-2020-0688/web_cve_2020_0688_exchange_exploit.yml",
+              "author": "NVISO",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'CVE-2020-0688 Exploitation Attempt'(7c64e577-d72e-4c3d-9d75-8de6d1f9146a) · 작성 NVISO · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2020-0688-msexchange",
+            "pattern": "^.*(/ecp/|/owa/).*$",
+            "all_patterns": [
+              "^.*__VIEWSTATE=.*$"
+            ],
+            "methods": [
+              "GET"
+            ],
+            "product": "CVE-2020-0688 Exchange Exploitation via Web Log",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2020-0688"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "fce2c2e2-0fb5-41ab-a14c-5391e1fd70a5",
+              "title": "CVE-2020-0688 Exchange Exploitation via Web Log",
+              "path": "rules-emerging-threats/2020/Exploits/CVE-2020-0688/web_cve_2020_0688_msexchange.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2020/Exploits/CVE-2020-0688/web_cve_2020_0688_msexchange.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'CVE-2020-0688 Exchange Exploitation via Web Log'(fce2c2e2-0fb5-41ab-a14c-5391e1fd70a5) · 작성 Florian Roth (Nextron Systems) · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2020-10148-solarwinds-exploit",
+            "pattern": "^.*(/WebResource\\.axd|/ScriptResource\\.axd|/i18n\\.ashx|/Skipi18n).*$",
+            "all_patterns": [
+              "^.*(/SolarWinds/|/api/).*$"
+            ],
+            "not_patterns": [
+              "^.*Orion/Skipi18n/Profiler/.*$",
+              "^.*(css\\.i18n\\.ashx|js\\.i18n\\.ashx).*$"
+            ],
+            "product": "CVE-2020-10148 SolarWinds Orion API Auth Bypass",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2020-10148"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "5a35116f-43bc-4901-b62d-ef131f42a9af",
+              "title": "CVE-2020-10148 SolarWinds Orion API Auth Bypass",
+              "path": "rules-emerging-threats/2020/Exploits/CVE-2020-10148/web_cve_2020_10148_solarwinds_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2020/Exploits/CVE-2020-10148/web_cve_2020_10148_solarwinds_exploit.yml",
+              "author": "Bhabesh Raj, Tim Shelton",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+                "필터 필드 cs-uri-query 를 요청 url 하나에 댔다. 다른 쪽에 든 값도 걸러 원본보다 좁아질 수 있다(좁아짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'CVE-2020-10148 SolarWinds Orion API Auth Bypass'(5a35116f-43bc-4901-b62d-ef131f42a9af) · 작성 Bhabesh Raj, Tim Shelton · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2020-14882-weblogic-exploit",
+            "pattern": "^.*(/console/images/%252E%252E%252Fconsole\\.portal|/console/css/%2e).*$",
+            "product": "Oracle WebLogic Exploit CVE-2020-14882",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2020-14882"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "85d466b0-d74c-4514-84d3-2bdd3327588b",
+              "title": "Oracle WebLogic Exploit CVE-2020-14882",
+              "path": "rules-emerging-threats/2020/Exploits/CVE-2020-14882/web_cve_2020_14882_weblogic_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2020/Exploits/CVE-2020-14882/web_cve_2020_14882_weblogic_exploit.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Oracle WebLogic Exploit CVE-2020-14882'(85d466b0-d74c-4514-84d3-2bdd3327588b) · 작성 Florian Roth (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2020-28188-terramaster-rce",
+            "pattern": "^.*/include/makecvs\\.php.*$",
+            "all_patterns": [
+              "^.*.Event=.*$",
+              "^.*(curl|wget|\\.py|\\.sh|chmod|_GET).*$"
+            ],
+            "methods": [
+              "GET"
+            ],
+            "product": "TerraMaster TOS CVE-2020-28188",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2020-28188"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "15c312b9-00d0-4feb-8870-7d940a4bdc5e",
+              "title": "TerraMaster TOS CVE-2020-28188",
+              "path": "rules-emerging-threats/2020/Exploits/CVE-2020-28188/web_cve_2020_28188_terramaster_rce_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2020/Exploits/CVE-2020-28188/web_cve_2020_28188_terramaster_rce_exploit.yml",
+              "author": "Bhabesh Raj",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'TerraMaster TOS CVE-2020-28188'(15c312b9-00d0-4feb-8870-7d940a4bdc5e) · 작성 Bhabesh Raj · test/high · DRL 1.1 로 배포된 것을 변환했다. 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2020-3452-cisco-asa-ftd",
+            "pattern": "^.*(\\+CSCOT\\+/translation-table|\\+CSCOT\\+/oem-customization).*$",
+            "all_patterns": [
+              "^.*(&textdomain=/|&textdomain=%|&name=/|&name=%).*$"
+            ],
+            "statuses": [
+              200
+            ],
+            "product": "Cisco ASA FTD Exploit CVE-2020-3452",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2020-3452"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "aba47adc-4847-4970-95c1-61dce62a8b29",
+              "title": "Cisco ASA FTD Exploit CVE-2020-3452",
+              "path": "rules-emerging-threats/2020/Exploits/CVE-2020-3452/web_cve_2020_3452_cisco_asa_ftd.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2020/Exploits/CVE-2020-3452/web_cve_2020_3452_cisco_asa_ftd.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Cisco ASA FTD Exploit CVE-2020-3452'(aba47adc-4847-4970-95c1-61dce62a8b29) · 작성 Florian Roth (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2020-5902-f5-bigip",
+            "pattern": "^.*(/tmui/|/hsqldb).*$",
+            "all_patterns": [
+              "^.*(\\.\\.;/|\\.jsp/\\.\\.).*$"
+            ],
+            "product": "CVE-2020-5902 F5 BIG-IP Exploitation Attempt",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2020-5902"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "44b53b1c-e60f-4a7b-948e-3435a7918478",
+              "title": "CVE-2020-5902 F5 BIG-IP Exploitation Attempt",
+              "path": "rules-emerging-threats/2020/Exploits/CVE-2020-5902/web_cve_2020_5902_f5_bigip.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2020/Exploits/CVE-2020-5902/web_cve_2020_5902_f5_bigip.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'CVE-2020-5902 F5 BIG-IP Exploitation Attempt'(44b53b1c-e60f-4a7b-948e-3435a7918478) · 작성 Florian Roth (Nextron Systems) · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2020-8193-8195-citrix-exploit-1",
+            "pattern": "^.*/rapi/filedownload.filter=path:%2F.*$",
+            "product": "Citrix ADS Exploitation CVE-2020-8193 CVE-2020-8195",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2020-8193",
+              "CVE-2020-8195"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "0d0d9a8a-a49e-4e27-b061-7ce4b936cfb7",
+              "title": "Citrix ADS Exploitation CVE-2020-8193 CVE-2020-8195",
+              "path": "rules-emerging-threats/2020/Exploits/CVE-2020-8193/web_cve_2020_8193_8195_citrix_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2020/Exploits/CVE-2020-8193/web_cve_2020_8193_8195_citrix_exploit.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).",
+                "원본 condition '1 of selection*' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Citrix ADS Exploitation CVE-2020-8193 CVE-2020-8195'(0d0d9a8a-a49e-4e27-b061-7ce4b936cfb7) · 작성 Florian Roth (Nextron Systems) · test/critical · DRL 1.1 로 배포된 것을 변환했다. 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2020-8193-8195-citrix-exploit-2",
+            "pattern": "^.*/pcidss/report.*$",
+            "all_patterns": [
+              "^.*type=all_signatures.*$",
+              "^.*sig_name=_default_signature_.*$"
+            ],
+            "product": "Citrix ADS Exploitation CVE-2020-8193 CVE-2020-8195",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2020-8193",
+              "CVE-2020-8195"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "0d0d9a8a-a49e-4e27-b061-7ce4b936cfb7",
+              "title": "Citrix ADS Exploitation CVE-2020-8193 CVE-2020-8195",
+              "path": "rules-emerging-threats/2020/Exploits/CVE-2020-8193/web_cve_2020_8193_8195_citrix_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2020/Exploits/CVE-2020-8193/web_cve_2020_8193_8195_citrix_exploit.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 condition '1 of selection*' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Citrix ADS Exploitation CVE-2020-8193 CVE-2020-8195'(0d0d9a8a-a49e-4e27-b061-7ce4b936cfb7) · 작성 Florian Roth (Nextron Systems) · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본 condition '1 of selection*' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다."
+          },
+          {
+            "id": "sg-solarwinds-supernova-webshell-1",
+            "pattern": "^.*logoimagehandler\\.ashx.*$",
+            "all_patterns": [
+              "^.*clazz.*$"
+            ],
+            "product": "Solarwinds SUPERNOVA Webshell Access",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "a2cee20b-eacc-459f-861d-c02e5d12f1db",
+              "title": "Solarwinds SUPERNOVA Webshell Access",
+              "path": "rules-emerging-threats/2020/TA/SolarWinds-Supply-Chain/web_solarwinds_supernova_webshell.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2020/TA/SolarWinds-Supply-Chain/web_solarwinds_supernova_webshell.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 condition 'selection1 or selection2' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Solarwinds SUPERNOVA Webshell Access'(a2cee20b-eacc-459f-861d-c02e5d12f1db) · 작성 Florian Roth (Nextron Systems) · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본 condition 'selection1 or selection2' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다."
+          },
+          {
+            "id": "sg-solarwinds-supernova-webshell-2",
+            "pattern": "^.*logoimagehandler\\.ashx.*$",
+            "statuses": [
+              500
+            ],
+            "product": "Solarwinds SUPERNOVA Webshell Access",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "a2cee20b-eacc-459f-861d-c02e5d12f1db",
+              "title": "Solarwinds SUPERNOVA Webshell Access",
+              "path": "rules-emerging-threats/2020/TA/SolarWinds-Supply-Chain/web_solarwinds_supernova_webshell.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2020/TA/SolarWinds-Supply-Chain/web_solarwinds_supernova_webshell.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 condition 'selection1 or selection2' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Solarwinds SUPERNOVA Webshell Access'(a2cee20b-eacc-459f-861d-c02e5d12f1db) · 작성 Florian Roth (Nextron Systems) · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본 condition 'selection1 or selection2' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다."
+          },
+          {
+            "id": "sg-cve-2021-20090-2021-20091-arcadyan-1",
+            "pattern": "^.*\\.\\.%2f.*$",
+            "all_patterns": [
+              "^.*(/images/|/js/|/css/|/setup_top_login\\.htm|/login\\.html|/loginerror\\.html|/loginexclude\\.html|/loginlock\\.html).*$"
+            ],
+            "product": "Arcadyan Router Exploitations",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2021-20090",
+              "CVE-2021-20091"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "f0500377-bc70-425d-ac8c-e956cd906871",
+              "title": "Arcadyan Router Exploitations",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-20090/web_cve_2021_20090_2021_20091_arcadyan_router_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-20090/web_cve_2021_20090_2021_20091_arcadyan_router_exploit.yml",
+              "author": "Bhabesh Raj",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 condition '(path_traversal or config_file_inj) and noauth_list' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Arcadyan Router Exploitations'(f0500377-bc70-425d-ac8c-e956cd906871) · 작성 Bhabesh Raj · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본 condition '(path_traversal or config_file_inj) and noauth_list' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다."
+          },
+          {
+            "id": "sg-cve-2021-20090-2021-20091-arcadyan-2",
+            "pattern": "^.*\\.\\.%2f.*$",
+            "all_patterns": [
+              "^.*apply_abstract\\.cgi.*$",
+              "^.*(/images/|/js/|/css/|/setup_top_login\\.htm|/login\\.html|/loginerror\\.html|/loginexclude\\.html|/loginlock\\.html).*$"
+            ],
+            "product": "Arcadyan Router Exploitations",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2021-20090",
+              "CVE-2021-20091"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "f0500377-bc70-425d-ac8c-e956cd906871",
+              "title": "Arcadyan Router Exploitations",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-20090/web_cve_2021_20090_2021_20091_arcadyan_router_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-20090/web_cve_2021_20090_2021_20091_arcadyan_router_exploit.yml",
+              "author": "Bhabesh Raj",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 condition '(path_traversal or config_file_inj) and noauth_list' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Arcadyan Router Exploitations'(f0500377-bc70-425d-ac8c-e956cd906871) · 작성 Bhabesh Raj · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본 condition '(path_traversal or config_file_inj) and noauth_list' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다."
+          },
+          {
+            "id": "sg-cve-2021-2109-weblogic-rce-exploit",
+            "pattern": "^.*com\\.bea\\.console\\.handles\\.JndiBindingHandle.*$",
+            "all_patterns": [
+              "^.*ldap://.*$",
+              "^.*AdminServer.*$"
+            ],
+            "methods": [
+              "GET"
+            ],
+            "product": "Oracle WebLogic Exploit CVE-2021-2109",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2021-2109"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "687f6504-7f44-4549-91fc-f07bab065821",
+              "title": "Oracle WebLogic Exploit CVE-2021-2109",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-2109/web_cve_2021_2109_weblogic_rce_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-2109/web_cve_2021_2109_weblogic_rce_exploit.yml",
+              "author": "Bhabesh Raj",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Oracle WebLogic Exploit CVE-2021-2109'(687f6504-7f44-4549-91fc-f07bab065821) · 작성 Bhabesh Raj · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2021-21972-vsphere-unauth-rce",
+            "pattern": "^(/ui/vropspluginui/rest/services/uploadova(\\?.*)?|[^?]*\\?/ui/vropspluginui/rest/services/uploadova)$",
+            "methods": [
+              "POST"
+            ],
+            "product": "CVE-2021-21972 VSphere Exploitation",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2021-21972"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "179ed852-0f9b-4009-93a7-68475910fd86",
+              "title": "CVE-2021-21972 VSphere Exploitation",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-21972/web_cve_2021_21972_vsphere_unauth_rce_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-21972/web_cve_2021_21972_vsphere_unauth_rce_exploit.yml",
+              "author": "Bhabesh Raj",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'CVE-2021-21972 VSphere Exploitation'(179ed852-0f9b-4009-93a7-68475910fd86) · 작성 Bhabesh Raj · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2021-21978-vmware-view-planner",
+            "pattern": "^.*logupload.*$",
+            "all_patterns": [
+              "^.*logMetaData.*$",
+              "^.*wsgi_log_upload\\.py.*$"
+            ],
+            "methods": [
+              "POST"
+            ],
+            "product": "CVE-2021-21978 Exploitation Attempt",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2021-21978"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "77586a7f-7ea4-4c41-b19c-820140b84ca9",
+              "title": "CVE-2021-21978 Exploitation Attempt",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-21978/web_cve_2021_21978_vmware_view_planner_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-21978/web_cve_2021_21978_vmware_view_planner_exploit.yml",
+              "author": "Bhabesh Raj",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'CVE-2021-21978 Exploitation Attempt'(77586a7f-7ea4-4c41-b19c-820140b84ca9) · 작성 Bhabesh Raj · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2021-22005-vmware-file-upload",
+            "pattern": "^.*/analytics/telemetry/ph/api/hyper/send..*$",
+            "methods": [
+              "POST"
+            ],
+            "product": "VMware vCenter Server File Upload CVE-2021-22005",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2021-22005"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "b014ea07-8ea0-4859-b517-50a4e5b7ecec",
+              "title": "VMware vCenter Server File Upload CVE-2021-22005",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-22005/web_cve_2021_22005_vmware_file_upload.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-22005/web_cve_2021_22005_vmware_file_upload.yml",
+              "author": "Sittikorn S",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'VMware vCenter Server File Upload CVE-2021-22005'(b014ea07-8ea0-4859-b517-50a4e5b7ecec) · 작성 Sittikorn S · test/high · DRL 1.1 로 배포된 것을 변환했다. 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2021-22123-fortinet-exploit",
+            "pattern": "^.*/api/v2\\.0/user/remoteserver\\.saml.*$",
+            "methods": [
+              "POST"
+            ],
+            "product": "Fortinet CVE-2021-22123 Exploitation",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2021-22123"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "f425637f-891c-4191-a6c4-3bb1b70513b4",
+              "title": "Fortinet CVE-2021-22123 Exploitation",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-22123/web_cve_2021_22123_fortinet_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-22123/web_cve_2021_22123_fortinet_exploit.yml",
+              "author": "Bhabesh Raj, Florian Roth",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "필터 조건 cs-referer|contains(필드 cs-referer)을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐).",
+                "필터 조건 cs-referer(값 없음(null) 조건)을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐).",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Fortinet CVE-2021-22123 Exploitation'(f425637f-891c-4191-a6c4-3bb1b70513b4) · 작성 Bhabesh Raj, Florian Roth · test/critical · DRL 1.1 로 배포된 것을 변환했다. 필터 조건 cs-referer|contains(필드 cs-referer)을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2021-22893-pulse-secure-rce",
+            "pattern": "^.*(/dana-na/auth/|/dana-ws/|/dana-cached/).*$",
+            "all_patterns": [
+              "^.*(.id=|.token=|Secid_canceltoken\\.cgi|CGI::param|meeting|smb|namedusers|metric).*$"
+            ],
+            "product": "Pulse Connect Secure RCE Attack CVE-2021-22893",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2021-22893"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "5525edac-f599-4bfd-b926-3fa69860e766",
+              "title": "Pulse Connect Secure RCE Attack CVE-2021-22893",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-22893/web_cve_2021_22893_pulse_secure_rce_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-22893/web_cve_2021_22893_pulse_secure_rce_exploit.yml",
+              "author": "Sittikorn S",
+              "status": "stable",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Pulse Connect Secure RCE Attack CVE-2021-22893'(5525edac-f599-4bfd-b926-3fa69860e766) · 작성 Sittikorn S · stable/high · DRL 1.1 로 배포된 것을 변환했다. 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2021-26814-wzuh-rce",
+            "pattern": "^.*/manager/files.path=etc/lists/\\.\\./\\.\\./\\.\\./\\.\\./\\.\\..*$",
+            "product": "Exploitation of CVE-2021-26814 in Wazuh",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2021-21978",
+              "CVE-2021-26814"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "b9888738-29ed-4c54-96a4-f38c57b84bb3",
+              "title": "Exploitation of CVE-2021-26814 in Wazuh",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-26814/web_cve_2021_26814_wzuh_rce.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-26814/web_cve_2021_26814_wzuh_rce.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Exploitation of CVE-2021-26814 in Wazuh'(b9888738-29ed-4c54-96a4-f38c57b84bb3) · 작성 Florian Roth (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2021-26858-iis-rce",
+            "pattern": "^.*POST.*$",
+            "all_patterns": [
+              "^.*200.*$",
+              "^.*/ecp/DDI/DDIService\\.svc/SetObject.*$",
+              "^.*schema=Reset.*$",
+              "^.*VirtualDirectory.*$",
+              "^.*\\$.*$"
+            ],
+            "product": "ProxyLogon Reset Virtual Directories Based On IIS Log",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2021-26858"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "effee1f6-a932-4297-a81f-acb44064fa3a",
+              "title": "ProxyLogon Reset Virtual Directories Based On IIS Log",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-26858/web_cve_2021_26858_iis_rce.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-26858/web_cve_2021_26858_iis_rce.yml",
+              "author": "frack113",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본의 다른 갈래 1개는 옮기지 못해 버렸다(갈래 1: 옮기지 못하는 조건 cs-username|endswith(필드 cs-username)). 이 서명만으로는 원본보다 좁다.",
+                "keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).",
+                "원본 condition 'selection or keywords' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'ProxyLogon Reset Virtual Directories Based On IIS Log'(effee1f6-a932-4297-a81f-acb44064fa3a) · 작성 frack113 · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본의 다른 갈래 1개는 옮기지 못해 버렸다(갈래 1: 옮기지 못하는 조건 cs-username|endswith(필드 cs-username)). 이 서명만으로는 원본보다 좁다."
+          },
+          {
+            "id": "sg-cve-2021-27905-apache-solr-exploit-1",
+            "pattern": "^.*/solr/.*$",
+            "all_patterns": [
+              "^.*/debug/dump..*$",
+              "^.*param=ContentStream.*$"
+            ],
+            "statuses": [
+              200
+            ],
+            "product": "Potential CVE-2021-27905 Exploitation Attempt",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2021-27905"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "0bbcd74b-0596-41a4-94a0-4e88a76ffdb3",
+              "title": "Potential CVE-2021-27905 Exploitation Attempt",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-27905/web_cve_2021_27905_apache_solr_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-27905/web_cve_2021_27905_apache_solr_exploit.yml",
+              "author": "@gott_cyber",
+              "status": "test",
+              "level": "medium",
+              "license": "DRL-1.1",
+              "notes": [
+                "값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).",
+                "원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Potential CVE-2021-27905 Exploitation Attempt'(0bbcd74b-0596-41a4-94a0-4e88a76ffdb3) · 작성 @gott_cyber · test/medium · DRL 1.1 로 배포된 것을 변환했다. 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2021-27905-apache-solr-exploit-2",
+            "pattern": "^.*/solr/.*$",
+            "all_patterns": [
+              "^.*command=fetchindex.*$",
+              "^.*masterUrl=.*$"
+            ],
+            "methods": [
+              "GET"
+            ],
+            "statuses": [
+              200
+            ],
+            "product": "Potential CVE-2021-27905 Exploitation Attempt",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2021-27905"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "0bbcd74b-0596-41a4-94a0-4e88a76ffdb3",
+              "title": "Potential CVE-2021-27905 Exploitation Attempt",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-27905/web_cve_2021_27905_apache_solr_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-27905/web_cve_2021_27905_apache_solr_exploit.yml",
+              "author": "@gott_cyber",
+              "status": "test",
+              "level": "medium",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Potential CVE-2021-27905 Exploitation Attempt'(0bbcd74b-0596-41a4-94a0-4e88a76ffdb3) · 작성 @gott_cyber · test/medium · DRL 1.1 로 배포된 것을 변환했다. 원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다."
+          },
+          {
+            "id": "sg-cve-2021-28480-exchange-exploit",
+            "pattern": "^.*/owa/calendar/a.*$",
+            "methods": [
+              "POST"
+            ],
+            "product": "Exchange Exploitation CVE-2021-28480",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2021-28480"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "a2a9d722-0acb-4096-bccc-daaf91a5037b",
+              "title": "Exchange Exploitation CVE-2021-28480",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-28480/web_cve_2021_28480_exchange_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-28480/web_cve_2021_28480_exchange_exploit.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "응답 코드 부정 조건 sc-status 을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐).",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Exchange Exploitation CVE-2021-28480'(a2a9d722-0acb-4096-bccc-daaf91a5037b) · 작성 Florian Roth (Nextron Systems) · test/critical · DRL 1.1 로 배포된 것을 변환했다. 응답 코드 부정 조건 sc-status 을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2021-33766-msexchange-1",
+            "pattern": "^.*/ecp/.*$",
+            "all_patterns": [
+              "^.*/RulesEditor/InboxRules\\.svc/NewObject.*$"
+            ],
+            "methods": [
+              "POST"
+            ],
+            "statuses": [
+              500
+            ],
+            "product": "CVE-2021-33766 Exchange ProxyToken Exploitation",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2021-33766"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "56973b50-3382-4b56-bdf5-f51a3183797a",
+              "title": "CVE-2021-33766 Exchange ProxyToken Exploitation",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-33766/web_cve_2021_33766_msexchange_proxytoken.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-33766/web_cve_2021_33766_msexchange_proxytoken.yml",
+              "author": "Florian Roth (Nextron Systems), Max Altgelt (Nextron Systems), Christian Burkard (Nextron Systems)",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'CVE-2021-33766 Exchange ProxyToken Exploitation'(56973b50-3382-4b56-bdf5-f51a3183797a) · 작성 Florian Roth (Nextron Systems), Max Altgelt (Nextron Systems), Christian Burkard (Nextron Systems) · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다."
+          },
+          {
+            "id": "sg-cve-2021-33766-msexchange-2",
+            "pattern": "^.*SecurityToken=.*$",
+            "all_patterns": [
+              "^.*/ecp/.*$"
+            ],
+            "statuses": [
+              500
+            ],
+            "product": "CVE-2021-33766 Exchange ProxyToken Exploitation",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2021-33766"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "56973b50-3382-4b56-bdf5-f51a3183797a",
+              "title": "CVE-2021-33766 Exchange ProxyToken Exploitation",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-33766/web_cve_2021_33766_msexchange_proxytoken.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-33766/web_cve_2021_33766_msexchange_proxytoken.yml",
+              "author": "Florian Roth (Nextron Systems), Max Altgelt (Nextron Systems), Christian Burkard (Nextron Systems)",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'CVE-2021-33766 Exchange ProxyToken Exploitation'(56973b50-3382-4b56-bdf5-f51a3183797a) · 작성 Florian Roth (Nextron Systems), Max Altgelt (Nextron Systems), Christian Burkard (Nextron Systems) · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다."
+          },
+          {
+            "id": "sg-cve-2021-40539-adselfservice",
+            "pattern": "^.*(/help/admin-guide/Reports/ReportGenerate\\.jsp|/ServletApi/\\.\\./RestApi/LogonCustomization|/ServletApi/\\.\\./RestAPI/Connection).*$",
+            "product": "ADSelfService Exploitation",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2021-40539"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "6702b13c-e421-44cc-ab33-42cc25570f11",
+              "title": "ADSelfService Exploitation",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-40539/web_cve_2021_40539_adselfservice.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-40539/web_cve_2021_40539_adselfservice.yml",
+              "author": "Tobias Michalski (Nextron Systems), Max Altgelt (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'ADSelfService Exploitation'(6702b13c-e421-44cc-ab33-42cc25570f11) · 작성 Tobias Michalski (Nextron Systems), Max Altgelt (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2021-40539-manageengine",
+            "pattern": "^.*(/help/admin-guide/Reports/ReportGenerate\\.jsp|/RestAPI/LogonCustomization|/RestAPI/Connection).*$",
+            "product": "CVE-2021-40539 Zoho ManageEngine ADSelfService Plus Exploit",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2021-40539"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "fcbb4a77-f368-4945-b046-4499a1da69d1",
+              "title": "CVE-2021-40539 Zoho ManageEngine ADSelfService Plus Exploit",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-40539/web_cve_2021_40539_manageengine_adselfservice_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-40539/web_cve_2021_40539_manageengine_adselfservice_exploit.yml",
+              "author": "Sittikorn S, Nuttakorn Tungpoonsup",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'CVE-2021-40539 Zoho ManageEngine ADSelfService Plus Exploit'(fcbb4a77-f368-4945-b046-4499a1da69d1) · 작성 Sittikorn S, Nuttakorn Tungpoonsup · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2021-41773-apache-path-traversal",
+            "pattern": "^.*(/cgi-bin/\\.%2e/|/icons/\\.%2e/|/cgi-bin/\\.%%32%65/|/icons/\\.%%32%65/|/cgi-bin/\\.%%%25%33|/icons/\\.%%%25%33).*$",
+            "statuses": [
+              200,
+              301
+            ],
+            "product": "CVE-2021-41773 Exploitation Attempt",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2021-41773"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "3007fec6-e761-4319-91af-e32e20ac43f5",
+              "title": "CVE-2021-41773 Exploitation Attempt",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-41773/web_cve_2021_41773_apache_path_traversal.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-41773/web_cve_2021_41773_apache_path_traversal.yml",
+              "author": "daffainfo, Florian Roth",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'CVE-2021-41773 Exploitation Attempt'(3007fec6-e761-4319-91af-e32e20ac43f5) · 작성 daffainfo, Florian Roth · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2021-42237-sitecore-report-ashx",
+            "pattern": "^.*/sitecore/shell/ClientBin/Reporting/Report\\.ashx.*$",
+            "methods": [
+              "POST"
+            ],
+            "statuses": [
+              200
+            ],
+            "product": "Sitecore Pre-Auth RCE CVE-2021-42237",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2021-42237"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "20c6ed1c-f7f0-4ea3-aa65-4f198e6acb0f",
+              "title": "Sitecore Pre-Auth RCE CVE-2021-42237",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-42237/web_cve_2021_42237_sitecore_report_ashx.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-42237/web_cve_2021_42237_sitecore_report_ashx.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Sitecore Pre-Auth RCE CVE-2021-42237'(20c6ed1c-f7f0-4ea3-aa65-4f198e6acb0f) · 작성 Florian Roth (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2021-43798-grafana",
+            "pattern": "^.*/\\.\\./\\.\\./\\.\\./\\.\\./\\.\\./\\.\\./\\.\\./.*$",
+            "all_patterns": [
+              "^.*(/public/plugins/live|/public/plugins/icon|/public/plugins/loki|/public/plugins/text|/public/plugins/logs|/public/plugins/news|/public/plugins/stat|/public/plugins/mssql|/public/plugins/mixed|/public/plugins/mysql|/public/plugins/tempo|/public/plugins/graph|/public/plugins/gauge|/public/plugins/table|/public/plugins/debug|/public/plugins/zipkin|/public/plugins/jaeger|/public/plugins/geomap|/public/plugins/canvas|/public/plugins/grafana|/public/plugins/welcome|/public/plugins/xychart|/public/plugins/heatmap|/public/plugins/postgres|/public/plugins/testdata|/public/plugins/opentsdb|/public/plugins/influxdb|/public/plugins/barchart|/public/plugins/annolist|/public/plugins/bargauge|/public/plugins/graphite|/public/plugins/dashlist|/public/plugins/piechart|/public/plugins/dashboard|/public/plugins/nodeGraph|/public/plugins/alertlist|/public/plugins/histogram|/public/plugins/table-old|/public/plugins/pluginlist|/public/plugins/timeseries|/public/plugins/cloudwatch|/public/plugins/prometheus|/public/plugins/stackdriver|/public/plugins/alertGroups|/public/plugins/alertmanager|/public/plugins/elasticsearch|/public/plugins/gettingstarted|/public/plugins/state-timeline|/public/plugins/status-history|/public/plugins/grafana-clock-panel|/public/plugins/grafana-simple-json-datasource|/public/plugins/grafana-azure-monitor-datasource).*$"
+            ],
+            "statuses": [
+              200
+            ],
+            "product": "Grafana Path Traversal Exploitation CVE-2021-43798",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2021-43798"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "7b72b328-5708-414f-9a2a-6a6867c26e16",
+              "title": "Grafana Path Traversal Exploitation CVE-2021-43798",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-43798/web_cve_2021_43798_grafana.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-43798/web_cve_2021_43798_grafana.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Grafana Path Traversal Exploitation CVE-2021-43798'(7b72b328-5708-414f-9a2a-6a6867c26e16) · 작성 Florian Roth (Nextron Systems) · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2021-44228-log4j",
+            "pattern": "^.*(\\$\\{jndi:ldap:/|\\$\\{jndi:rmi:/|\\$\\{jndi:ldaps:/|\\$\\{jndi:dns:/|/\\$%7bjndi:|%24%7bjndi:|\\$%7Bjndi:|%2524%257Bjndi|%2F%252524%25257Bjndi%3A|\\$\\{jndi:\\$\\{lower:|\\$\\{::-j\\}\\$\\{|\\$\\{jndi:nis|\\$\\{jndi:nds|\\$\\{jndi:corba|\\$\\{jndi:iiop|Reference Class Name: foo|\\$\\{\\$\\{env:BARFOO:-j\\}|\\$\\{::-l\\}\\$\\{::-d\\}\\$\\{::-a\\}\\$\\{::-p\\}|\\$\\{base64:JHtqbmRp|\\$\\{\\$\\{env:ENV_NAME:-j\\}ndi\\$\\{env:ENV_NAME:-:\\}\\$|\\$\\{\\$\\{lower:j\\}ndi:|\\$\\{\\$\\{upper:j\\}ndi:|\\$\\{\\$\\{::-j\\}\\$\\{::-n\\}\\$\\{::-d\\}\\$\\{::-i\\}:).*$",
+            "not_patterns": [
+              "^.*(w\\.nessus\\.org/nessus|/nessus\\}).*$"
+            ],
+            "product": "Log4j RCE CVE-2021-44228 Generic",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "5ea8faa8-db8b-45be-89b0-151b84c82702",
+              "title": "Log4j RCE CVE-2021-44228 Generic",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-44228/web_cve_2021_44228_log4j.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-44228/web_cve_2021_44228_log4j.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "필터 keywords 를 요청 url 에서만 찾는다. 헤더 · 본문 등 다른 곳에 필터 값이 든 요청(원본이 거르던 것)에도 맞는다(넓어짐).",
+                "keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Log4j RCE CVE-2021-44228 Generic'(5ea8faa8-db8b-45be-89b0-151b84c82702) · 작성 Florian Roth (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 필터 keywords 를 요청 url 에서만 찾는다. 헤더 · 본문 등 다른 곳에 필터 값이 든 요청(원본이 거르던 것)에도 맞는다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2021-44228-log4j-fields",
+            "pattern": "^.*(\\$\\{jndi:ldap:/|\\$\\{jndi:rmi:/|\\$\\{jndi:ldaps:/|\\$\\{jndi:dns:/|/\\$%7bjndi:|%24%7bjndi:|\\$%7Bjndi:|%2524%257Bjndi|%2F%252524%25257Bjndi%3A|\\$\\{jndi:\\$\\{lower:|\\$\\{::-j\\}\\$\\{|\\$\\{jndi:nis|\\$\\{jndi:nds|\\$\\{jndi:corba|\\$\\{jndi:iiop|Reference Class Name: foo|\\$\\{\\$\\{env:BARFOO:-j\\}|\\$\\{::-l\\}\\$\\{::-d\\}\\$\\{::-a\\}\\$\\{::-p\\}|\\$\\{base64:JHtqbmRp|\\$\\{\\$\\{env:ENV_NAME:-j\\}ndi\\$\\{env:ENV_NAME:-:\\}\\$|\\$\\{\\$\\{lower:j\\}ndi:|\\$\\{\\$\\{upper:j\\}ndi:|\\$\\{\\$\\{::-j\\}\\$\\{::-n\\}\\$\\{::-d\\}\\$\\{::-i\\}:).*$",
+            "product": "Log4j RCE CVE-2021-44228 in Fields",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2021-44228"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "9be472ed-893c-4ec0-94da-312d2765f654",
+              "title": "Log4j RCE CVE-2021-44228 in Fields",
+              "path": "rules-emerging-threats/2021/Exploits/CVE-2021-44228/web_cve_2021_44228_log4j_fields.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/CVE-2021-44228/web_cve_2021_44228_log4j_fields.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본의 다른 갈래 2개는 옮기지 못해 버렸다(갈래 1: 옮기지 못하는 조건 cs-user-agent|contains(필드 cs-user-agent) / 갈래 3: 옮기지 못하는 조건 cs-referer|contains(필드 cs-referer)). 이 서명만으로는 원본보다 좁다.",
+                "원본 condition '1 of selection*' 을 논리합 표준형으로 편 갈래 3개 가운데 2번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Log4j RCE CVE-2021-44228 in Fields'(9be472ed-893c-4ec0-94da-312d2765f654) · 작성 Florian Roth (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본의 다른 갈래 2개는 옮기지 못해 버렸다(갈래 1: 옮기지 못하는 조건 cs-user-agent|contains(필드 cs-user-agent) / 갈래 3: 옮기지 못하는 조건 cs-referer|contains(필드 cs-referer)). 이 서명만으로는 원본보다 좁다."
+          },
+          {
+            "id": "sg-exchange-proxyshell-1",
+            "pattern": "^.*/autodiscover\\.json.*$",
+            "all_patterns": [
+              "^.*(/powershell|/mapi/nspi|/EWS|X-Rps-CAT).*$"
+            ],
+            "statuses": [
+              401
+            ],
+            "product": "Exchange ProxyShell Pattern",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "23eee45e-933b-49f9-ae1b-df706d2d52ef",
+              "title": "Exchange ProxyShell Pattern",
+              "path": "rules-emerging-threats/2021/Exploits/ProxyShell-Exploit/web_exchange_proxyshell.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/ProxyShell-Exploit/web_exchange_proxyshell.yml",
+              "author": "Florian Roth (Nextron Systems), Rich Warren",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 condition 'all of selection_1* or selection_poc' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Exchange ProxyShell Pattern'(23eee45e-933b-49f9-ae1b-df706d2d52ef) · 작성 Florian Roth (Nextron Systems), Rich Warren · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본 condition 'all of selection_1* or selection_poc' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다."
+          },
+          {
+            "id": "sg-exchange-proxyshell-2",
+            "pattern": "^.*(autodiscover\\.json.@|autodiscover\\.json%3f@|%3f@foo\\.com|Email=autodiscover/autodiscover\\.json|json.@foo\\.com).*$",
+            "statuses": [
+              401
+            ],
+            "product": "Exchange ProxyShell Pattern",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "23eee45e-933b-49f9-ae1b-df706d2d52ef",
+              "title": "Exchange ProxyShell Pattern",
+              "path": "rules-emerging-threats/2021/Exploits/ProxyShell-Exploit/web_exchange_proxyshell.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/ProxyShell-Exploit/web_exchange_proxyshell.yml",
+              "author": "Florian Roth (Nextron Systems), Rich Warren",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).",
+                "원본 condition 'all of selection_1* or selection_poc' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Exchange ProxyShell Pattern'(23eee45e-933b-49f9-ae1b-df706d2d52ef) · 작성 Florian Roth (Nextron Systems), Rich Warren · test/high · DRL 1.1 로 배포된 것을 변환했다. 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐)."
+          },
+          {
+            "id": "sg-exchange-proxyshell-successful",
+            "pattern": "^.*/autodiscover\\.json.*$",
+            "all_patterns": [
+              "^.*(/powershell|/mapi/nspi|/EWS|X-Rps-CAT).*$"
+            ],
+            "statuses": [
+              200,
+              301
+            ],
+            "product": "Successful Exchange ProxyShell Attack",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "992be1eb-e5da-437e-9a54-6d13b57bb4d8",
+              "title": "Successful Exchange ProxyShell Attack",
+              "path": "rules-emerging-threats/2021/Exploits/ProxyShell-Exploit/web_exchange_proxyshell_successful.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/Exploits/ProxyShell-Exploit/web_exchange_proxyshell_successful.yml",
+              "author": "Florian Roth (Nextron Systems), Rich Warren",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Successful Exchange ProxyShell Attack'(992be1eb-e5da-437e-9a54-6d13b57bb4d8) · 작성 Florian Roth (Nextron Systems), Rich Warren · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-exchange-exploitation-hafnium-1",
+            "pattern": "^.*/owa/auth/Current/themes/resources/.*$",
+            "methods": [
+              "POST"
+            ],
+            "product": "Exchange Exploitation Used by HAFNIUM",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "67bce556-312f-4c81-9162-c3c9ff2599b2",
+              "title": "Exchange Exploitation Used by HAFNIUM",
+              "path": "rules-emerging-threats/2021/TA/HAFNIUM/web_exchange_exploitation_hafnium.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/TA/HAFNIUM/web_exchange_exploitation_hafnium.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본의 다른 갈래 3개는 옮기지 못해 버렸다(갈래 2: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent) / 갈래 3: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent) / 갈래 4: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent)). 이 서명만으로는 원본보다 좁다.",
+                "원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 6개 가운데 1번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Exchange Exploitation Used by HAFNIUM'(67bce556-312f-4c81-9162-c3c9ff2599b2) · 작성 Florian Roth (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본의 다른 갈래 3개는 옮기지 못해 버렸다(갈래 2: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent) / 갈래 3: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent) / 갈래 4: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent)). 이 서명만으로는 원본보다 좁다."
+          },
+          {
+            "id": "sg-exchange-exploitation-hafnium-2",
+            "pattern": "^.*(/owa/auth/Current/|/ecp/default\\.flt|/ecp/main\\.css).*$",
+            "methods": [
+              "POST"
+            ],
+            "product": "Exchange Exploitation Used by HAFNIUM",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "67bce556-312f-4c81-9162-c3c9ff2599b2",
+              "title": "Exchange Exploitation Used by HAFNIUM",
+              "path": "rules-emerging-threats/2021/TA/HAFNIUM/web_exchange_exploitation_hafnium.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/TA/HAFNIUM/web_exchange_exploitation_hafnium.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본의 다른 갈래 3개는 옮기지 못해 버렸다(갈래 2: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent) / 갈래 3: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent) / 갈래 4: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent)). 이 서명만으로는 원본보다 좁다.",
+                "원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 6개 가운데 5번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Exchange Exploitation Used by HAFNIUM'(67bce556-312f-4c81-9162-c3c9ff2599b2) · 작성 Florian Roth (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본의 다른 갈래 3개는 옮기지 못해 버렸다(갈래 2: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent) / 갈래 3: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent) / 갈래 4: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent)). 이 서명만으로는 원본보다 좁다."
+          },
+          {
+            "id": "sg-exchange-exploitation-hafnium-3",
+            "pattern": "^.*/ecp/.*$",
+            "all_patterns": [
+              "^.*\\.js.*$"
+            ],
+            "methods": [
+              "POST"
+            ],
+            "product": "Exchange Exploitation Used by HAFNIUM",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "67bce556-312f-4c81-9162-c3c9ff2599b2",
+              "title": "Exchange Exploitation Used by HAFNIUM",
+              "path": "rules-emerging-threats/2021/TA/HAFNIUM/web_exchange_exploitation_hafnium.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/TA/HAFNIUM/web_exchange_exploitation_hafnium.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본의 다른 갈래 3개는 옮기지 못해 버렸다(갈래 2: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent) / 갈래 3: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent) / 갈래 4: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent)). 이 서명만으로는 원본보다 좁다.",
+                "원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 6개 가운데 6번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Exchange Exploitation Used by HAFNIUM'(67bce556-312f-4c81-9162-c3c9ff2599b2) · 작성 Florian Roth (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본의 다른 갈래 3개는 옮기지 못해 버렸다(갈래 2: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent) / 갈래 3: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent) / 갈래 4: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent)). 이 서명만으로는 원본보다 좁다."
+          },
+          {
+            "id": "sg-unc2546-dewmode-php-webshell-1",
+            "pattern": "^.*.dwn=.*$",
+            "all_patterns": [
+              "^.*&fn=.*$",
+              "^.*\\.html..*$"
+            ],
+            "product": "DEWMODE Webshell Access",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "fdf96c90-42d5-4406-8a9c-14a2c9a016b5",
+              "title": "DEWMODE Webshell Access",
+              "path": "rules-emerging-threats/2021/TA/UNC2546/web_unc2546_dewmode_php_webshell.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/TA/UNC2546/web_unc2546_dewmode_php_webshell.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).",
+                "원본 condition '1 of selection*' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'DEWMODE Webshell Access'(fdf96c90-42d5-4406-8a9c-14a2c9a016b5) · 작성 Florian Roth (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐)."
+          },
+          {
+            "id": "sg-unc2546-dewmode-php-webshell-2",
+            "pattern": "^.*&dwn=.*$",
+            "all_patterns": [
+              "^.*.fn=.*$",
+              "^.*\\.html..*$"
+            ],
+            "product": "DEWMODE Webshell Access",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "fdf96c90-42d5-4406-8a9c-14a2c9a016b5",
+              "title": "DEWMODE Webshell Access",
+              "path": "rules-emerging-threats/2021/TA/UNC2546/web_unc2546_dewmode_php_webshell.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2021/TA/UNC2546/web_unc2546_dewmode_php_webshell.yml",
+              "author": "Florian Roth (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).",
+                "원본 condition '1 of selection*' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'DEWMODE Webshell Access'(fdf96c90-42d5-4406-8a9c-14a2c9a016b5) · 작성 Florian Roth (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2022-21587-oracle-ebs",
+            "pattern": "^.*(/OA_HTML/BneViewerXMLService.bne:uueupload=TRUE|/OA_HTML/BneUploaderService.bne:uueupload=TRUE|/OA_HTML/BneDownloadService.bne:uueupload=TRUE|/OA_HTML/BneOfflineLOVService.bne:uueupload=TRUE).*$",
+            "methods": [
+              "POST"
+            ],
+            "product": "Potential CVE-2022-21587 Exploitation Attempt",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2022-21587"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "d033cb8a-8669-4a8e-a974-48d4185a8503",
+              "title": "Potential CVE-2022-21587 Exploitation Attempt",
+              "path": "rules-emerging-threats/2022/Exploits/CVE-2022-21587/web_cve_2022_21587_oracle_ebs.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2022/Exploits/CVE-2022-21587/web_cve_2022_21587_oracle_ebs.yml",
+              "author": "Isa Almannaei",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Potential CVE-2022-21587 Exploitation Attempt'(d033cb8a-8669-4a8e-a974-48d4185a8503) · 작성 Isa Almannaei · test/high · DRL 1.1 로 배포된 것을 변환했다. 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2022-27925-exploit",
+            "pattern": "^.*/service/extension/backup/mboximport\\?.*$",
+            "all_patterns": [
+              "^.*account-name.*$",
+              "^.*ow.*$",
+              "^.*no-switch.*$",
+              "^.*append.*$"
+            ],
+            "methods": [
+              "POST"
+            ],
+            "statuses": [
+              200,
+              401
+            ],
+            "product": "Zimbra Collaboration Suite Email Server Unauthenticated RCE",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2022-27925"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "dd218fb6-4d02-42dc-85f0-a0a376072efd",
+              "title": "Zimbra Collaboration Suite Email Server Unauthenticated RCE",
+              "path": "rules-emerging-threats/2022/Exploits/CVE-2022-27925/web_cve_2022_27925_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2022/Exploits/CVE-2022-27925/web_cve_2022_27925_exploit.yml",
+              "author": "@gott_cyber",
+              "status": "test",
+              "level": "medium",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본의 다른 갈래 1개는 옮기지 못해 버렸다(갈래 2: 옮기지 못하는 조건 sc-status|contains(sc-status 의 조건자 contains)). 이 서명만으로는 원본보다 좁다.",
+                "원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다.",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Zimbra Collaboration Suite Email Server Unauthenticated RCE'(dd218fb6-4d02-42dc-85f0-a0a376072efd) · 작성 @gott_cyber · test/medium · DRL 1.1 로 배포된 것을 변환했다. 원본의 다른 갈래 1개는 옮기지 못해 버렸다(갈래 2: 옮기지 못하는 조건 sc-status|contains(sc-status 의 조건자 contains)). 이 서명만으로는 원본보다 좁다."
+          },
+          {
+            "id": "sg-cve-2022-31656-auth-bypass",
+            "pattern": "^.*/SAAS/t/_/;/.*$",
+            "product": "CVE-2022-31656 VMware Workspace ONE Access Auth Bypass",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2022-31656"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "fcf1101d-07c9-49b2-ad81-7e421ff96d80",
+              "title": "CVE-2022-31656 VMware Workspace ONE Access Auth Bypass",
+              "path": "rules-emerging-threats/2022/Exploits/CVE-2022-31656/web_cve_2022_31656_auth_bypass.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2022/Exploits/CVE-2022-31656/web_cve_2022_31656_auth_bypass.yml",
+              "author": "Nasreddine Bencherchali (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'CVE-2022-31656 VMware Workspace ONE Access Auth Bypass'(fcf1101d-07c9-49b2-ad81-7e421ff96d80) · 작성 Nasreddine Bencherchali (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2022-31659-vmware-rce",
+            "pattern": "^.*/SAAS/jersey/manager/api/migrate/tenant.*$",
+            "methods": [
+              "POST"
+            ],
+            "product": "CVE-2022-31659 VMware Workspace ONE Access RCE",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2022-31659"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "efdb2003-a922-48aa-8f37-8b80021a9706",
+              "title": "CVE-2022-31659 VMware Workspace ONE Access RCE",
+              "path": "rules-emerging-threats/2022/Exploits/CVE-2022-31659/web_cve_2022_31659_vmware_rce.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2022/Exploits/CVE-2022-31659/web_cve_2022_31659_vmware_rce.yml",
+              "author": "Nasreddine Bencherchali (Nextron Systems)",
+              "status": "test",
+              "level": "medium",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'CVE-2022-31659 VMware Workspace ONE Access RCE'(efdb2003-a922-48aa-8f37-8b80021a9706) · 작성 Nasreddine Bencherchali (Nextron Systems) · test/medium · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2022-33891-spark-shell-command",
+            "pattern": "^.*.doAs=`.*$",
+            "product": "Apache Spark Shell Command Injection - Weblogs",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2022-33891"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "1a9a04fd-02d1-465c-abad-d733fd409f9c",
+              "title": "Apache Spark Shell Command Injection - Weblogs",
+              "path": "rules-emerging-threats/2022/Exploits/CVE-2022-33891/web_cve_2022_33891_spark_shell_command_injection.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2022/Exploits/CVE-2022-33891/web_cve_2022_33891_spark_shell_command_injection.yml",
+              "author": "Nasreddine Bencherchali (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Apache Spark Shell Command Injection - Weblogs'(1a9a04fd-02d1-465c-abad-d733fd409f9c) · 작성 Nasreddine Bencherchali (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2022-36804-atlassian-bitbucket",
+            "pattern": "^.*/rest/api/latest/projects/.*$",
+            "all_patterns": [
+              "^.*prefix=.*$",
+              "^.*%00--exec.*$"
+            ],
+            "product": "Atlassian Bitbucket Command Injection Via Archive API",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2022-36804"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "65c0a0ab-d675-4441-bd6b-d3db226a2685",
+              "title": "Atlassian Bitbucket Command Injection Via Archive API",
+              "path": "rules-emerging-threats/2022/Exploits/CVE-2022-36804/web_cve_2022_36804_atlassian_bitbucket_command_injection.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2022/Exploits/CVE-2022-36804/web_cve_2022_36804_atlassian_bitbucket_command_injection.yml",
+              "author": "Nasreddine Bencherchali (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Atlassian Bitbucket Command Injection Via Archive API'(65c0a0ab-d675-4441-bd6b-d3db226a2685) · 작성 Nasreddine Bencherchali (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2022-36804-exchange-owassrf",
+            "pattern": "^.*/owa/.*$",
+            "all_patterns": [
+              "^.*/powershell.*$",
+              "^.*(@|%40).*$"
+            ],
+            "methods": [
+              "POST"
+            ],
+            "statuses": [
+              200
+            ],
+            "product": "Potential OWASSRF Exploitation Attempt - Webserver",
+            "vendor": "Sigma",
+            "cves": [],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "181f49fa-0b21-4665-a98c-a57025ebb8c7",
+              "title": "Potential OWASSRF Exploitation Attempt - Webserver",
+              "path": "rules-emerging-threats/2022/Exploits/CVE-2022-41082/web_cve_2022_36804_exchange_owassrf_exploitation.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2022/Exploits/CVE-2022-41082/web_cve_2022_36804_exchange_owassrf_exploitation.yml",
+              "author": "Nasreddine Bencherchali (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "필터 조건 cs-user-agent(필드 cs-user-agent)을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐).",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).",
+                "원본 tags 에 CVE 가 없어 cves 를 비웠다."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Potential OWASSRF Exploitation Attempt - Webserver'(181f49fa-0b21-4665-a98c-a57025ebb8c7) · 작성 Nasreddine Bencherchali (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 필터 조건 cs-user-agent(필드 cs-user-agent)을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2022-44877-exploitation-attempt",
+            "pattern": "^.*/login/index\\.php.*$",
+            "all_patterns": [
+              "^.*login=.*$",
+              "^.*(login=\\$\\(|base64|subprocess|socket|\\$\\{IFS\\}|cHl0aG9u|B5dGhvb|weXRob2).*$"
+            ],
+            "methods": [
+              "POST"
+            ],
+            "product": "Potential Centos Web Panel Exploitation Attempt - CVE-2022-44877",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2022-44877"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "1b2eeb27-949b-4704-8bfa-d8e5cfa045a1",
+              "title": "Potential Centos Web Panel Exploitation Attempt - CVE-2022-44877",
+              "path": "rules-emerging-threats/2022/Exploits/CVE-2022-44877/web_cve_2022_44877_exploitation_attempt.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2022/Exploits/CVE-2022-44877/web_cve_2022_44877_exploitation_attempt.yml",
+              "author": "Nasreddine Bencherchali (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Potential Centos Web Panel Exploitation Attempt - CVE-2022-44877'(1b2eeb27-949b-4704-8bfa-d8e5cfa045a1) · 작성 Nasreddine Bencherchali (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2022-46169-cacti-exploitation",
+            "pattern": "^.*/remote_agent\\.php.*$",
+            "all_patterns": [
+              "^.*action=polldata.*$",
+              "^.*poller_id=.*$",
+              "^.*(\\| base64 -d \\| /bin/bash`|%7C%20base64%20-d%20%7C%20%2Fbin%2Fbash%60|`whoami|powershell|cmd|wget).*$"
+            ],
+            "methods": [
+              "GET"
+            ],
+            "product": "Potential CVE-2022-46169 Exploitation Attempt",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2022-46169"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "738cb115-881f-4df3-82cc-56ab02fc5192",
+              "title": "Potential CVE-2022-46169 Exploitation Attempt",
+              "path": "rules-emerging-threats/2022/Exploits/CVE-2022-46169/web_cve_2022_46169_cacti_exploitation_attempt.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2022/Exploits/CVE-2022-46169/web_cve_2022_46169_cacti_exploitation_attempt.yml",
+              "author": "Nasreddine Bencherchali (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Potential CVE-2022-46169 Exploitation Attempt'(738cb115-881f-4df3-82cc-56ab02fc5192) · 작성 Nasreddine Bencherchali (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-exploit-cve-2023-22518-confluence",
+            "pattern": "^.*(/json/setup-restore-local\\.action|/json/setup-restore-progress\\.action|/json/setup-restore\\.action|/server-info\\.action|/setup/setupadministrator\\.action).*$",
+            "methods": [
+              "POST"
+            ],
+            "statuses": [
+              200,
+              302,
+              405
+            ],
+            "product": "CVE-2023-22518 Exploitation Attempt - Vulnerable Endpoint Connection (Webserver)",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2023-22518"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "a902d249-9b9c-4dc4-8fd0-fbe528ef965c",
+              "title": "CVE-2023-22518 Exploitation Attempt - Vulnerable Endpoint Connection (Webserver)",
+              "path": "rules-emerging-threats/2023/Exploits/CVE-2023-22518/web_exploit_cve_2023_22518_confluence_auth_bypass.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2023/Exploits/CVE-2023-22518/web_exploit_cve_2023_22518_confluence_auth_bypass.yml",
+              "author": "Andreas Braathen (mnemonic.io)",
+              "status": "test",
+              "level": "medium",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'CVE-2023-22518 Exploitation Attempt - Vulnerable Endpoint Connection (Webserver)'(a902d249-9b9c-4dc4-8fd0-fbe528ef965c) · 작성 Andreas Braathen (mnemonic.io) · test/medium · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2023-23752-joomla-exploit-attempt",
+            "pattern": "^.*/api/index\\.php/v1/.*$",
+            "all_patterns": [
+              "^.*public=true.*$"
+            ],
+            "methods": [
+              "GET"
+            ],
+            "product": "Potential CVE-2023-23752 Exploitation Attempt",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2023-23752"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "0e1ebc5a-15d0-4bf6-8199-b2535397433a",
+              "title": "Potential CVE-2023-23752 Exploitation Attempt",
+              "path": "rules-emerging-threats/2023/Exploits/CVE-2023-23752/web_cve_2023_23752_joomla_exploit_attempt.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2023/Exploits/CVE-2023-23752/web_cve_2023_23752_joomla_exploit_attempt.yml",
+              "author": "Bhabesh Raj",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Potential CVE-2023-23752 Exploitation Attempt'(0e1ebc5a-15d0-4bf6-8199-b2535397433a) · 작성 Bhabesh Raj · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2023-25157-geoserver-sql",
+            "pattern": "^.*/geoserver/ows.*$",
+            "all_patterns": [
+              "^.*CQL_FILTER=.*$",
+              "^.*(PropertyIsLike|strEndsWith|strStartsWith|FeatureId|jsonArrayContains|DWithin).*$",
+              "^.*(\\+--|\\+AS\\+|\\+OR\\+|FROM|ORDER\\+BY|SELECT|sleep%28|substring%28|UNION|WHERE).*$"
+            ],
+            "methods": [
+              "GET"
+            ],
+            "product": "Potential CVE-2023-25157 Exploitation Attempt",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2023-25157"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "c0341543-5ed0-4475-aabc-7eea8c52aa66",
+              "title": "Potential CVE-2023-25157 Exploitation Attempt",
+              "path": "rules-emerging-threats/2023/Exploits/CVE-2023-25157/web_cve_2023_25157_geoserver_sql_injection.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2023/Exploits/CVE-2023-25157/web_cve_2023_25157_geoserver_sql_injection.yml",
+              "author": "Nasreddine Bencherchali (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Potential CVE-2023-25157 Exploitation Attempt'(c0341543-5ed0-4475-aabc-7eea8c52aa66) · 작성 Nasreddine Bencherchali (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2023-25717-ruckus-wireless-admin",
+            "pattern": "^.*/forms/doLogin.*$",
+            "all_patterns": [
+              "^.*login_username.*$",
+              "^.*password.*$",
+              "^.*(\\$\\(|%24%28).*$"
+            ],
+            "methods": [
+              "GET"
+            ],
+            "product": "Potential CVE-2023-25717 Exploitation Attempt",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2023-25717"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "043c1609-0e32-4462-a6f2-5a0c2da3fafe",
+              "title": "Potential CVE-2023-25717 Exploitation Attempt",
+              "path": "rules-emerging-threats/2023/Exploits/CVE-2023-25717/web_cve_2023_25717_ruckus_wireless_admin_exploit_attempt.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2023/Exploits/CVE-2023-25717/web_cve_2023_25717_ruckus_wireless_admin_exploit_attempt.yml",
+              "author": "Nasreddine Bencherchali (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Potential CVE-2023-25717 Exploitation Attempt'(043c1609-0e32-4462-a6f2-5a0c2da3fafe) · 작성 Nasreddine Bencherchali (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2023-27997-pre-authentication-rce",
+            "pattern": "^.*(/remote/hostcheck_validate|/remote/logincheck).*$",
+            "all_patterns": [
+              "^.*enc=.*$"
+            ],
+            "methods": [
+              "GET",
+              "POST"
+            ],
+            "product": "Potential CVE-2023-27997 Exploitation Indicators",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2023-27997"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "31e4e649-7394-4fd2-9ae7-dbc61eebb550",
+              "title": "Potential CVE-2023-27997 Exploitation Indicators",
+              "path": "rules-emerging-threats/2023/Exploits/CVE-2023-27997/web_cve_2023_27997_pre_authentication_rce.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2023/Exploits/CVE-2023-27997/web_cve_2023_27997_pre_authentication_rce.yml",
+              "author": "Sergio Palacios Dominguez, Nasreddine Bencherchali (Nextron Systems)",
+              "status": "test",
+              "level": "medium",
+              "license": "DRL-1.1",
+              "notes": [
+                "keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).",
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Potential CVE-2023-27997 Exploitation Indicators'(31e4e649-7394-4fd2-9ae7-dbc61eebb550) · 작성 Sergio Palacios Dominguez, Nasreddine Bencherchali (Nextron Systems) · test/medium · DRL 1.1 로 배포된 것을 변환했다. keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐)."
+          },
+          {
+            "id": "sg-cve-2023-34362-known-payload-request",
+            "pattern": "^.*(/human2\\.aspx|/_human2\\.aspx).*$",
+            "methods": [
+              "GET"
+            ],
+            "product": "MOVEit CVE-2023-34362 Exploitation Attempt - Potential Web Shell Request",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2023-34362"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "435e41f2-48eb-4c95-8a2b-ed24b50ec30b",
+              "title": "MOVEit CVE-2023-34362 Exploitation Attempt - Potential Web Shell Request",
+              "path": "rules-emerging-threats/2023/Exploits/CVE-2023-34362-MOVEit-Transfer-Exploit/web_cve_2023_34362_known_payload_request.yml.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2023/Exploits/CVE-2023-34362-MOVEit-Transfer-Exploit/web_cve_2023_34362_known_payload_request.yml.yml",
+              "author": "Nasreddine Bencherchali (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'MOVEit CVE-2023-34362 Exploitation Attempt - Potential Web Shell Request'(435e41f2-48eb-4c95-8a2b-ed24b50ec30b) · 작성 Nasreddine Bencherchali (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-exploit-cve-2023-43261-milesight",
+            "pattern": "^.*/lang/log/httpd\\.log.*$",
+            "methods": [
+              "GET"
+            ],
+            "statuses": [
+              200
+            ],
+            "product": "Potential Information Disclosure CVE-2023-43261 Exploitation - Web",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2023-43621"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "a2bcca38-9f3a-4d5e-b603-0c587e8569d7",
+              "title": "Potential Information Disclosure CVE-2023-43261 Exploitation - Web",
+              "path": "rules-emerging-threats/2023/Exploits/CVE-2023-43261/web_exploit_cve_2023_43261_milesight_information_disclosure.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2023/Exploits/CVE-2023-43261/web_exploit_cve_2023_43261_milesight_information_disclosure.yml",
+              "author": "Nasreddine Bencherchali (Nextron Systems), Thurein Oo",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Potential Information Disclosure CVE-2023-43261 Exploitation - Web'(a2bcca38-9f3a-4d5e-b603-0c587e8569d7) · 작성 Nasreddine Bencherchali (Nextron Systems), Thurein Oo · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2023-46214-rce-splunk-enterprise",
+            "pattern": "^.*NO_BINARY_CHECK=1.*$",
+            "all_patterns": [
+              "^.*input\\.path.*$",
+              "^.*\\.xsl$"
+            ],
+            "methods": [
+              "POST"
+            ],
+            "statuses": [
+              200,
+              302
+            ],
+            "product": "Potential CVE-2023-46214 Exploitation Attempt",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2023-46214"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "04017cd5-621e-4ec4-a762-1f042fe3d3e5",
+              "title": "Potential CVE-2023-46214 Exploitation Attempt",
+              "path": "rules-emerging-threats/2023/Exploits/CVE-2023-46214/web_cve_2023_46214_rce_splunk_enterprise.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2023/Exploits/CVE-2023-46214/web_cve_2023_46214_rce_splunk_enterprise.yml",
+              "author": "Nasreddine Bencherchali (Nextron Systems), Bhavin Patel (STRT)",
+              "status": "test",
+              "level": "medium",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Potential CVE-2023-46214 Exploitation Attempt'(04017cd5-621e-4ec4-a762-1f042fe3d3e5) · 작성 Nasreddine Bencherchali (Nextron Systems), Bhavin Patel (STRT) · test/medium · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-cve-2023-46214-rce-splunk-1",
+            "pattern": "^.*/splunkd/__upload/indexing/preview.*$",
+            "all_patterns": [
+              "^.*NO_BINARY_CHECK=1.*$",
+              "^.*input\\.path=shell\\.xsl.*$"
+            ],
+            "methods": [
+              "POST"
+            ],
+            "statuses": [
+              200,
+              302
+            ],
+            "product": "Exploitation Attempt Of CVE-2023-46214 Using Public POC Code",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2023-46214"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "ba5268de-4dd4-4d5c-8a90-2b5e6dc1aff8",
+              "title": "Exploitation Attempt Of CVE-2023-46214 Using Public POC Code",
+              "path": "rules-emerging-threats/2023/Exploits/CVE-2023-46214/web_cve_2023_46214_rce_splunk_enterprise_poc.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2023/Exploits/CVE-2023-46214/web_cve_2023_46214_rce_splunk_enterprise_poc.yml",
+              "author": "Lars B. P. Frydenskov(Trifork Security)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 condition 'selection_method_and_response and 1 of selection_uri_*' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다.",
+                "원본 필드 cs-uri-query · cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Exploitation Attempt Of CVE-2023-46214 Using Public POC Code'(ba5268de-4dd4-4d5c-8a90-2b5e6dc1aff8) · 작성 Lars B. P. Frydenskov(Trifork Security) · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본 condition 'selection_method_and_response and 1 of selection_uri_*' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다."
+          },
+          {
+            "id": "sg-cve-2023-46214-rce-splunk-2",
+            "pattern": "^.*/api/search/jobs.*$",
+            "all_patterns": [
+              "^.*/results.*$",
+              "^.*/opt/splunk/var/run/splunk/dispatch/.*$",
+              "^.*/shell\\.xsl.*$"
+            ],
+            "methods": [
+              "POST"
+            ],
+            "statuses": [
+              200,
+              302
+            ],
+            "product": "Exploitation Attempt Of CVE-2023-46214 Using Public POC Code",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2023-46214"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "ba5268de-4dd4-4d5c-8a90-2b5e6dc1aff8",
+              "title": "Exploitation Attempt Of CVE-2023-46214 Using Public POC Code",
+              "path": "rules-emerging-threats/2023/Exploits/CVE-2023-46214/web_cve_2023_46214_rce_splunk_enterprise_poc.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2023/Exploits/CVE-2023-46214/web_cve_2023_46214_rce_splunk_enterprise_poc.yml",
+              "author": "Lars B. P. Frydenskov(Trifork Security)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 condition 'selection_method_and_response and 1 of selection_uri_*' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다.",
+                "원본 필드 cs-uri-query · cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Exploitation Attempt Of CVE-2023-46214 Using Public POC Code'(ba5268de-4dd4-4d5c-8a90-2b5e6dc1aff8) · 작성 Lars B. P. Frydenskov(Trifork Security) · test/high · DRL 1.1 로 배포된 것을 변환했다. 원본 condition 'selection_method_and_response and 1 of selection_uri_*' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다."
+          },
+          {
+            "id": "sg-cve-2023-46747-f5-remote-code-1",
+            "pattern": "^.*/mgmt/tm/util/bash.*$",
+            "all_patterns": [
+              "^.*2f746d75692f436f6e74726f6c2f666f726d.*$",
+              "^.*666f726d5f706167653d253266746d756925326673797374656d253266757365722532666372656174652e6a7370.*$"
+            ],
+            "methods": [
+              "POST"
+            ],
+            "product": "CVE-2023-46747 Exploitation Activity - Webserver",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2023-46747"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "e9928831-ba14-42ea-a4bc-33d352b9929a",
+              "title": "CVE-2023-46747 Exploitation Activity - Webserver",
+              "path": "rules-emerging-threats/2023/Exploits/CVE-2023-46747/web_cve_2023_46747_f5_remote_code_execution.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2023/Exploits/CVE-2023-46747/web_cve_2023_46747_f5_remote_code_execution.yml",
+              "author": "Nasreddine Bencherchali (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).",
+                "원본 condition 'selection and (keywords_hex or keywords_plain)' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다.",
+                "원본 필드 cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'CVE-2023-46747 Exploitation Activity - Webserver'(e9928831-ba14-42ea-a4bc-33d352b9929a) · 작성 Nasreddine Bencherchali (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐)."
+          },
+          {
+            "id": "sg-cve-2023-46747-f5-remote-code-2",
+            "pattern": "^.*/mgmt/tm/util/bash.*$",
+            "all_patterns": [
+              "^.*/tmui/Control/form.*$",
+              "^.*form_page=%2ftmui%2fsystem%2fuser%2fcreate\\.jsp.*$"
+            ],
+            "methods": [
+              "POST"
+            ],
+            "product": "CVE-2023-46747 Exploitation Activity - Webserver",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2023-46747"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "e9928831-ba14-42ea-a4bc-33d352b9929a",
+              "title": "CVE-2023-46747 Exploitation Activity - Webserver",
+              "path": "rules-emerging-threats/2023/Exploits/CVE-2023-46747/web_cve_2023_46747_f5_remote_code_execution.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2023/Exploits/CVE-2023-46747/web_cve_2023_46747_f5_remote_code_execution.yml",
+              "author": "Nasreddine Bencherchali (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).",
+                "원본 condition 'selection and (keywords_hex or keywords_plain)' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다.",
+                "원본 필드 cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'CVE-2023-46747 Exploitation Activity - Webserver'(e9928831-ba14-42ea-a4bc-33d352b9929a) · 작성 Nasreddine Bencherchali (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐)."
+          },
+          {
+            "id": "sg-exploit-cve-2023-4966-citrix",
+            "pattern": "^.*/oauth/idp/\\.well-known/openid-configuration.*$",
+            "methods": [
+              "GET"
+            ],
+            "statuses": [
+              200
+            ],
+            "product": "CVE-2023-4966 Potential Exploitation Attempt - Citrix ADC Sensitive Information Disclosure - Webserver",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2023-4966"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "87c83d8e-5390-44ce-aa4a-d3b37e54d0a0",
+              "title": "CVE-2023-4966 Potential Exploitation Attempt - Citrix ADC Sensitive Information Disclosure - Webserver",
+              "path": "rules-emerging-threats/2023/Exploits/CVE-2023-4966/web_exploit_cve_2023_4966_citrix_sensitive_information_disclosure_exploit.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2023/Exploits/CVE-2023-4966/web_exploit_cve_2023_4966_citrix_sensitive_information_disclosure_exploit.yml",
+              "author": "Nasreddine Bencherchali (Nextron Systems), Michael Haag (STRT)",
+              "status": "test",
+              "level": "medium",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'CVE-2023-4966 Potential Exploitation Attempt - Citrix ADC Sensitive Information Disclosure - Webserver'(87c83d8e-5390-44ce-aa4a-d3b37e54d0a0) · 작성 Nasreddine Bencherchali (Nextron Systems), Michael Haag (STRT) · test/medium · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-exploit-cve-2024-1212",
+            "pattern": "^.*/access/set.*$",
+            "all_patterns": [
+              "^.*param=enableapi.*$",
+              "^.*value=1.*$",
+              "^.*(Basic Jz|Basic c7|Basic nO|Basic ';).*$"
+            ],
+            "methods": [
+              "GET"
+            ],
+            "product": "CVE-2024-1212 Exploitation - Progress Kemp LoadMaster Unauthenticated Command Injection",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2024-1212"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "eafb8bd5-7605-4bfe-a9ec-0442bc151f15",
+              "title": "CVE-2024-1212 Exploitation - Progress Kemp LoadMaster Unauthenticated Command Injection",
+              "path": "rules-emerging-threats/2024/Exploits/CVE-2024-1212/web_exploit_cve_2024_1212_.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2024/Exploits/CVE-2024-1212/web_exploit_cve_2024_1212_.yml",
+              "author": "Nasreddine Bencherchali (Nextron Systems)",
+              "status": "test",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).",
+                "원본 필드 cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'CVE-2024-1212 Exploitation - Progress Kemp LoadMaster Unauthenticated Command Injection'(eafb8bd5-7605-4bfe-a9ec-0442bc151f15) · 작성 Nasreddine Bencherchali (Nextron Systems) · test/high · DRL 1.1 로 배포된 것을 변환했다. keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐)."
+          },
+          {
+            "id": "sg-exploit-cve-2024-1709-screenconnect",
+            "pattern": "^.*/SetupWizard\\.aspx/.*$",
+            "product": "CVE-2024-1709 - ScreenConnect Authentication Bypass Exploitation",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2024-1709"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "d27eabad-9068-401a-b0d6-9eac744d6e67",
+              "title": "CVE-2024-1709 - ScreenConnect Authentication Bypass Exploitation",
+              "path": "rules-emerging-threats/2024/Exploits/CVE-2024-1709/web_exploit_cve_2024_1709_screenconnect.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2024/Exploits/CVE-2024-1709/web_exploit_cve_2024_1709_screenconnect.yml",
+              "author": "Matt Anderson, Huntress",
+              "status": "test",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'CVE-2024-1709 - ScreenConnect Authentication Bypass Exploitation'(d27eabad-9068-401a-b0d6-9eac744d6e67) · 작성 Matt Anderson, Huntress · test/critical · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-lnx-exploit-cve-2025-31324-sap-1",
+            "pattern": "^.*/irj/.*$",
+            "all_patterns": [
+              "^.*\\.jsp.*$",
+              "^((cmd=|command=|exec_cmd=|exec=)|[^?]*\\?(cmd=|command=|exec_cmd=|exec=)).*$"
+            ],
+            "product": "Potential SAP NetViewer Webshell Command Execution",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2025-31324"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "94e12f41-6cb3-45c5-97b1-c783a7bf2e72",
+              "title": "Potential SAP NetViewer Webshell Command Execution",
+              "path": "rules-emerging-threats/2025/Exploits/CVE-2025-31324/web_lnx_exploit_cve_2025_31324_sap_netviewer_webshell.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2025/Exploits/CVE-2025-31324/web_lnx_exploit_cve_2025_31324_sap_netviewer_webshell.yml",
+              "author": "Swachchhanda Shrawan Poudel (Nextron Systems)",
+              "status": "experimental",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 condition 'all of selection_*' 을 논리합 표준형으로 편 갈래 3개 가운데 1번째다.",
+                "원본 필드 cs-uri-query · cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Potential SAP NetViewer Webshell Command Execution'(94e12f41-6cb3-45c5-97b1-c783a7bf2e72) · 작성 Swachchhanda Shrawan Poudel (Nextron Systems) · experimental/high · DRL 1.1 로 배포된 것을 변환했다. 원본 condition 'all of selection_*' 을 논리합 표준형으로 편 갈래 3개 가운데 1번째다."
+          },
+          {
+            "id": "sg-lnx-exploit-cve-2025-31324-sap-2",
+            "pattern": "^.*/irj/.*$",
+            "all_patterns": [
+              "^.*\\.jsp.*$",
+              "^.*(/dev/tcp|/etc/passwd|%2fdev%2ftcp|%2fetc%2fpasswd|=uname|=whoami|ifconfig|ping|pwd).*$"
+            ],
+            "product": "Potential SAP NetViewer Webshell Command Execution",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2025-31324"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "94e12f41-6cb3-45c5-97b1-c783a7bf2e72",
+              "title": "Potential SAP NetViewer Webshell Command Execution",
+              "path": "rules-emerging-threats/2025/Exploits/CVE-2025-31324/web_lnx_exploit_cve_2025_31324_sap_netviewer_webshell.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2025/Exploits/CVE-2025-31324/web_lnx_exploit_cve_2025_31324_sap_netviewer_webshell.yml",
+              "author": "Swachchhanda Shrawan Poudel (Nextron Systems)",
+              "status": "experimental",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 condition 'all of selection_*' 을 논리합 표준형으로 편 갈래 3개 가운데 2번째다.",
+                "원본 필드 cs-uri-query · cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Potential SAP NetViewer Webshell Command Execution'(94e12f41-6cb3-45c5-97b1-c783a7bf2e72) · 작성 Swachchhanda Shrawan Poudel (Nextron Systems) · experimental/high · DRL 1.1 로 배포된 것을 변환했다. 원본 condition 'all of selection_*' 을 논리합 표준형으로 편 갈래 3개 가운데 2번째다."
+          },
+          {
+            "id": "sg-lnx-exploit-cve-2025-31324-sap-3",
+            "pattern": "^.*/irj/.*$",
+            "all_patterns": [
+              "^.*\\.jsp.*$",
+              "^.*echo.*$",
+              "^.*base64.*$"
+            ],
+            "product": "Potential SAP NetViewer Webshell Command Execution",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2025-31324"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "94e12f41-6cb3-45c5-97b1-c783a7bf2e72",
+              "title": "Potential SAP NetViewer Webshell Command Execution",
+              "path": "rules-emerging-threats/2025/Exploits/CVE-2025-31324/web_lnx_exploit_cve_2025_31324_sap_netviewer_webshell.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2025/Exploits/CVE-2025-31324/web_lnx_exploit_cve_2025_31324_sap_netviewer_webshell.yml",
+              "author": "Swachchhanda Shrawan Poudel (Nextron Systems)",
+              "status": "experimental",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 condition 'all of selection_*' 을 논리합 표준형으로 편 갈래 3개 가운데 3번째다.",
+                "원본 필드 cs-uri-query · cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Potential SAP NetViewer Webshell Command Execution'(94e12f41-6cb3-45c5-97b1-c783a7bf2e72) · 작성 Swachchhanda Shrawan Poudel (Nextron Systems) · experimental/high · DRL 1.1 로 배포된 것을 변환했다. 원본 condition 'all of selection_*' 을 논리합 표준형으로 편 갈래 3개 가운데 3번째다."
+          },
+          {
+            "id": "sg-invanti-epmm-cve-2025-4427-and-cve-1",
+            "pattern": "^.*/mifs/rs/api/v2/featureusage.*$",
+            "all_patterns": [
+              "^.*format=.*$",
+              "^.*java\\.lang\\.Runtime.*$",
+              "^.*\\.getMethod.*$",
+              "^.*getRuntime.*$",
+              "^.*\\.exec\\(.*$"
+            ],
+            "product": "Potential Exploitation of CVE-2025-4427/4428 Ivanti EPMM Pre-Auth RCE",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2025-4427",
+              "CVE-2025-4428"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "41956f7c-7a6b-46d6-b6bb-da6eb2e83fbe",
+              "title": "Potential Exploitation of CVE-2025-4427/4428 Ivanti EPMM Pre-Auth RCE",
+              "path": "rules-emerging-threats/2025/Exploits/CVE-2025-4427/web_invanti_epmm_cve_2025_4427_and_cve_2025_4428.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2025/Exploits/CVE-2025-4427/web_invanti_epmm_cve_2025_4427_and_cve_2025_4428.yml",
+              "author": "Swachchhanda Shrawan Poudel (Nextron Systems)",
+              "status": "experimental",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 condition 'selection_uri and 1 of selection_exploit_*' 을 논리합 표준형으로 편 갈래 4개 가운데 1번째다.",
+                "원본 필드 cs-uri-query · cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Potential Exploitation of CVE-2025-4427/4428 Ivanti EPMM Pre-Auth RCE'(41956f7c-7a6b-46d6-b6bb-da6eb2e83fbe) · 작성 Swachchhanda Shrawan Poudel (Nextron Systems) · experimental/high · DRL 1.1 로 배포된 것을 변환했다. 원본 condition 'selection_uri and 1 of selection_exploit_*' 을 논리합 표준형으로 편 갈래 4개 가운데 1번째다."
+          },
+          {
+            "id": "sg-invanti-epmm-cve-2025-4427-and-cve-2",
+            "pattern": "^.*/mifs/rs/api/v2/featureusage.*$",
+            "all_patterns": [
+              "^.*format=.*$",
+              "^.*java%2elang%2eRuntime.*$",
+              "^.*%2egetMethod.*$",
+              "^.*%2eexec%28.*$"
+            ],
+            "product": "Potential Exploitation of CVE-2025-4427/4428 Ivanti EPMM Pre-Auth RCE",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2025-4427",
+              "CVE-2025-4428"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "41956f7c-7a6b-46d6-b6bb-da6eb2e83fbe",
+              "title": "Potential Exploitation of CVE-2025-4427/4428 Ivanti EPMM Pre-Auth RCE",
+              "path": "rules-emerging-threats/2025/Exploits/CVE-2025-4427/web_invanti_epmm_cve_2025_4427_and_cve_2025_4428.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2025/Exploits/CVE-2025-4427/web_invanti_epmm_cve_2025_4427_and_cve_2025_4428.yml",
+              "author": "Swachchhanda Shrawan Poudel (Nextron Systems)",
+              "status": "experimental",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 condition 'selection_uri and 1 of selection_exploit_*' 을 논리합 표준형으로 편 갈래 4개 가운데 2번째다.",
+                "원본 필드 cs-uri-query · cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Potential Exploitation of CVE-2025-4427/4428 Ivanti EPMM Pre-Auth RCE'(41956f7c-7a6b-46d6-b6bb-da6eb2e83fbe) · 작성 Swachchhanda Shrawan Poudel (Nextron Systems) · experimental/high · DRL 1.1 로 배포된 것을 변환했다. 원본 condition 'selection_uri and 1 of selection_exploit_*' 을 논리합 표준형으로 편 갈래 4개 가운데 2번째다."
+          },
+          {
+            "id": "sg-invanti-epmm-cve-2025-4427-and-cve-3",
+            "pattern": "^.*/mifs/rs/api/v2/featureusage.*$",
+            "all_patterns": [
+              "^.*format=.*$",
+              "^.*(%6a%61%76%61%2e%6c%61%6e%67%2e%52%75%6e%74%69%6d%65%65%28%29|%67%65%74%52%75%6e%74%69%6d%65|%2e%65%78%65%63%28).*$"
+            ],
+            "product": "Potential Exploitation of CVE-2025-4427/4428 Ivanti EPMM Pre-Auth RCE",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2025-4427",
+              "CVE-2025-4428"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "41956f7c-7a6b-46d6-b6bb-da6eb2e83fbe",
+              "title": "Potential Exploitation of CVE-2025-4427/4428 Ivanti EPMM Pre-Auth RCE",
+              "path": "rules-emerging-threats/2025/Exploits/CVE-2025-4427/web_invanti_epmm_cve_2025_4427_and_cve_2025_4428.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2025/Exploits/CVE-2025-4427/web_invanti_epmm_cve_2025_4427_and_cve_2025_4428.yml",
+              "author": "Swachchhanda Shrawan Poudel (Nextron Systems)",
+              "status": "experimental",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 condition 'selection_uri and 1 of selection_exploit_*' 을 논리합 표준형으로 편 갈래 4개 가운데 3번째다.",
+                "원본 필드 cs-uri-query · cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Potential Exploitation of CVE-2025-4427/4428 Ivanti EPMM Pre-Auth RCE'(41956f7c-7a6b-46d6-b6bb-da6eb2e83fbe) · 작성 Swachchhanda Shrawan Poudel (Nextron Systems) · experimental/high · DRL 1.1 로 배포된 것을 변환했다. 원본 condition 'selection_uri and 1 of selection_exploit_*' 을 논리합 표준형으로 편 갈래 4개 가운데 3번째다."
+          },
+          {
+            "id": "sg-invanti-epmm-cve-2025-4427-and-cve-4",
+            "pattern": "^.*/mifs/rs/api/v2/featureusage.*$",
+            "all_patterns": [
+              "^.*format=.*$",
+              "^.*(\\{7.*7\\}|%7B7.*7%7D|%7b7%2a7%7d).*$"
+            ],
+            "product": "Potential Exploitation of CVE-2025-4427/4428 Ivanti EPMM Pre-Auth RCE",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2025-4427",
+              "CVE-2025-4428"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "41956f7c-7a6b-46d6-b6bb-da6eb2e83fbe",
+              "title": "Potential Exploitation of CVE-2025-4427/4428 Ivanti EPMM Pre-Auth RCE",
+              "path": "rules-emerging-threats/2025/Exploits/CVE-2025-4427/web_invanti_epmm_cve_2025_4427_and_cve_2025_4428.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2025/Exploits/CVE-2025-4427/web_invanti_epmm_cve_2025_4427_and_cve_2025_4428.yml",
+              "author": "Swachchhanda Shrawan Poudel (Nextron Systems)",
+              "status": "experimental",
+              "level": "high",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 condition 'selection_uri and 1 of selection_exploit_*' 을 논리합 표준형으로 편 갈래 4개 가운데 4번째다.",
+                "원본 필드 cs-uri-query · cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'Potential Exploitation of CVE-2025-4427/4428 Ivanti EPMM Pre-Auth RCE'(41956f7c-7a6b-46d6-b6bb-da6eb2e83fbe) · 작성 Swachchhanda Shrawan Poudel (Nextron Systems) · experimental/high · DRL 1.1 로 배포된 것을 변환했다. 원본 condition 'selection_uri and 1 of selection_exploit_*' 을 논리합 표준형으로 편 갈래 4개 가운데 4번째다."
+          },
+          {
+            "id": "sg-exploit-cve-2026-63030-batch-rest",
+            "pattern": "^.*(rest_route=/batch/v1|rest_route=%2Fbatch%2Fv1).*$",
+            "methods": [
+              "POST"
+            ],
+            "statuses": [
+              207
+            ],
+            "product": "WordPress Wp2shell REST Batch Endpoint Exploitation",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2026-63030",
+              "CVE-2026-60137"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "b8d5f301-2c49-4e6d-af83-4a5b6c7d8e9f",
+              "title": "WordPress Wp2shell REST Batch Endpoint Exploitation",
+              "path": "rules-emerging-threats/2026/Exploits/CVE-2026-63030/web_exploit_cve_2026_63030_batch_rest_route_abuse.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2026/Exploits/CVE-2026-63030/web_exploit_cve_2026_63030_batch_rest_route_abuse.yml",
+              "author": "Swachchhanda Shrawan Poudel (Nextron Systems)",
+              "status": "experimental",
+              "level": "medium",
+              "license": "DRL-1.1",
+              "notes": [
+                "원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'WordPress Wp2shell REST Batch Endpoint Exploitation'(b8d5f301-2c49-4e6d-af83-4a5b6c7d8e9f) · 작성 Swachchhanda Shrawan Poudel (Nextron Systems) · experimental/medium · DRL 1.1 로 배포된 것을 변환했다. 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+          },
+          {
+            "id": "sg-exploit-cve-2026-63030-webshell",
+            "pattern": "^.*/wp-content/plugins/wp2shell_.*$",
+            "product": "WordPress Wp2shell Webshell Plugin Access",
+            "vendor": "Sigma",
+            "cves": [
+              "CVE-2026-63030",
+              "CVE-2026-60137"
+            ],
+            "mapping": "sigma",
+            "sigma": {
+              "id": "c9e6f412-3d50-4f7e-bf94-5b6c7d8e9f0a",
+              "title": "WordPress Wp2shell Webshell Plugin Access",
+              "path": "rules-emerging-threats/2026/Exploits/CVE-2026-63030/web_exploit_cve_2026_63030_webshell_plugin_access.yml",
+              "commit": "07ec293a51695cb1131a2e05260247872b31e1e1",
+              "url": "https://github.com/SigmaHQ/sigma/blob/07ec293a51695cb1131a2e05260247872b31e1e1/rules-emerging-threats/2026/Exploits/CVE-2026-63030/web_exploit_cve_2026_63030_webshell_plugin_access.yml",
+              "author": "Swachchhanda Shrawan Poudel (Nextron Systems)",
+              "status": "experimental",
+              "level": "critical",
+              "license": "DRL-1.1",
+              "notes": [
+                "필터 조건 cs-uri-query(값 없음(null) 조건)을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐).",
+                "원본 필드 cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐)."
+              ]
+            },
+            "source": "SigmaHQ 규칙 'WordPress Wp2shell Webshell Plugin Access'(c9e6f412-3d50-4f7e-bf94-5b6c7d8e9f0a) · 작성 Swachchhanda Shrawan Poudel (Nextron Systems) · experimental/critical · DRL 1.1 로 배포된 것을 변환했다. 필터 조건 cs-uri-query(값 없음(null) 조건)을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐)."
+          }
+        ]
+      },
+      "rationale": "실험용. 선정 없이 변환되는 webserver 규칙 전부다. 리플레이에서 요청 단위 매치만 센다."
+    }
+  ]
+}

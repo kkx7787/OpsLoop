@@ -1,0 +1,831 @@
+{
+  "date": "2026-09-27",
+  "timezone": "Asia/Seoul",
+  "scope": "DB 인스턴스 손실 복원 훈련 (이슈 #45). data01 호스트와 원장(S3 · Loki · 관문 · 관리 원장)은 유지. 훈련 DB 는 data01 의 별도 컨테이너(opsloop-drill-db · 127.0.0.1:5433 · cluster_name=opsloop-drill), 운영 DB 는 읽기만 했다. RTO 는 장애 선언 표시(T0)부터 재생성 대조 · 무결성 통과(S9)까지 Mac 시계로, 조회 · 판정 재개(S7)는 중간 지표다. 실제 장애를 주입하지 않아 탐지에 걸리는 시간은 빠진다. RPO 는 DB 시계(Archive created · now())로만 계산했다. T_b 이전 행은 덤프에서 온 것이라 재생성 대조는 [T_b−1시간, T_r−30분) 의 provenance='real' 행만 본다. 시각 문자열은 UTC ISO.",
+  "provenance": {
+    "git_head": "8b8a306a87ce4d47c5782fd2337589a3323cf66a",
+    "worktree_note": "도구 파일에 커밋 안 된 변경이 있다: infra/vmware/restore-drill/drill.py",
+    "source_sha256": {
+      "infra/vmware/restore-drill/drill.py": "b3287e6ec7420ac004a6973d07d27cb30ffa4769f01af8f57d29b64f59f47d8e",
+      "infra/vmware/restore-drill/queries.py": "bd4c83205ea825beef814eafebde9222c80f1b198416ebf407279a607a2338de",
+      "infra/vmware/failover/mark.py": "d780181c2b3dbdf434cd63f3c38be5b9676e09501e1d3d1e572778939a0f6e1a",
+      "infra/vmware/failover/common.py": "dc884949d3734ae863b661bc64d914ec502ed5c73a58e326e53ccf38d7704a8f",
+      "infra/vmware/scripts/verify-db-roles.sh": "8069a82e61b7dcebdf26c760ec2dffd9f068c6a817a9b1602220a0fe7ae1045f",
+      "infra/vmware/scripts/backup-db.sh": "5cd6ba381e71f246d480c7007c979f0fcebd90578c83a8cdf915fea046db88e1"
+    }
+  },
+  "criteria": {
+    "rto_max_s": 7200,
+    "rpo_target_s": 43200,
+    "rto_start": "T0 장애 선언",
+    "rto_end": "S9 재생성 대조 · 무결성 통과",
+    "service_resume": "S7 조회 · 판정 재개 (중간 지표)",
+    "rpo_pass": "설계 RPO(T_f − T_b) ≤ 목표 · 재생성 대조 일치. 보관 덤프 간격 최댓값(실측 최악)은 rpo.backup_gap_ok 로 따로 적는다",
+    "integrity_zero": [
+      "verdict_orphan",
+      "action_orphan",
+      "block_orphan",
+      "incident_rule_version",
+      "run_rule_version",
+      "absorbed_links",
+      "absorbed_rule_version",
+      "absorbed_block_orphan",
+      "notify_subject",
+      "notify_channel_orphan",
+      "block_action_without_row",
+      "revoked_not_applied",
+      "enrollment_orphan",
+      "cti_kev",
+      "cti_osv",
+      "cti_cve",
+      "asset_snapshot",
+      "fk_unvalidated",
+      "triggers_disabled"
+    ],
+    "structure_reference": {
+      "tables": 23,
+      "fk": 15,
+      "triggers": 4,
+      "functions": 7,
+      "views": 3
+    }
+  },
+  "runs": [
+    {
+      "run": "r01",
+      "backup": {
+        "archive_created_utc": "2026-09-26T15:08:35+00:00",
+        "archive_version": "1.15.0",
+        "bytes": 8022127,
+        "dbname": "opsloop",
+        "file": "opsloop-20260926-1508.dump",
+        "globals_file": "opsloop-20260926-1508.globals.sql",
+        "globals_sha256": "a99db786f3dfa70daf8e435b698ef1f5f8de78342cf544a7a6f9494fc757af35",
+        "pg_dump_version": "16.15",
+        "server_version": "16.15",
+        "sha256": "a6bc3d1ef8c3f186a4df90239176fb672434330f1df10f1c4dfdb36fdeea90a3",
+        "gaps": {
+          "between": [
+            "2026-09-21T19:26:51+00:00",
+            "2026-09-22T07:30:06+00:00"
+          ],
+          "count": 14,
+          "first": "2026-09-21T15:25:19+00:00",
+          "last": "2026-09-26T15:08:35+00:00",
+          "max_gap_s": 43395.0
+        },
+        "log": "백업 8.4M /Users/hanseongmin/opsloop-backup/opsloop-20260926-1508.dump · 표 23 개 · 역할 7 개 opsloop-20260926-1508.globals.sql",
+        "bracket": {
+          "drill_runs_max": "2026-09-26T15:08:34.803241+00:00",
+          "lower_ok": true,
+          "prod_next_run": "2026-09-26T15:09:36.313679+00:00",
+          "t_b": "2026-09-26T15:08:35+00:00"
+        }
+      },
+      "clock": {
+        "precheck": {
+          "data01_offset_s": 0.000105387,
+          "fw_offset_s": -0.000524194
+        },
+        "t0": {
+          "data01": -9.01e-07,
+          "fw": -0.000523273
+        },
+        "end": {
+          "data01": -2.082e-05,
+          "fw": -0.000485746
+        },
+        "marks_offset_ms": {
+          "S1": 133.85,
+          "S2": 127.897,
+          "S3": 121.331,
+          "S4": 125.146,
+          "S5": 140.146,
+          "S6": 176.147,
+          "S7": 137.716,
+          "S8": 137.729,
+          "S9": 148.176
+        }
+      },
+      "rto": {
+        "t0": "2026-09-26T17:29:52.332870+00:00",
+        "t0_remote": "2026-09-26T17:29:52.331661+00:00",
+        "steps": {
+          "S1": {
+            "at": "2026-09-26T17:29:53.482556+00:00",
+            "since_t0_s": 1.15,
+            "at_remote": "2026-09-26T17:29:53.482139+00:00",
+            "offset_ms": 133.85,
+            "note": "rto:S1 백업 선택 opsloop-20260926-1508.dump sha256:a6bc3d1ef8c3"
+          },
+          "S2": {
+            "at": "2026-09-26T17:29:56.651811+00:00",
+            "since_t0_s": 4.319,
+            "at_remote": "2026-09-26T17:29:56.649604+00:00",
+            "offset_ms": 127.897,
+            "note": "rto:S2 훈련 DB 준비 · opsloop-drill-db 127.0.0.1:5433"
+          },
+          "S3": {
+            "at": "2026-09-26T17:30:03.288694+00:00",
+            "since_t0_s": 10.956,
+            "at_remote": "2026-09-26T17:30:03.288387+00:00",
+            "offset_ms": 121.331,
+            "note": "rto:S3 역할 7 · 로그인 역할 비밀번호 6 (훈련 전용)"
+          },
+          "S4": {
+            "at": "2026-09-26T17:30:06.378143+00:00",
+            "since_t0_s": 14.045,
+            "at_remote": "2026-09-26T17:30:06.377303+00:00",
+            "offset_ms": 125.146,
+            "note": "rto:S4 pg_restore rc 0 · 표 23 · 이벤트 98070"
+          },
+          "S5": {
+            "at": "2026-09-26T17:30:16.192164+00:00",
+            "since_t0_s": 23.859,
+            "at_remote": "2026-09-26T17:30:16.190251+00:00",
+            "offset_ms": 140.146,
+            "note": "rto:S5 무결성 19 · 역할 67줄 · 알림 끔"
+          },
+          "S6": {
+            "at": "2026-09-26T17:30:34.383229+00:00",
+            "since_t0_s": 42.05,
+            "at_remote": "2026-09-26T17:30:34.381786+00:00",
+            "offset_ms": 176.147,
+            "note": "rto:S6 콘솔 기동 · http://127.0.0.1:18000/health 200 · 이미지 sha256:2266e573a9ae"
+          },
+          "S7": {
+            "at": "2026-09-26T17:34:02.308868+00:00",
+            "since_t0_s": 249.976,
+            "at_remote": "2026-09-26T17:34:02.309407+00:00",
+            "offset_ms": 137.716,
+            "note": "rto:S7 판정 반영 · 서비스 재개 · 판정 1건 · R003|v3|4.4.66.84|2026-09-04T16:50:24.170898+00:00"
+          },
+          "S8": {
+            "at": "2026-09-26T17:35:22.135451+00:00",
+            "since_t0_s": 329.803,
+            "at_remote": "2026-09-26T17:35:22.136745+00:00",
+            "offset_ms": 137.729,
+            "note": "rto:S8 재적재 · 탐지 끝 (훈련 HOME · 훈련 env)"
+          },
+          "S9": {
+            "at": "2026-09-26T17:35:45.307866+00:00",
+            "since_t0_s": 352.975,
+            "at_remote": "2026-09-26T17:35:45.308379+00:00",
+            "offset_ms": 148.176,
+            "note": "rto:S9 재생성 대조 · 무결성 통과 = 복구 완료"
+          }
+        },
+        "service_s": 249.976,
+        "complete_s": 352.975,
+        "max_s": 7200,
+        "pass": true,
+        "order_ok": true,
+        "missing": []
+      },
+      "rpo": {
+        "backup_gap_max_s": 43395.0,
+        "backup_gap_ok": false,
+        "design_s": 8477.671,
+        "lines": {
+          "db_only": {
+            "after_tf_rows": {
+              "actions": 0,
+              "audit": 0,
+              "blocklist": 0,
+              "console_logins": 0,
+              "console_users": 0,
+              "node_enrollments": 0,
+              "nodes": 0,
+              "notify_channels": 0,
+              "notify_deliveries": 0,
+              "verdicts": 0
+            },
+            "design_s": 8477.671,
+            "lost_rows": {
+              "actions": 0,
+              "audit": 0,
+              "blocklist": 0,
+              "console_logins": 0,
+              "console_users": 0,
+              "node_enrollments": 0,
+              "nodes": 0,
+              "notify_channels": 0,
+              "notify_deliveries": 0,
+              "verdicts": 0
+            },
+            "verdict_loss_s": 0.0
+          },
+          "monitored_logs": {
+            "loss_rows": 0,
+            "match": true,
+            "sensors": []
+          },
+          "s3_sensor": {
+            "loss_rows": 0,
+            "match": true,
+            "sensors": [
+              "cowrie",
+              "gateway"
+            ]
+          }
+        },
+        "pass": true,
+        "t_b": "2026-09-26T15:08:35+00:00",
+        "t_f": "2026-09-26T17:29:52.671381+00:00",
+        "target_s": 43200
+      },
+      "restore": {
+        "rc": 0,
+        "toc_counts": {
+          "ACL": 64,
+          "CONSTRAINT": 26,
+          "DEFAULT": 7,
+          "FK CONSTRAINT": 15,
+          "FUNCTION": 7,
+          "INDEX": 31,
+          "SEQUENCE": 7,
+          "SEQUENCE OWNED BY": 7,
+          "SEQUENCE SET": 7,
+          "TABLE": 23,
+          "TABLE DATA": 23,
+          "TRIGGER": 4,
+          "VIEW": 3
+        },
+        "archive_created_toc": {
+          "at": "2026-09-26 15:08:35",
+          "tz": "UTC"
+        },
+        "counts": {
+          "absorbed_blocks": 0,
+          "actions": 32,
+          "asset_inventory": 7,
+          "asset_vulnerabilities": 28520,
+          "blocklist": 13,
+          "console_users": 1,
+          "cti_cve": 6235,
+          "cti_kev": 1723,
+          "cti_osv": 5139,
+          "cti_snapshots": 21,
+          "cti_watch": 7,
+          "detector_runs": 19279,
+          "events": 98070,
+          "incident_absorbed": 392,
+          "incidents": 1027,
+          "node_enrollments": 3,
+          "node_metrics": 4967,
+          "nodes": 3,
+          "notify_channels": 1,
+          "notify_deliveries": 17,
+          "rule_versions": 11,
+          "sessions": 4388,
+          "verdicts": 888
+        },
+        "catalog": {
+          "extensions": "plpgsql",
+          "fk": "15",
+          "functions": "audit_append_only,audit_blocklist,audit_event,enroll_node,incidents_keep_judged,node_first_receipt,notify_incident",
+          "sequences": "7",
+          "tables": "23",
+          "triggers": "trg_audit_append_only=O,trg_audit_blocklist=O,trg_incidents_keep_judged=O,trg_notify_incident=O",
+          "views": "audit_log,rule_quality,unjudged_incidents"
+        }
+      },
+      "roles": {
+        "specs": [
+          [
+            "opsloop_backup",
+            "backup"
+          ],
+          [
+            "opsloop_console",
+            "console"
+          ],
+          [
+            "opsloop_cti",
+            "cti"
+          ],
+          [
+            "opsloop_detector",
+            "detector"
+          ],
+          [
+            "opsloop_gate",
+            "gate"
+          ],
+          [
+            "opsloop_ingest",
+            "ingest"
+          ]
+        ],
+        "members": [
+          "pg_read_all_data>opsloop_backup"
+        ],
+        "allow_deny": {
+          "failed": [],
+          "total": 67
+        }
+      },
+      "integrity": {
+        "zero_after_restore": {
+          "absorbed_block_orphan": 0,
+          "absorbed_links": 0,
+          "absorbed_rule_version": 0,
+          "action_orphan": 0,
+          "asset_snapshot": 0,
+          "block_action_without_row": 0,
+          "block_orphan": 0,
+          "cti_cve": 0,
+          "cti_kev": 0,
+          "cti_osv": 0,
+          "enrollment_orphan": 0,
+          "fk_unvalidated": 0,
+          "incident_rule_version": 0,
+          "notify_channel_orphan": 0,
+          "notify_subject": 0,
+          "revoked_not_applied": 0,
+          "run_rule_version": 0,
+          "triggers_disabled": 0,
+          "verdict_orphan": 0
+        },
+        "zero_after_regen": {
+          "absorbed_block_orphan": 0,
+          "absorbed_links": 0,
+          "absorbed_rule_version": 0,
+          "action_orphan": 0,
+          "asset_snapshot": 0,
+          "block_action_without_row": 0,
+          "block_orphan": 0,
+          "cti_cve": 0,
+          "cti_kev": 0,
+          "cti_osv": 0,
+          "enrollment_orphan": 0,
+          "fk_unvalidated": 0,
+          "incident_rule_version": 0,
+          "notify_channel_orphan": 0,
+          "notify_subject": 0,
+          "revoked_not_applied": 0,
+          "run_rule_version": 0,
+          "triggers_disabled": 0,
+          "verdict_orphan": 0
+        },
+        "baseline_drill": {
+          "judged_not_resolved": 15,
+          "released_audit": 2,
+          "released_blocks": 0,
+          "verdict_operator_missing": 810
+        },
+        "baseline_prod_precheck": {
+          "judged_not_resolved": 15,
+          "released_audit": 2,
+          "released_blocks": 0,
+          "verdict_operator_missing": 810
+        },
+        "baseline_prod_end": {
+          "judged_not_resolved": 15,
+          "released_audit": 2,
+          "released_blocks": 0,
+          "verdict_operator_missing": 810
+        },
+        "catalog": {
+          "extensions": "plpgsql",
+          "fk": "15",
+          "functions": "audit_append_only,audit_blocklist,audit_event,enroll_node,incidents_keep_judged,node_first_receipt,notify_incident",
+          "sequences": "7",
+          "tables": "23",
+          "triggers": "trg_audit_append_only=O,trg_audit_blocklist=O,trg_incidents_keep_judged=O,trg_notify_incident=O",
+          "views": "audit_log,rule_quality,unjudged_incidents"
+        },
+        "sequences": [
+          "actions_id_seq|36|32",
+          "cti_snapshots_id_seq|21|21",
+          "detector_runs_id_seq|19310|19310",
+          "node_enrollments_id_seq|3|3",
+          "notify_channels_id_seq|1|1",
+          "notify_deliveries_id_seq|28288|27452",
+          "verdicts_id_seq|894|894"
+        ],
+        "notify_off": [
+          "0",
+          "0",
+          "1"
+        ],
+        "fingerprints": {
+          "actions": {
+            "drill_rows": 32,
+            "prod_rows": 32,
+            "same": 32,
+            "changed": 0,
+            "drill_only": 0,
+            "prod_only": 0,
+            "until_tf": 0,
+            "after_tf": 0,
+            "immutable": true,
+            "ok": true
+          },
+          "audit": {
+            "drill_rows": 35,
+            "prod_rows": 35,
+            "same": 35,
+            "changed": 0,
+            "drill_only": 0,
+            "prod_only": 0,
+            "until_tf": 0,
+            "after_tf": 0,
+            "immutable": true,
+            "ok": true
+          },
+          "blocklist": {
+            "drill_rows": 13,
+            "prod_rows": 13,
+            "same": 13,
+            "changed": 0,
+            "drill_only": 0,
+            "prod_only": 0,
+            "until_tf": 0,
+            "after_tf": 0,
+            "immutable": false,
+            "ok": true
+          },
+          "console_users": {
+            "drill_rows": 1,
+            "prod_rows": 1,
+            "same": 1,
+            "changed": 0,
+            "drill_only": 0,
+            "prod_only": 0,
+            "until_tf": 0,
+            "after_tf": 0,
+            "immutable": false,
+            "ok": true
+          },
+          "node_enrollments": {
+            "drill_rows": 3,
+            "prod_rows": 3,
+            "same": 3,
+            "changed": 0,
+            "drill_only": 0,
+            "prod_only": 0,
+            "until_tf": 0,
+            "after_tf": 0,
+            "immutable": false,
+            "ok": true
+          },
+          "nodes": {
+            "drill_rows": 3,
+            "prod_rows": 3,
+            "same": 3,
+            "changed": 0,
+            "drill_only": 0,
+            "prod_only": 0,
+            "until_tf": 0,
+            "after_tf": 0,
+            "immutable": false,
+            "ok": true
+          },
+          "notify_channels": {
+            "drill_rows": 1,
+            "prod_rows": 1,
+            "same": 1,
+            "changed": 0,
+            "drill_only": 0,
+            "prod_only": 0,
+            "until_tf": 0,
+            "after_tf": 0,
+            "immutable": false,
+            "ok": true
+          },
+          "notify_deliveries": {
+            "drill_rows": 17,
+            "prod_rows": 17,
+            "same": 17,
+            "changed": 0,
+            "drill_only": 0,
+            "prod_only": 0,
+            "until_tf": 0,
+            "after_tf": 0,
+            "immutable": false,
+            "ok": true
+          },
+          "verdicts": {
+            "drill_rows": 888,
+            "prod_rows": 888,
+            "same": 888,
+            "changed": 0,
+            "drill_only": 0,
+            "prod_only": 0,
+            "until_tf": 0,
+            "after_tf": 0,
+            "immutable": true,
+            "ok": true
+          }
+        }
+      },
+      "regen": {
+        "run": {
+          "counts": {
+            "detector_runs": 19285,
+            "events": 100601,
+            "incidents": 1027,
+            "node_metrics": 5114,
+            "sessions": 4393
+          },
+          "full": {
+            "elapsed_s": 70.33,
+            "max_rss_kb": 58120,
+            "rc": 0
+          },
+          "loki": {
+            "elapsed_s": 0.48,
+            "max_rss_kb": 31616,
+            "rc": 0
+          },
+          "mem_avail_mb": 1273,
+          "since": "2026-09-26T14:08:35Z"
+        },
+        "compare": {
+          "diffs": {},
+          "fixture_rows": {
+            "drill": 0,
+            "prod": 0
+          },
+          "incidents_ref": {
+            "drill": {
+              "count": 0,
+              "md5": "d41d8cd98f00b204e9800998ecf8427e"
+            },
+            "prod": {
+              "count": 0,
+              "md5": "d41d8cd98f00b204e9800998ecf8427e"
+            },
+            "same": true
+          },
+          "match": true,
+          "mirror_hosts": {
+            "drill": [
+              "sensor=cowrie/host=i-0f8f7c0f698ca941a",
+              "sensor=decoy/host=i-0f8f7c0f698ca941a",
+              "sensor=gateway/host=i-0ffeb29efad03546d"
+            ],
+            "prod": [
+              "sensor=cowrie/host=i-058726c1a0671fe1d",
+              "sensor=cowrie/host=i-0f8f7c0f698ca941a",
+              "sensor=decoy/host=i-058726c1a0671fe1d",
+              "sensor=decoy/host=i-0f8f7c0f698ca941a",
+              "sensor=gateway/host=i-0ffeb29efad03546d"
+            ],
+            "prod_only": [
+              "sensor=cowrie/host=i-058726c1a0671fe1d",
+              "sensor=decoy/host=i-058726c1a0671fe1d"
+            ]
+          },
+          "node_metrics": {
+            "drill": {
+              "web-01": {
+                "count": 177,
+                "md5": "5c13856aba2edb911b3539c487eae1a4"
+              }
+            },
+            "prod": {
+              "web-01": {
+                "count": 177,
+                "md5": "5c13856aba2edb911b3539c487eae1a4"
+              }
+            },
+            "same": true
+          },
+          "sensors": {
+            "cowrie": {
+              "drill": {
+                "count": 12,
+                "md5": "19bff4cdc883f3a85b782b1004776439"
+              },
+              "prod": {
+                "count": 12,
+                "md5": "19bff4cdc883f3a85b782b1004776439"
+              },
+              "same": true
+            },
+            "gateway": {
+              "drill": {
+                "count": 3000,
+                "md5": "4c30545b9b541d0620ad9b1d3689ca49"
+              },
+              "prod": {
+                "count": 3000,
+                "md5": "4c30545b9b541d0620ad9b1d3689ca49"
+              },
+              "same": true
+            }
+          },
+          "sessions": {
+            "drill": {
+              "count": 4,
+              "md5": "59eedb1ea595fa37e863c3e20540b648"
+            },
+            "prod": {
+              "count": 4,
+              "md5": "59eedb1ea595fa37e863c3e20540b648"
+            },
+            "same": true
+          },
+          "t_r": "2026-09-26T17:35:34+00:00",
+          "window": [
+            "2026-09-26T14:08:35+00:00",
+            "2026-09-26T17:05:34+00:00"
+          ],
+          "window_after_tb_s": 7019.0
+        }
+      },
+      "console": {
+        "image_id": "sha256:2266e573a9aef90e2849527903d1cf93038d00700bceae252c867e11cdb63e18",
+        "url": "http://127.0.0.1:18000",
+        "verdicts": [
+          "895|R003|v3|4.4.66.84|2026-09-04T16:50:24.170898+00:00|undetermined|restore-drill"
+        ],
+        "human_checked": false,
+        "checked_by": "사람 로그인 대신 Claude 가 훈련 콘솔 전용 서명 키로 발급한 restore-drill(operator) 세션으로 API 조회(목록 · 상세 · 차단 13건 · 감사)와 시험 판정 1건(id 895)을 했다. 복원된 계정의 비밀번호 로그인은 검증하지 않았다. 사용자가 이 방식으로 진행하라고 했다(2026-09-27)"
+      },
+      "cleanup": {
+        "checks": [
+          {
+            "ok": true,
+            "value": "/Users/hanseongmin/.config/opsloop/drill",
+            "warn": false,
+            "what": "Mac 비밀 폴더 지움"
+          },
+          {
+            "ok": true,
+            "value": "opsloop-drill-db · opsloop_drill_pgdata · /var/lib/opsloop-drill",
+            "warn": false,
+            "what": "훈련 컨테이너 · 볼륨 · 폴더 지움"
+          },
+          {
+            "ok": true,
+            "value": "true",
+            "warn": false,
+            "what": "운영 DB 컨테이너 돌고 있음"
+          },
+          {
+            "ok": true,
+            "value": "opsloop-ingest.service success Sun 2026-09-27 02:35:42 KST · opsloop-agents.service success Sun 2026-09-27 02:35:41 KST",
+            "warn": false,
+            "what": "운영 적재 · 다리 마지막 실행 성공"
+          },
+          {
+            "ok": true,
+            "value": "켜짐 1|1",
+            "warn": false,
+            "what": "운영 알림 채널 켜짐 · 주소 그대로"
+          },
+          {
+            "ok": true,
+            "value": "100423 → 100601",
+            "warn": false,
+            "what": "운영 events 가 계속 는다"
+          },
+          {
+            "ok": true,
+            "value": "2026-09-26T17:29:16.520526+00:00 → 2026-09-26T17:35:42.210293+00:00",
+            "warn": false,
+            "what": "운영 탐지 실행이 계속된다"
+          }
+        ],
+        "left": {
+          "left_container": "0",
+          "left_dir": "0",
+          "left_volume": "0"
+        },
+        "prod_now": {
+          "channels": "1|1",
+          "channels_sig": "f19b1e54113a7222a552a54e08570f02",
+          "cluster_name": "",
+          "events_max": "2026-09-26 17:31:34.386757+00|100601",
+          "fixture": "40",
+          "now": "2026-09-26 17:35:58.259233+00",
+          "read_only": "on",
+          "runs_max": "2026-09-26 17:35:42.210293+00",
+          "server_version": "16.15",
+          "verdicts_max": "2026-09-25 03:58:42.679969+00"
+        },
+        "prod_running": "true",
+        "units": {
+          "opsloop-agents.service": {
+            "ExecMainExitTimestamp": "Sun 2026-09-27 02:35:41 KST",
+            "ExecMainStatus": "0",
+            "Result": "success"
+          },
+          "opsloop-ingest.service": {
+            "ExecMainExitTimestamp": "Sun 2026-09-27 02:35:42 KST",
+            "ExecMainStatus": "0",
+            "Result": "success"
+          }
+        }
+      },
+      "records": [
+        {
+          "name": "precheck",
+          "start": "2026-09-26T17:29:43.139905+00:00",
+          "seconds": 2.557,
+          "rc": 0
+        },
+        {
+          "name": "t0",
+          "start": "2026-09-26T17:29:52.007426+00:00",
+          "seconds": 1.114,
+          "rc": 0
+        },
+        {
+          "name": "up",
+          "start": "2026-09-26T17:29:53.209982+00:00",
+          "seconds": 3.444,
+          "rc": 0
+        },
+        {
+          "name": "roles",
+          "start": "2026-09-26T17:30:01.259280+00:00",
+          "seconds": 2.031,
+          "rc": 0
+        },
+        {
+          "name": "restore",
+          "start": "2026-09-26T17:30:03.373229+00:00",
+          "seconds": 3.007,
+          "rc": 0
+        },
+        {
+          "name": "verify",
+          "start": "2026-09-26T17:30:10.766357+00:00",
+          "seconds": 5.431,
+          "rc": 0
+        },
+        {
+          "name": "console",
+          "start": "2026-09-26T17:30:24.593428+00:00",
+          "seconds": 9.794,
+          "rc": 0
+        },
+        {
+          "name": "console-confirm",
+          "start": "2026-09-26T17:31:28.424459+00:00",
+          "seconds": 0.672,
+          "rc": 1
+        },
+        {
+          "name": "console-confirm",
+          "start": "2026-09-26T17:34:01.381635+00:00",
+          "seconds": 0.932,
+          "rc": 0
+        },
+        {
+          "name": "regen",
+          "start": "2026-09-26T17:34:09.509239+00:00",
+          "seconds": 72.631,
+          "rc": 0
+        },
+        {
+          "name": "compare",
+          "start": "2026-09-26T17:35:32.706445+00:00",
+          "seconds": 2.989,
+          "rc": 0
+        },
+        {
+          "name": "done",
+          "start": "2026-09-26T17:35:43.339331+00:00",
+          "seconds": 1.975,
+          "rc": 0
+        },
+        {
+          "name": "cleanup",
+          "start": "2026-09-26T17:35:57.237276+00:00",
+          "seconds": 1.045,
+          "rc": 0
+        }
+      ],
+      "files": {
+        "marks.jsonl": "b88d986631a71a0723dc17cf749e90719138e990c4312b0cdd22ed88331a0450",
+        "records.jsonl": "eb06628629dd365563568a60ded4165a7a472372d174c23f1be34a5410bd94e9"
+      }
+    }
+  ],
+  "exceptions": [
+    "옛 허니팟 호스트(운영 미러에만 있는 host=, regen.compare.mirror_hosts.prod_only)는 /etc/default/opsloop-ingest 의 OPSLOOP_HOSTS 밖이라 빈 훈련 HOME 이 받지 않는다. T_b 전에 끝난 호스트면 대조 구간에 영향이 없다. 'S3 센서 RPO 0' 을 빈 DB 재구축(data01 전손)까지 넓히면 틀린다.",
+    "provenance='fixture' 행(원장에 없는 시험 행)은 재생성 대조에서 뺀다 (regen.compare.fixture_rows).",
+    "data01 전손(Loki · 관문 원장은 Mac 사본뿐, env · 비밀값 재발급)은 이번 범위 밖이다."
+  ],
+  "summary": {
+    "rto_s": 352.975,
+    "service_s": 249.976,
+    "rto_pass": true,
+    "rpo_design_s": 8477.671,
+    "rpo_pass": true,
+    "rpo_backup_gap_max_s": 43395.0,
+    "rpo_backup_gap_ok": false,
+    "regen_match": true,
+    "integrity_pass": true,
+    "cleanup_ok": true,
+    "missing_steps": []
+  },
+  "notes": [
+    "판정 반영 확인 단계에서 사건 키의 '|' 를 잘못 나누는 도구 결함이 드러나 고친 뒤 다시 돌렸다(RTO 에 약 3분 포함)"
+  ]
+}

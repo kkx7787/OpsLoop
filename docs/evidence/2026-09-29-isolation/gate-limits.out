@@ -1,0 +1,4 @@
+토큰 없음	401	{"result": "missing"}
+모르는 토큰	401	{"result": "unknown"}
+틀린 형식	415	{"result": "content_type"}
+크기 초과	413	{"result": "too_large"}

@@ -1,0 +1,10 @@
+r107_incidents | 0
+same_source_any_time | 0
+c1_incidents | R105 | 74.82.47.3 | 2026-09-20 12:30:44.531867+00 | 2026-09-20 12:30:44.531867+00 | 1 | ["geoserver"]
+c1_incidents | R105 | 172.237.27.147 | 2026-09-24 11:47:13.158986+00 | 2026-09-24 11:47:30.440374+00 | 12 | ["confluence", "dlink-hnap", "exchange-owa", "geoserver", "ivanti-connect-secure", "ivanti-vtm", "qnap-qts", "samsung-magicinfo"]
+c1_incidents | R105 | 45.79.123.76 | 2026-09-25 22:37:59.602358+00 | 2026-09-25 22:38:15.196855+00 | 12 | ["confluence", "dlink-hnap", "exchange-owa", "geoserver", "ivanti-connect-secure", "ivanti-vtm", "qnap-qts", "samsung-magicinfo"]
+runs | 29972 | c1 |  |  | 0
+runs | 29973 | sg1 |  |  | 0
+runs | 29974 | sg1 | 2026-09-28 08:30:00+00 | 2026-09-28 16:30:00+00 | 0
+runs | 29975 | c1 |  |  | 0
+rule_versions | a1,c1,i1,i2,n1,s1,sg1,v1,v2,v3,w1,w2

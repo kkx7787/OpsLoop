@@ -1,0 +1,1006 @@
+결과       서명    버린 갈래  원본
+----------------------------------------------------------------------------------------------------
+변환        1        0  rules/web/webserver_generic/web_f5_tm_utility_bash_api_request.yml
+변환        1        0  rules/web/webserver_generic/web_iis_tilt_shortname_scan.yml
+변환        1        0  rules/web/webserver_generic/web_java_payload_in_access_logs.yml
+변환        1        0  rules/web/webserver_generic/web_jndi_exploit.yml
+변환        1        0  rules/web/webserver_generic/web_path_traversal_exploitation_attempt.yml
+변환        1        0  rules/web/webserver_generic/web_source_code_enumeration.yml
+변환        1        0  rules/web/webserver_generic/web_sql_injection_in_access_logs.yml
+변환        1        0  rules/web/webserver_generic/web_ssti_in_access_logs.yml
+오류        0        1  rules/web/webserver_generic/web_susp_useragents.yml
+변환        1        0  rules/web/webserver_generic/web_susp_windows_path_uri.yml
+오류        0        1  rules/web/webserver_generic/web_webshell_regeorg.yml
+변환        1        0  rules/web/webserver_generic/web_win_webshells_in_access_logs.yml
+변환        1        0  rules/web/webserver_generic/web_xss_in_access_logs.yml
+변환        1        0  rules-emerging-threats/2010/Exploits/CVE-2010-5278/web_cve_2010_5278_exploitation_attempt.yml
+변환        1        0  rules-emerging-threats/2014/Exploits/CVE-2014-6287/web_cve_2014_6287_hfs_rce.yml
+변환        1        0  rules-emerging-threats/2018/Exploits/CVE-2018-13379/web_cve_2018_13379_fortinet_preauth_read_exploit.yml
+변환        1        0  rules-emerging-threats/2018/Exploits/CVE-2018-2894/web_cve_2018_2894_weblogic_exploit.yml
+변환        1        0  rules-emerging-threats/2019/Exploits/CVE-2019-11510/web_cve_2019_11510_pulsesecure_exploit.yml
+변환        3        0  rules-emerging-threats/2019/Exploits/CVE-2019-19781/web_cve_2019_19781_citrix_exploit.yml
+변환        1        0  rules-emerging-threats/2019/Exploits/CVE-2019-3398/web_cve_2019_3398_confluence.yml
+변환        1        0  rules-emerging-threats/2020/Exploits/CVE-2020-0688/web_cve_2020_0688_exchange_exploit.yml
+변환        1        0  rules-emerging-threats/2020/Exploits/CVE-2020-0688/web_cve_2020_0688_msexchange.yml
+변환        1        0  rules-emerging-threats/2020/Exploits/CVE-2020-10148/web_cve_2020_10148_solarwinds_exploit.yml
+변환        1        0  rules-emerging-threats/2020/Exploits/CVE-2020-14882/web_cve_2020_14882_weblogic_exploit.yml
+변환        1        0  rules-emerging-threats/2020/Exploits/CVE-2020-28188/web_cve_2020_28188_terramaster_rce_exploit.yml
+변환        1        0  rules-emerging-threats/2020/Exploits/CVE-2020-3452/web_cve_2020_3452_cisco_asa_ftd.yml
+변환        1        0  rules-emerging-threats/2020/Exploits/CVE-2020-5902/web_cve_2020_5902_f5_bigip.yml
+변환        2        0  rules-emerging-threats/2020/Exploits/CVE-2020-8193/web_cve_2020_8193_8195_citrix_exploit.yml
+변환        2        0  rules-emerging-threats/2020/TA/SolarWinds-Supply-Chain/web_solarwinds_supernova_webshell.yml
+변환        2        0  rules-emerging-threats/2021/Exploits/CVE-2021-20090/web_cve_2021_20090_2021_20091_arcadyan_router_exploit.yml
+변환        1        0  rules-emerging-threats/2021/Exploits/CVE-2021-2109/web_cve_2021_2109_weblogic_rce_exploit.yml
+변환        1        0  rules-emerging-threats/2021/Exploits/CVE-2021-21972/web_cve_2021_21972_vsphere_unauth_rce_exploit.yml
+변환        1        0  rules-emerging-threats/2021/Exploits/CVE-2021-21978/web_cve_2021_21978_vmware_view_planner_exploit.yml
+변환        1        0  rules-emerging-threats/2021/Exploits/CVE-2021-22005/web_cve_2021_22005_vmware_file_upload.yml
+변환        1        0  rules-emerging-threats/2021/Exploits/CVE-2021-22123/web_cve_2021_22123_fortinet_exploit.yml
+변환        1        0  rules-emerging-threats/2021/Exploits/CVE-2021-22893/web_cve_2021_22893_pulse_secure_rce_exploit.yml
+오류        0        2  rules-emerging-threats/2021/Exploits/CVE-2021-26084/web_cve_2021_26084_confluence_rce_exploit.yml
+변환        1        0  rules-emerging-threats/2021/Exploits/CVE-2021-26814/web_cve_2021_26814_wzuh_rce.yml
+일부        1        1  rules-emerging-threats/2021/Exploits/CVE-2021-26858/web_cve_2021_26858_iis_rce.yml
+변환        2        0  rules-emerging-threats/2021/Exploits/CVE-2021-27905/web_cve_2021_27905_apache_solr_exploit.yml
+변환        1        0  rules-emerging-threats/2021/Exploits/CVE-2021-28480/web_cve_2021_28480_exchange_exploit.yml
+변환        2        0  rules-emerging-threats/2021/Exploits/CVE-2021-33766/web_cve_2021_33766_msexchange_proxytoken.yml
+변환        1        0  rules-emerging-threats/2021/Exploits/CVE-2021-40539/web_cve_2021_40539_adselfservice.yml
+변환        1        0  rules-emerging-threats/2021/Exploits/CVE-2021-40539/web_cve_2021_40539_manageengine_adselfservice_exploit.yml
+변환        1        0  rules-emerging-threats/2021/Exploits/CVE-2021-41773/web_cve_2021_41773_apache_path_traversal.yml
+변환        1        0  rules-emerging-threats/2021/Exploits/CVE-2021-42237/web_cve_2021_42237_sitecore_report_ashx.yml
+변환        1        0  rules-emerging-threats/2021/Exploits/CVE-2021-43798/web_cve_2021_43798_grafana.yml
+변환        1        0  rules-emerging-threats/2021/Exploits/CVE-2021-44228/web_cve_2021_44228_log4j.yml
+일부        1        2  rules-emerging-threats/2021/Exploits/CVE-2021-44228/web_cve_2021_44228_log4j_fields.yml
+변환        2        0  rules-emerging-threats/2021/Exploits/ProxyShell-Exploit/web_exchange_proxyshell.yml
+변환        1        0  rules-emerging-threats/2021/Exploits/ProxyShell-Exploit/web_exchange_proxyshell_successful.yml
+오류        0        1  rules-emerging-threats/2021/Exploits/VisualDoor-Exploit/web_sonicwall_jarrewrite_exploit.yml
+일부        3        3  rules-emerging-threats/2021/TA/HAFNIUM/web_exchange_exploitation_hafnium.yml
+변환        2        0  rules-emerging-threats/2021/TA/UNC2546/web_unc2546_dewmode_php_webshell.yml
+변환        1        0  rules-emerging-threats/2022/Exploits/CVE-2022-21587/web_cve_2022_21587_oracle_ebs.yml
+일부        1        1  rules-emerging-threats/2022/Exploits/CVE-2022-27925/web_cve_2022_27925_exploit.yml
+변환        1        0  rules-emerging-threats/2022/Exploits/CVE-2022-31656/web_cve_2022_31656_auth_bypass.yml
+변환        1        0  rules-emerging-threats/2022/Exploits/CVE-2022-31659/web_cve_2022_31659_vmware_rce.yml
+변환        1        0  rules-emerging-threats/2022/Exploits/CVE-2022-33891/web_cve_2022_33891_spark_shell_command_injection.yml
+변환        1        0  rules-emerging-threats/2022/Exploits/CVE-2022-36804/web_cve_2022_36804_atlassian_bitbucket_command_injection.yml
+변환        1        0  rules-emerging-threats/2022/Exploits/CVE-2022-41082/web_cve_2022_36804_exchange_owassrf_exploitation.yml
+오류        0        1  rules-emerging-threats/2022/Exploits/CVE-2022-41082/web_cve_2022_36804_exchange_owassrf_poc_exploitation.yml
+변환        1        0  rules-emerging-threats/2022/Exploits/CVE-2022-44877/web_cve_2022_44877_exploitation_attempt.yml
+변환        1        0  rules-emerging-threats/2022/Exploits/CVE-2022-46169/web_cve_2022_46169_cacti_exploitation_attempt.yml
+변환        1        0  rules-emerging-threats/2023/Exploits/CVE-2023-22518/web_exploit_cve_2023_22518_confluence_auth_bypass.yml
+변환        1        0  rules-emerging-threats/2023/Exploits/CVE-2023-23752/web_cve_2023_23752_joomla_exploit_attempt.yml
+변환        1        0  rules-emerging-threats/2023/Exploits/CVE-2023-25157/web_cve_2023_25157_geoserver_sql_injection.yml
+변환        1        0  rules-emerging-threats/2023/Exploits/CVE-2023-25717/web_cve_2023_25717_ruckus_wireless_admin_exploit_attempt.yml
+변환        1        0  rules-emerging-threats/2023/Exploits/CVE-2023-27997/web_cve_2023_27997_pre_authentication_rce.yml
+변환        1        0  rules-emerging-threats/2023/Exploits/CVE-2023-34362-MOVEit-Transfer-Exploit/web_cve_2023_34362_known_payload_request.yml.yml
+변환        1        0  rules-emerging-threats/2023/Exploits/CVE-2023-43261/web_exploit_cve_2023_43261_milesight_information_disclosure.yml
+변환        1        0  rules-emerging-threats/2023/Exploits/CVE-2023-46214/web_cve_2023_46214_rce_splunk_enterprise.yml
+변환        2        0  rules-emerging-threats/2023/Exploits/CVE-2023-46214/web_cve_2023_46214_rce_splunk_enterprise_poc.yml
+변환        2        0  rules-emerging-threats/2023/Exploits/CVE-2023-46747/web_cve_2023_46747_f5_remote_code_execution.yml
+변환        1        0  rules-emerging-threats/2023/Exploits/CVE-2023-4966/web_exploit_cve_2023_4966_citrix_sensitive_information_disclosure_exploit.yml
+오류        0        1  rules-emerging-threats/2023/Exploits/CVE-2023-4966/web_exploit_cve_2023_4966_citrix_sensitive_information_disclosure_exploit_attempt.yml
+변환        1        0  rules-emerging-threats/2024/Exploits/CVE-2024-1212/web_exploit_cve_2024_1212_.yml
+변환        1        0  rules-emerging-threats/2024/Exploits/CVE-2024-1709/web_exploit_cve_2024_1709_screenconnect.yml
+변환        3        0  rules-emerging-threats/2025/Exploits/CVE-2025-31324/web_lnx_exploit_cve_2025_31324_sap_netviewer_webshell.yml
+오류        0        1  rules-emerging-threats/2025/Exploits/CVE-2025-31324/web_lnx_exploit_cve_2025_31324_sap_netviewer_webshell_uploaded.yml
+변환        4        0  rules-emerging-threats/2025/Exploits/CVE-2025-4427/web_invanti_epmm_cve_2025_4427_and_cve_2025_4428.yml
+오류        0        2  rules-emerging-threats/2025/Exploits/CVE-2025-53770/web_win_iis_exploit_cve_2025_53770.yml
+변환        1        0  rules-emerging-threats/2026/Exploits/CVE-2026-63030/web_exploit_cve_2026_63030_batch_rest_route_abuse.yml
+변환        1        0  rules-emerging-threats/2026/Exploits/CVE-2026-63030/web_exploit_cve_2026_63030_webshell_plugin_access.yml
+오류        0        1  rules-emerging-threats/2026/Exploits/CVE-2026-63030/web_exploit_cve_2026_63030_wp2shell_tool_useragent.yml
+오류        0        1  rules-emerging-threats/2026/Malware/RedTail-Cryptominer/web_malware_redtail_useragent.yml
+
+== rules/web/webserver_generic/web_f5_tm_utility_bash_api_request.yml
+   F5 BIG-IP iControl Rest API Command Execution - Webserver (85254a62-22be-4239-b79c-2ec17e566c37) test/medium · 작성 Nasreddine Bencherchali (Nextron Systems), Thurein Oo
+   서명 sg-f5-tm-utility-bash-api-request
+      pattern ^.*/mgmt/tm/util/bash$
+      메서드  POST
+      cves    -
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+
+== rules/web/webserver_generic/web_iis_tilt_shortname_scan.yml
+   Successful IIS Shortname Fuzzing Scan (7cb02516-6d95-4ffc-8eee-162075e111ac) test/medium · 작성 frack113
+   서명 sg-iis-tilt-shortname-scan
+      pattern ^.*~1.*$
+      all     ^.*a\.aspx$
+      메서드  GET · OPTIONS
+      응답    200 · 301
+      cves    -
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+
+== rules/web/webserver_generic/web_java_payload_in_access_logs.yml
+   Java Payload Strings (583aa0a2-30b1-4d62-8bf3-ab73689efe6c) test/high · 작성 frack113, Harjot Singh, "@cyb3rjy0t" (update)
+   서명 sg-java-payload-in-access-logs
+      pattern ^.*(%24%7B%28%23a%3D%40|\$\{\(#a=@|%24%7B%40java|\$\{@java|u0022java|%2F%24%7B%23|/\$\{#|new\+java\.|getRuntime\(\)\.exec\(|getRuntime%28%29\.exec%28).*$
+      cves    CVE-2022-26134 · CVE-2021-26084
+      - keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).
+
+== rules/web/webserver_generic/web_jndi_exploit.yml
+   JNDIExploit Pattern (412d55bc-7737-4d25-9542-5b396867ce55) test/high · 작성 Florian Roth (Nextron Systems)
+   서명 sg-jndi-exploit
+      pattern ^.*(/Basic/Command/Base64/|/Basic/ReverseShell/|/Basic/TomcatMemshell|/Basic/JettyMemshell|/Basic/WeblogicMemshell|/Basic/JBossMemshell|/Basic/WebsphereMemshell|/Basic/SpringMemshell|/Deserialization/URLDNS/|/Deserialization/CommonsCollections1/Dnslog/|/Deserialization/CommonsCollections2/Command/Base64/|/Deserialization/CommonsBeanutils1/ReverseShell/|/Deserialization/Jre8u20/TomcatMemshell|/TomcatBypass/Dnslog/|/TomcatBypass/Command/|/TomcatBypass/ReverseShell/|/TomcatBypass/TomcatMemshell|/TomcatBypass/SpringMemshell|/GroovyBypass/Command/|/WebsphereBypass/Upload/).*$
+      cves    -
+      - keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+
+== rules/web/webserver_generic/web_path_traversal_exploitation_attempt.yml
+   Path Traversal Exploitation Attempts (7745c2ea-24a5-4290-b680-04359cb84b35) test/medium · 작성 Subhash Popuri (@pbssubhash), Florian Roth (Nextron Systems), Thurein Oo, Nasreddine Bencherchali (Nextron Systems)
+   서명 sg-path-traversal-exploitation-attempt
+      pattern ^.*(\.\./\.\./\.\./\.\./\.\./lib/password|\.\./\.\./\.\./\.\./windows/|\.\./\.\./\.\./etc/|\.\.%252f\.\.%252f\.\.%252fetc%252f|\.\.%c0%af\.\.%c0%af\.\.%c0%afetc%c0%af|%252e%252e%252fetc%252f).*$
+      cves    -
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+
+== rules/web/webserver_generic/web_source_code_enumeration.yml
+   Source Code Enumeration Detection by Keyword (953d460b-f810-420a-97a2-cfca4c98e602) test/medium · 작성 James Ahearn
+   서명 sg-source-code-enumeration
+      pattern ^.*\.git/.*$
+      cves    -
+      - keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+
+== rules/web/webserver_generic/web_sql_injection_in_access_logs.yml
+   SQL Injection Strings In URI (5513deaf-f49a-46c2-a6c8-3f111b5cb453) test/high · 작성 Saw Win Naung, Nasreddine Bencherchali (Nextron Systems), Thurein Oo (Yoma Bank)
+   서명 sg-sql-injection-in-access-logs
+      pattern ^.*(@@version|%271%27%3D%271|=select |=select\(|=select%20|concat_ws\(|CONCAT\(0x|from mysql\.innodb_table_stats|from%20mysql\.innodb_table_stats|group_concat\(|information_schema\.tables|json_arrayagg\(|or 1=1#|or%201=1#|order by |order%20by%20|select .* |select database\(\)|select version\(\)|select%20.*%20|select%20database\(\)|select%20version\(\)|select%28sleep%2810%29|SELECTCHAR\(|table_schema|UNION ALL SELECT|UNION SELECT|UNION%20ALL%20SELECT|UNION%20SELECT|'1'='1).*$
+      메서드  GET
+      cves    -
+      - 응답 코드 부정 조건 sc-status 을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐).
+      - keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+
+== rules/web/webserver_generic/web_ssti_in_access_logs.yml
+   Server Side Template Injection Strings (ada3bc4f-f0fd-42b9-ba91-e105e8af7342) test/high · 작성 Nasreddine Bencherchali (Nextron Systems)
+   서명 sg-ssti-in-access-logs
+      pattern ^.*(=\{\{|=%7B%7B|=\$\{|=\$%7B|=<%=|=%3C%25=|=@\(|freemarker\.template\.utility\.Execute|\.getClass\(\)\.forName\('javax\.script\.ScriptEngineManager'\)|T\(org\.apache\.commons\.io\.IOUtils\)).*$
+      메서드  GET
+      cves    -
+      - 응답 코드 부정 조건 sc-status 을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐).
+      - keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+
+== rules/web/webserver_generic/web_susp_useragents.yml
+   Suspicious User-Agents Related To Recon Tools (19aa4f58-94ca-45ff-bc34-92e533c0994a) test/medium · 작성 Nasreddine Bencherchali (Nextron Systems), Tim Shelton
+   변환 못 함: 서명으로 옮긴 갈래가 없다 (갈래 1: 옮기지 못하는 조건 cs-user-agent|contains(필드 cs-user-agent))
+   버린 갈래 1: 옮기지 못하는 조건 cs-user-agent|contains(필드 cs-user-agent)
+
+== rules/web/webserver_generic/web_susp_windows_path_uri.yml
+   Suspicious Windows Strings In URI (9f6a34b4-2688-4eb7-a7f5-e39fef573d0e) test/high · 작성 Nasreddine Bencherchali (Nextron Systems)
+   서명 sg-susp-windows-path-uri
+      pattern ^.*(=C:/Users|=C:/Program%20Files|=C:/Windows|=C%3A%5CUsers|=C%3A%5CProgram%20Files|=C%3A%5CWindows).*$
+      cves    -
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+
+== rules/web/webserver_generic/web_webshell_regeorg.yml
+   Webshell ReGeorg Detection Via Web Logs (2ea44a60-cfda-11ea-87d0-0242ac130003) test/high · 작성 Cian Heasley
+   변환 못 함: 서명으로 옮긴 갈래가 없다 (갈래 1: 옮기지 못하는 조건 cs-referer(값 없음(null) 조건))
+   버린 갈래 1: 옮기지 못하는 조건 cs-referer(값 없음(null) 조건)
+
+== rules/web/webserver_generic/web_win_webshells_in_access_logs.yml
+   Windows Webshell Strings (7ff9db12-1b94-4a79-ba68-a2402c5d6729) test/high · 작성 Florian Roth (Nextron Systems), Nasreddine Bencherchali (Nextron Systems)
+   서명 sg-win-webshells-in-access-logs
+      pattern ^.*(=whoami|=net%20user|=net\+user|=net%2Buser|=cmd%20/c%|=cmd\+/c\+|=cmd%2B/c%|=cmd%20/r%|=cmd\+/r\+|=cmd%2B/r%|=cmd%20/k%|=cmd\+/k\+|=cmd%2B/k%|=powershell%|=powershell\+|=tasklist%|=tasklist\+|=wmic%|=wmic\+|=ssh%|=ssh\+|=python%|=python\+|=python3%|=python3\+|=ipconfig|=wget%|=wget\+|=curl%|=curl\+|=certutil|=copy%20%5C%5C|=dsquery%|=dsquery\+|=nltest%|=nltest\+).*$
+      메서드  GET
+      cves    -
+      - keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+
+== rules/web/webserver_generic/web_xss_in_access_logs.yml
+   Cross Site Scripting Strings (65354b83-a2ea-4ea6-8414-3ab38be0d409) test/high · 작성 Saw Win Naung, Nasreddine Bencherchali
+   서명 sg-xss-in-access-logs
+      pattern ^.*(=<script>|=%3Cscript%3E|=%253Cscript%253E|<iframe |%3Ciframe |<svg |%3Csvg |document\.cookie|document\.domain| onerror=| onresize=| onload="|onmouseover=|\$\{alert|javascript:alert|javascript%3Aalert).*$
+      메서드  GET
+      cves    -
+      - 응답 코드 부정 조건 sc-status 을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐).
+      - keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+
+== rules-emerging-threats/2010/Exploits/CVE-2010-5278/web_cve_2010_5278_exploitation_attempt.yml
+   CVE-2010-5278 Exploitation Attempt (a4a899e8-fd7a-49dd-b5a8-7044def72d61) test/critical · 작성 Subhash Popuri (@pbssubhash)
+   서명 sg-cve-2010-5278-exploitation-attempt
+      pattern ^.*/manager/controllers/default/resource/tvs\.php.class_key=\.\./\.\./\.\./\.\./\.\./\.\./\.\./\.\./\.\./\.\./windows/win\.ini%00.*$
+      cves    CVE-2010-5278
+      - 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2014/Exploits/CVE-2014-6287/web_cve_2014_6287_hfs_rce.yml
+   Rejetto HTTP File Server RCE (a133193c-2daa-4a29-8022-018695fcf0ae) test/high · 작성 Nasreddine Bencherchali (Nextron Systems)
+   서명 sg-cve-2014-6287-hfs-rce
+      pattern ^.*.search=%00\{\..*$
+      all     ^.*(save\||powershell|cmd\.exe|cmd /c|cmd /r|cmd /k|cscript|wscript|python|C:\\Users\\Public\\|%comspec%).*$
+      cves    CVE-2014-6287
+      - 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2018/Exploits/CVE-2018-13379/web_cve_2018_13379_fortinet_preauth_read_exploit.yml
+   Fortinet CVE-2018-13379 Exploitation (a2e97350-4285-43f2-a63f-d0daff291738) test/critical · 작성 Bhabesh Raj
+   서명 sg-cve-2018-13379-fortinet-preauth-read
+      pattern ^.*lang=/\.\./\.\./.*$
+      all     ^.*/dev/cmdb/sslvpn_websession.*$
+      cves    CVE-2018-13379
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2018/Exploits/CVE-2018-2894/web_cve_2018_2894_weblogic_exploit.yml
+   Oracle WebLogic Exploit (37e8369b-43bb-4bf8-83b6-6dd43bda2000) test/critical · 작성 Florian Roth (Nextron Systems)
+   서명 sg-cve-2018-2894-weblogic-exploit
+      pattern ^.*/config/keystore/.*\.js.*$
+      cves    CVE-2018-2894
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2019/Exploits/CVE-2019-11510/web_cve_2019_11510_pulsesecure_exploit.yml
+   Pulse Secure Attack CVE-2019-11510 (2dbc10d7-a797-49a8-8776-49efa6442e60) test/critical · 작성 Florian Roth (Nextron Systems)
+   서명 sg-cve-2019-11510-pulsesecure-exploit
+      pattern ^.*./dana/html5acc/guacamole/.*$
+      cves    CVE-2019-11510
+      - 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2019/Exploits/CVE-2019-19781/web_cve_2019_19781_citrix_exploit.yml
+   Citrix Netscaler Attack CVE-2019-19781 (ac5a6409-8c89-44c2-8d64-668c29a2d756) test/critical · 작성 Arnim Rupp, Florian Roth
+   서명 sg-cve-2019-19781-citrix-exploit-1
+      pattern ^.*/\.\./vpns/.*$
+      cves    CVE-2019-19781
+      - 원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 3개 가운데 1번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+   서명 sg-cve-2019-19781-citrix-exploit-2
+      pattern ^.*/vpns/cfg/smb\.conf$
+      cves    CVE-2019-19781
+      - 원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 3개 가운데 2번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+   서명 sg-cve-2019-19781-citrix-exploit-3
+      pattern ^.*/vpns/portal/scripts/.*$
+      all     ^.*\.pl.*$
+      cves    CVE-2019-19781
+      - 원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 3개 가운데 3번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2019/Exploits/CVE-2019-3398/web_cve_2019_3398_confluence.yml
+   Confluence Exploitation CVE-2019-3398 (e9bc39ae-978a-4e49-91ab-5bd481fc668b) test/critical · 작성 Florian Roth (Nextron Systems)
+   서명 sg-cve-2019-3398-confluence
+      pattern ^.*/upload\.action.*$
+      all     ^.*filename=\.\./\.\./\.\./\.\./.*$
+      메서드  POST
+      cves    CVE-2019-3398
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2020/Exploits/CVE-2020-0688/web_cve_2020_0688_exchange_exploit.yml
+   CVE-2020-0688 Exploitation Attempt (7c64e577-d72e-4c3d-9d75-8de6d1f9146a) test/high · 작성 NVISO
+   서명 sg-cve-2020-0688-exchange-exploit
+      pattern ^.*/ecp/default\.aspx.*$
+      all     ^.*__VIEWSTATEGENERATOR=.*$
+      all     ^.*__VIEWSTATE=.*$
+      cves    CVE-2020-0688
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2020/Exploits/CVE-2020-0688/web_cve_2020_0688_msexchange.yml
+   CVE-2020-0688 Exchange Exploitation via Web Log (fce2c2e2-0fb5-41ab-a14c-5391e1fd70a5) test/critical · 작성 Florian Roth (Nextron Systems)
+   서명 sg-cve-2020-0688-msexchange
+      pattern ^.*(/ecp/|/owa/).*$
+      all     ^.*__VIEWSTATE=.*$
+      메서드  GET
+      cves    CVE-2020-0688
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2020/Exploits/CVE-2020-10148/web_cve_2020_10148_solarwinds_exploit.yml
+   CVE-2020-10148 SolarWinds Orion API Auth Bypass (5a35116f-43bc-4901-b62d-ef131f42a9af) test/critical · 작성 Bhabesh Raj, Tim Shelton
+   서명 sg-cve-2020-10148-solarwinds-exploit
+      pattern ^.*(/WebResource\.axd|/ScriptResource\.axd|/i18n\.ashx|/Skipi18n).*$
+      all     ^.*(/SolarWinds/|/api/).*$
+      not     ^.*Orion/Skipi18n/Profiler/.*$
+      not     ^.*(css\.i18n\.ashx|js\.i18n\.ashx).*$
+      cves    CVE-2020-10148
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2020/Exploits/CVE-2020-14882/web_cve_2020_14882_weblogic_exploit.yml
+   Oracle WebLogic Exploit CVE-2020-14882 (85d466b0-d74c-4514-84d3-2bdd3327588b) test/high · 작성 Florian Roth (Nextron Systems)
+   서명 sg-cve-2020-14882-weblogic-exploit
+      pattern ^.*(/console/images/%252E%252E%252Fconsole\.portal|/console/css/%2e).*$
+      cves    CVE-2020-14882
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2020/Exploits/CVE-2020-28188/web_cve_2020_28188_terramaster_rce_exploit.yml
+   TerraMaster TOS CVE-2020-28188 (15c312b9-00d0-4feb-8870-7d940a4bdc5e) test/high · 작성 Bhabesh Raj
+   서명 sg-cve-2020-28188-terramaster-rce
+      pattern ^.*/include/makecvs\.php.*$
+      all     ^.*.Event=.*$
+      all     ^.*(curl|wget|\.py|\.sh|chmod|_GET).*$
+      메서드  GET
+      cves    CVE-2020-28188
+      - 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2020/Exploits/CVE-2020-3452/web_cve_2020_3452_cisco_asa_ftd.yml
+   Cisco ASA FTD Exploit CVE-2020-3452 (aba47adc-4847-4970-95c1-61dce62a8b29) test/high · 작성 Florian Roth (Nextron Systems)
+   서명 sg-cve-2020-3452-cisco-asa-ftd
+      pattern ^.*(\+CSCOT\+/translation-table|\+CSCOT\+/oem-customization).*$
+      all     ^.*(&textdomain=/|&textdomain=%|&name=/|&name=%).*$
+      응답    200
+      cves    CVE-2020-3452
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2020/Exploits/CVE-2020-5902/web_cve_2020_5902_f5_bigip.yml
+   CVE-2020-5902 F5 BIG-IP Exploitation Attempt (44b53b1c-e60f-4a7b-948e-3435a7918478) test/critical · 작성 Florian Roth (Nextron Systems)
+   서명 sg-cve-2020-5902-f5-bigip
+      pattern ^.*(/tmui/|/hsqldb).*$
+      all     ^.*(\.\.;/|\.jsp/\.\.).*$
+      cves    CVE-2020-5902
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2020/Exploits/CVE-2020-8193/web_cve_2020_8193_8195_citrix_exploit.yml
+   Citrix ADS Exploitation CVE-2020-8193 CVE-2020-8195 (0d0d9a8a-a49e-4e27-b061-7ce4b936cfb7) test/critical · 작성 Florian Roth (Nextron Systems)
+   서명 sg-cve-2020-8193-8195-citrix-exploit-1
+      pattern ^.*/rapi/filedownload.filter=path:%2F.*$
+      cves    CVE-2020-8193 · CVE-2020-8195
+      - 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).
+      - 원본 condition '1 of selection*' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+   서명 sg-cve-2020-8193-8195-citrix-exploit-2
+      pattern ^.*/pcidss/report.*$
+      all     ^.*type=all_signatures.*$
+      all     ^.*sig_name=_default_signature_.*$
+      cves    CVE-2020-8193 · CVE-2020-8195
+      - 원본 condition '1 of selection*' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2020/TA/SolarWinds-Supply-Chain/web_solarwinds_supernova_webshell.yml
+   Solarwinds SUPERNOVA Webshell Access (a2cee20b-eacc-459f-861d-c02e5d12f1db) test/critical · 작성 Florian Roth (Nextron Systems)
+   서명 sg-solarwinds-supernova-webshell-1
+      pattern ^.*logoimagehandler\.ashx.*$
+      all     ^.*clazz.*$
+      cves    -
+      - 원본 condition 'selection1 or selection2' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+   서명 sg-solarwinds-supernova-webshell-2
+      pattern ^.*logoimagehandler\.ashx.*$
+      응답    500
+      cves    -
+      - 원본 condition 'selection1 or selection2' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+
+== rules-emerging-threats/2021/Exploits/CVE-2021-20090/web_cve_2021_20090_2021_20091_arcadyan_router_exploit.yml
+   Arcadyan Router Exploitations (f0500377-bc70-425d-ac8c-e956cd906871) test/critical · 작성 Bhabesh Raj
+   서명 sg-cve-2021-20090-2021-20091-arcadyan-1
+      pattern ^.*\.\.%2f.*$
+      all     ^.*(/images/|/js/|/css/|/setup_top_login\.htm|/login\.html|/loginerror\.html|/loginexclude\.html|/loginlock\.html).*$
+      cves    CVE-2021-20090 · CVE-2021-20091
+      - 원본 condition '(path_traversal or config_file_inj) and noauth_list' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+   서명 sg-cve-2021-20090-2021-20091-arcadyan-2
+      pattern ^.*\.\.%2f.*$
+      all     ^.*apply_abstract\.cgi.*$
+      all     ^.*(/images/|/js/|/css/|/setup_top_login\.htm|/login\.html|/loginerror\.html|/loginexclude\.html|/loginlock\.html).*$
+      cves    CVE-2021-20090 · CVE-2021-20091
+      - 원본 condition '(path_traversal or config_file_inj) and noauth_list' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2021/Exploits/CVE-2021-2109/web_cve_2021_2109_weblogic_rce_exploit.yml
+   Oracle WebLogic Exploit CVE-2021-2109 (687f6504-7f44-4549-91fc-f07bab065821) test/critical · 작성 Bhabesh Raj
+   서명 sg-cve-2021-2109-weblogic-rce-exploit
+      pattern ^.*com\.bea\.console\.handles\.JndiBindingHandle.*$
+      all     ^.*ldap://.*$
+      all     ^.*AdminServer.*$
+      메서드  GET
+      cves    CVE-2021-2109
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2021/Exploits/CVE-2021-21972/web_cve_2021_21972_vsphere_unauth_rce_exploit.yml
+   CVE-2021-21972 VSphere Exploitation (179ed852-0f9b-4009-93a7-68475910fd86) test/high · 작성 Bhabesh Raj
+   서명 sg-cve-2021-21972-vsphere-unauth-rce
+      pattern ^/ui/vropspluginui/rest/services/uploadova$
+      메서드  POST
+      cves    CVE-2021-21972
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2021/Exploits/CVE-2021-21978/web_cve_2021_21978_vmware_view_planner_exploit.yml
+   CVE-2021-21978 Exploitation Attempt (77586a7f-7ea4-4c41-b19c-820140b84ca9) test/high · 작성 Bhabesh Raj
+   서명 sg-cve-2021-21978-vmware-view-planner
+      pattern ^.*logupload.*$
+      all     ^.*logMetaData.*$
+      all     ^.*wsgi_log_upload\.py.*$
+      메서드  POST
+      cves    CVE-2021-21978
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2021/Exploits/CVE-2021-22005/web_cve_2021_22005_vmware_file_upload.yml
+   VMware vCenter Server File Upload CVE-2021-22005 (b014ea07-8ea0-4859-b517-50a4e5b7ecec) test/high · 작성 Sittikorn S
+   서명 sg-cve-2021-22005-vmware-file-upload
+      pattern ^.*/analytics/telemetry/ph/api/hyper/send..*$
+      메서드  POST
+      cves    CVE-2021-22005
+      - 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2021/Exploits/CVE-2021-22123/web_cve_2021_22123_fortinet_exploit.yml
+   Fortinet CVE-2021-22123 Exploitation (f425637f-891c-4191-a6c4-3bb1b70513b4) test/critical · 작성 Bhabesh Raj, Florian Roth
+   서명 sg-cve-2021-22123-fortinet-exploit
+      pattern ^.*/api/v2\.0/user/remoteserver\.saml.*$
+      메서드  POST
+      cves    CVE-2021-22123
+      - 필터 조건 cs-referer|contains(필드 cs-referer)을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐).
+      - 필터 조건 cs-referer(값 없음(null) 조건)을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐).
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2021/Exploits/CVE-2021-22893/web_cve_2021_22893_pulse_secure_rce_exploit.yml
+   Pulse Connect Secure RCE Attack CVE-2021-22893 (5525edac-f599-4bfd-b926-3fa69860e766) stable/high · 작성 Sittikorn S
+   서명 sg-cve-2021-22893-pulse-secure-rce
+      pattern ^.*(/dana-na/auth/|/dana-ws/|/dana-cached/).*$
+      all     ^.*(.id=|.token=|Secid_canceltoken\.cgi|CGI::param|meeting|smb|namedusers|metric).*$
+      cves    CVE-2021-22893
+      - 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2021/Exploits/CVE-2021-26084/web_cve_2021_26084_confluence_rce_exploit.yml
+   Potential CVE-2021-26084 Exploitation Attempt (38825179-3c78-4fed-b222-2e2166b926b1) test/high · 작성 Sittikorn S, Nuttakorn T
+   변환 못 함: 서명으로 옮긴 갈래가 없다 (갈래 1: 옮기지 못하는 조건 cs-username(필드 cs-username) / 갈래 2: 옮기지 못하는 조건 cs-username(필드 cs-username))
+   버린 갈래 1: 옮기지 못하는 조건 cs-username(필드 cs-username)
+   버린 갈래 2: 옮기지 못하는 조건 cs-username(필드 cs-username)
+
+== rules-emerging-threats/2021/Exploits/CVE-2021-26814/web_cve_2021_26814_wzuh_rce.yml
+   Exploitation of CVE-2021-26814 in Wazuh (b9888738-29ed-4c54-96a4-f38c57b84bb3) test/high · 작성 Florian Roth (Nextron Systems)
+   서명 sg-cve-2021-26814-wzuh-rce
+      pattern ^.*/manager/files.path=etc/lists/\.\./\.\./\.\./\.\./\.\..*$
+      cves    CVE-2021-21978 · CVE-2021-26814
+      - 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2021/Exploits/CVE-2021-26858/web_cve_2021_26858_iis_rce.yml
+   ProxyLogon Reset Virtual Directories Based On IIS Log (effee1f6-a932-4297-a81f-acb44064fa3a) test/critical · 작성 frack113
+   버린 갈래 1: 옮기지 못하는 조건 cs-username|endswith(필드 cs-username)
+   서명 sg-cve-2021-26858-iis-rce
+      pattern ^.*POST.*$
+      all     ^.*200.*$
+      all     ^.*/ecp/DDI/DDIService\.svc/SetObject.*$
+      all     ^.*schema=Reset.*$
+      all     ^.*VirtualDirectory.*$
+      all     ^.*\$.*$
+      cves    CVE-2021-26858
+      - 원본의 다른 갈래 1개는 옮기지 못해 버렸다(갈래 1: 옮기지 못하는 조건 cs-username|endswith(필드 cs-username)). 이 서명만으로는 원본보다 좁다.
+      - keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).
+      - 원본 condition 'selection or keywords' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다.
+
+== rules-emerging-threats/2021/Exploits/CVE-2021-27905/web_cve_2021_27905_apache_solr_exploit.yml
+   Potential CVE-2021-27905 Exploitation Attempt (0bbcd74b-0596-41a4-94a0-4e88a76ffdb3) test/medium · 작성 @gott_cyber
+   서명 sg-cve-2021-27905-apache-solr-exploit-1
+      pattern ^.*/solr/.*$
+      all     ^.*/debug/dump..*$
+      all     ^.*param=ContentStream.*$
+      응답    200
+      cves    CVE-2021-27905
+      - 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).
+      - 원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+   서명 sg-cve-2021-27905-apache-solr-exploit-2
+      pattern ^.*/solr/.*$
+      all     ^.*command=fetchindex.*$
+      all     ^.*masterUrl=.*$
+      메서드  GET
+      응답    200
+      cves    CVE-2021-27905
+      - 원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2021/Exploits/CVE-2021-28480/web_cve_2021_28480_exchange_exploit.yml
+   Exchange Exploitation CVE-2021-28480 (a2a9d722-0acb-4096-bccc-daaf91a5037b) test/critical · 작성 Florian Roth (Nextron Systems)
+   서명 sg-cve-2021-28480-exchange-exploit
+      pattern ^.*/owa/calendar/a.*$
+      메서드  POST
+      cves    CVE-2021-28480
+      - 응답 코드 부정 조건 sc-status 을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐).
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2021/Exploits/CVE-2021-33766/web_cve_2021_33766_msexchange_proxytoken.yml
+   CVE-2021-33766 Exchange ProxyToken Exploitation (56973b50-3382-4b56-bdf5-f51a3183797a) test/critical · 작성 Florian Roth (Nextron Systems), Max Altgelt (Nextron Systems), Christian Burkard (Nextron Systems)
+   서명 sg-cve-2021-33766-msexchange-1
+      pattern ^.*/ecp/.*$
+      all     ^.*/RulesEditor/InboxRules\.svc/NewObject.*$
+      메서드  POST
+      응답    500
+      cves    CVE-2021-33766
+      - 원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+   서명 sg-cve-2021-33766-msexchange-2
+      pattern ^.*SecurityToken=.*$
+      all     ^.*/ecp/.*$
+      응답    500
+      cves    CVE-2021-33766
+      - 원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2021/Exploits/CVE-2021-40539/web_cve_2021_40539_adselfservice.yml
+   ADSelfService Exploitation (6702b13c-e421-44cc-ab33-42cc25570f11) test/high · 작성 Tobias Michalski (Nextron Systems), Max Altgelt (Nextron Systems)
+   서명 sg-cve-2021-40539-adselfservice
+      pattern ^.*(/help/admin-guide/Reports/ReportGenerate\.jsp|/ServletApi/\.\./RestApi/LogonCustomization|/ServletApi/\.\./RestAPI/Connection).*$
+      cves    CVE-2021-40539
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2021/Exploits/CVE-2021-40539/web_cve_2021_40539_manageengine_adselfservice_exploit.yml
+   CVE-2021-40539 Zoho ManageEngine ADSelfService Plus Exploit (fcbb4a77-f368-4945-b046-4499a1da69d1) test/critical · 작성 Sittikorn S, Nuttakorn Tungpoonsup
+   서명 sg-cve-2021-40539-manageengine
+      pattern ^.*(/help/admin-guide/Reports/ReportGenerate\.jsp|/RestAPI/LogonCustomization|/RestAPI/Connection).*$
+      cves    CVE-2021-40539
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2021/Exploits/CVE-2021-41773/web_cve_2021_41773_apache_path_traversal.yml
+   CVE-2021-41773 Exploitation Attempt (3007fec6-e761-4319-91af-e32e20ac43f5) test/high · 작성 daffainfo, Florian Roth
+   서명 sg-cve-2021-41773-apache-path-traversal
+      pattern ^.*(/cgi-bin/\.%2e/|/icons/\.%2e/|/cgi-bin/\.%%32%65/|/icons/\.%%32%65/|/cgi-bin/\.%%%25%33|/icons/\.%%%25%33).*$
+      응답    200 · 301
+      cves    CVE-2021-41773
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2021/Exploits/CVE-2021-42237/web_cve_2021_42237_sitecore_report_ashx.yml
+   Sitecore Pre-Auth RCE CVE-2021-42237 (20c6ed1c-f7f0-4ea3-aa65-4f198e6acb0f) test/high · 작성 Florian Roth (Nextron Systems)
+   서명 sg-cve-2021-42237-sitecore-report-ashx
+      pattern ^.*/sitecore/shell/ClientBin/Reporting/Report\.ashx.*$
+      메서드  POST
+      응답    200
+      cves    CVE-2021-42237
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2021/Exploits/CVE-2021-43798/web_cve_2021_43798_grafana.yml
+   Grafana Path Traversal Exploitation CVE-2021-43798 (7b72b328-5708-414f-9a2a-6a6867c26e16) test/critical · 작성 Florian Roth (Nextron Systems)
+   서명 sg-cve-2021-43798-grafana
+      pattern ^.*/\.\./\.\./\.\./\.\./\.\./\.\./\.\./.*$
+      all     ^.*(/public/plugins/live|/public/plugins/icon|/public/plugins/loki|/public/plugins/text|/public/plugins/logs|/public/plugins/news|/public/plugins/stat|/public/plugins/mssql|/public/plugins/mixed|/public/plugins/mysql|/public/plugins/tempo|/public/plugins/graph|/public/plugins/gauge|/public/plugins/table|/public/plugins/debug|/public/plugins/zipkin|/public/plugins/jaeger|/public/plugins/geomap|/public/plugins/canvas|/public/plugins/grafana|/public/plugins/welcome|/public/plugins/xychart|/public/plugins/heatmap|/public/plugins/postgres|/public/plugins/testdata|/public/plugins/opentsdb|/public/plugins/influxdb|/public/plugins/barchart|/public/plugins/annolist|/public/plugins/bargauge|/public/plugins/graphite|/public/plugins/dashlist|/public/plugins/piechart|/public/plugins/dashboard|/public/plugins/nodeGraph|/public/plugins/alertlist|/public/plugins/histogram|/public/plugins/table-old|/public/plugins/pluginlist|/public/plugins/timeseries|/public/plugins/cloudwatch|/public/plugins/prometheus|/public/plugins/stackdriver|/public/plugins/alertGroups|/public/plugins/alertmanager|/public/plugins/elasticsearch|/public/plugins/gettingstarted|/public/plugins/state-timeline|/public/plugins/status-history|/public/plugins/grafana-clock-panel|/public/plugins/grafana-simple-json-datasource|/public/plugins/grafana-azure-monitor-datasource).*$
+      응답    200
+      cves    CVE-2021-43798
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2021/Exploits/CVE-2021-44228/web_cve_2021_44228_log4j.yml
+   Log4j RCE CVE-2021-44228 Generic (5ea8faa8-db8b-45be-89b0-151b84c82702) test/high · 작성 Florian Roth (Nextron Systems)
+   서명 sg-cve-2021-44228-log4j
+      pattern ^.*(\$\{jndi:ldap:/|\$\{jndi:rmi:/|\$\{jndi:ldaps:/|\$\{jndi:dns:/|/\$%7bjndi:|%24%7bjndi:|\$%7Bjndi:|%2524%257Bjndi|%2F%252524%25257Bjndi%3A|\$\{jndi:\$\{lower:|\$\{::-j\}\$\{|\$\{jndi:nis|\$\{jndi:nds|\$\{jndi:corba|\$\{jndi:iiop|Reference Class Name: foo|\$\{\$\{env:BARFOO:-j\}|\$\{::-l\}\$\{::-d\}\$\{::-a\}\$\{::-p\}|\$\{base64:JHtqbmRp|\$\{\$\{env:ENV_NAME:-j\}ndi\$\{env:ENV_NAME:-:\}\$|\$\{\$\{lower:j\}ndi:|\$\{\$\{upper:j\}ndi:|\$\{\$\{::-j\}\$\{::-n\}\$\{::-d\}\$\{::-i\}:).*$
+      not     ^.*(w\.nessus\.org/nessus|/nessus\}).*$
+      cves    -
+      - keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+
+== rules-emerging-threats/2021/Exploits/CVE-2021-44228/web_cve_2021_44228_log4j_fields.yml
+   Log4j RCE CVE-2021-44228 in Fields (9be472ed-893c-4ec0-94da-312d2765f654) test/high · 작성 Florian Roth (Nextron Systems)
+   버린 갈래 1: 옮기지 못하는 조건 cs-user-agent|contains(필드 cs-user-agent)
+   버린 갈래 3: 옮기지 못하는 조건 cs-referer|contains(필드 cs-referer)
+   서명 sg-cve-2021-44228-log4j-fields
+      pattern ^.*(\$\{jndi:ldap:/|\$\{jndi:rmi:/|\$\{jndi:ldaps:/|\$\{jndi:dns:/|/\$%7bjndi:|%24%7bjndi:|\$%7Bjndi:|%2524%257Bjndi|%2F%252524%25257Bjndi%3A|\$\{jndi:\$\{lower:|\$\{::-j\}\$\{|\$\{jndi:nis|\$\{jndi:nds|\$\{jndi:corba|\$\{jndi:iiop|Reference Class Name: foo|\$\{\$\{env:BARFOO:-j\}|\$\{::-l\}\$\{::-d\}\$\{::-a\}\$\{::-p\}|\$\{base64:JHtqbmRp|\$\{\$\{env:ENV_NAME:-j\}ndi\$\{env:ENV_NAME:-:\}\$|\$\{\$\{lower:j\}ndi:|\$\{\$\{upper:j\}ndi:|\$\{\$\{::-j\}\$\{::-n\}\$\{::-d\}\$\{::-i\}:).*$
+      cves    CVE-2021-44228
+      - 원본의 다른 갈래 2개는 옮기지 못해 버렸다(갈래 1: 옮기지 못하는 조건 cs-user-agent|contains(필드 cs-user-agent) / 갈래 3: 옮기지 못하는 조건 cs-referer|contains(필드 cs-referer)). 이 서명만으로는 원본보다 좁다.
+      - 원본 condition '1 of selection*' 을 논리합 표준형으로 편 갈래 3개 가운데 2번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2021/Exploits/ProxyShell-Exploit/web_exchange_proxyshell.yml
+   Exchange ProxyShell Pattern (23eee45e-933b-49f9-ae1b-df706d2d52ef) test/high · 작성 Florian Roth (Nextron Systems), Rich Warren
+   서명 sg-exchange-proxyshell-1
+      pattern ^.*/autodiscover\.json.*$
+      all     ^.*(/powershell|/mapi/nspi|/EWS|X-Rps-CAT).*$
+      응답    401
+      cves    -
+      - 원본 condition 'all of selection_1* or selection_poc' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+   서명 sg-exchange-proxyshell-2
+      pattern ^.*(autodiscover\.json.@|autodiscover\.json%3f@|%3f@foo\.com|Email=autodiscover/autodiscover\.json|json.@foo\.com).*$
+      응답    401
+      cves    -
+      - 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).
+      - 원본 condition 'all of selection_1* or selection_poc' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+
+== rules-emerging-threats/2021/Exploits/ProxyShell-Exploit/web_exchange_proxyshell_successful.yml
+   Successful Exchange ProxyShell Attack (992be1eb-e5da-437e-9a54-6d13b57bb4d8) test/critical · 작성 Florian Roth (Nextron Systems), Rich Warren
+   서명 sg-exchange-proxyshell-successful
+      pattern ^.*/autodiscover\.json.*$
+      all     ^.*(/powershell|/mapi/nspi|/EWS|X-Rps-CAT).*$
+      응답    200 · 301
+      cves    -
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+
+== rules-emerging-threats/2021/Exploits/VisualDoor-Exploit/web_sonicwall_jarrewrite_exploit.yml
+   SonicWall SSL/VPN Jarrewrite Exploitation (6f55f047-112b-4101-ad32-43913f52db46) test/high · 작성 Florian Roth (Nextron Systems)
+   변환 못 함: 서명으로 옮긴 갈래가 없다 (갈래 1: 옮기지 못하는 조건 cs-user-agent|contains(필드 cs-user-agent))
+   버린 갈래 1: 옮기지 못하는 조건 cs-user-agent|contains(필드 cs-user-agent)
+
+== rules-emerging-threats/2021/TA/HAFNIUM/web_exchange_exploitation_hafnium.yml
+   Exchange Exploitation Used by HAFNIUM (67bce556-312f-4c81-9162-c3c9ff2599b2) test/high · 작성 Florian Roth (Nextron Systems)
+   버린 갈래 2: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent)
+   버린 갈래 3: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent)
+   버린 갈래 4: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent)
+   서명 sg-exchange-exploitation-hafnium-1
+      pattern ^.*/owa/auth/Current/themes/resources/.*$
+      메서드  POST
+      cves    -
+      - 원본의 다른 갈래 3개는 옮기지 못해 버렸다(갈래 2: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent) / 갈래 3: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent) / 갈래 4: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent)). 이 서명만으로는 원본보다 좁다.
+      - 원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 6개 가운데 1번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+   서명 sg-exchange-exploitation-hafnium-2
+      pattern ^.*(/owa/auth/Current/|/ecp/default\.flt|/ecp/main\.css).*$
+      메서드  POST
+      cves    -
+      - 원본의 다른 갈래 3개는 옮기지 못해 버렸다(갈래 2: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent) / 갈래 3: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent) / 갈래 4: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent)). 이 서명만으로는 원본보다 좁다.
+      - 원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 6개 가운데 5번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+   서명 sg-exchange-exploitation-hafnium-3
+      pattern ^.*/ecp/.*$
+      all     ^.*\.js.*$
+      메서드  POST
+      cves    -
+      - 원본의 다른 갈래 3개는 옮기지 못해 버렸다(갈래 2: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent) / 갈래 3: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent) / 갈래 4: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent)). 이 서명만으로는 원본보다 좁다.
+      - 원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 6개 가운데 6번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+
+== rules-emerging-threats/2021/TA/UNC2546/web_unc2546_dewmode_php_webshell.yml
+   DEWMODE Webshell Access (fdf96c90-42d5-4406-8a9c-14a2c9a016b5) test/high · 작성 Florian Roth (Nextron Systems)
+   서명 sg-unc2546-dewmode-php-webshell-1
+      pattern ^.*.dwn=.*$
+      all     ^.*&fn=.*$
+      all     ^.*\.html..*$
+      cves    -
+      - 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).
+      - 원본 condition '1 of selection*' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+   서명 sg-unc2546-dewmode-php-webshell-2
+      pattern ^.*&dwn=.*$
+      all     ^.*.fn=.*$
+      all     ^.*\.html..*$
+      cves    -
+      - 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).
+      - 원본 condition '1 of selection*' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+
+== rules-emerging-threats/2022/Exploits/CVE-2022-21587/web_cve_2022_21587_oracle_ebs.yml
+   Potential CVE-2022-21587 Exploitation Attempt (d033cb8a-8669-4a8e-a974-48d4185a8503) test/high · 작성 Isa Almannaei
+   서명 sg-cve-2022-21587-oracle-ebs
+      pattern ^.*(/OA_HTML/BneViewerXMLService.bne:uueupload=TRUE|/OA_HTML/BneUploaderService.bne:uueupload=TRUE|/OA_HTML/BneDownloadService.bne:uueupload=TRUE|/OA_HTML/BneOfflineLOVService.bne:uueupload=TRUE).*$
+      메서드  POST
+      cves    CVE-2022-21587
+      - 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2022/Exploits/CVE-2022-27925/web_cve_2022_27925_exploit.yml
+   Zimbra Collaboration Suite Email Server Unauthenticated RCE (dd218fb6-4d02-42dc-85f0-a0a376072efd) test/medium · 작성 @gott_cyber
+   버린 갈래 2: 옮기지 못하는 조건 sc-status|contains(sc-status 의 조건자 contains)
+   서명 sg-cve-2022-27925-exploit
+      pattern ^.*/service/extension/backup/mboximport\?.*$
+      all     ^.*account-name.*$
+      all     ^.*ow.*$
+      all     ^.*no-switch.*$
+      all     ^.*append.*$
+      메서드  POST
+      응답    200 · 401
+      cves    CVE-2022-27925
+      - 원본의 다른 갈래 1개는 옮기지 못해 버렸다(갈래 2: 옮기지 못하는 조건 sc-status|contains(sc-status 의 조건자 contains)). 이 서명만으로는 원본보다 좁다.
+      - 원본 condition '1 of selection_*' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다.
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2022/Exploits/CVE-2022-31656/web_cve_2022_31656_auth_bypass.yml
+   CVE-2022-31656 VMware Workspace ONE Access Auth Bypass (fcf1101d-07c9-49b2-ad81-7e421ff96d80) test/high · 작성 Nasreddine Bencherchali (Nextron Systems)
+   서명 sg-cve-2022-31656-auth-bypass
+      pattern ^.*/SAAS/t/_/;/.*$
+      cves    CVE-2022-31656
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2022/Exploits/CVE-2022-31659/web_cve_2022_31659_vmware_rce.yml
+   CVE-2022-31659 VMware Workspace ONE Access RCE (efdb2003-a922-48aa-8f37-8b80021a9706) test/medium · 작성 Nasreddine Bencherchali (Nextron Systems)
+   서명 sg-cve-2022-31659-vmware-rce
+      pattern ^.*/SAAS/jersey/manager/api/migrate/tenant.*$
+      메서드  POST
+      cves    CVE-2022-31659
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2022/Exploits/CVE-2022-33891/web_cve_2022_33891_spark_shell_command_injection.yml
+   Apache Spark Shell Command Injection - Weblogs (1a9a04fd-02d1-465c-abad-d733fd409f9c) test/high · 작성 Nasreddine Bencherchali (Nextron Systems)
+   서명 sg-cve-2022-33891-spark-shell-command
+      pattern ^.*.doAs=`.*$
+      cves    CVE-2022-33891
+      - 값의 ? 는 Sigma 와일드카드라 아무 글자 하나로 옮겼다. 원본이 질의 문자열의 ? 를 뜻했다면 다른 글자에도 맞는다(넓어짐).
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2022/Exploits/CVE-2022-36804/web_cve_2022_36804_atlassian_bitbucket_command_injection.yml
+   Atlassian Bitbucket Command Injection Via Archive API (65c0a0ab-d675-4441-bd6b-d3db226a2685) test/high · 작성 Nasreddine Bencherchali (Nextron Systems)
+   서명 sg-cve-2022-36804-atlassian-bitbucket
+      pattern ^.*/rest/api/latest/projects/.*$
+      all     ^.*prefix=.*$
+      all     ^.*%00--exec.*$
+      cves    CVE-2022-36804
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2022/Exploits/CVE-2022-41082/web_cve_2022_36804_exchange_owassrf_exploitation.yml
+   Potential OWASSRF Exploitation Attempt - Webserver (181f49fa-0b21-4665-a98c-a57025ebb8c7) test/high · 작성 Nasreddine Bencherchali (Nextron Systems)
+   서명 sg-cve-2022-36804-exchange-owassrf
+      pattern ^.*/owa/.*$
+      all     ^.*/powershell.*$
+      all     ^.*(@|%40).*$
+      메서드  POST
+      응답    200
+      cves    -
+      - 필터 조건 cs-user-agent(필드 cs-user-agent)을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐).
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+      - 원본 tags 에 CVE 가 없어 cves 를 비웠다.
+
+== rules-emerging-threats/2022/Exploits/CVE-2022-41082/web_cve_2022_36804_exchange_owassrf_poc_exploitation.yml
+   OWASSRF Exploitation Attempt Using Public POC - Webserver (92d78c63-5a5c-4c40-9b60-463810ffb082) test/critical · 작성 Nasreddine Bencherchali (Nextron Systems)
+   변환 못 함: 서명으로 옮긴 갈래가 없다 (갈래 1: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent))
+   버린 갈래 1: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent)
+
+== rules-emerging-threats/2022/Exploits/CVE-2022-44877/web_cve_2022_44877_exploitation_attempt.yml
+   Potential Centos Web Panel Exploitation Attempt - CVE-2022-44877 (1b2eeb27-949b-4704-8bfa-d8e5cfa045a1) test/high · 작성 Nasreddine Bencherchali (Nextron Systems)
+   서명 sg-cve-2022-44877-exploitation-attempt
+      pattern ^.*/login/index\.php.*$
+      all     ^.*login=.*$
+      all     ^.*(login=\$\(|base64|subprocess|socket|\$\{IFS\}|cHl0aG9u|B5dGhvb|weXRob2).*$
+      메서드  POST
+      cves    CVE-2022-44877
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2022/Exploits/CVE-2022-46169/web_cve_2022_46169_cacti_exploitation_attempt.yml
+   Potential CVE-2022-46169 Exploitation Attempt (738cb115-881f-4df3-82cc-56ab02fc5192) test/high · 작성 Nasreddine Bencherchali (Nextron Systems)
+   서명 sg-cve-2022-46169-cacti-exploitation
+      pattern ^.*/remote_agent\.php.*$
+      all     ^.*action=polldata.*$
+      all     ^.*poller_id=.*$
+      all     ^.*(\| base64 -d \| /bin/bash`|%7C%20base64%20-d%20%7C%20%2Fbin%2Fbash%60|`whoami|powershell|cmd|wget).*$
+      메서드  GET
+      cves    CVE-2022-46169
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2023/Exploits/CVE-2023-22518/web_exploit_cve_2023_22518_confluence_auth_bypass.yml
+   CVE-2023-22518 Exploitation Attempt - Vulnerable Endpoint Connection (Webserver) (a902d249-9b9c-4dc4-8fd0-fbe528ef965c) test/medium · 작성 Andreas Braathen (mnemonic.io)
+   서명 sg-exploit-cve-2023-22518-confluence
+      pattern ^.*(/json/setup-restore-local\.action|/json/setup-restore-progress\.action|/json/setup-restore\.action|/server-info\.action|/setup/setupadministrator\.action).*$
+      메서드  POST
+      응답    200 · 302 · 405
+      cves    CVE-2023-22518
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2023/Exploits/CVE-2023-23752/web_cve_2023_23752_joomla_exploit_attempt.yml
+   Potential CVE-2023-23752 Exploitation Attempt (0e1ebc5a-15d0-4bf6-8199-b2535397433a) test/high · 작성 Bhabesh Raj
+   서명 sg-cve-2023-23752-joomla-exploit-attempt
+      pattern ^.*/api/index\.php/v1/.*$
+      all     ^.*public=true.*$
+      메서드  GET
+      cves    CVE-2023-23752
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2023/Exploits/CVE-2023-25157/web_cve_2023_25157_geoserver_sql_injection.yml
+   Potential CVE-2023-25157 Exploitation Attempt (c0341543-5ed0-4475-aabc-7eea8c52aa66) test/high · 작성 Nasreddine Bencherchali (Nextron Systems)
+   서명 sg-cve-2023-25157-geoserver-sql
+      pattern ^.*/geoserver/ows.*$
+      all     ^.*CQL_FILTER=.*$
+      all     ^.*(PropertyIsLike|strEndsWith|strStartsWith|FeatureId|jsonArrayContains|DWithin).*$
+      all     ^.*(\+--|\+AS\+|\+OR\+|FROM|ORDER\+BY|SELECT|sleep%28|substring%28|UNION|WHERE).*$
+      메서드  GET
+      cves    CVE-2023-25157
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2023/Exploits/CVE-2023-25717/web_cve_2023_25717_ruckus_wireless_admin_exploit_attempt.yml
+   Potential CVE-2023-25717 Exploitation Attempt (043c1609-0e32-4462-a6f2-5a0c2da3fafe) test/high · 작성 Nasreddine Bencherchali (Nextron Systems)
+   서명 sg-cve-2023-25717-ruckus-wireless-admin
+      pattern ^.*/forms/doLogin.*$
+      all     ^.*login_username.*$
+      all     ^.*password.*$
+      all     ^.*(\$\(|%24%28).*$
+      메서드  GET
+      cves    CVE-2023-25717
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2023/Exploits/CVE-2023-27997/web_cve_2023_27997_pre_authentication_rce.yml
+   Potential CVE-2023-27997 Exploitation Indicators (31e4e649-7394-4fd2-9ae7-dbc61eebb550) test/medium · 작성 Sergio Palacios Dominguez, Nasreddine Bencherchali (Nextron Systems)
+   서명 sg-cve-2023-27997-pre-authentication-rce
+      pattern ^.*(/remote/hostcheck_validate|/remote/logincheck).*$
+      all     ^.*enc=.*$
+      메서드  GET · POST
+      cves    CVE-2023-27997
+      - keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2023/Exploits/CVE-2023-34362-MOVEit-Transfer-Exploit/web_cve_2023_34362_known_payload_request.yml.yml
+   MOVEit CVE-2023-34362 Exploitation Attempt - Potential Web Shell Request (435e41f2-48eb-4c95-8a2b-ed24b50ec30b) test/high · 작성 Nasreddine Bencherchali (Nextron Systems)
+   서명 sg-cve-2023-34362-known-payload-request
+      pattern ^.*(/human2\.aspx|/_human2\.aspx).*$
+      메서드  GET
+      cves    CVE-2023-34362
+      - 원본 필드 cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2023/Exploits/CVE-2023-43261/web_exploit_cve_2023_43261_milesight_information_disclosure.yml
+   Potential Information Disclosure CVE-2023-43261 Exploitation - Web (a2bcca38-9f3a-4d5e-b603-0c587e8569d7) test/high · 작성 Nasreddine Bencherchali (Nextron Systems), Thurein Oo
+   서명 sg-exploit-cve-2023-43261-milesight
+      pattern ^.*/lang/log/httpd\.log.*$
+      메서드  GET
+      응답    200
+      cves    CVE-2023-43621
+      - 원본 필드 cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2023/Exploits/CVE-2023-46214/web_cve_2023_46214_rce_splunk_enterprise.yml
+   Potential CVE-2023-46214 Exploitation Attempt (04017cd5-621e-4ec4-a762-1f042fe3d3e5) test/medium · 작성 Nasreddine Bencherchali (Nextron Systems), Bhavin Patel (STRT)
+   서명 sg-cve-2023-46214-rce-splunk-enterprise
+      pattern ^.*NO_BINARY_CHECK=1.*$
+      all     ^.*input\.path.*$
+      all     ^.*\.xsl$
+      메서드  POST
+      응답    200 · 302
+      cves    CVE-2023-46214
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2023/Exploits/CVE-2023-46214/web_cve_2023_46214_rce_splunk_enterprise_poc.yml
+   Exploitation Attempt Of CVE-2023-46214 Using Public POC Code (ba5268de-4dd4-4d5c-8a90-2b5e6dc1aff8) test/high · 작성 Lars B. P. Frydenskov(Trifork Security)
+   서명 sg-cve-2023-46214-rce-splunk-1
+      pattern ^.*/splunkd/__upload/indexing/preview.*$
+      all     ^.*NO_BINARY_CHECK=1.*$
+      all     ^.*input\.path=shell\.xsl.*$
+      메서드  POST
+      응답    200 · 302
+      cves    CVE-2023-46214
+      - 원본 condition 'selection_method_and_response and 1 of selection_uri_*' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다.
+      - 원본 필드 cs-uri-query · cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+   서명 sg-cve-2023-46214-rce-splunk-2
+      pattern ^.*/api/search/jobs.*$
+      all     ^.*/results.*$
+      all     ^.*/opt/splunk/var/run/splunk/dispatch/.*$
+      all     ^.*/shell\.xsl.*$
+      메서드  POST
+      응답    200 · 302
+      cves    CVE-2023-46214
+      - 원본 condition 'selection_method_and_response and 1 of selection_uri_*' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다.
+      - 원본 필드 cs-uri-query · cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2023/Exploits/CVE-2023-46747/web_cve_2023_46747_f5_remote_code_execution.yml
+   CVE-2023-46747 Exploitation Activity - Webserver (e9928831-ba14-42ea-a4bc-33d352b9929a) test/high · 작성 Nasreddine Bencherchali (Nextron Systems)
+   서명 sg-cve-2023-46747-f5-remote-code-1
+      pattern ^.*/mgmt/tm/util/bash.*$
+      all     ^.*2f746d75692f436f6e74726f6c2f666f726d.*$
+      all     ^.*666f726d5f706167653d253266746d756925326673797374656d253266757365722532666372656174652e6a7370.*$
+      메서드  POST
+      cves    CVE-2023-46747
+      - keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).
+      - 원본 condition 'selection and (keywords_hex or keywords_plain)' 을 논리합 표준형으로 편 갈래 2개 가운데 1번째다.
+      - 원본 필드 cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+   서명 sg-cve-2023-46747-f5-remote-code-2
+      pattern ^.*/mgmt/tm/util/bash.*$
+      all     ^.*/tmui/Control/form.*$
+      all     ^.*form_page=%2ftmui%2fsystem%2fuser%2fcreate\.jsp.*$
+      메서드  POST
+      cves    CVE-2023-46747
+      - keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).
+      - 원본 condition 'selection and (keywords_hex or keywords_plain)' 을 논리합 표준형으로 편 갈래 2개 가운데 2번째다.
+      - 원본 필드 cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2023/Exploits/CVE-2023-4966/web_exploit_cve_2023_4966_citrix_sensitive_information_disclosure_exploit.yml
+   CVE-2023-4966 Potential Exploitation Attempt - Citrix ADC Sensitive Information Disclosure - Webserver (87c83d8e-5390-44ce-aa4a-d3b37e54d0a0) test/medium · 작성 Nasreddine Bencherchali (Nextron Systems), Michael Haag (STRT)
+   서명 sg-exploit-cve-2023-4966-citrix
+      pattern ^.*/oauth/idp/\.well-known/openid-configuration.*$
+      메서드  GET
+      응답    200
+      cves    CVE-2023-4966
+      - 원본 필드 cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2023/Exploits/CVE-2023-4966/web_exploit_cve_2023_4966_citrix_sensitive_information_disclosure_exploit_attempt.yml
+   CVE-2023-4966 Exploitation Attempt - Citrix ADC Sensitive Information Disclosure - Webserver (a4e068b5-e27c-4f21-85b3-e69e5a4f7ce1) test/high · 작성 Nasreddine Bencherchali (Nextron Systems)
+   변환 못 함: 서명으로 옮긴 갈래가 없다 (갈래 1: 옮기지 못하는 조건 cs-host|re(필드 cs-host))
+   버린 갈래 1: 옮기지 못하는 조건 cs-host|re(필드 cs-host)
+
+== rules-emerging-threats/2024/Exploits/CVE-2024-1212/web_exploit_cve_2024_1212_.yml
+   CVE-2024-1212 Exploitation - Progress Kemp LoadMaster Unauthenticated Command Injection (eafb8bd5-7605-4bfe-a9ec-0442bc151f15) test/high · 작성 Nasreddine Bencherchali (Nextron Systems)
+   서명 sg-exploit-cve-2024-1212
+      pattern ^.*/access/set.*$
+      all     ^.*param=enableapi.*$
+      all     ^.*value=1.*$
+      all     ^.*(Basic Jz|Basic c7|Basic nO|Basic ';).*$
+      메서드  GET
+      cves    CVE-2024-1212
+      - keywords(로그 줄 전체에서 찾는 값)를 요청 url 에만 댔다. 헤더 · 본문 · 다른 필드에 든 값은 보지 않는다(좁아짐).
+      - 원본 필드 cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2024/Exploits/CVE-2024-1709/web_exploit_cve_2024_1709_screenconnect.yml
+   CVE-2024-1709 - ScreenConnect Authentication Bypass Exploitation (d27eabad-9068-401a-b0d6-9eac744d6e67) test/critical · 작성 Matt Anderson, Huntress
+   서명 sg-exploit-cve-2024-1709-screenconnect
+      pattern ^.*/SetupWizard\.aspx/.*$
+      cves    CVE-2024-1709
+      - 원본 필드 cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2025/Exploits/CVE-2025-31324/web_lnx_exploit_cve_2025_31324_sap_netviewer_webshell.yml
+   Potential SAP NetViewer Webshell Command Execution (94e12f41-6cb3-45c5-97b1-c783a7bf2e72) experimental/high · 작성 Swachchhanda Shrawan Poudel (Nextron Systems)
+   서명 sg-lnx-exploit-cve-2025-31324-sap-1
+      pattern ^.*/irj/.*$
+      all     ^.*\.jsp.*$
+      all     ^(cmd=|command=|exec_cmd=|exec=).*$
+      cves    CVE-2025-31324
+      - 원본 condition 'all of selection_*' 을 논리합 표준형으로 편 갈래 3개 가운데 1번째다.
+      - 원본 필드 cs-uri-query · cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+   서명 sg-lnx-exploit-cve-2025-31324-sap-2
+      pattern ^.*/irj/.*$
+      all     ^.*\.jsp.*$
+      all     ^.*(/dev/tcp|/etc/passwd|%2fdev%2ftcp|%2fetc%2fpasswd|=uname|=whoami|ifconfig|ping|pwd).*$
+      cves    CVE-2025-31324
+      - 원본 condition 'all of selection_*' 을 논리합 표준형으로 편 갈래 3개 가운데 2번째다.
+      - 원본 필드 cs-uri-query · cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+   서명 sg-lnx-exploit-cve-2025-31324-sap-3
+      pattern ^.*/irj/.*$
+      all     ^.*\.jsp.*$
+      all     ^.*echo.*$
+      all     ^.*base64.*$
+      cves    CVE-2025-31324
+      - 원본 condition 'all of selection_*' 을 논리합 표준형으로 편 갈래 3개 가운데 3번째다.
+      - 원본 필드 cs-uri-query · cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2025/Exploits/CVE-2025-31324/web_lnx_exploit_cve_2025_31324_sap_netviewer_webshell_uploaded.yml
+   Potential Java WebShell Upload in SAP NetViewer Server (639b893f-f93a-4e53-a7c8-f08cf73fe7f7) experimental/high · 작성 Swachchhanda Shrawan Poudel (Nextron Systems)
+   변환 못 함: 서명으로 옮긴 갈래가 없다 (갈래 1: 옮기지 못하는 조건 cs-content-type(필드 cs-content-type))
+   버린 갈래 1: 옮기지 못하는 조건 cs-content-type(필드 cs-content-type)
+
+== rules-emerging-threats/2025/Exploits/CVE-2025-4427/web_invanti_epmm_cve_2025_4427_and_cve_2025_4428.yml
+   Potential Exploitation of CVE-2025-4427/4428 Ivanti EPMM Pre-Auth RCE (41956f7c-7a6b-46d6-b6bb-da6eb2e83fbe) experimental/high · 작성 Swachchhanda Shrawan Poudel (Nextron Systems)
+   서명 sg-invanti-epmm-cve-2025-4427-and-cve-1
+      pattern ^.*/mifs/rs/api/v2/featureusage.*$
+      all     ^.*format=.*$
+      all     ^.*java\.lang\.Runtime.*$
+      all     ^.*\.getMethod.*$
+      all     ^.*getRuntime.*$
+      all     ^.*\.exec\(.*$
+      cves    CVE-2025-4427 · CVE-2025-4428
+      - 원본 condition 'selection_uri and 1 of selection_exploit_*' 을 논리합 표준형으로 편 갈래 4개 가운데 1번째다.
+      - 원본 필드 cs-uri-query · cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+   서명 sg-invanti-epmm-cve-2025-4427-and-cve-2
+      pattern ^.*/mifs/rs/api/v2/featureusage.*$
+      all     ^.*format=.*$
+      all     ^.*java%2elang%2eRuntime.*$
+      all     ^.*%2egetMethod.*$
+      all     ^.*%2eexec%28.*$
+      cves    CVE-2025-4427 · CVE-2025-4428
+      - 원본 condition 'selection_uri and 1 of selection_exploit_*' 을 논리합 표준형으로 편 갈래 4개 가운데 2번째다.
+      - 원본 필드 cs-uri-query · cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+   서명 sg-invanti-epmm-cve-2025-4427-and-cve-3
+      pattern ^.*/mifs/rs/api/v2/featureusage.*$
+      all     ^.*format=.*$
+      all     ^.*(%6a%61%76%61%2e%6c%61%6e%67%2e%52%75%6e%74%69%6d%65%65%28%29|%67%65%74%52%75%6e%74%69%6d%65|%2e%65%78%65%63%28).*$
+      cves    CVE-2025-4427 · CVE-2025-4428
+      - 원본 condition 'selection_uri and 1 of selection_exploit_*' 을 논리합 표준형으로 편 갈래 4개 가운데 3번째다.
+      - 원본 필드 cs-uri-query · cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+   서명 sg-invanti-epmm-cve-2025-4427-and-cve-4
+      pattern ^.*/mifs/rs/api/v2/featureusage.*$
+      all     ^.*format=.*$
+      all     ^.*(\{7.*7\}|%7B7.*7%7D|%7b7%2a7%7d).*$
+      cves    CVE-2025-4427 · CVE-2025-4428
+      - 원본 condition 'selection_uri and 1 of selection_exploit_*' 을 논리합 표준형으로 편 갈래 4개 가운데 4번째다.
+      - 원본 필드 cs-uri-query · cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2025/Exploits/CVE-2025-53770/web_win_iis_exploit_cve_2025_53770.yml
+   SharePoint ToolShell CVE-2025-53770 Exploitation - Web IIS (48d053db-6a56-4866-b60d-0975647050ed) experimental/medium · 작성 Swachchhanda Shrawan Poudel (Nextron Systems)
+   변환 못 함: 서명으로 옮긴 갈래가 없다 (갈래 1: 옮기지 못하는 조건 cs-referer|contains(필드 cs-referer) / 갈래 2: 옮기지 못하는 조건 cs-referer|contains(필드 cs-referer))
+   버린 갈래 1: 옮기지 못하는 조건 cs-referer|contains(필드 cs-referer)
+   버린 갈래 2: 옮기지 못하는 조건 cs-referer|contains(필드 cs-referer)
+
+== rules-emerging-threats/2026/Exploits/CVE-2026-63030/web_exploit_cve_2026_63030_batch_rest_route_abuse.yml
+   WordPress Wp2shell REST Batch Endpoint Exploitation (b8d5f301-2c49-4e6d-af83-4a5b6c7d8e9f) experimental/medium · 작성 Swachchhanda Shrawan Poudel (Nextron Systems)
+   서명 sg-exploit-cve-2026-63030-batch-rest
+      pattern ^.*(rest_route=/batch/v1|rest_route=%2Fbatch%2Fv1).*$
+      메서드  POST
+      응답    207
+      cves    CVE-2026-63030 · CVE-2026-60137
+      - 원본 필드 cs-uri-query 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2026/Exploits/CVE-2026-63030/web_exploit_cve_2026_63030_webshell_plugin_access.yml
+   WordPress Wp2shell Webshell Plugin Access (c9e6f412-3d50-4f7e-bf94-5b6c7d8e9f0a) experimental/critical · 작성 Swachchhanda Shrawan Poudel (Nextron Systems)
+   서명 sg-exploit-cve-2026-63030-webshell
+      pattern ^.*/wp-content/plugins/wp2shell_.*$
+      cves    CVE-2026-63030 · CVE-2026-60137
+      - 필터 조건 cs-uri-query(값 없음(null) 조건)을 옮기지 못해 뺐다. 원본이 거르던 요청에도 맞는다(넓어짐).
+      - 원본 필드 cs-uri-stem 를 요청 url(경로와 질의가 한 값) 하나에 댔다. 경로 · 질의 구분을 잃어 한쪽 조건이 다른 쪽에서도 맞을 수 있다(넓어짐).
+
+== rules-emerging-threats/2026/Exploits/CVE-2026-63030/web_exploit_cve_2026_63030_wp2shell_tool_useragent.yml
+   WordPress Wp2shell Exploitation Tool User-Agent (a7c4e2f9-1b38-4d5c-9e72-3f4a5b6c7d8e) experimental/high · 작성 Swachchhanda Shrawan Poudel (Nextron Systems)
+   변환 못 함: 서명으로 옮긴 갈래가 없다 (갈래 1: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent))
+   버린 갈래 1: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent)
+
+== rules-emerging-threats/2026/Malware/RedTail-Cryptominer/web_malware_redtail_useragent.yml
+   RedTail Cryptominer User-Agent (6fd25dd1-527b-47c8-baa4-2a0e77279c6f) experimental/medium · 작성 Marco Pedrinazzi (@pedrinazziM) (InTheCyber)
+   변환 못 함: 서명으로 옮긴 갈래가 없다 (갈래 1: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent))
+   버린 갈래 1: 옮기지 못하는 조건 cs-user-agent(필드 cs-user-agent)
+
+webserver 규칙 86개 중 76개 변환(서명 94개), 그 밖의 범주 32개 건너뜀 → /private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/8537c94f-6d09-4120-82fa-7b4a115be6ba/scratchpad/sigma54/rules_sigma_lab.json
