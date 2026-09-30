@@ -64,7 +64,9 @@ ROLE_KEYS = ("gate", "ingest", "detector", "console", "backup", "cti", "enforcer
 # 운영의 기존 13행과 같은 꼴(2026-09-08 triage, 만료 · 요청자 · 집행 없음, 모두 공인 /32). 주소는 문서용 대역으로 바꿨다
 LEGACY = [f"{net}.{n}" for net in ("192.0.2", "198.51.100", "203.0.113") for n in (11, 12, 13, 14)][:13]
 APP_MAIN = os.path.join(ROOT, "app", "main.py")
+BLOCK_POINTS = os.path.join(ROOT, "app", "block_points.py")
 TRIAGE = os.path.join(ROOT, "detector", "triage.py")
+TWO_POINTS = ["gateway", "fw"]          # 요청 지점 기본값(이슈 #77). 이 시험은 두 지점 행의 감사 · 집행 열을 본다
 
 
 def read(path):
@@ -72,28 +74,42 @@ def read(path):
         return f.read()
 
 
-def console_block_sql():
-    """콘솔 add_action 의 차단 문장 그대로(app/main.py BLOCK_SQL). 앱을 불러오지 않고 글자에서 떼어 낸다(FastAPI 없이 돈다).
-    f-문자열의 {_LIVE} 를 채우고 $1 · $3 · $4 · $5 는 %s, $2(사유)는 'console' 로 바꾼다. 인자는 (주소, 사건 키, 요청자, 시간)."""
-    text = read(APP_MAIN)
-    live = re.search(r'^_LIVE = "(.+)"$', text, re.M).group(1)
-    sql = re.search(r'^BLOCK_SQL = f"""(.+?)"""', text, re.M | re.S).group(1).replace("{_LIVE}", live)
-    assert "{" not in sql and "%" not in sql, sql
-    assert re.findall(r"\$(\d)", sql) == ["1", "2", "3", "4", "5"], sql     # 자리표시자가 차례대로 한 번씩이다
-    return re.sub(r"\$(\d)", lambda m: "'console'" if m.group(1) == "2" else "%s", sql)
-
-
-def triage_module():
-    """detector/triage.py (psycopg2 · 표준 모듈만 쓴다). triage 의 이 출발지 차단 문장(OWN_BLOCK_SQL)을 실제 트리거에 댄다."""
+def load(name, path):
     import importlib.util
-    spec = importlib.util.spec_from_file_location("triage_for_block47", TRIAGE)
+    spec = importlib.util.spec_from_file_location(name, path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     return mod
 
 
-# 콘솔 add_action 의 차단 문장(app/main.py BLOCK_SQL). 살아 있는 차단의 만료는 줄이지 않고 집행 열도 둔다.
-# 풀리거나 만료된 차단은 새 만료로 걸고 집행 열을 비운다(새 요청)
+def console_block_sql():
+    """콘솔 add_action 의 차단 문장 그대로(app/main.py BLOCK_SQL). 앱을 불러오지 않고 글자에서 떼어 낸다(FastAPI 없이 돈다).
+    f-문자열의 이름({_LIVE}, #77 뒤 {block_points.UNION_SQL} · 표준 모듈만 쓰는 app/block_points.py)을 채우고
+    $1 · $3 · $4 · $5 는 %s, $2(사유)는 'console', #77 의 $6(요청 지점)은 기본값 두 지점, $7(관문 빼기)은 거짓으로 바꾼다.
+    인자는 (주소, 사건 키, 요청자, 시간)."""
+    import ast
+    text = read(APP_MAIN)
+    ns = {"_LIVE": re.search(r'^_LIVE = "(.+)"$', text, re.M).group(1)}
+    if os.path.exists(BLOCK_POINTS):
+        ns["block_points"] = load("block_points_for_block47", BLOCK_POINTS)
+    [node] = [n.value for n in ast.parse(text).body
+              if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", None) == "BLOCK_SQL"]
+    sql = "".join(v.value if isinstance(v, ast.Constant) else str(eval(ast.unparse(v.value), {}, ns))   # noqa: S307
+                  for v in node.values)
+    assert "{" not in sql and "%" not in sql, sql
+    nums = re.findall(r"\$(\d)", sql)
+    assert nums[:5] == ["1", "2", "3", "4", "5"] and set(nums[5:]) <= {"6", "7"}, sql   # $1 ~ $5 차례대로 한 번씩, 그 뒤 $6 · $7
+    fill = {"2": "'console'", "6": "'{gateway,fw}'", "7": "false"}
+    return re.sub(r"\$(\d)", lambda m: fill.get(m.group(1), "%s"), sql)
+
+
+def triage_module():
+    """detector/triage.py (psycopg2 · 표준 모듈만 쓴다). triage 의 이 출발지 차단 문장(OWN_BLOCK_SQL)을 실제 트리거에 댄다."""
+    return load("triage_for_block47", TRIAGE)
+
+
+# 콘솔 add_action 의 차단 문장(app/main.py BLOCK_SQL). 살아 있는 차단의 만료는 줄이지 않는다. 풀리거나 만료된 차단은 새 만료로
+# 건다(새 요청). 집행 열은 어느 쪽이든 요청 시각에 두고 집행기가 판단한다(이슈 #77 결정 2)
 CONSOLE_BLOCK = console_block_sql()
 
 
@@ -222,12 +238,15 @@ class BlockEnforceTextTest(unittest.TestCase):
         self.assertIn("'console.block.expired'", block)
 
     def test_콘솔_차단_문장은_앱_문장_그대로다(self):
-        # 앱 문장을 글자에서 떼어 온다. 살아 있는 차단은 만료 · 집행 열을 두고 새 요청이면 비운다
-        self.assertIn("INSERT INTO blocklist (actor_ip, reason, incident_key, requested_by, expires_at)", CONSOLE_BLOCK)
-        self.assertIn("VALUES (%s::inet, 'console', %s, %s, now() + make_interval(hours => %s))", CONSOLE_BLOCK)
+        # 앱 문장을 글자에서 떼어 온다. 살아 있는 차단은 만료를 줄이지 않는다. #77 뒤에는 요청 지점이 붙고, 다시 걸기는 관문 포함
+        # 여부와 무관하게 집행 열을 건드리지 않는다(관문이 뺐는지는 집행기가 판단한다, 결정 2)
+        self.assertRegex(CONSOLE_BLOCK, r"INSERT INTO blocklist \(actor_ip, reason, incident_key, requested_by, expires_at(, points)?\)")
+        self.assertIn("VALUES (%s::inet, 'console', %s, %s, now() + make_interval(hours => %s)", CONSOLE_BLOCK)
         live = "(blocklist.released_at IS NULL AND (blocklist.expires_at IS NULL OR blocklist.expires_at > now()))"
-        for col in ("method", "enforced_at", "enforce_note"):
-            self.assertRegex(CONSOLE_BLOCK, rf"{col}\s+= CASE WHEN {re.escape(live)} THEN blocklist\.{col} END")
+        self.assertIn(f"expires_at = CASE WHEN ({live}", CONSOLE_BLOCK)
+        update = CONSOLE_BLOCK.split("DO UPDATE", 1)[1]
+        for col in ("method", "enforced_at", "enforce_note", "enforcement"):
+            self.assertIsNone(re.search(rf"\b{col}\s*=", update), col)
         self.assertEqual(CONSOLE_BLOCK.count("%s"), 4)
 
     def test_R201_은_해제와_단축만_세고_근거가_새_이벤트와_맞다(self):
@@ -499,7 +518,9 @@ class BlockEnforceDatabaseTest(DbCase):
         self.console_block(ip)
         [(ev, who, detail)] = self.audit(ip)
         self.assertEqual((ev, who), ("console.block.created", "han"))
-        self.assertRegex(detail, rf"^by=han ip={re.escape(ip)} incident=R001\|v3\|{re.escape(ip)} expires=\S+.* requested_by=han$")
+        # 요청 지점(이슈 #77)은 만료 바로 뒤다. 보고서(app/reports.py REQUESTS_CTE)는 requested_by= 를 읽는다
+        self.assertRegex(detail, rf"^by=han ip={re.escape(ip)} incident=R001\|v3\|{re.escape(ip)} expires=\S+.* points=gateway,fw"
+                                 r" requested_by=han$")
         self.console_block(ip)                                      # 살아 있는 차단에 다시: 만료를 줄이지 않는다
         self.assertEqual(self.events_of(ip), ["console.block.created"])
         with self.as_role("console", "admin1"):
@@ -508,7 +529,7 @@ class BlockEnforceDatabaseTest(DbCase):
         self.assertEqual(self.events_of(ip), ["console.block.created", "console.block.released", "console.block.rearmed"])
         ev, who, detail = self.audit(ip)[-1]
         self.assertEqual(who, "kim")
-        self.assertIn("released_by=admin1 requested_by=kim", detail)
+        self.assertIn("points=gateway,fw released_by=admin1 requested_by=kim", detail)
 
     def test_집행_기록은_값이_바뀔_때만_남고_행위자는_집행_역할이다(self):
         ip = "203.0.113.31"
@@ -541,7 +562,9 @@ class BlockEnforceDatabaseTest(DbCase):
             self.cur.execute("UPDATE blocklist SET released_at = now(), released_by = 'admin1' WHERE actor_ip = %s", (rel,))
         self.unenforce(rel)
         self.unenforce(exp)
-        self.console_block(new)                        # 만료된 차단에 다시(집행기가 지우기 전): 새 요청이라 집행 열을 비운다
+        self.console_block(new)                        # 만료된 차단에 다시(집행기가 지우기 전): 집행 열은 그대로다(결정 2)
+        self.assertEqual(self.audit(new, "console.block.unenforced"), [])
+        self.unenforce(new)                            # 관문이 그 사이 뺐다고 집행기가 확인해 비웠다: 살아 있는 새 요청이라 reset
         for ip, why in ((rel, "released"), (exp, "expired"), (new, "reset")):
             with self.subTest(why=why):
                 self.assertTrue(self.audit(ip, "console.block.unenforced")[-1][2].endswith(f"why={why}"))
@@ -553,7 +576,7 @@ class BlockEnforceDatabaseTest(DbCase):
 
     def test_triage_재차단은_사람의_해제를_되살리지_않고_감사도_남기지_않는다(self):
         # detector/triage.py OWN_BLOCK_SQL 을 콘솔 역할 · 실제 트리거에 댄다. 사람이 푼 행은 돌려받는 행이 없고 그대로다.
-        # 누가 풀었는지 없는 해제 · 만료된 행은 새 만료로 다시 걸고 집행 열을 비운다. 만료 없는 옛 차단은 만료 없이 남는다
+        # 누가 풀었는지 없는 해제 · 만료된 행은 새 만료로 다시 걸고 집행 열은 둔다(결정 2). 만료 없는 옛 차단은 만료 없이 남는다
         tr = triage_module()
         human, anon, legacy = "198.51.100.70", "198.51.100.71", "198.51.100.72"
         self.console_block(human)
@@ -569,29 +592,36 @@ class BlockEnforceDatabaseTest(DbCase):
         def triage_block(ip):
             with self.as_role("console", "han"):
                 self.cur.execute(tr.OWN_BLOCK_SQL, {"ip": ip, "reason": "근거", "key": f"R002|v3|{ip}",
-                                                    "who": tr.requested_by("han"), "hours": 24})
+                                                    "who": tr.requested_by("han"), "hours": 24, "points": TWO_POINTS})
                 return self.cur.fetchall()
         self.assertEqual(triage_block(human), [])
         self.assertEqual(self.one("SELECT * FROM blocklist WHERE actor_ip = %s", (human,)), before)
         self.assertEqual(len(self.audit(human)), n_before)                   # rearmed 가 남지 않는다
         [(expires,)] = triage_block(anon)
-        self.assertEqual(self.one("SELECT expires_at > now(), enforced_at, method, requested_by FROM blocklist"
-                                  " WHERE actor_ip = %s", (anon,)), (True, None, None, "triage:han"))
-        self.assertEqual(self.events_of(anon)[-2:], ["console.block.extended", "console.block.unenforced"])
-        self.assertTrue(self.audit(anon, "console.block.unenforced")[-1][2].endswith("why=reset"))
+        self.assertEqual(self.one("SELECT expires_at > now(), enforced_at IS NOT NULL, method, requested_by FROM blocklist"
+                                  " WHERE actor_ip = %s", (anon,)), (True, True, "nft", "triage:han"))
+        self.assertEqual(self.events_of(anon)[-1], "console.block.extended")
+        self.assertEqual(self.audit(anon, "console.block.unenforced"), [])
         self.assertEqual(triage_block(legacy), [(None,)])                      # 만료 없는 옛 차단: 그대로 없다(집행 제외)
         with self.as_role("console", "han"):
-            e = self.refused("blocklist_exempt", tr.OWN_BLOCK_SQL, {"ip": "192.168.50.21", "reason": "근거",
-                                                                   "key": "k", "who": "triage:han", "hours": 24})
+            e = self.refused("blocklist_exempt", tr.OWN_BLOCK_SQL, {"ip": "192.168.50.21", "reason": "근거", "key": "k",
+                                                                   "who": "triage:han", "hours": 24, "points": TWO_POINTS})
         self.assertIn("192.168.0.0/16", e.diag.message_primary)
 
     def test_재차단이_집행_기록을_비우면_두_줄이_남는다(self):
+        # 트리거는 한 갱신의 재차단 · 집행 해제를 따로 남긴다. 지금 콘솔 문장은 집행 열을 두므로(결정 2) 옛 콘솔 문장 꼴로 본다
         ip = "203.0.113.32"
         self.console_block(ip)
         self.enforce(ip)
         with self.as_role("console", "admin1"):
             self.cur.execute("UPDATE blocklist SET released_at = now(), released_by = 'admin1' WHERE actor_ip = %s", (ip,))
-        self.console_block(ip)                         # 집행기가 아직 집행 기록을 지우기 전에 다시 걸었다
+        self.console_block(ip)                         # 지금 콘솔: 다시 걸어도 집행 기록을 두어 한 줄이다
+        self.assertEqual(self.events_of(ip)[-2:], ["console.block.released", "console.block.rearmed"])
+        with self.as_role("console", "admin1"):
+            self.cur.execute("UPDATE blocklist SET released_at = now(), released_by = 'admin1' WHERE actor_ip = %s", (ip,))
+        with self.as_role("console", "han"):
+            self.cur.execute("UPDATE blocklist SET released_at = NULL, released_by = NULL, enforced_at = NULL, method = NULL,"
+                             " enforce_note = NULL WHERE actor_ip = %s", (ip,))
         self.assertEqual(self.events_of(ip)[-2:], ["console.block.rearmed", "console.block.unenforced"])
 
     def test_기존_분류는_그대로다(self):
@@ -606,6 +636,8 @@ class BlockEnforceDatabaseTest(DbCase):
         self.assertEqual([e for e, _, _ in got], ["console.block.created", "console.block.extended",
                                                   "console.block.shortened", "console.block.released",
                                                   "console.block.released"])
+        for _, _, detail in got[1:3]:                  # 만료 변경은 끝에 요청 지점(이슈 #77). from= · to= 는 그대로 읽힌다
+            self.assertRegex(detail, rf"^by=han ip={re.escape(a)} from=[^=]+ to=[^=]+ points=gateway,fw$")
         self.assertIn(f"ip={a} incident=R001|v3|{a} how=readdress to={b}", got[3][2])
         self.assertIn(f"ip={b} incident=R001|v3|{a} how=delete past_expiry=yes", got[4][2])
 
@@ -807,8 +839,10 @@ class BlockEnforceDatabaseTest(DbCase):
                          sorted(EXEMPT))
         trg = dict(self.q("SELECT tgname, pg_get_triggerdef(oid) FROM pg_trigger"
                           " WHERE tgrelid = 'blocklist'::regclass AND NOT tgisinternal"))
-        # blocklist_enforcement_guard 는 #51 블록(지점별 결과 열 보호)이 더한다. 시험은 infra/test_block_points_db.py
-        self.assertEqual(sorted(set(trg) - {"blocklist_enforcement_guard"}), ["blocklist_guard", "trg_audit_blocklist"])
+        # blocklist_enforcement_guard 는 #51 블록(지점별 결과 열 보호, 시험은 infra/test_block_points_db.py),
+        # trg_blocklist_points 는 #77 블록(지점 좁히기 거부 · 넓히기 감사, 시험은 infra/test_block_points_choice_db.py)이 더한다
+        self.assertEqual(sorted(set(trg) - {"blocklist_enforcement_guard", "trg_blocklist_points"}),
+                         ["blocklist_guard", "trg_audit_blocklist"])
         self.assertIn("BEFORE INSERT OR UPDATE OF actor_ip ON public.blocklist", trg["blocklist_guard"])
         self.assertIn("AFTER INSERT OR DELETE OR UPDATE OF released_at, expires_at, actor_ip, enforced_at ON public.blocklist",
                       trg["trg_audit_blocklist"])

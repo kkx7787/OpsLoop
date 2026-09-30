@@ -14,6 +14,8 @@
 #   계정 조건도 본다. infra/migrations/20261001_console_accounts.sql 을 적용한 뒤에 돌린다.
 #   콘솔 계정 추가 · 삭제 · 비밀번호(이슈 #63)의 세 함수(console_account_create · console_account_delete · console_account_password)
 #   실행 권한도 본다. infra/migrations/20261002_console_accounts_manage.sql 을 적용한 뒤에 돌린다.
+#   차단 적용 지점 선택(이슈 #77)의 요청 지점 열(points) 권한 · 좁히기 거부 트리거 · 값 제약도 본다.
+#   infra/migrations/20261003_block_points_choice.sql 을 적용한 뒤에 돌린다.
 # 사용 (Mac, 저장소 루트): infra/vmware/scripts/verify-db-roles.sh     종료 코드 0 = 전부 기대대로
 set -uo pipefail
 SSH=(ssh -F "$HOME/.ssh/config.opsloop" -o BatchMode=yes -o ConnectTimeout=10)
@@ -204,6 +206,23 @@ p opsloop_ingest   "has_function_privilege('opsloop_ingest', 'console_account_pa
 p opsloop_console  "(SELECT prosecdef FROM pg_proc WHERE proname = 'console_account_create')" t
 p opsloop_console  "(SELECT prosecdef FROM pg_proc WHERE proname = 'console_account_delete')" t
 p opsloop_console  "(SELECT prosecdef FROM pg_proc WHERE proname = 'console_account_password')" t
+
+echo "== 차단 적용 지점 (이슈 #77. 요청 지점 열 · 좁히기 거부 트리거)"
+#   권한은 새로 주지 않는다. 콘솔(triage 포함)은 표 INSERT · UPDATE 로 지점을 넣고 넓히고, 집행기는 읽기만 한다(열 UPDATE 목록에
+#   points 가 없다). 탐지는 보지 못한다. 살아 있는 행의 지점 좁히기는 트리거(trg_blocklist_points · SECURITY DEFINER)가
+#   23514 blocklist_points_narrow 로 거부한다. 트리거는 행이 있어야 돌므로 여기서는 켜져 있는지 · 거부 조건이 있는지만 본다.
+#   infra/test_block_points_choice_db.py 가 이 줄들을 시험 DB 에서 돌리고 좁히기 · 넓히기를 실제 행으로 본다
+q opsloop_enforcer "SELECT actor_ip, points FROM blocklist LIMIT 0" 허용
+q opsloop_enforcer "UPDATE blocklist SET points = points WHERE false" 거부
+p opsloop_enforcer "has_column_privilege('opsloop_enforcer', 'blocklist', 'points', 'UPDATE')" f
+q opsloop_console  "INSERT INTO blocklist (actor_ip, points) SELECT actor_ip, points FROM blocklist WHERE false" 허용
+q opsloop_console  "UPDATE blocklist SET points = '{gateway,fw}' WHERE false" 허용
+q opsloop_console  "UPDATE absorbed_blocks SET points = '{gateway,fw}' WHERE false" 허용
+q opsloop_detector "SELECT points FROM blocklist LIMIT 0" 거부
+p opsloop_console  "has_function_privilege('opsloop_console', 'blocklist_points_change()', 'EXECUTE')" f
+p opsloop_console  "(SELECT prosecdef AND prosrc LIKE '%blocklist_points_narrow%' FROM pg_proc WHERE proname = 'blocklist_points_change')" t
+p opsloop_console  "(SELECT tgenabled = 'O' FROM pg_trigger WHERE tgname = 'trg_blocklist_points')" t
+p opsloop_console  "(SELECT count(*) = 2 FROM pg_constraint WHERE conname IN ('blocklist_points_valid', 'absorbed_blocks_points_valid'))" t
 
 echo "== 접속 한도 (이슈 #43. 콘솔 한 대 = 풀 10 + LISTEN 1 → 두 대 22 + triage.py)"
 #   20 이면 콘솔 B 를 켤 때 한도에 닿는다. 무제한(-1)도 기대와 다르다고 본다 (콘솔이 DB 접속을 다 써 버리지 않게 하는 울타리다)

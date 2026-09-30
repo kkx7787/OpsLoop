@@ -1,6 +1,7 @@
 -- 차단 자동 집행 (이슈 #47). schema.sql 의 audit_blocklist · trg_audit_blocklist 문장과 '차단 집행 (이슈 #47)' 블록이
 --   글자 그대로 들어 있으며 여러 번 적용해도 같다 (infra/test_block_enforce_db.py 가 대조한다).
---   - 감사 트리거 확장: console.block.created · rearmed · enforced · unenforced 를 더하고 트리거 함수를 SECURITY DEFINER 로
+--   - 감사 트리거 확장: console.block.created · rearmed · enforced · unenforced 를 더하고 트리거 함수를 SECURITY DEFINER 로.
+--     생성 · 재차단 · 만료 변경 줄에 요청 지점(points=, 이슈 #77)을 싣는다. 열이 없는 DB(20261003 전)에서는 '-' 다
 --   - 차단 금지 대역 표(block_exempt)와 초기값, 차단 목록 검사 트리거(blocklist_guard: 주소 하나 · 금지 대역. SECURITY DEFINER 라
 --     콘솔에 block_exempt 읽기가 없어도 검사하고 정상 주소는 넣는다)
 --   - 만료 기록 함수 note_block_expired, 집행 역할(opsloop_enforcer) 권한, 콘솔의 금지 대역 읽기
@@ -21,6 +22,7 @@ SET search_path = public, pg_temp
 AS $$
 DECLARE
     v text;
+    p text;
 BEGIN
     IF TG_OP = 'DELETE' THEN
         IF OLD.released_at IS NULL THEN          -- 살아 있는 차단을 지우는 것도 해제다
@@ -31,11 +33,13 @@ BEGIN
         END IF;
         RETURN NULL;
     END IF;
+    -- 요청 지점(이슈 #77 blocklist.points). 열이 없는 DB(이 함수만 먼저 적용)에서도 돌게 to_jsonb 로 읽고, 없으면 '-' 다
+    p := coalesce(nullif(array_to_string(ARRAY(SELECT jsonb_array_elements_text(to_jsonb(NEW) -> 'points')), ','), ''), '-');
     IF TG_OP = 'INSERT' THEN
         -- ON CONFLICT DO UPDATE 로 기존 행을 고친 것은 INSERT 가 아니라 아래 UPDATE 로 온다
         PERFORM audit_event('console.block.created',
-                            format('ip=%s incident=%s expires=%s requested_by=%s', host(NEW.actor_ip),
-                                   coalesce(NEW.incident_key, '-'), coalesce(NEW.expires_at::text, 'none'),
+                            format('ip=%s incident=%s expires=%s points=%s requested_by=%s', host(NEW.actor_ip),
+                                   coalesce(NEW.incident_key, '-'), coalesce(NEW.expires_at::text, 'none'), p,
                                    coalesce(NEW.requested_by, '-')));
         RETURN NULL;
     END IF;
@@ -56,12 +60,13 @@ BEGIN
         PERFORM audit_event(
             CASE WHEN NEW.expires_at IS NOT NULL AND (OLD.expires_at IS NULL OR NEW.expires_at < OLD.expires_at)
                  THEN 'console.block.shortened' ELSE 'console.block.extended' END,
-            format('ip=%s from=%s to=%s', host(NEW.actor_ip), coalesce(OLD.expires_at::text, 'none'),
-                   coalesce(NEW.expires_at::text, 'none')));
+            format('ip=%s from=%s to=%s points=%s', host(NEW.actor_ip), coalesce(OLD.expires_at::text, 'none'),
+                   coalesce(NEW.expires_at::text, 'none'), p));
     ELSIF OLD.released_at IS NOT NULL AND NEW.released_at IS NULL THEN
         PERFORM audit_event('console.block.rearmed',
-                            format('ip=%s incident=%s expires=%s released_by=%s requested_by=%s', host(NEW.actor_ip),
-                                   coalesce(NEW.incident_key, '-'), coalesce(NEW.expires_at::text, 'none'),
+                            format('ip=%s incident=%s expires=%s points=%s released_by=%s requested_by=%s',
+                                   host(NEW.actor_ip), coalesce(NEW.incident_key, '-'),
+                                   coalesce(NEW.expires_at::text, 'none'), p,
                                    coalesce(OLD.released_by, '-'), coalesce(NEW.requested_by, '-')));
     END IF;
     -- 집행 기록. 위 분류와 따로 본다(재차단이 집행 기록을 함께 비우면 두 줄이 남는다). 같은 값을 다시 쓰면 남지 않는다

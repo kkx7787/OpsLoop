@@ -174,8 +174,9 @@ class StatusBoardTextTest(unittest.TestCase):
     def test_복원_훈련은_새_표를_백업_대상으로_세고_구조_기대값이_늘었다(self):
         self.assertIn("sensor_heartbeats", QUERIES.TABLES)
         self.assertEqual(len(QUERIES.TABLES), len(set(QUERIES.TABLES)))
-        # #59 가 트리거 +2 · 함수 +3, #63 이 함수 +3 을 더했다(infra/test_console_accounts_manage_db.py 가 시험 DB 카탈로그와 대조한다)
-        self.assertEqual(QUERIES.EXPECT, {"tables": 26, "fk": 15, "triggers": 9, "functions": 18, "views": 3})
+        # #59 가 트리거 +2 · 함수 +3, #63 이 함수 +3, #77 이 트리거 +1 · 함수 +1 을 더했다(infra/test_console_accounts_manage_db.py ·
+        # infra/test_block_points_choice_db.py 가 시험 DB 카탈로그와 대조한다)
+        self.assertEqual(QUERIES.EXPECT, {"tables": 26, "fk": 15, "triggers": 10, "functions": 19, "views": 3})
 
 
 @unittest.skipUnless(MOD.SKIP is True, str(MOD.SKIP))
