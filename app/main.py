@@ -31,6 +31,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Red
 from pydantic import BaseModel, Field, field_validator
 
 import auth
+import block_points
 import cti
 import node_logs
 import targets
@@ -565,10 +566,11 @@ async def get_incident(incident_key: str):
             SELECT rule_id, count(*) AS incidents FROM incidents
             WHERE actor_ip = $1::inet GROUP BY rule_id ORDER BY incidents DESC""",
             actor) if actor else []
-        # 차단 행과 집행 결과(이슈 #47). 화면은 enforce_note · enforced_at · expires_at 으로 집행 상태를 가르고,
-        # 지점별 결과(enforcement · 이슈 #51)가 있으면 관문 · 내부 방화벽 표를 그린다
+        # 차단 행과 집행 결과(이슈 #47). 화면은 요청 지점(points · 이슈 #77)과 enforce_note · enforced_at · expires_at ·
+        # 지점별 결과(enforcement · 이슈 #51)로 종합 상태(block_points.STATE_CASE 와 같은 규칙)와 관문 · 내부 방화벽 표를 그린다
         blocked = await c.fetchrow("""
-            SELECT reason, method, created_at, expires_at, released_at, enforced_at, enforce_note, requested_by, enforcement
+            SELECT reason, method, created_at, expires_at, released_at, enforced_at, enforce_note, requested_by,
+                   enforcement, points
             FROM blocklist WHERE actor_ip = $1::inet""", actor) if actor else None
         # 이 출발지가 드는 차단 금지 대역(block_exempt). 있으면 화면이 차단 단추를 흐리고 사유를 보인다
         exempt = await exempt_of(c, actor) if actor else None
@@ -639,29 +641,28 @@ async def get_incident(incident_key: str):
     d["circular"] = CIRCULAR.get(inc["rule_id"])
     d["proposal"] = propose(inc["rule_id"], {r["eventid"]: r["n"] for r in counts}, covered)
     d |= devices[inc["incident_key"]]
+    # 차단 적용 지점(이슈 #77). default 는 규칙만으로 정한 기본값, basis 는 그 까닭(확인 창 ⓘ, 장비는 여기만 쓴다),
+    #   requested 는 이 출발지의 살아 있는 차단이 요청한 지점(없으면 null)이다
+    alive = blocked is not None and blocked["released_at"] is None \
+        and (blocked["expires_at"] is None or blocked["expires_at"] > as_of)
+    d["block_points"] = {"default": block_points.default_points(inc["rule_id"]),
+                         "basis": block_points.basis_of(inc["rule_id"], d["devices"], d["device_state"]),
+                         "requested": list(blocked["points"]) if alive else None}
     return d
 
 
 # 집행기(enforcer/block_enforcer.py)가 enforce_note 에 쓰는 말머리(이슈 #47). 화면(format.ts blockState)도 같은 말머리로 가른다
-#   '관문 반영 · <digest 앞 8자> · <관문 적용 시각>' 관문 집합에 들어간 것을 확인했다(enforced_at 도 채운다)
+#   '관문 반영 · <digest 앞 8자> · <관문 적용 시각>' 관문 집합에 들어간 것을 확인했다(enforced_at 도 채운다). 앞 확인을 비운 적 없이
+#                                                 다시 확인했으면(다시 걸기 · 연장) 끝에 ' · 기존 차단 유지'(이슈 #77 결정 2)
 #   '관문 불일치 · <사유>'                       관문 상태가 목록과 5분 넘게 다르거나 관문이 거부했다(enforced_at 은 그대로)
 #   '집행 제외 · 만료 없음 | 금지 대역 | 대역 주소'  집행하지 않는 행(만료 없는 옛 차단 등)
 ENFORCE_EXCLUDED = "집행 제외"
 ENFORCE_MISMATCH = "관문 불일치"
 
-# 살아 있는 차단 요청을 집행 상태로 나눈다. 순서는 화면 blockState 와 같다: 만료가 없거나 제외로 적힌 것 → 관문 불일치 →
-# 집행 확인(enforced_at) → 집행 대기. 만료 없는 옛 차단(운영 13건)은 집행 대상이 아니라 제외로 센다. $1 기준 시각
-BLOCK_STATES_SQL = f"""
-    SELECT count(*) AS total,
-           count(*) FILTER (WHERE s = 'enforced') AS enforced,
-           count(*) FILTER (WHERE s = 'pending') AS pending,
-           count(*) FILTER (WHERE s = 'excluded') AS excluded,
-           count(*) FILTER (WHERE s = 'mismatch') AS mismatch
-    FROM (SELECT CASE WHEN expires_at IS NULL OR enforce_note LIKE '{ENFORCE_EXCLUDED}%' THEN 'excluded'
-                      WHEN enforce_note LIKE '{ENFORCE_MISMATCH}%' THEN 'mismatch'
-                      WHEN enforced_at IS NOT NULL THEN 'enforced'
-                      ELSE 'pending' END AS s
-          FROM blocklist WHERE released_at IS NULL AND (expires_at IS NULL OR expires_at > $1)) b"""
+# 살아 있는 차단 요청을 종합 상태로 나눈다(block_points.STATE_CASE, 이슈 #77). 요청한 지점이 모두 확인이어야 적용이고 우선순위는
+# 제외 > 실패 > 불일치 > 대기 > 적용이다. 화면 blockState · 보고서(reports.BLOCK_STATES_SQL)가 같은 규칙이다. 만료 없는 옛 차단
+# (운영 13건)은 집행 대상이 아니라 제외로 센다. $1 기준 시각
+BLOCK_STATES_SQL = block_points.BLOCK_STATES_SQL
 
 
 # 요약의 상위 출발지. 최고 심각도는 글자 max 가 아니라 순위로 고른다(글자순이면 medium > low > high > critical 이라
@@ -714,10 +715,11 @@ async def summary():
         "events": ev["events"],
         "actors": ev["actors"],
         "latest_event": ev["latest"].isoformat() if ev["latest"] else None,
-        # 살아 있는 차단 요청 수와 그 집행 상태. 요청 수는 실제로 막은 수가 아니다(집행 확인만 관문이 반영했다)
+        # 살아 있는 차단 요청 수와 그 종합 상태. 요청 수는 실제로 막은 수가 아니다(적용은 요청한 지점이 모두 확인한 것이다)
         "blocked_ips": blocks["total"],
-        "blocks": {k: blocks[k] for k in ("enforced", "pending", "excluded", "mismatch")},
-        # 지점별 합 = blocked_ips − blocks.excluded (만료 없음 · 집행 제외는 어느 지점도 집행하지 않는다)
+        "blocks": {k: blocks[k] for k in block_points.STATES},
+        # 지점별 합(applied + failed + unverified) = 살아 있는 요청 − 제외 − 그 지점 미요청(unrequested) − 그 지점 빠짐 확인 전
+        # (removing, 관문 빼기 뒤 관문이 뺐다고 확인하기 전). 만료 없음 · 집행 제외는 어느 지점도 집행하지 않는다
         "blocks_by_point": [targets.point_counts(p, by_point, reports.get(p), as_of, heartbeats_available)
                             for p in targets.POINT_LABELS],
         **({"absorbed_unblocked": dict(unblocked)} if unblocked else {}),
@@ -750,6 +752,15 @@ class ActionIn(BaseModel):
     # 행의 출발지가 다를 수 있기 때문이다(흡수 차단 행: 출발지 = 흡수 출발지, 근거 사건 = 첫 사건).
     #   없거나 이 사건 출발지와 같으면 이 사건 출발지의 차단을 푼다. 다르면 이 사건의 흡수 차단 한 행만 푼다.
     actor_ip: Optional[str] = Field(default=None, max_length=64)
+    # 차단 적용 지점(이슈 #77). ["fw"] 또는 ["gateway", "fw"](순서 무관, 정규 순서로 바꾼다). 관문이 빠진 것은 되지만 내부 방화벽이
+    #   빠지거나 모르는 값 · 중복 · 빈 목록은 422 다. 없으면 두 지점(옛 화면 호환). 차단 밖의 조치에서는 쓰지 않는다(400).
+    #   흡수 함께 차단 · 후속 차단 약속도 같은 지점이다. 이 출발지의 살아 있는 차단보다 좁으면(관문 빼기) 관리자만 한다
+    points: Optional[list[str]] = None
+
+    @field_validator("points")
+    @classmethod
+    def _points(cls, v):
+        return None if v is None else block_points.normalize(v)
 
     @field_validator("actor_ip")
     @classmethod
@@ -809,28 +820,41 @@ ADMIN_ACTIONS = {"unblock_ip", "suppress_rule"}
 #   absorbed.py 의 나머지 문장은 incidents 를 읽기만 하고 잠그지 않는다.
 LOCK_INCIDENT = "SELECT host(actor_ip) actor_ip, rule_id, rule_version FROM incidents WHERE incident_key = $1 FOR UPDATE"
 
-# 이 출발지의 차단(콘솔 block_ip). $1 출발지 · $2 사유 · $3 사건 키 · $4 요청자 · $5 만료 시간(시)
+# 이 출발지의 차단(콘솔 block_ip). $1 출발지 · $2 사유 · $3 사건 키 · $4 요청자 · $5 만료 시간(시) · $6 적용 지점 · $7 관문 빼기
 #   살아 있는 차단에 다시 걸 때 만료를 앞당기지 않는다. 앞당기면 차단 조치로 차단을 줄이는 셈이고(감사에는 shortened 로
 #   남아 R201 이 센다), 만료 없는 옛 차단도 24시간 뒤에 풀린다. 풀리거나 만료된 차단은 새로 건다.
-#   집행 정보(method · enforced_at · enforce_note)는 새 요청이면 비운다(집행기가 관문을 확인하고 다시 채운다). 살아 있는
-#   차단은 같은 주소가 관문에 이미 올라 있으므로 그대로 둔다. 비우면 막힌 채인데도 감사에 console.block.unenforced 가
-#   남고 1분 뒤 enforced 가 다시 남는다. 만료가 늘면 집행기가 관문 반영을 다시 확인해 고쳐 쓴다.
+#   관문 빼기($7 참, 이 트랜잭션에서 살아 있던 행을 막 풀었다)도 살아 있던 차단을 다시 거는 것이라 만료는 같은 규칙이고
+#   지점은 받은 값이다(이슈 #77).
+#   집행 정보(관문 세 열 method · enforced_at · enforce_note)는 요청 시각에 비우지 않는다(이슈 #77 결정 2). 살아 있는 차단은 같은
+#   주소가 관문에 이미 올라 있고, 해제 · 만료 행도 관문이 아직 옛 목록으로 막고 있을 수 있다. 비우면 막힌 채인데도 감사에
+#   console.block.unenforced 가 남는다. 집행기가 판단한다: 관문이 이 주소가 빠진 목록을 오류 없이 적용했다고 확인하면 그때 비우고
+#   (unenforced) 새로 확인하며, 뺀 적 없이 이어졌으면 다시 건 뒤 올린 목록의 새 보고로 확인해 '기존 차단 유지' 로 적는다.
+#   관문을 요청하지 않는 다시 걸기(관문 빼기 · 관문 없이)는 관문이 뺐다고 확인할 때까지 관문 칸이 빠짐 확인 전이다(결정 14).
 #   사람이 푼 차단도 콘솔 차단은 다시 건다(사람이 고른 조치다). triage 는 되살리지 않는다(detector/triage.py OWN_BLOCK_SQL).
+#   적용 지점(이슈 #77)은 살아 있는 차단이면 합집합(넓히기만, 좁히기는 DB 트리거가 거부한다), 새 요청이면 받은 값이다.
 #   차단 금지 대역 · 대역 주소는 blocklist 트리거(blocklist_guard)가 SQLSTATE 23514 로 거부한다. ON CONFLICT 로 기존 행을
 #   고치는 경우에도 BEFORE INSERT 트리거가 먼저 돌아 같은 거부가 난다.
 _LIVE = "(blocklist.released_at IS NULL AND (blocklist.expires_at IS NULL OR blocklist.expires_at > now()))"
 BLOCK_SQL = f"""
-    INSERT INTO blocklist (actor_ip, reason, incident_key, requested_by, expires_at)
-    VALUES ($1::inet, $2, $3, $4, now() + make_interval(hours => $5))
+    INSERT INTO blocklist (actor_ip, reason, incident_key, requested_by, expires_at, points)
+    VALUES ($1::inet, $2, $3, $4, now() + make_interval(hours => $5), $6::text[])
     ON CONFLICT (actor_ip) DO UPDATE
     SET reason = EXCLUDED.reason, incident_key = EXCLUDED.incident_key,
         requested_by = EXCLUDED.requested_by,
-        expires_at = CASE WHEN {_LIVE} AND (blocklist.expires_at IS NULL OR blocklist.expires_at > EXCLUDED.expires_at)
+        expires_at = CASE WHEN ({_LIVE} OR $7::boolean)
+                               AND (blocklist.expires_at IS NULL OR blocklist.expires_at > EXCLUDED.expires_at)
                           THEN blocklist.expires_at ELSE EXCLUDED.expires_at END,
-        method       = CASE WHEN {_LIVE} THEN blocklist.method END,
-        enforced_at  = CASE WHEN {_LIVE} THEN blocklist.enforced_at END,
-        enforce_note = CASE WHEN {_LIVE} THEN blocklist.enforce_note END,
+        points       = CASE WHEN {_LIVE} THEN {block_points.UNION_SQL} ELSE EXCLUDED.points END,
         released_at = NULL, released_by = NULL, created_at = now()"""
+
+
+# 이 출발지의 살아 있는 차단을 잠그고 요청 지점을 읽는다(관문 빼기 판단). 살아 있음은 BLOCK_SQL 의 _LIVE 와 같은 기준이다. $1 출발지
+LIVE_POINTS_SQL = """
+    SELECT points FROM blocklist
+    WHERE actor_ip = $1::inet AND released_at IS NULL AND (expires_at IS NULL OR expires_at > now())
+    FOR UPDATE"""
+# 관문 빼기의 해제(같은 트랜잭션에서 BLOCK_SQL 로 다시 건다). $1 출발지 · $2 해제자
+RELEASE_FOR_NARROW_SQL = "UPDATE blocklist SET released_at = now(), released_by = $2 WHERE actor_ip = $1::inet"
 
 
 async def notify_event(c, kind: str, incident_key: str, row_id) -> None:
@@ -846,6 +870,8 @@ async def add_action(incident_key: str, body: ActionIn, request: Request):
     user = require_role(request, "operator", "admin")
     if body.action in ADMIN_ACTIONS:
         require_role(request, "admin")
+    if body.points is not None and body.action != "block_ip":
+        raise HTTPException(400, "points 는 차단에만 씁니다")
     async with app.state.pool.acquire() as c:
         async with c.transaction():
             # 차단 목록 감사 트리거(sensor=audit)가 행위자를 여기서 읽는다. 트랜잭션이 끝나면 풀린다.
@@ -885,31 +911,44 @@ async def add_action(incident_key: str, body: ActionIn, request: Request):
             # 차단은 목록에 실제 상태로 남는다. 조치가 기록으로만 끝나지 않게. 만료 · 집행 정보 규칙은 BLOCK_SQL 에 있다.
             absorbed = None
             follow_expires = None
+            narrowed = False
             if body.action == "block_ip" and inc["actor_ip"]:
+                points = body.points or list(block_points.DEFAULT)
+                # 이 출발지의 살아 있는 차단이 요청보다 넓으면(관문 빼기) 관리자만 한다. 지점만 좁히는 것은 감사 없는 부분 해제라
+                # DB 트리거가 거부하므로, 같은 트랜잭션에서 풀고(released) 요청 지점으로 다시 건다(rearmed). 두 요청으로 나누면 사이에
+                # 집행기 회차가 끼어 내부 방화벽에서도 풀린다. 행을 잠그고 보므로 확인 창을 연 뒤 바뀐 지점도 여기서 다시 본다
+                current = await c.fetchrow(LIVE_POINTS_SQL, inc["actor_ip"])
+                if current is not None and not set(points) >= set(current["points"]):
+                    if user["r"] != "admin":
+                        raise HTTPException(403, "살아 있는 차단의 관문 빼기는 관리자만 합니다")
+                    await c.execute(RELEASE_FOR_NARROW_SQL, inc["actor_ip"], user["u"])
+                    narrowed = True
                 # 차단 금지 대역 · 대역 주소는 트리거가 거부한다(23514). 저장점 안에서 넣어, 거부되면 이 문장만 되돌리고
                 # 걸린 대역을 읽어 400 과 사유로 돌려준다. 조치 행은 남지 않는다(바깥 트랜잭션도 되돌린다)
                 try:
                     async with c.transaction():
                         await c.execute(BLOCK_SQL, inc["actor_ip"], body.note or "console", incident_key, user["u"],
-                                        body.expires_hours)
+                                        body.expires_hours, points, narrowed)
                 except asyncpg.PostgresError as error:
                     if not is_refused(error):
                         raise
                     raise HTTPException(400, refused_text(inc["actor_ip"], error.constraint_name,
                                                           await exempt_of(c, inc["actor_ip"])))
-                # 흡수된 출발지도 같은 만료로 올린다(absorbed.py BLOCK_ABSORBED_SQL). 흡수를 쓰는 규칙이면 후속 차단 약속을
-                # 남겨, 만료 전까지 새로 흡수되는 출발지도 콘솔이 같은 만료로 올린다. 약속이 살아 있으면 만료는 늦추기만 한다.
+                # 흡수된 출발지도 같은 만료 · 같은 지점으로 올린다(absorbed.py BLOCK_ABSORBED_SQL). 흡수를 쓰는 규칙이면 후속
+                # 차단 약속을 남겨, 만료 전까지 새로 흡수되는 출발지도 콘솔이 같은 만료로 올린다. 약속이 살아 있으면 만료는
+                # 늦추기만 하고 지점은 넓히기만 한다. 흡수 차단은 관문 빼기로 좁히지 않는다.
                 # 첫 사건이 아니거나 흡수를 쓰지 않는 규칙이면 0곳이고 약속도 없다.
                 if with_absorbed:
                     if await c.fetchval(ABSORBS_SQL, inc_version, inc_rule):
                         follow_expires = await c.fetchval(FOLLOW_UPSERT_SQL, incident_key, body.expires_hours,
-                                                          user["u"])
+                                                          user["u"], points)
                     expires = follow_expires or await c.fetchval(
                         "SELECT now() + make_interval(hours => $1)", body.expires_hours)
                     # 흡수 출발지는 차단 금지 대역(block_nets = 상수 + block_exempt)을 미리 빼고 넣는다. 그래도 트리거가
                     # 거부하면 그 사이 금지 대역이 바뀐 것이다. 이 요청 전체를 되돌리고 다시 해 달라고 한다
                     try:
-                        absorbed = await block_absorbed(c, incident_key, inc["actor_ip"], user["u"], expires)
+                        absorbed = await block_absorbed(c, incident_key, inc["actor_ip"], user["u"], expires,
+                                                        points=points)
                     except asyncpg.PostgresError as error:
                         if not is_refused(error):
                             raise
@@ -975,6 +1014,8 @@ async def add_action(incident_key: str, body: ActionIn, request: Request):
                 tag = absorbed_note(absorbed)
                 if follow_expires:
                     tag = tag[:-1] + " · 만료 전 새 흡수도 차단]"
+            if narrowed:
+                tag = "[관문 빼기 · 해제 뒤 다시 걸기]" + (f" {tag}" if tag else "")
             if tag:
                 note = f"{note} {tag}" if note else tag
             rec = await c.fetchrow("""
@@ -1026,7 +1067,7 @@ async def add_verdict(incident_key: str, body: VerdictIn, request: Request):
 async def blocklist(active_only: bool = True):
     q = """SELECT host(actor_ip) actor_ip, reason, incident_key,
                   created_at, expires_at, released_at, method, requested_by,
-                  enforced_at, enforce_note, enforcement, released_by, now() AS checked_at
+                  enforced_at, enforce_note, enforcement, released_by, points, now() AS checked_at
            FROM blocklist {} ORDER BY created_at DESC, actor_ip"""
     q = q.format("WHERE released_at IS NULL AND (expires_at IS NULL OR expires_at > now())" if active_only else "")
     async with app.state.pool.acquire() as c:

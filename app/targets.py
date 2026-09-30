@@ -11,7 +11,8 @@
   - 수집: 생존 신호가 있는 대상만 신호 시각으로 정상 · 수신 없음을 가른다. 로그 시각만으로 정상 · 장애를 정하지 않는다
     (콘솔은 생존 신호가 없어 늘 '생존 상태 미확인' 이다). 신호는 정상인데 로그가 없으면 '요청 없음'(quiet)이다.
   - 대응: 그 지점(관문 · 내부 방화벽)이 적용을 확인한 것만 적용이다. 지점이 없는 대상은 수를 내지 않는다(null).
-    0 이 '막지 못했다' 로 읽히지 않게 화면이 문구를 고른다.
+    0 이 '막지 못했다' 로 읽히지 않게 화면이 문구를 고른다. 지점별 수는 그 지점을 요청한 행만 세고, 요청하지 않은 행은
+    미요청(unrequested), 요청했다가 빼서 그 지점이 뺐다고 확인하기 전인 행은 빠짐 확인 전(removing)으로 따로 센다(이슈 #77).
   - 사건 → 대상 매핑은 순수 함수(resolve_links)다. 붙인 곳마다 근거(확인 · 규칙 범위 · 대체 추정)를 단다. 한 사건이 여러 대상에
     붙을 수 있어 카드 합은 전체와 다르다. 카드 수 · 장비 필터는 대체 추정을 뺀 곳(shown)으로 센다. 어느 대상에도 붙이지 못한 사건은
     숨기지 않고 unmapped(화면 '장비 미확인')로 센다.
@@ -30,6 +31,7 @@ from fastapi import APIRouter, Request
 
 import cti
 from absorbed import block_nets
+from block_points import removing_sql, unrequested_sql
 from dashboard import HUMAN_UNDETERMINED, PENDING_ROWS
 
 router = APIRouter()
@@ -291,17 +293,22 @@ PARSE_SQL = f"""
     ORDER BY q.node_id"""
 
 # 살아 있는 차단(해제 · 만료 안 됨, 만료 없는 옛 차단 · 집행 제외 아님)을 지점별로 적용 확인 · 실패 · 미확인으로 나눈다.
+#   지점마다 그 지점을 요청한 행(blocklist.points, 이슈 #77)만 세고, 요청하지 않은 행은 미요청(unrequested), 그 가운데 그 지점에
+#   기록이 남은 행(관리자 관문 빼기 뒤 관문이 뺐다고 확인하기 전)은 빠짐 확인 전(removing)으로 따로 센다(block_points.removing_sql).
 #   실패는 그 지점이 거부했다고 보고한 것(failed)이다. 모르는 것이 아니라 알려진 미적용이라 미확인과 가른다.
 #   미확인은 그 밖(pending · stale · 기록 없음)이고, 그 가운데 지점 불일치(stale: 적용 수 부족 · 5분 넘게 미반영)는 따로도 센다.
-#   만료 없음 · 집행 제외는 main.BLOCK_STATES_SQL 의 excluded 와 같은 정의다. mismatch 는 그 BLOCK_STATES_SQL 의 mismatch 와 같은
-#   집합이다(집행 제외가 먼저라 여기서 빠진 행은 거기서도 불일치가 아니다). $1 기준 시각
+#   만료 없음 · 집행 제외는 종합 상태(block_points.STATE_CASE)의 excluded 와 같은 정의다. mismatch 는 관문을 요청한 행의 관문 불일치
+#   쪽지다(관제 이상 gateway_mismatch). $1 기준 시각
 BLOCKS_SQL = "SELECT " + ", ".join(
-    f"count(*) FILTER (WHERE enforcement -> '{p}' ->> 'state' = 'confirmed') AS {p}_applied, "
-    f"count(*) FILTER (WHERE enforcement -> '{p}' ->> 'state' = 'failed') AS {p}_failed, "
-    f"count(*) FILTER (WHERE coalesce(enforcement -> '{p}' ->> 'state', '') NOT IN ('confirmed', 'failed')) AS {p}_unverified, "
-    f"count(*) FILTER (WHERE enforcement -> '{p}' ->> 'state' = 'stale') AS {p}_stale"
+    f"count(*) FILTER (WHERE '{p}' = ANY(points) AND enforcement -> '{p}' ->> 'state' = 'confirmed') AS {p}_applied, "
+    f"count(*) FILTER (WHERE '{p}' = ANY(points) AND enforcement -> '{p}' ->> 'state' = 'failed') AS {p}_failed, "
+    f"count(*) FILTER (WHERE '{p}' = ANY(points) "
+    f"AND coalesce(enforcement -> '{p}' ->> 'state', '') NOT IN ('confirmed', 'failed')) AS {p}_unverified, "
+    f"count(*) FILTER (WHERE '{p}' = ANY(points) AND enforcement -> '{p}' ->> 'state' = 'stale') AS {p}_stale, "
+    f"count(*) FILTER (WHERE {unrequested_sql(p)}) AS {p}_unrequested, "
+    f"count(*) FILTER (WHERE {removing_sql(p)}) AS {p}_removing"
     for p, _ in POINTS.values()) + f""",
-    count(*) FILTER (WHERE enforce_note LIKE '{ENFORCE_MISMATCH}%') AS mismatch
+    count(*) FILTER (WHERE 'gateway' = ANY(points) AND enforce_note LIKE '{ENFORCE_MISMATCH}%') AS mismatch
     FROM blocklist
     WHERE released_at IS NULL AND expires_at > $1
       AND (enforce_note IS NULL OR enforce_note NOT LIKE '{ENFORCE_EXCLUDED}%')"""
@@ -816,7 +823,8 @@ def system_block(target_id: str, readable: bool, row, as_of, registered: bool = 
 
 def point_counts(point: str, blocks, report, as_of, heartbeats_available) -> dict:
     """한 지점의 적용 확인 · 실패 · 미확인 수와 미확인 가운데 지점 불일치(stale) 수(BLOCKS_SQL 한 행, 없으면 0).
-    카드 대응 · 요약(blocks_by_point) · 관제 이상이 같이 쓴다.
+    카드 대응 · 요약(blocks_by_point) · 관제 이상이 같이 쓴다. 수는 그 지점을 요청한 행만이고, 요청하지 않은 행은 unrequested,
+    그 가운데 빠짐 확인 전은 removing 이다(이슈 #77. 요청 사실이라 아래 합치기에 넣지 않는다).
 
     지점 결과(enforcement)를 내리는 쪽은 집행기뿐이다. 집행기가 멈추면 옛 '적용 확인' 이 그대로 남으므로, 그 지점의 집행기
     확인(block:<지점>.checked_at)이 없거나 10분 넘게 멈췄으면 적용 · 실패 · 불일치를 믿지 않고 모두 미확인으로 합친다. 생존 신호 표를
@@ -826,6 +834,8 @@ def point_counts(point: str, blocks, report, as_of, heartbeats_available) -> dic
     failed = int(blocks[f"{point}_failed"]) if blocks else 0
     unverified = int(blocks[f"{point}_unverified"]) if blocks else 0
     stale = int(blocks[f"{point}_stale"]) if blocks else 0
+    unrequested = int(blocks[f"{point}_unrequested"]) if blocks else 0
+    removing = int(blocks[f"{point}_removing"]) if blocks else 0
     stalled = None
     if not heartbeats_available:
         stalled = "집행 보고를 읽을 수 없음 · 적용 여부 확인 불가"
@@ -837,20 +847,21 @@ def point_counts(point: str, blocks, report, as_of, heartbeats_available) -> dic
     if stalled:
         applied, failed, unverified, stale = 0, 0, applied + failed + unverified, 0
     return {"point": point, "label": POINT_LABELS[point], "applied": applied, "failed": failed, "unverified": unverified,
-            "stale": stale, "stalled": stalled, "unreadable": not heartbeats_available}
+            "stale": stale, "unrequested": unrequested, "removing": removing, "stalled": stalled,
+            "unreadable": not heartbeats_available}
 
 
 def response_block(target_id: str, blocks, exempt: int, reports: dict, as_of=None, heartbeats_available=False) -> dict:
-    """대응. 지점이 있는 대상만 적용 확인 · 실패 · 미확인 수와 그 가운데 지점 불일치 수(stale)(point_counts)를 낸다. 지점이 없으면
-    수 대신 null 이다(0 이 아니다). reports 는 {지점: 차단 보고 신호 행}(없으면 빈 사전)."""
+    """대응. 지점이 있는 대상만 적용 확인 · 실패 · 미확인 수와 그 가운데 지점 불일치 수(stale), 그 지점 미요청 수(unrequested) ·
+    빠짐 확인 전 수(removing)(point_counts)를 낸다. 지점이 없으면 수 대신 null 이다(0 이 아니다). reports 는 {지점: 차단 보고 신호 행}(없으면 빈 사전)."""
     point, label = POINTS.get(target_id, (None, None))
     if point is None:
         return {"point": None, "point_label": None, "applied": None, "failed": None, "unverified": None, "stale": None,
-                "exempt": exempt, "report": None, "stalled": None, "unreadable": None}
+                "unrequested": None, "removing": None, "exempt": exempt, "report": None, "stalled": None, "unreadable": None}
     report = reports.get(point)
     counts = point_counts(point, blocks, report, as_of, heartbeats_available)
     return {"point": point, "point_label": label,
-            **{k: counts[k] for k in ("applied", "failed", "unverified", "stale")},
+            **{k: counts[k] for k in ("applied", "failed", "unverified", "stale", "unrequested", "removing")},
             "exempt": exempt,
             "report": {"seen_at": cti.iso(report["seen_at"]), "checked_at": cti.iso(report["checked_at"]),
                        "problem": report["problem"]} if report else None,

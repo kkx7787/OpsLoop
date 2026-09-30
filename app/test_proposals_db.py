@@ -37,13 +37,14 @@ class ProposalBasisDatabaseTests(unittest.IsolatedAsyncioTestCase):
             CREATE TEMP TABLE blocklist (actor_ip inet PRIMARY KEY, reason text, method text,
                 created_at timestamptz DEFAULT now(), expires_at timestamptz, released_at timestamptz,
                 enforced_at timestamptz, enforce_note text, incident_key text, requested_by text, released_by text,
-                enforcement jsonb);
+                enforcement jsonb, points text[] NOT NULL DEFAULT '{gateway,fw}');
             -- 상세는 같은 페이로드 흡수 기록 · 후속 차단 약속(규칙 v3)과 규칙 정의도 읽는다. 여기서는 비어 있다
             CREATE TEMP TABLE incident_absorbed (first_key text, member_key text, kind text, via_key text,
                 rule_id text, rule_version text, actor_ip inet, first_ts timestamptz, last_ts timestamptz,
                 signal_count integer, sessions text[] DEFAULT '{}', payloads text[] DEFAULT '{}');
             CREATE TEMP TABLE absorbed_blocks (first_key text PRIMARY KEY, expires_at timestamptz NOT NULL,
-                requested_by text, created_at timestamptz DEFAULT now(), released_at timestamptz, released_by text);
+                requested_by text, created_at timestamptz DEFAULT now(), released_at timestamptz, released_by text,
+                points text[] NOT NULL DEFAULT '{gateway,fw}');
             CREATE TEMP TABLE rule_versions (rule_version text PRIMARY KEY, definition jsonb NOT NULL);
         """)
         self.pool = type("Pool", (), {"acquire": lambda _self: self.acquire()})()

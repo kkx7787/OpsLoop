@@ -48,9 +48,10 @@ LONG_UA = "x" * 600
 
 
 def temp_table(name: str) -> str:
-    """schema.sql 의 표 정의(첫 CREATE TABLE 과 뒤따른 ADD COLUMN)를 임시 표로 옮긴다."""
+    """schema.sql 의 표 정의(첫 CREATE TABLE 과 뒤따른 ADD COLUMN)를 임시 표로 옮긴다. 열이 없을 때만 더하는 DO 블록 안의
+    ADD COLUMN(이슈 #77 points)도 줍는다."""
     body = re.search(rf"^CREATE TABLE IF NOT EXISTS {name} \(\n.*?\n\);", SCHEMA, re.S | re.M).group(0)
-    alters = re.findall(rf"^ALTER TABLE {name} ADD COLUMN IF NOT EXISTS .*?;$", SCHEMA, re.M)
+    alters = [a.strip() for a in re.findall(rf"^\s*ALTER TABLE {name} ADD COLUMN .*?;$", SCHEMA, re.M)]
     return "\n".join([body.replace("CREATE TABLE IF NOT EXISTS", "CREATE TEMP TABLE", 1), *alters])
 
 
@@ -264,6 +265,7 @@ class ListTests(Base):
                           "enforce_note": "관문 반영 · 0123abcd · 시험"})
         self.assertEqual(block["enforcement"]["gateway"]["state"], "confirmed")
         self.assertEqual(block["enforced_at"], self.ago(249).isoformat())
+        self.assertEqual(block["points"], ["gateway", "fw"])            # 열 기본값(이슈 #77 schema.sql)
         self.assertTrue(all(items[ip]["block"] is None for ip in (B, C, D, E, F)))
         self.assertEqual((await self.listing())["checkers"], {"gateway_stale": False, "fw_stale": True})
 

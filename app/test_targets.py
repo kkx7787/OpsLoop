@@ -41,6 +41,7 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+import block_points as bp
 import targets as t
 
 NOW = datetime(2026, 9, 28, 3, 0, tzinfo=timezone.utc)
@@ -447,20 +448,24 @@ class BlocksTests(unittest.TestCase):
 
     def test_지점이_없는_대상은_수_대신_null_이다(self):
         blocks = {"gateway_applied": 0, "gateway_failed": 0, "gateway_unverified": 0, "gateway_stale": 0,
-                  "fw_applied": 0, "fw_failed": 0, "fw_unverified": 0, "fw_stale": 0}
+                  "gateway_unrequested": 0, "gateway_removing": 0, "fw_applied": 0, "fw_failed": 0, "fw_unverified": 0,
+                  "fw_stale": 0, "fw_unrequested": 0, "fw_removing": 0}
         for tid in ("console", "data-node"):
             r = t.response_block(tid, blocks, 2, {}, NOW, True)
             self.assertEqual(r, {"point": None, "point_label": None, "applied": None, "failed": None, "unverified": None,
-                                 "stale": None, "exempt": 2, "report": None, "stalled": None, "unreadable": None})
+                                 "stale": None, "unrequested": None, "removing": None, "exempt": 2, "report": None,
+                                 "stalled": None, "unreadable": None})
 
     def test_지점이_있으면_그_지점의_확인_수와_보고를_낸다(self):
         blocks = {"gateway_applied": 3, "gateway_failed": 0, "gateway_unverified": 1, "gateway_stale": 1,
-                  "fw_applied": 0, "fw_failed": 2, "fw_unverified": 4, "fw_stale": 3}
+                  "gateway_unrequested": 2, "gateway_removing": 1, "fw_applied": 0, "fw_failed": 2, "fw_unverified": 4,
+                  "fw_stale": 3, "fw_unrequested": 0, "fw_removing": 0}
         report = hb("block:fw", kind="block_report", role="fw", seen=None, checked=1, problem="보고 파일 없음")
-        # 생존 신호 표를 읽을 수 없으면(마이그레이션 전 · 권한 빠짐) 멈춤을 판정하지 못해 옛 '적용 확인' 을 믿지 않는다(#82)
+        # 생존 신호 표를 읽을 수 없으면(마이그레이션 전 · 권한 빠짐) 멈춤을 판정하지 못해 옛 '적용 확인' 을 믿지 않는다(#82).
+        #   관문 미요청 · 빠짐 확인 전(이슈 #77)은 집행기 멈춤과 무관한 요청 사실이라 합치지 않는다
         aws = t.response_block("aws-sensor", blocks, 0, {"fw": report}, NOW, False)
         self.assertEqual(aws, {"point": "gateway", "point_label": "AWS 관문", "applied": 0, "failed": 0, "unverified": 4,
-                               "stale": 0, "exempt": 0, "report": None,
+                               "stale": 0, "unrequested": 2, "removing": 1, "exempt": 0, "report": None,
                                "stalled": "집행 보고를 읽을 수 없음 · 적용 여부 확인 불가", "unreadable": True})
         # 표는 읽는데 그 지점의 집행기 확인 기록이 없으면 적용 확인을 믿지 않는다(집행기 멈춤이다)
         aws = t.response_block("aws-sensor", blocks, 0, {"fw": report}, NOW, True)
@@ -477,7 +482,9 @@ class BlocksTests(unittest.TestCase):
                          (0, 4, 0, "집행기 확인 중단 · 마지막 확인 11분 전"))
         edge = hb("block:gateway", kind="block_report", role="gateway", seen=10, checked=10)
         self.assertEqual({k: v for k, v in t.response_block("aws-sensor", blocks, 0, {"gateway": edge}, NOW, True).items()
-                          if k in ("applied", "stale")}, {"applied": 3, "stale": 1})
+                          if k in ("applied", "stale", "unrequested", "removing")},
+                         {"applied": 3, "stale": 1, "unrequested": 2, "removing": 1})
+        self.assertEqual((web["unrequested"], web["removing"]), (0, 0))
         self.assertEqual(web["report"], {"seen_at": None, "checked_at": (NOW - timedelta(minutes=1)).isoformat(),
                                          "problem": "보고 파일 없음"})
 
@@ -607,9 +614,22 @@ class RouterTests(unittest.TestCase):
         self.assertIn(f"NOT LIKE '{self.main.ENFORCE_EXCLUDED}%'", t.BLOCKS_SQL)
 
     def test_관문_불일치_말머리는_main_과_같고_차단_질의에_불일치_칸이_있다(self):
+        # 관문 불일치 칸은 관문을 요청한 행만 센다(이슈 #77). 종합 상태도 관문 요청 행의 쪽지만 불일치로 본다
         self.assertEqual(t.ENFORCE_MISMATCH, self.main.ENFORCE_MISMATCH)
-        self.assertIn(f"FILTER (WHERE enforce_note LIKE '{self.main.ENFORCE_MISMATCH}%') AS mismatch", t.BLOCKS_SQL)
-        self.assertIn(f"enforce_note LIKE '{self.main.ENFORCE_MISMATCH}%' THEN 'mismatch'", self.main.BLOCK_STATES_SQL)
+        self.assertIn(f"FILTER (WHERE 'gateway' = ANY(points) AND enforce_note LIKE '{self.main.ENFORCE_MISMATCH}%') "
+                      "AS mismatch", t.BLOCKS_SQL)
+        self.assertIn(f"('gateway' = ANY(points) AND (enforce_note LIKE '{self.main.ENFORCE_MISMATCH}%'",
+                      self.main.BLOCK_STATES_SQL)
+        # 요청하지 않은 행은 기록이 남았으면(관문 빼기 뒤 관문이 뺐다고 확인하기 전) 빠짐 확인 전, 아니면 미요청이다(결정 14)
+        for p in ("gateway", "fw"):
+            self.assertIn(f"count(*) FILTER (WHERE {bp.unrequested_sql(p)}) AS {p}_unrequested", t.BLOCKS_SQL)
+            self.assertIn(f"count(*) FILTER (WHERE {bp.removing_sql(p)}) AS {p}_removing", t.BLOCKS_SQL)
+        # 남은 기록은 state 가 글자인 결과 기록(관문은 확인 시각도)이다. 집행기 held_at · 화면 heldPoint 와 같다
+        self.assertEqual(bp.removing_sql("gateway"), "NOT 'gateway' = ANY(points) AND "
+                         "(jsonb_typeof(enforcement -> 'gateway' -> 'state') IS NOT DISTINCT FROM 'string' "
+                         "OR enforced_at IS NOT NULL)")
+        self.assertEqual(bp.unrequested_sql("fw"), "NOT 'fw' = ANY(points) AND "
+                         "NOT (jsonb_typeof(enforcement -> 'fw' -> 'state') IS NOT DISTINCT FROM 'string')")
 
     def test_앞선_시각_줄_상한은_장비_로그_목록과_같다(self):
         # 마지막 로그 · 웹 로그 적재 판정 · 요약 최근 원문 수집은 장비 로그 목록(node_logs)과 같은 기준(기준 시각 + 5분)으로 자른다
@@ -923,10 +943,12 @@ class NodeCardTests(unittest.TestCase):
         self.assertEqual(t.vulns_block("web-03", True, assets, NOW), {"available": True, "assets": []})
         self.assertEqual(t.vulns_block("web-02", False, assets, NOW), {"available": False, "assets": []})
         blocks = {"gateway_applied": 3, "gateway_failed": 0, "gateway_unverified": 1, "gateway_stale": 0,
-                  "fw_applied": 1, "fw_failed": 0, "fw_unverified": 0, "fw_stale": 0}
+                  "gateway_unrequested": 0, "gateway_removing": 0, "fw_applied": 1, "fw_failed": 0, "fw_unverified": 0,
+                  "fw_stale": 0, "fw_unrequested": 0, "fw_removing": 0}
         self.assertEqual(t.response_block("web-02", blocks, 1, {}, NOW, True),
                          {"point": None, "point_label": None, "applied": None, "failed": None, "unverified": None,
-                          "stale": None, "exempt": 1, "report": None, "stalled": None, "unreadable": None})
+                          "stale": None, "unrequested": None, "removing": None, "exempt": 1, "report": None,
+                          "stalled": None, "unreadable": None})
 
 
 # ----------------------------------------------------------------------
@@ -1178,7 +1200,8 @@ def run_row(version, minutes, honeypot):
 
 
 BLOCK_ROW = {"gateway_applied": 3, "gateway_failed": 0, "gateway_unverified": 1, "gateway_stale": 0,
-             "fw_applied": 1, "fw_failed": 2, "fw_unverified": 0, "fw_stale": 0, "mismatch": 0}
+             "gateway_unrequested": 0, "gateway_removing": 0, "fw_applied": 1, "fw_failed": 2, "fw_unverified": 0,
+             "fw_stale": 0, "fw_unrequested": 0, "fw_removing": 0, "mismatch": 0}
 BLOCK_OK = {**BLOCK_ROW, "fw_failed": 0}
 
 
@@ -1251,20 +1274,22 @@ class MonitorTests(unittest.TestCase):
 
     def test_지점별_수는_카드_대응과_같은_정의다(self):
         report = hb("block:fw", kind="block_report", role="fw", checked=1)
-        blocks = {**BLOCK_ROW, "fw_unverified": 2, "fw_stale": 1}
+        blocks = {**BLOCK_ROW, "fw_unverified": 2, "fw_stale": 1, "gateway_unrequested": 3, "gateway_removing": 1}
         # 생존 신호 표를 읽을 수 없으면 집행 보고를 모르니 적용 · 실패 · 불일치를 미확인에 합친다(옛 '적용 확인' 을 초록으로 두지 않는다)
-        #   집행기가 멈춘 것이 아니라 모르는 것이라 unreadable 로 가른다(화면은 '집행기 멈춤' 이 아니라 '확인 불가')
+        #   집행기가 멈춘 것이 아니라 모르는 것이라 unreadable 로 가른다(화면은 '집행기 멈춤' 이 아니라 '확인 불가').
+        #   미요청 · 빠짐 확인 전(이슈 #77)은 합치지 않는다
         self.assertEqual(t.point_counts("gateway", blocks, None, NOW, False),
                          {"point": "gateway", "label": "AWS 관문", "applied": 0, "failed": 0, "unverified": 4, "stale": 0,
-                          "stalled": "집행 보고를 읽을 수 없음 · 적용 여부 확인 불가", "unreadable": True})
+                          "unrequested": 3, "removing": 1, "stalled": "집행 보고를 읽을 수 없음 · 적용 여부 확인 불가",
+                          "unreadable": True})
         self.assertEqual(t.point_counts("fw", blocks, report, NOW, True),
                          {"point": "fw", "label": "내부 방화벽", "applied": 1, "failed": 2, "unverified": 2, "stale": 1,
-                          "stalled": None, "unreadable": False})
+                          "unrequested": 0, "removing": 0, "stalled": None, "unreadable": False})
         # 집행기 확인이 없으면 적용 · 실패를 미확인에 합친다
         self.assertEqual(t.point_counts("gateway", blocks, None, NOW, True),
                          {"point": "gateway", "label": "AWS 관문", "applied": 0, "failed": 0, "unverified": 4, "stale": 0,
-                          "stalled": "집행기 확인 기록 없음", "unreadable": False})
-        keys = ("applied", "failed", "unverified", "stale", "stalled", "unreadable")
+                          "unrequested": 3, "removing": 1, "stalled": "집행기 확인 기록 없음", "unreadable": False})
+        keys = ("applied", "failed", "unverified", "stale", "unrequested", "removing", "stalled", "unreadable")
         for tid, point in (("aws-sensor", "gateway"), ("web-01", "fw")):
             for reports, available in (({}, True), ({"fw": report}, True), ({}, False)):
                 with self.subTest(target=tid, reports=list(reports), available=available):

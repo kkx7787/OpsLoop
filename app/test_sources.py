@@ -46,7 +46,8 @@ def block_row(ip="198.51.100.7"):
     return {"ip": ip, "reason": "SSH 무차별 대입", "method": "nft", "created_at": NOW - timedelta(hours=1),
             "expires_at": NOW + timedelta(hours=23), "released_at": None, "enforced_at": NOW - timedelta(minutes=59),
             "enforce_note": "관문 반영 · 0123abcd · 2026-09-29T02:01:00Z", "requested_by": "han",
-            "enforcement": json.dumps({"gateway": {"state": "confirmed", "since": "2026-09-29T02:01:00Z"}})}
+            "enforcement": json.dumps({"gateway": {"state": "confirmed", "since": "2026-09-29T02:01:00Z"}}),
+            "points": ["gateway", "fw"]}
 
 
 def seen(sensors, minutes=10):
@@ -89,7 +90,10 @@ class PureTests(unittest.TestCase):
         self.assertIsNone(s.block_of(None))
         block = s.block_of(block_row())
         self.assertEqual(set(block), {"reason", "method", "created_at", "expires_at", "released_at", "enforced_at",
-                                      "enforce_note", "requested_by", "enforcement"})
+                                      "enforce_note", "requested_by", "enforcement", "points"})
+        # 요청 지점(이슈 #77). 목록으로 준다
+        self.assertEqual((block["points"], s.block_of({**block_row(), "points": ["fw"]})["points"]),
+                         (["gateway", "fw"], ["fw"]))
         self.assertEqual(block["created_at"], (NOW - timedelta(hours=1)).isoformat())
         self.assertIsNone(block["released_at"])
         self.assertEqual(block["enforcement"], {"gateway": {"state": "confirmed", "since": "2026-09-29T02:01:00Z"}})
