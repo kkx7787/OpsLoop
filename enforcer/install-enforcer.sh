@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# 데이터 노드에 차단 집행기(opsloop-enforcer)를 설치한다 (이슈 #47 · #51). 타이머를 새로 켜지는 않는다 (관문 동기화를 깔고 확인한 뒤
+# 데이터 노드에 차단 집행기(opsloop-enforcer)를 설치한다 (이슈 #47 · #51 · #77). 타이머를 새로 켜지는 않는다 (관문 동기화를 깔고 확인한 뒤
 # 직접 켠다). 이미 켜져 있으면 설치하는 동안 멈췄다가 끝나면(실패해도) 다시 켠다.
 # 여러 번 돌려도 된다. 이미 있는 사용자 · 비밀번호 · 설정은 지키고, 무엇을 했는지 찍는다.
 #
 # 하는 일: 사용자 opsloop-enforcer · 상태 폴더 /var/lib/opsloop-enforcer, 코드 /opt/opsloop/enforcer (root 소유),
 #   래퍼 /usr/local/bin/opsloop-enforcer, 설정 /etc/default/opsloop-enforcer (처음만), DB 역할 opsloop_enforcer 와
-#   접속 파일 /etc/opsloop/enforcer.env, 마이그레이션 세 개(20260927_block_enforce.sql → 20260929_block_points.sql →
-#   20260930_status_board.sql, 이 순서. #47 이 집행 역할의 표 권한을 먼저 모두 거두므로 #51 · #52 가 뒤에 와야 enforcement 쓰기 ·
-#   생존 신호 표 쓰기 권한이 남는다), systemd 단위 (켜지 않음),
+#   접속 파일 /etc/opsloop/enforcer.env, 마이그레이션 네 개(20260927_block_enforce.sql → 20260929_block_points.sql →
+#   20260930_status_board.sql → 20261003_block_points_choice.sql, 이 순서. #47 이 집행 역할의 표 권한을 먼저 모두 거두므로 #51 · #52 가
+#   뒤에 와야 enforcement 쓰기 · 생존 신호 표 쓰기 권한이 남는다. #77 은 권한을 주지 않고 요청 지점 열 · 트리거만 둔다),
+#   systemd 단위 (켜지 않음),
 #   OPSLOOP_FW_ID 를 주면 설정에 내부 방화벽 줄 (없을 때만).
 # 순서: DB(역할 · 마이그레이션)를 코드보다 먼저 바꾼다. 옛 코드는 새 열을 모르므로 스키마가 먼저 바뀌어도 그대로 돌고,
 #   마이그레이션이 실패하면 코드를 바꾸지 않고 멈춘다 ('새 코드 · 옛 스키마' 가 생기지 않는다).
@@ -23,7 +24,7 @@
 # 먼저 puller/install-ingest.sh · collector/install-collector.sh 가 깔려 있어야 한다 (스키마 · /etc/opsloop · DB 컨테이너).
 #
 # 사용 (Mac, 저장소 루트):
-#   C=$(git rev-parse --short HEAD); git archive "$C" enforcer infra/migrations/20260927_block_enforce.sql infra/migrations/20260929_block_points.sql infra/migrations/20260930_status_board.sql | ssh -F ~/.ssh/config.opsloop data01 "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo bash /tmp/ol/enforcer/install-enforcer.sh $C"
+#   C=$(git rev-parse --short HEAD); git archive "$C" enforcer infra/migrations/20260927_block_enforce.sql infra/migrations/20260929_block_points.sql infra/migrations/20260930_status_board.sql infra/migrations/20261003_block_points_choice.sql | ssh -F ~/.ssh/config.opsloop data01 "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo bash /tmp/ol/enforcer/install-enforcer.sh $C"
 #   내부 방화벽까지: 마지막을 "sudo OPSLOOP_FW_ID=fw-opsloop bash /tmp/ol/enforcer/install-enforcer.sh $C" 로
 set -euo pipefail
 VERSION=${1:?커밋}
@@ -38,6 +39,9 @@ MIGRATION=infra/migrations/20260927_block_enforce.sql
 MIGRATION51=infra/migrations/20260929_block_points.sql
 # 관제 대상 상태판 생존 신호 표 (이슈 #52). 같은 까닭으로 #47 · #51 뒤에 적용한다(집행기가 관문 · 내부 방화벽 보고 시각을 쓴다)
 MIGRATION52=infra/migrations/20260930_status_board.sql
+# 차단 적용 지점 선택 (이슈 #77). 권한을 주지 않아 순서와 무관하지만 반영 순서(27 → 29 → 30 → 77)대로 마지막에 적용한다.
+# 집행기는 요청 지점(blocklist.points)을 to_jsonb 로 읽어 열이 없어도 돌고(두 지점), 이 열을 고치지 않는다(읽기만)
+MIGRATION77=infra/migrations/20261003_block_points_choice.sql
 # 내부 방화벽 동기화의 OPSLOOP_HOST (선택 · 이슈 #51). 주면 설정 파일에 없을 때만 더한다
 FW_ID=${OPSLOOP_FW_ID:-}
 BUCKET=${OPSLOOP_BUCKET:-opsloop-archive-739272173045}
@@ -46,8 +50,9 @@ PSQL=(docker exec -i -e "PGOPTIONS=-c client_min_messages=warning" "$DB" psql -U
 
 echo "== 사전 확인"
 [ "$(id -u)" = 0 ] || { echo "root 로 돌린다 (sudo bash $0 $VERSION)" >&2; exit 1; }
-for f in enforcer/block_enforcer.py enforcer/opsloop-enforcer.service enforcer/opsloop-enforcer.timer "$MIGRATION" "$MIGRATION51" "$MIGRATION52"; do
-  [ -e "$SRC/$f" ] || { echo "받은 파일에 $f 가 없다. git archive 에 enforcer $MIGRATION $MIGRATION51 $MIGRATION52 를 넣는다" >&2; exit 1; }
+for f in enforcer/block_enforcer.py enforcer/opsloop-enforcer.service enforcer/opsloop-enforcer.timer "$MIGRATION" "$MIGRATION51" "$MIGRATION52" \
+         "$MIGRATION77"; do
+  [ -e "$SRC/$f" ] || { echo "받은 파일에 $f 가 없다. git archive 에 enforcer $MIGRATION $MIGRATION51 $MIGRATION52 $MIGRATION77 를 넣는다" >&2; exit 1; }
 done
 [[ "$GATEWAY_ID" =~ ^i-[0-9a-f]{8,17}$ ]] || { echo "OPSLOOP_GATEWAY_ID 가 인스턴스 ID 가 아니다: $GATEWAY_ID" >&2; exit 1; }
 [ -z "$FW_ID" ] || [[ "$FW_ID" =~ ^fw-[a-z0-9-]{1,40}$ ]] || { echo "OPSLOOP_FW_ID 가 fw-<이름> 꼴이 아니다: $FW_ID" >&2; exit 1; }
@@ -181,6 +186,10 @@ echo "== 마이그레이션 ($MIGRATION52, #47 · #51 뒤. 여러 번 돌려도 
 docker exec -i -e "PGOPTIONS=-c client_min_messages=warning" "$DB" \
   psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -q < "$SRC/$MIGRATION52" >/dev/null
 echo "  적용했다"
+echo "== 마이그레이션 ($MIGRATION77, #52 뒤. 여러 번 돌려도 같다. 잠금을 5초 안에 못 얻으면 실패하니 다시 돌린다)"
+docker exec -i -e "PGOPTIONS=-c client_min_messages=warning" "$DB" \
+  psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -q < "$SRC/$MIGRATION77" >/dev/null
+echo "  적용했다"
 # 역할별 권한 표. 기대값과 다르면 경고만 하고 계속한다 (마이그레이션을 고친 뒤 다시 돌린다)
 check_priv() { # $1 이름  $2 기대  $3 SQL(불리언 열들)
   local got; got=$("${PSQL[@]}" -F ' ' -c "$3" 2>/dev/null || echo 조회실패)
@@ -208,6 +217,10 @@ check_priv "집행 생존 신호 표 읽기 · 넣기 · 고치기 · 지우기"
           has_table_privilege('opsloop_enforcer','sensor_heartbeats','INSERT'),
           has_table_privilege('opsloop_enforcer','sensor_heartbeats','UPDATE'),
           has_table_privilege('opsloop_enforcer','sensor_heartbeats','DELETE')"
+# 요청 지점 (이슈 #77). 집행기는 읽기만 하고, 지점은 콘솔 · triage 만 고친다
+check_priv "집행 points 읽기 · points 갱신" "t f" \
+  "SELECT has_column_privilege('opsloop_enforcer','blocklist','points','SELECT'),
+          has_column_privilege('opsloop_enforcer','blocklist','points','UPDATE')"
 check_priv "집행 역할 NOINHERIT · 접속 한도 2 · PUBLIC 만료 기록 실행" "f 2 f" \
   "SELECT rolinherit, rolconnlimit, has_function_privilege('public','note_block_expired(inet,timestamp with time zone)','EXECUTE')
      FROM pg_roles WHERE rolname = 'opsloop_enforcer'"
