@@ -28,7 +28,7 @@ export function sourcesResult(items: SourceSummary[], extra: Partial<SourcesResu
   return { as_of: SOURCES_AS_OF, total: items.length, limit: 25, offset: 0, checkers: { gateway_stale: false, fw_stale: false }, items, ...extra }
 }
 
-/** 살아 있는 차단(관문 적용 확인 · 내부 방화벽 대기) */
+/** 살아 있는 두 지점 차단(관문 적용 확인 · 내부 방화벽 대기). 요청한 지점이 모두 확인이 아니라 종합 상태는 집행 대기다(#77) */
 export const LIVE_BLOCK: NonNullable<SourceSummary['block']> = {
   reason: '위협 판정 차단',
   method: 'nft',
@@ -42,6 +42,7 @@ export const LIVE_BLOCK: NonNullable<SourceSummary['block']> = {
     gateway: { state: 'confirmed', since: '2026-09-29T02:01:00Z', mode: 'nft', note: null },
     fw: { state: 'pending', since: '2026-09-29T02:00:30Z', mode: null, note: null },
   },
+  points: ['gateway', 'fw'],
 }
 
 export function sourceDetail(extra: Partial<SourceDetail> = {}): SourceDetail {

@@ -29,13 +29,13 @@ export interface Summary {
   /** 살아 있는(만료 · 해제 전) 차단 요청 수. 실제로 막은 수가 아니다 */
   blocked_ips: number
   /**
-   * 살아 있는 차단 요청의 집행 상태(이슈 #47, 화면 blockState 와 같은 순서). 관문이 실제로 반영한 것은 enforced 뿐이다.
+   * 살아 있는 차단 요청의 종합 상태(이슈 #47 · #77, 화면 blockState 와 같은 규칙). 요청한 지점이 모두 확인한 것만 enforced 다.
    * 이전 서버는 생략한다
    */
   blocks?: BlockCounts
   /**
    * 집행 지점별 적용 결과(#72, 관문 · 내부 방화벽 순). 카드 대응(response_block)과 같은 정의라 집행기 확인이 멈추면(stalled)
-   * 적용 · 실패를 미확인에 합친다. 지점별 합은 blocked_ips − blocks.excluded 다. 이전 서버는 생략한다
+   * 적용 · 실패를 미확인에 합친다. 지점별 합은 blocked_ips − blocks.excluded − unrequested − removing 이다(이슈 #77). 이전 서버는 생략한다
    */
   blocks_by_point?: PointCounts[]
   /**
@@ -51,6 +51,8 @@ export interface BlockCounts {
   pending: number
   excluded: number
   mismatch: number
+  /** 요청한 지점 하나라도 적용 실패(이슈 #77). 이전 서버에는 없다 */
+  failed?: number
 }
 
 /**
@@ -63,6 +65,10 @@ export interface PointCounts {
   applied: number
   failed: number
   unverified: number
+  /** 이 지점을 요청하지 않은 살아 있는 차단 수(이슈 #77). 위 세 수에 없고 집행기 멈춤과 무관하다. 이전 서버에는 없다 */
+  unrequested?: number
+  /** 이 지점을 요청했다가 빼서(관리자 관문 빼기) 이 지점이 뺐다고 확인하기 전인 차단 수(결정 14). 위 네 수에 없다. 이전 서버에는 없다 */
+  removing?: number
   stalled: string | null
   unreadable?: boolean
 }

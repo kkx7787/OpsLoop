@@ -8,7 +8,7 @@ import { Time } from '../../atoms/Time'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { InfoTip } from '../../molecules/InfoTip'
 import { DetailSection } from './DetailSection'
-import { BLOCK_STATE_LABEL, BLOCK_STATE_TONE, blockState, blockStateHint, enforcementPoints, incidentHref, LIVE_BLOCK_STATES } from './format'
+import { BLOCK_STATE_TONE, blockState, blockStateHint, blockStateLabel, enforceRecord, gatewayCheckedAt, incidentHref, pointRows } from './format'
 import { EnforcePointList } from './EnforcePointList'
 import { StatusBadge } from './StatusBadge'
 import { TABLE } from './table-styles'
@@ -32,6 +32,9 @@ export interface ActorSectionProps {
 export function ActorSection({ actor, related, actorIp, absorbed, className }: ActorSectionProps) {
   const { history, rules, blocked, exempt } = actor
   const state = blocked ? blockState(blocked) : null
+  const checkedAt = blocked && state ? gatewayCheckedAt(blocked, state) : null
+  // 관문을 요청하지 않은 행에 남은 관문 방식 · 메모는 보이지 않는다(관문 칸이 대신한다, 이슈 #77)
+  const record = blocked ? enforceRecord(blocked) : null
   return (
     <DetailSection number="③" title="행위자 이력" aside={actorIp && <span className="font-mono">{actorIp}</span>} className={className}>
       {actorIp === null ? (
@@ -96,25 +99,25 @@ export function ActorSection({ actor, related, actorIp, absorbed, className }: A
             {blocked && state ? (
               <>
                 <dl className="m-0 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-3" data-block-state={state}>
-                  <Fact label="상태" value={<Badge tone={BLOCK_STATE_TONE[state]}>{BLOCK_STATE_LABEL[state]}</Badge>} />
+                  <Fact label="상태" value={<Badge tone={BLOCK_STATE_TONE[state]}>{blockStateLabel(blocked, state)}</Badge>} />
                   <Fact label="사유" value={<UntrustedText value={blocked.reason} fallback="—" />} />
-                  <Fact label="방식" value={<UntrustedText value={blocked.method} fallback="—" />} />
+                  <Fact label="방식" value={<UntrustedText value={record?.method} fallback="—" />} />
                   <Fact label="요청" value={<Time value={blocked.created_at} format="datetime" />} />
                   <Fact
-                    label={state === 'mismatch' ? '마지막 집행 확인' : '집행 확인'}
-                    value={blocked.enforced_at && (state === 'enforced' || state === 'mismatch') ? <Time value={blocked.enforced_at} format="datetime" /> : blockStateHint(blocked, state)}
+                    label={checkedAt && state === 'mismatch' ? '마지막 집행 확인' : '집행 확인'}
+                    value={checkedAt ? <Time value={checkedAt} format="datetime" /> : blockStateHint(blocked, state)}
                   />
                   <Fact
                     label={blocked.released_at ? '해제' : '만료'}
                     value={blocked.released_at ? <Time value={blocked.released_at} format="datetime" /> : blocked.expires_at ? <Time value={blocked.expires_at} format="datetime" /> : '만료 없음'}
                   />
                 </dl>
-                {blocked.enforce_note && (
+                {record?.note && (
                   <p className="m-0 text-xs break-words text-ink-muted">
-                    집행 메모 <UntrustedText value={blocked.enforce_note} />
+                    집행 메모 <UntrustedText value={record.note} />
                   </p>
                 )}
-                {LIVE_BLOCK_STATES.includes(state) && <EnforcePointList points={enforcementPoints(blocked)} />}
+                <EnforcePointList points={pointRows(blocked)} />
               </>
             ) : (
               <span className="text-xs text-ink-muted">차단한 적 없음</span>

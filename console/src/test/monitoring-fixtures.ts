@@ -11,17 +11,22 @@ export const MONITORING_SUMMARY: Summary = {
     { rule_id: 'R001', rule_version: 'v2', incidents: 20, judged_effective: 10, non_action: 3, non_action_rate: 30 },
     { rule_id: 'R201', rule_version: 'v2', incidents: 2, judged_effective: 0, non_action: 0, non_action_rate: null },
   ],
-  blocked_ips: 2, blocks: { enforced: 1, pending: 1, excluded: 0, mismatch: 0 }, latest_event: AS_OF,
+  blocked_ips: 2, blocks: { enforced: 1, pending: 1, excluded: 0, mismatch: 0, failed: 0 }, latest_event: AS_OF,
 }
 
-/** 지점별 차단(#72). 요청 16건 · 집행 제외 13건이면 지점마다 합이 3 이다. 내부 방화벽은 집행기 확인이 멈춰 적용 · 실패를 미확인에 합쳤다 */
+/**
+ * 지점별 차단(#72 · #77). 요청 16건 · 집행 제외 13건 · 미요청 0 · 빠짐 확인 전 0 이면 지점마다 합이 3 이다(합 = 요청 − 제외 − 그 지점
+ * 미요청 − 그 지점 빠짐 확인 전).
+ * 내부 방화벽은 집행기 확인이 멈춰 적용 · 실패를 미확인에 합쳤다
+ */
 export const BLOCKS_BY_POINT: PointCounts[] = [
-  { point: 'gateway', label: 'AWS 관문', applied: 2, failed: 0, unverified: 1, stalled: null },
-  { point: 'fw', label: '내부 방화벽', applied: 0, failed: 0, unverified: 3, stalled: '집행기 확인 중단 · 마지막 확인 12분 전' },
+  { point: 'gateway', label: 'AWS 관문', applied: 2, failed: 0, unverified: 1, unrequested: 0, removing: 0, stalled: null },
+  { point: 'fw', label: '내부 방화벽', applied: 0, failed: 0, unverified: 3, unrequested: 0, removing: 0, stalled: '집행기 확인 중단 · 마지막 확인 12분 전' },
 ]
 
+/** 차단 목록 한 행(두 지점 요청 · 집행 기록 없음 = 집행 대기). 내부 방화벽만 요청한 행은 points: ['fw'] 를 넣는다(#77) */
 export function blockEntry(extra: Partial<BlockEntry> = {}): BlockEntry {
-  return { actor_ip: '192.0.2.8', reason: '반복 인증 시도', incident_key: 'R001|v2|192.0.2.8', created_at: AS_OF, expires_at: '2026-09-24T08:00:00Z', released_at: null, method: null, requested_by: 'operator', enforced_at: null, enforce_note: null, released_by: null, checked_at: AS_OF, ...extra }
+  return { actor_ip: '192.0.2.8', reason: '반복 인증 시도', incident_key: 'R001|v2|192.0.2.8', created_at: AS_OF, expires_at: '2026-09-24T08:00:00Z', released_at: null, method: null, requested_by: 'operator', enforced_at: null, enforce_note: null, released_by: null, points: ['gateway', 'fw'], checked_at: AS_OF, ...extra }
 }
 
 /** 관제 이상 항목 하나(#72). 모든 칸이 있고 해당 없는 칸은 null 이다(서버 monitor_items) */

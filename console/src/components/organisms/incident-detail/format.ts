@@ -1,4 +1,4 @@
-import type { ActionRecord, ActorBlock, BehaviorRow, EnforcePoint, EnforcePointState, EvidenceSample, IncidentDetail, RawLine, VerdictRecord } from '@/api/incidents'
+import type { ActionRecord, ActorBlock, BehaviorRow, BlockPoint, EnforcePoint, EnforcePointState, EvidenceSample, IncidentDetail, RawLine, VerdictRecord } from '@/api/incidents'
 import { actionLabel, VERDICT_LABEL, type IncidentStatus, type Verdict } from '@/lib/domain'
 import { formatKst, toDate } from '@/lib/time'
 import type { Tone } from '../../atoms/tones'
@@ -116,107 +116,218 @@ export function sampleColumns(samples: readonly EvidenceSample[]): string[] {
 }
 
 /**
- * 차단 행의 지금 상태(이슈 #47). 요청과 실제 차단은 다르다. 데이터 노드 집행기가 AWS 관문의 반영 결과를
- * enforce_note · enforced_at · method 에 쓰고, 화면은 그것과 만료로 가른다. 순서는 서버 BLOCK_STATES_SQL(대시보드 수)과 같다.
+ * 차단 행의 지금 종합 상태(이슈 #47 · #77). 요청과 실제 차단은 다르다. 데이터 노드 집행기가 두 지점의 반영 결과를 관문 세 열
+ * (enforce_note · enforced_at · method)과 지점별 결과(enforcement)에 쓰고, 화면은 그것과 요청 지점(points) · 만료로 가른다.
+ * 서버 block_points.STATE_CASE(대시보드 수 · 보고서)와 같은 규칙이다. 요청한 지점이 모두 확인이어야 집행 확인이다.
  *  released  해제됨. 사람이 풀었다
- *  expired   만료됨. 만료가 지나 관문에서 빠진다
- *  excluded  집행 제외. 만료 없는 옛 차단이거나 집행기가 '집행 제외 · <사유>'(금지 대역 · 대역 주소)로 적었다. 관문에 넘기지 않는다
- *  mismatch  관문 불일치. 관문 상태가 목록과 5분 넘게 다르거나 관문이 거부했다('관문 불일치 · <사유>'). enforced_at 은 마지막 확인
- *  enforced  집행 확인. 관문 집합에 들어간 것을 확인했다(방식 · 시각)
- *  pending   집행 대기. 요청했고 아직 관문 반영을 확인하지 못했다
+ *  expired   만료됨. 만료가 지나 지점 목록에서 빠진다
+ *  excluded  집행 제외. 만료 없는 옛 차단이거나 집행기가 '집행 제외 · <사유>'(금지 대역 · 대역 주소)로 적었다. 어느 지점에도 넘기지 않는다
+ *  failed    집행 실패. 요청한 지점 하나라도 거부했다고 보고했다
+ *  mismatch  불일치. 요청한 지점 하나라도 상태가 목록과 5분 넘게 다르다(관문 '관문 불일치 · <사유>' 쪽지 · 지점 stale). 관문 enforced_at 은 마지막 확인
+ *  pending   집행 대기. 요청한 지점 가운데 아직 반영을 확인하지 못한 곳이 있다
+ *  enforced  집행 확인. 요청한 지점이 모두 반영을 확인했다
+ * 우선순위는 해제 > 만료 > 제외 > 실패 > 불일치 > 대기 > 확인이다. 관문의 확인 · 불일치 쪽지는 관문 세 열로, 실패 · 지연은
+ * enforcement.gateway 로 보고(요청한 관문의 결과가 대기 · 빠짐 확인 전이면 확인 시각이 남아도 대기. 다시 걸어도 세 열은 요청 시각에
+ * 비지 않고 새 목록을 확인할 때까지 관문 결과가 대기다, 결정 2), 내부 방화벽은 enforcement.fw 로 본다. 요청하지 않은 지점은 남은 쪽지 · 결과가 있어도 보지 않는다
+ * (그 지점 칸은 빠짐 확인 전이다. heldPoint)
  */
-export type BlockState = 'enforced' | 'pending' | 'excluded' | 'mismatch' | 'released' | 'expired'
+export type BlockState = 'enforced' | 'pending' | 'excluded' | 'failed' | 'mismatch' | 'released' | 'expired'
 
 /** 집행기가 enforce_note 에 쓰는 말머리(서버 main.ENFORCE_EXCLUDED · ENFORCE_MISMATCH) */
 export const ENFORCE_EXCLUDED = '집행 제외'
 export const ENFORCE_MISMATCH = '관문 불일치'
 
-type BlockFields = Pick<ActorBlock, 'released_at' | 'expires_at' | 'enforced_at'> & { enforce_note?: string | null }
+/** 적용 지점의 정규 순서(관문 먼저). 표의 이름은 ENFORCE_POINTS, 문장 안의 짧은 이름은 pointNames */
+export const BLOCK_POINTS: readonly BlockPoint[] = ['gateway', 'fw']
+const POINT_NAME: Record<BlockPoint, string> = { gateway: '관문', fw: '내부 방화벽' }
+
+/** 지점 이름들을 한 줄로('관문 · 내부 방화벽') */
+export function pointNames(points: readonly BlockPoint[]): string {
+  return points.map((p) => POINT_NAME[p]).join(' · ')
+}
+
+type BlockFields = Pick<ActorBlock, 'released_at' | 'expires_at' | 'enforced_at'> & Partial<Pick<ActorBlock, 'enforce_note' | 'enforcement' | 'points'>>
+
+/** 요청 지점(정규 순서, 이슈 #77). 없거나(이전 서버) 모양이 틀리면 두 지점이다 */
+export function requestedPoints(block: Pick<ActorBlock, 'points'> | null | undefined): BlockPoint[] {
+  const raw: unknown = block?.points
+  if (!Array.isArray(raw)) return [...BLOCK_POINTS]
+  const points = BLOCK_POINTS.filter((p) => raw.includes(p))
+  return points.length ? points : [...BLOCK_POINTS]
+}
+
+/** 지점 결과의 state 글자. 값은 DB 에서 온 것이라 모양을 다시 보고, 글자가 아니면 null(서버 held_sql · 집행기 held_at 도 글자만 기록으로 본다) */
+function rawPointState(enforcement: unknown, point: BlockPoint): string | null {
+  if (!enforcement || typeof enforcement !== 'object' || Array.isArray(enforcement)) return null
+  const item: unknown = (enforcement as Record<string, unknown>)[point]
+  if (!item || typeof item !== 'object' || Array.isArray(item)) return null
+  const state = (item as Record<string, unknown>).state
+  return typeof state === 'string' ? state : null
+}
+
+/** 요청 지점마다 본 실패 · 불일치 · 미확인 지점(종합 상태 · 이름 · 설명이 같이 쓴다) */
+function pointFacts(block: BlockFields) {
+  const requested = requestedPoints(block)
+  const note = block.enforce_note ?? ''
+  const state = (p: BlockPoint) => rawPointState(block.enforcement, p)
+  return {
+    requested,
+    failed: requested.filter((p) => state(p) === 'failed'),
+    mismatch: requested.filter((p) => state(p) === 'stale' || (p === 'gateway' && note.startsWith(ENFORCE_MISMATCH))),
+    // 다시 걸거나 연장한 뒤 새 목록을 확인하기 전(관문 결과 대기)과 다시 건 행에 남은 빠짐 확인 전(집행기 다음 회차 전)은 남은 확인
+    // 시각이 있어도 확인 전이다(지점 칸 '대기' 와 같다, 결정 2)
+    unconfirmed: requested.filter((p) => (p === 'gateway' ? !block.enforced_at || state(p) === 'pending' || state(p) === 'removing' : state(p) !== 'confirmed')),
+  }
+}
 
 export function blockState(block: BlockFields, now: number = Date.now()): BlockState {
   if (block.released_at) return 'released'
   const expires = toDate(block.expires_at)
   if (expires && expires.getTime() <= now) return 'expired'
-  const note = block.enforce_note ?? ''
-  if (!block.expires_at || note.startsWith(ENFORCE_EXCLUDED)) return 'excluded'
-  if (note.startsWith(ENFORCE_MISMATCH)) return 'mismatch'
-  return block.enforced_at ? 'enforced' : 'pending'
+  if (!block.expires_at || (block.enforce_note ?? '').startsWith(ENFORCE_EXCLUDED)) return 'excluded'
+  const facts = pointFacts(block)
+  if (facts.failed.length) return 'failed'
+  if (facts.mismatch.length) return 'mismatch'
+  return facts.unconfirmed.length ? 'pending' : 'enforced'
 }
 
+/** 합친 수 · 상태 탭의 이름(지점 이름 없음). 행 하나의 이름은 blockStateLabel */
 export const BLOCK_STATE_LABEL: Record<BlockState, string> = {
   enforced: '집행 확인',
   pending: '집행 대기',
   excluded: '집행 제외',
-  mismatch: '관문 불일치',
+  failed: '집행 실패',
+  mismatch: '불일치',
   released: '해제됨',
   expired: '만료됨',
 }
 
-/** 집행 확인은 요청이 정상 적용됐다는 결과라 초록이다(지점별 '적용 확인' 과 같다). 주의가 필요한 것은 대기 · 불일치 쪽이다 */
+/** 집행 확인은 요청이 정상 적용됐다는 결과라 초록이다(지점별 '적용 확인' 과 같다). 주의가 필요한 것은 대기 · 불일치 · 실패 쪽이다 */
 export const BLOCK_STATE_TONE: Record<BlockState, Tone> = {
   enforced: 'success',
   pending: 'warning',
   excluded: 'neutral',
+  failed: 'danger',
   mismatch: 'orange',
   released: 'neutral',
   expired: 'neutral',
 }
 
+/** 행 하나의 상태 이름. 불일치는 그 지점 이름을 붙인다('관문 불일치' · '내부 방화벽 불일치') */
+export function blockStateLabel(block: BlockFields, state: BlockState): string {
+  if (state !== 'mismatch') return BLOCK_STATE_LABEL[state]
+  const { mismatch } = pointFacts(block)
+  return mismatch.length ? `${pointNames(mismatch)} 불일치` : BLOCK_STATE_LABEL.mismatch
+}
+
 /** 살아 있는(만료 · 해제 전) 상태. 해제할 수 있고 차단 목록의 '활성' 탭에 든다 */
-export const LIVE_BLOCK_STATES: readonly BlockState[] = ['enforced', 'pending', 'excluded', 'mismatch']
+export const LIVE_BLOCK_STATES: readonly BlockState[] = ['enforced', 'pending', 'excluded', 'failed', 'mismatch']
 
 /**
- * 상태 옆의 짧은 설명. 방식 · 메모처럼 DB 에서 온 글자는 넣지 않는다(그리는 쪽이 UntrustedText 로 따로 보인다).
- * 만료 없는 행은 집행기가 메모를 쓰기 전에도 제외로 보이므로 여기서 까닭을 적는다.
- * 해제 · 만료 · 제외인데 enforced_at 이 남아 있으면 관문이 그 주소를 뺀 목록을 적용했다는 보고를 아직 받지 못한 것이다
- * (집행기는 그 보고를 받아야 enforced_at 을 비운다). 관문 동기화가 멈추면 관문은 옛 만료까지 계속 막으므로 빠졌다고 적지 않는다
+ * 그 지점에 남은 기록(결과 기록, 관문은 확인 시각 enforced_at 도). 집행기는 요청했던 지점마다 removing 을 두고 그 지점이 뺐다고
+ * 보고하면 키(관문은 세 열도)를 지운다. 그래서 목록 밖 행(해제 · 만료 · 제외)이나 요청하지 않은 지점(관리자 관문 빼기 · 관문 없이 다시
+ * 건 행, 이슈 #77 결정 14)에 기록이 남았으면 그 지점은 빠짐 확인 전이다. 서버 block_points.held_sql · 집행기 held_at 과 같은 정의다
+ */
+function heldPoint(block: BlockFields, point: BlockPoint): boolean {
+  return rawPointState(block.enforcement, point) !== null || (point === 'gateway' && !!block.enforced_at)
+}
+
+/** 뺐다는 보고를 아직 받지 못한 지점. 목록 밖 행은 모든 지점, 살아 있는 목록 행은 요청하지 않은 지점만 본다(요청 지점은 결과 그대로) */
+function leavingPoints(block: BlockFields, listed = false): BlockPoint[] {
+  const requested = requestedPoints(block)
+  return BLOCK_POINTS.filter((p) => (!listed || !requested.includes(p)) && heldPoint(block, p))
+}
+
+/** 상태 칸에 보일 관문 확인 시각. 관문을 요청했고 집행 확인이거나 관문 불일치(마지막 확인)일 때만, 아니면 null */
+export function gatewayCheckedAt(block: BlockFields, state: BlockState): string | null {
+  if (!block.enforced_at || !requestedPoints(block).includes('gateway')) return null
+  if (state === 'enforced' || (state === 'mismatch' && pointFacts(block).mismatch.includes('gateway'))) return block.enforced_at
+  return null
+}
+
+/**
+ * 방식 · 집행 메모로 보일 관문 세 열(이슈 #77). 관문을 요청하지 않은 행에 남은 관문 기록(관리자 관문 빼기 뒤 · 옛 집행기 시절)은
+ * 보이지 않는다(관문 칸이 빠짐 확인 전 · 미요청으로 대신한다). 집행 제외 쪽지는 지점과 무관해 그대로 보인다
+ */
+export function enforceRecord(block: Pick<ActorBlock, 'method'> & Partial<Pick<ActorBlock, 'enforce_note' | 'points'>>): { method: string | null; note: string | null } {
+  const note = block.enforce_note ?? null
+  if (requestedPoints(block).includes('gateway')) return { method: block.method ?? null, note }
+  return { method: null, note: note?.startsWith(ENFORCE_EXCLUDED) ? note : null }
+}
+
+/**
+ * 상태 옆의 짧은 설명. 요청 지점 이름으로 적는다(대기 · 실패 · 불일치는 그 지점만). 방식 · 메모처럼 DB 에서 온 글자는 넣지 않는다
+ * (그리는 쪽이 UntrustedText 로 따로 보인다). 만료 없는 행은 집행기가 메모를 쓰기 전에도 제외로 보이므로 여기서 까닭을 적는다.
+ * 해제 · 만료 · 제외인데 지점의 결과 기록이나 관문 enforced_at 이 남아 있으면 그 지점이 뺀 것을 아직 확인하지 못한 것이다. 살아 있는
+ * 행도 요청하지 않은 지점(관문 빼기 뒤)에 기록이 남았으면 그렇게 덧붙인다.
+ * 동기화가 멈추면 그 지점은 옛 만료까지 계속 막으므로 빠졌다고 적지 않는다
  */
 export function blockStateHint(block: BlockFields, state: BlockState): string {
-  const leaving = block.enforced_at ? '관문에서 빠졌는지 확인 전' : ''
+  const facts = pointFacts(block)
+  const names = (points: BlockPoint[]) => pointNames(points.length ? points : facts.requested)
+  const leaving = leavingPoints(block)
+  const left = leaving.length ? `${pointNames(leaving)}에서 빠졌는지 확인 전` : ''
+  const dropped = leavingPoints(block, true)
+  const also = (text: string) => (dropped.length ? `${text} · ${pointNames(dropped)}에서 빠졌는지 확인 전` : text)
   switch (state) {
-    case 'enforced': return '관문 집합 반영 확인'
-    case 'pending': return '관문 반영 확인 전'
-    case 'excluded': return [block.expires_at ? '관문에 넘기지 않음' : '만료 없는 차단 · 관문에 넘기지 않음', leaving].filter(Boolean).join(' · ')
-    case 'mismatch': return block.enforced_at ? '관문 상태가 목록과 다름 · 마지막 확인' : '관문 상태가 목록과 다름'
-    case 'released': return `사람이 풂 · ${leaving || '관문 목록에서 빠짐'}`
-    case 'expired': return `만료가 지남 · ${leaving || '관문 목록에서 빠짐'}`
+    case 'enforced': return also(`${names(facts.requested)} 반영 확인`)
+    case 'pending': return also(`${names(facts.unconfirmed)} 반영 확인 전`)
+    case 'failed': return also(`${names(facts.failed)} 적용 실패`)
+    case 'excluded': return [`${block.expires_at ? '' : '만료 없는 차단 · '}${names(facts.requested)}에 넘기지 않음`, left].filter(Boolean).join(' · ')
+    case 'mismatch': return gatewayCheckedAt(block, state) ? `${names(facts.mismatch)} 상태가 목록과 다름 · 마지막 확인` : also(`${names(facts.mismatch)} 상태가 목록과 다름`)
+    case 'released': return `사람이 풂 · ${left || `${names(facts.requested)} 목록에서 빠짐`}`
+    case 'expired': return `만료가 지남 · ${left || `${names(facts.requested)} 목록에서 빠짐`}`
   }
 }
 
 /**
  * 집행 지점(이슈 #51). 관문은 허니팟 유입(22 · 23 · 8080)을, 내부 방화벽은 실서비스(web-01) 앞에서 외부 역할 세그먼트의 출발지를 막는다.
- * 위의 상태(blockState)는 관문의 확인 열로 가른 것이고, 지점별 결과는 enforcement 로 따로 보인다
+ * 종합 상태(blockState)는 요청한 지점 모두로 가른 것이고, 지점별 결과는 enforcement 로 따로 보인다
  */
-export const ENFORCE_POINTS: ReadonlyArray<readonly ['gateway' | 'fw', string]> = [['gateway', 'AWS 관문'], ['fw', '내부 방화벽']]
+export const ENFORCE_POINTS: ReadonlyArray<readonly [BlockPoint, string]> = [['gateway', 'AWS 관문'], ['fw', '내부 방화벽']]
 
-export const POINT_STATE_LABEL: Record<EnforcePointState, string> = {
+/**
+ * 지점 칸의 상태. 결과 상태에 더해 미요청(그 지점을 요청하지 않았고 남은 기록도 없음) · 빠짐(목록에서 빠진 행을 그 지점이 뺐음)을
+ * 화면이 붙인다(이슈 #77). 요청하지 않은 지점에 기록이 남았으면 미요청이 아니라 빠짐 확인 전(removing)이다(결정 14)
+ */
+export type PointRowState = EnforcePointState | 'unrequested' | 'gone'
+
+export const POINT_STATE_LABEL: Record<PointRowState, string> = {
   pending: '대기',
   confirmed: '적용 확인',
   failed: '실패',
   stale: '확인 지연',
+  removing: '빠짐 확인 전',
+  unrequested: '미요청',
+  gone: '빠짐',
 }
 
-export const POINT_STATE_TONE: Record<EnforcePointState, Tone> = {
+/** 미요청은 결과가 아니라 요청 사실이라 중립색이다(미확인 · 실패와 섞지 않는다) */
+export const POINT_STATE_TONE: Record<PointRowState, Tone> = {
   pending: 'warning',
   confirmed: 'success',
   failed: 'danger',
   stale: 'warning',
+  removing: 'warning',
+  unrequested: 'neutral',
+  gone: 'neutral',
 }
 
 export interface PointRow {
-  key: 'gateway' | 'fw'
+  key: BlockPoint
   label: string
-  point: EnforcePoint
+  point: Omit<EnforcePoint, 'state'> & { state: PointRowState }
   /** 까닭이 화면이 덧붙인 판단 근거라 도움말(ⓘ)로 접는다(집행기 멈춤 · sources/model checkedPoints). 지점이 보낸 까닭은 본문에 둔다 */
   noteTip?: true
 }
 
-const POINT_STATES = Object.keys(POINT_STATE_LABEL) as EnforcePointState[]
+const POINT_STATES: readonly EnforcePointState[] = ['pending', 'confirmed', 'failed', 'stale', 'removing']
 const text = (value: unknown): string | null => (typeof value === 'string' && value ? value : null)
 
 /**
- * 행의 지점별 결과. 알려진 지점 · 상태만 정해진 순서(관문 → 내부 방화벽)로 돌려준다.
- * 값은 DB 에서 온 것이라 모양을 다시 본다. 모르는 상태는 버리고, 글자가 아닌 값은 비운다. 없으면 빈 목록(이전 서버 · 집행기)
+ * 행의 지점별 결과 기록. 알려진 지점 · 상태만 정해진 순서(관문 → 내부 방화벽)로 돌려준다.
+ * 값은 DB 에서 온 것이라 모양을 다시 본다. 모르는 상태는 버리고, 글자가 아닌 값은 비운다. 없으면 빈 목록(이전 서버 · 집행기).
+ * 화면의 지점 칸은 요청 지점을 더한 pointRows 로 그린다
  */
 export function enforcementPoints(block: Pick<ActorBlock, 'enforcement'> | null | undefined): PointRow[] {
   const raw: unknown = block?.enforcement
@@ -233,27 +344,61 @@ export function enforcementPoints(block: Pick<ActorBlock, 'enforcement'> | null 
   return rows
 }
 
-/** 한 지점의 적용 확인 · 실패 · 미확인 수 */
+/**
+ * 차단 행의 지점 칸(이슈 #77). ENFORCE_POINTS 를 차례로 본다. 요청하지 않은 지점은 '미요청' 이다(미확인 · 실패로 보이지 않는다).
+ * 다만 그 지점에 기록이 남았으면(관리자 관문 빼기 · 관문 없이 다시 건 행, 결정 14) 그 지점이 뺐다고 확인될 때까지 '빠짐 확인 전' 이다.
+ * 살아 있는 행은 요청 지점의 결과 기록(enforcementPoints, 기록이 없으면 줄이 없다)이다. 목록 행(집행 제외 밖)에 남은 removing 은
+ * 빠짐 확인 전에 다시 건 행의 옛 기록이라(집행기가 다음 회차에 바꾼다) '대기' 로 보인다. 해제 · 만료 행은 요청 지점마다 결과 기록이나
+ * 관문 enforced_at 이 남았으면 '빠짐 확인 전'(removing), 아니면 '빠짐' 이다. now 는 만료를 가르는 기준 시각
+ */
+export function pointRows(block: BlockFields | null | undefined, now: number = Date.now()): PointRow[] {
+  if (!block) return []
+  const requested = requestedPoints(block)
+  const state = blockState(block, now)
+  const dead = state === 'released' || state === 'expired'
+  const results = enforcementPoints(block)
+  const rows: PointRow[] = []
+  for (const [key, label] of ENFORCE_POINTS) {
+    const result = results.find((r) => r.key === key)
+    const removing = (): PointRow => ({ key, label, point: { state: 'removing', since: result?.point.state === 'removing' ? result.point.since : null, mode: result?.point.mode ?? null, note: null } })
+    if (!requested.includes(key)) rows.push(heldPoint(block, key) ? removing() : { key, label, point: { state: 'unrequested', since: null, mode: null, note: null } })
+    else if (!dead) {
+      if (result?.point.state === 'removing' && state !== 'excluded') rows.push({ key, label, point: { state: 'pending', since: null, mode: null, note: null } })
+      else if (result) rows.push(result)
+    } else rows.push(heldPoint(block, key) ? removing() : { key, label, point: { state: 'gone', since: null, mode: null, note: null } })
+  }
+  return rows
+}
+
+/** 한 지점의 적용 확인 · 실패 · 미확인 수와 그 지점 미요청 · 빠짐 확인 전 수 */
 export interface PointTally {
   applied: number
   failed: number
   unverified: number
+  /** 그 지점을 요청하지 않았고 남은 기록도 없는 행(이슈 #77). 위 세 수에 들지 않는다 */
+  unrequested: number
+  /** 그 지점을 요청하지 않았는데 기록이 남은 행(관리자 관문 빼기 뒤 그 지점이 뺐다고 확인하기 전, 결정 14). 위 네 수에 들지 않는다 */
+  removing: number
 }
 
 /** 지점 수를 세는 행: 살아 있고 집행에 넘기는 요청(집행 제외 · 해제 · 만료는 뺀다) */
-const COUNTED_STATES: readonly BlockState[] = ['enforced', 'pending', 'mismatch']
+const COUNTED_STATES: readonly BlockState[] = ['enforced', 'pending', 'failed', 'mismatch']
 
 /**
- * 차단 목록의 지점별 수(#72). 지점 결과가 적용 확인이면 적용, 실패면 실패, 그 밖(대기 · 확인 지연 · 기록 없음 · 모르는 값)은 미확인이다.
- * 서버 BLOCKS_SQL(대시보드 · 대상 카드의 지점별 수)과 같은 정의다. 집행기 멈춤으로 합치지 않고 보고 상태 그대로 센다
+ * 차단 목록의 지점별 수(#72 · #77). 그 지점을 요청한 행만 센다. 지점 결과가 적용 확인이면 적용, 실패면 실패, 그 밖(대기 · 확인 지연 ·
+ * 빠짐 확인 전 · 기록 없음 · 모르는 값)은 미확인이다. 요청하지 않은 행은 미요청으로, 그 가운데 그 지점에 기록이 남은 행은 빠짐 확인
+ * 전으로 따로 센다. 서버 BLOCKS_SQL(대시보드 · 대상 카드의 지점별 수)과 같은 정의다. 집행기 멈춤으로 합치지 않고 보고 상태 그대로 센다
  */
-export function pointCounts(rows: readonly (BlockFields & Pick<ActorBlock, 'enforcement'>)[], now: number, point: 'gateway' | 'fw'): PointTally {
-  const tally: PointTally = { applied: 0, failed: 0, unverified: 0 }
+export function pointCounts(rows: readonly BlockFields[], now: number, point: BlockPoint): PointTally {
+  const tally: PointTally = { applied: 0, failed: 0, unverified: 0, unrequested: 0, removing: 0 }
   for (const row of rows) {
     if (!COUNTED_STATES.includes(blockState(row, now))) continue
-    const raw: unknown = row.enforcement
-    const item: unknown = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>)[point] : null
-    const state = item && typeof item === 'object' ? (item as Record<string, unknown>).state : null
+    if (!requestedPoints(row).includes(point)) {
+      if (heldPoint(row, point)) tally.removing += 1
+      else tally.unrequested += 1
+      continue
+    }
+    const state = rawPointState(row.enforcement, point)
     if (state === 'confirmed') tally.applied += 1
     else if (state === 'failed') tally.failed += 1
     else tally.unverified += 1

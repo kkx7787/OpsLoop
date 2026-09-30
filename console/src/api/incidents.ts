@@ -199,7 +199,9 @@ export interface ActorRuleHit {
 
 /**
  * 차단 목록의 행. 요청(created_at)과 집행(enforced_at)은 다르다. 집행기가 관문 반영을 확인하면 method · enforced_at ·
- * enforce_note('관문 반영 · …')를 쓰고, 불일치 · 제외는 enforce_note('관문 불일치 · …' · '집행 제외 · …')로 알린다(이슈 #47)
+ * enforce_note('관문 반영 · …')를 쓰고, 불일치 · 제외는 enforce_note('관문 불일치 · …' · '집행 제외 · …')로 알린다(이슈 #47).
+ * 관문 세 열(method · enforced_at · enforce_note 의 관문 쪽지)은 관문을 요청한 행에만 쓴다(이슈 #77). 다시 걸어도 요청 시각에 비지 않고,
+ * 관문이 빼기 전에 다시 건 차단을 새 보고로 확인하면 쪽지 끝에 '· 기존 차단 유지' 가 붙는다(결정 2)
  */
 export interface ActorBlock {
   reason: string | null
@@ -213,12 +215,23 @@ export interface ActorBlock {
   enforce_note?: string | null
   /** 요청자(콘솔 사용자 · triage:<판정자>). 이전 서버의 상세에는 없다 */
   requested_by?: string | null
-  /** 집행 지점(AWS 관문 · 내부 방화벽)별 결과(이슈 #51). 집행기만 쓴다. 이전 서버 · 집행기에는 없다 */
+  /**
+   * 집행 지점(AWS 관문 · 내부 방화벽)별 결과(이슈 #51). 집행기만 쓴다. 요청하지 않은 지점은 키가 없다(요청했다가 뺀 지점은 그 지점이
+   * 뺐다고 확인하기 전까지 removing, #77 결정 14). 이전 서버 · 집행기에는 없다
+   */
   enforcement?: BlockEnforcement | null
+  /** 요청 지점(이슈 #77, 정규 순서 ['gateway','fw'] 또는 ['fw']). 내부 방화벽은 늘 든다. 이전 서버에는 없고 그때는 두 지점이다 */
+  points?: BlockPoint[] | null
 }
 
-/** 집행 지점 하나의 결과. state 는 대기 · 적용 확인 · 실패 · 확인 지연 */
-export type EnforcePointState = 'pending' | 'confirmed' | 'failed' | 'stale'
+/** 차단 적용 지점. 관문(허니팟 유입 앞 · 관측) · 내부 방화벽(보호 대상 앞 · 보호) */
+export type BlockPoint = 'gateway' | 'fw'
+
+/**
+ * 집행 지점 하나의 결과. state 는 대기 · 적용 확인 · 실패 · 확인 지연 · 빠짐 확인 전(removing, 이슈 #77: 목록에서 빠진 행이나
+ * 요청했다가 뺀 지점(관리자 관문 빼기)을 그 지점이 뺐다고 보고하기 전. 목록 행의 요청 지점에는 없다)
+ */
+export type EnforcePointState = 'pending' | 'confirmed' | 'failed' | 'stale' | 'removing'
 export interface EnforcePoint {
   state: EnforcePointState
   /** 그 상태가 된 시각(적용 확인이면 처음 확인한 지점 보고의 시각) */
@@ -228,7 +241,20 @@ export interface EnforcePoint {
   /** 실패 · 확인 지연의 까닭 */
   note: string | null
 }
-export type BlockEnforcement = Partial<Record<'gateway' | 'fw', EnforcePoint>>
+export type BlockEnforcement = Partial<Record<BlockPoint, EnforcePoint>>
+
+/** 차단 기본값의 까닭(확인 창 ⓘ). 규칙이 허니팟 남용 → 장비 미확인 → 관측 센서뿐 → 보호 대상 포함 → 관제 시스템 포함 순으로 고른다 */
+export type BlockPointsBasis = 'honeypot_abuse' | 'sensor_only' | 'protected' | 'monitor' | 'unconfirmed'
+
+/**
+ * 사건의 차단 적용 지점(이슈 #77). default 는 규칙만으로 정한 기본값(허니팟 남용 규칙이면 두 지점, 아니면 내부 방화벽),
+ * basis 는 그 까닭(장비는 여기만 쓴다), requested 는 이 출발지의 살아 있는 차단이 요청한 지점(없으면 null)
+ */
+export interface BlockPointsInfo {
+  default: BlockPoint[]
+  basis: BlockPointsBasis
+  requested: BlockPoint[] | null
+}
 
 /** 이 출발지가 드는 차단 금지 대역(block_exempt). 콘솔 · triage · 흡수 어느 경로로도 차단 목록에 들어가지 않는다 */
 export interface BlockExempt {
@@ -309,6 +335,8 @@ export interface IncidentDetail extends IncidentBase {
   absorbed?: AbsorbedInfo
   /** 서버가 전체 관측 구간에서 계산한 제안. 없으면 추측하지 않는다. */
   proposal?: { verdict: Verdict | null; reasons: string[] }
+  /** 차단 적용 지점의 기본값 · 까닭 · 살아 있는 요청(이슈 #77). 이전 서버에는 없고 그때 확인 창은 지점을 보내지 않는다 */
+  block_points?: BlockPointsInfo
 }
 
 /** GET /api/rules/quality 한 행(infra/schema.sql 의 rule_quality 뷰). 비율은 % 값이고 판정이 없으면 null */
@@ -377,6 +405,11 @@ export interface ActionInput {
    * 흡수 차단 행은 근거 사건(첫 사건)의 출발지와 행의 출발지가 다르다
    */
   actor_ip?: string
+  /**
+   * 차단 적용 지점(이슈 #77). ['fw'] 또는 ['gateway', 'fw']. 없으면 서버가 두 지점으로 본다(이전 화면). 흡수 함께 차단 · 후속 차단
+   * 약속도 같은 지점이다. 살아 있는 차단보다 좁히면(관문 빼기) admin 만 되고 서버가 한 번에 해제 뒤 다시 건다(operator 는 403)
+   */
+  points?: BlockPoint[]
 }
 
 // ---------------------------------------------------------------- 쿼리 키

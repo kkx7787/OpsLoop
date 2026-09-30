@@ -83,7 +83,7 @@ export function systemText(state: SystemState, metrics: TargetMetrics | null): s
 
 /** 대응 구역의 한 조각. tone 이 있으면 배지, 없으면 흐린 글로 그린다 */
 export interface ResponsePart {
-  key: 'applied' | 'failed' | 'unverified' | 'exempt' | 'stalled' | 'none' | 'unknown'
+  key: 'applied' | 'failed' | 'unverified' | 'unrequested' | 'removing' | 'exempt' | 'stalled' | 'none' | 'unknown'
   text: string
   tone?: Tone
 }
@@ -93,8 +93,10 @@ const count = (n: number) => n.toLocaleString('ko-KR')
 
 /**
  * 대응 구역 문구. 숫자 0 을 그리지 않는다(0 이 '막았다 · 못 막았다' 로 읽히지 않게).
- *  집행 지점이 있으면: 적용 확인 n (지점) · 적용 실패 n (지점) · 적용 여부 미확인 n · 정책상 차단 제외 n.
- *    넷 다 없으면 '<지점> 집행 대상 차단 없음'(집행 제외 차단만 있어도 거짓이 되지 않는 문구다)
+ *  집행 지점이 있으면: 적용 확인 n (지점) · 적용 실패 n (지점) · 적용 여부 미확인 n · 미요청 n (지점) · 빠짐 확인 전 n (지점) ·
+ *    정책상 차단 제외 n. 미요청(그 지점을 요청하지 않은 차단) · 빠짐 확인 전(뺐는데 그 지점이 뺐다고 아직 확인하지 못한 차단, 아직
+ *    막고 있을 수 있다)은 이슈 #77 이고 적용 · 실패 · 미확인에 들지 않는다.
+ *    모두 없으면 '<지점> 집행 대상 차단 없음'(집행 제외 차단만 있어도 거짓이 되지 않는 문구다)
  *    집행기 확인이 멈췄으면(stalled) 서버가 적용 · 실패를 미확인에 합쳐 보낸다. 그 까닭을 주의색 글로 덧붙인다
  *  집행 지점이 없으면(적용 결과를 수집하지 않는 대상): '차단 적용 여부 미확인'(숫자 없이) · 정책상 차단 제외 n
  * 적용 확인은 초록(차단 목록의 '적용 확인' 과 같다), 실패는 빨강(차단 목록 · 상세의 지점 '실패' 와 같다), 미확인은 주의색이다
@@ -106,6 +108,8 @@ export function responseParts(response: TargetResponse): ResponsePart[] {
     if (positive(response.applied)) parts.push({ key: 'applied', text: `차단 적용 ${count(response.applied)} (${label})`, tone: 'success' })
     if (positive(response.failed)) parts.push({ key: 'failed', text: `차단 적용 실패 ${count(response.failed)} (${label})`, tone: 'danger' })
     if (positive(response.unverified)) parts.push({ key: 'unverified', text: `차단 적용 여부 미확인 ${count(response.unverified)}`, tone: 'warning' })
+    if (positive(response.unrequested)) parts.push({ key: 'unrequested', text: `차단 미요청 ${count(response.unrequested)} (${label})`, tone: 'neutral' })
+    if (positive(response.removing)) parts.push({ key: 'removing', text: `차단 빠짐 확인 전 ${count(response.removing)} (${label})`, tone: 'warning' })
     if (positive(response.exempt)) parts.push({ key: 'exempt', text: `정책상 차단 제외 ${count(response.exempt)}`, tone: 'neutral' })
     if (!parts.length) parts.push({ key: 'none', text: `${label} 집행 대상 차단 없음` })
     if (response.stalled) parts.push({ key: 'stalled', text: response.stalled })

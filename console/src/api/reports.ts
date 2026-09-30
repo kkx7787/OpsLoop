@@ -85,9 +85,13 @@ export interface BlocksSection extends SectionBase {
   requests: { total: number; console: number; triage: number; system: number; unknown: number }
   /** 기간 차단 감사 이벤트 종류별 수(없는 종류도 0). 행위자 · 내용은 싣지 않는다 */
   audit: Array<{ eventid: string; count: number }>
-  /** 기간 새 차단 요청의 집행 지연(요청 → 관문 반영). created 는 새 요청 수(requests.total 과 같다), enforced 는 그중 집행 확인된 수 */
-  enforcement: { created: number; enforced: number; p50_seconds: number | null; max_seconds: number | null }
-  /** 출력 시점 살아 있는 차단 요청의 집행 상태(대시보드와 같은 분류) */
+  /**
+   * 기간 새 차단 요청의 관문 반영 지연(요청 → 관문 반영). created 는 관문을 요청한 새 요청 수(이슈 #77, 내부 방화벽만 요청한 것은 빼
+   * requests.total 보다 작을 수 있다), enforced 는 그중 관문 반영이 새로 확인된 수(지연 중앙값 · 최대의 표본), maintained 는 관문이
+   * 빼기 전에 다시 건 요청(기존 차단 유지, 결정 2. 지연에서 뺀다, 이전 서버에는 없다)
+   */
+  enforcement: { created: number; enforced: number; maintained?: number; p50_seconds: number | null; max_seconds: number | null }
+  /** 출력 시점 살아 있는 차단 요청의 종합 상태(대시보드와 같은 분류, 이슈 #77 부터 failed 가 있다) */
   states: BlockCounts & { total: number }
 }
 
@@ -97,7 +101,7 @@ export interface TargetsSection extends SectionBase {
     id: string
     label: string
     collection: Pick<TargetCollection, 'state' | 'reason'>
-    response: Pick<TargetResponse, 'point_label' | 'applied' | 'failed' | 'unverified' | 'exempt' | 'stalled'>
+    response: Pick<TargetResponse, 'point_label' | 'applied' | 'failed' | 'unverified' | 'unrequested' | 'removing' | 'exempt' | 'stalled'>
   }>
   /** 기간 센서별 실제 이벤트 수 */
   sensors: Array<{ sensor: string; events: number }>

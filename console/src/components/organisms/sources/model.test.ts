@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { LIVE_BLOCK, sourceSummary } from '@/test/sources-fixtures'
+import { LIVE_BLOCK, SOURCES_AS_OF, sourceSummary } from '@/test/sources-fixtures'
 import {
   CHECKER_STALE_NOTE,
   checkedPoints,
@@ -66,16 +66,29 @@ describe('경로', () => {
 })
 
 describe('집행기 확인', () => {
+  // 만료는 서버 기준 시각(as_of)으로 가른다
+  const now = Date.parse(SOURCES_AS_OF)
+
   it('멈춘 지점의 적용 확인만 확인 지연으로 바꾸고, 모르면(null) 그대로 둔다', () => {
-    expect(checkedPoints(LIVE_BLOCK, { gateway_stale: true, fw_stale: true }).map((row) => [row.key, row.point.state, row.point.note])).toEqual([
+    expect(checkedPoints(LIVE_BLOCK, { gateway_stale: true, fw_stale: true }, now).map((row) => [row.key, row.point.state, row.point.note])).toEqual([
       ['gateway', 'stale', CHECKER_STALE_NOTE],
       ['fw', 'pending', null],
     ])
     // 화면이 덧붙인 까닭(판단 근거)만 ⓘ 로 접는다. 지점 결과 그대로인 행은 표시가 없다
-    expect(checkedPoints(LIVE_BLOCK, { gateway_stale: true, fw_stale: true }).map((row) => row.noteTip ?? false)).toEqual([true, false])
-    expect(checkedPoints(LIVE_BLOCK, { gateway_stale: null, fw_stale: null }).map((row) => row.point.state)).toEqual(['confirmed', 'pending'])
-    expect(checkedPoints(null, undefined)).toEqual([])
+    expect(checkedPoints(LIVE_BLOCK, { gateway_stale: true, fw_stale: true }, now).map((row) => row.noteTip ?? false)).toEqual([true, false])
+    expect(checkedPoints(LIVE_BLOCK, { gateway_stale: null, fw_stale: null }, now).map((row) => row.point.state)).toEqual(['confirmed', 'pending'])
+    expect(checkedPoints(null, undefined, now)).toEqual([])
     expect(staleCheckers({ gateway_stale: true, fw_stale: null })).toEqual(['AWS 관문'])
+  })
+
+  it('미요청 · 빠짐 줄은 요청 · 목록 사실이라 집행기 멈춤으로 덮지 않는다(이슈 #77)', () => {
+    const fwOnly = { ...LIVE_BLOCK, points: ['fw' as const], method: null, enforced_at: null, enforce_note: null, enforcement: { fw: { state: 'confirmed' as const, since: '2026-09-29T02:00:30Z', mode: 'nft', note: null } } }
+    expect(checkedPoints(fwOnly, { gateway_stale: true, fw_stale: true }, now).map((row) => [row.key, row.point.state, row.noteTip ?? false])).toEqual([
+      ['gateway', 'unrequested', false],
+      ['fw', 'stale', true],
+    ])
+    const released = { ...LIVE_BLOCK, released_at: '2026-09-29T02:30:00Z', enforced_at: null, enforcement: null }
+    expect(checkedPoints(released, { gateway_stale: true, fw_stale: true }, now).map((row) => [row.key, row.point.state])).toEqual([['gateway', 'gone'], ['fw', 'gone']])
   })
 })
 

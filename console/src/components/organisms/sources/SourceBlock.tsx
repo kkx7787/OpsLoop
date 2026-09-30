@@ -6,7 +6,7 @@ import { Time } from '../../atoms/Time'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { Banner } from '../../molecules/Banner'
 import { EnforcePointList } from '../incident-detail/EnforcePointList'
-import { BLOCK_STATE_LABEL, BLOCK_STATE_TONE, blockState, blockStateHint, LIVE_BLOCK_STATES } from '../incident-detail/format'
+import { BLOCK_STATE_TONE, blockState, blockStateHint, blockStateLabel, enforceRecord, gatewayCheckedAt, LIVE_BLOCK_STATES } from '../incident-detail/format'
 import { CHECKER_UNKNOWN_NOTE, checkedPoints, checkersUnknown } from './model'
 
 /**
@@ -23,9 +23,11 @@ export function CheckerStaleBanner({ points }: { points: readonly string[] }) {
 }
 
 /**
- * 출발지의 지금 차단 상태(차단 목록 행 하나). 상태 나눔은 사건 상세 · 차단 목록과 같다(format.blockState).
+ * 출발지의 지금 차단 상태(차단 목록 행 하나). 상태 나눔은 사건 상세 · 차단 목록과 같다(format.blockState · blockStateLabel).
  * now 는 서버 기준 시각(as_of)이다. 브라우저 시계가 달라도 만료를 서버와 같게 가른다.
- * 살아 있는 차단이면 지점별 결과를 붙이되, 집행기 확인이 멈춘 지점의 '적용 확인'은 '확인 지연'으로 보인다(model.checkedPoints)
+ * 지점 칸(요청하지 않은 지점은 '미요청'이고 관문 빼기 뒤 확인 전이면 '빠짐 확인 전', 해제 · 만료는 '빠짐 확인 전' · '빠짐')을 붙이되,
+ * 집행기 확인이 멈춘 지점의 '적용 확인'은
+ * '확인 지연'으로 보인다(model.checkedPoints)
  */
 export function SourceBlockCell({ block, checkers, now }: { block: ActorBlock | null; checkers: BlockCheckers | undefined; now: number }) {
   if (!block) return <span className="text-xs text-ink-muted">차단 없음</span>
@@ -33,8 +35,8 @@ export function SourceBlockCell({ block, checkers, now }: { block: ActorBlock | 
   const live = LIVE_BLOCK_STATES.includes(state)
   return (
     <div data-block-state={state} className="flex min-w-0 flex-col gap-1">
-      <Badge tone={BLOCK_STATE_TONE[state]} className="self-start">{BLOCK_STATE_LABEL[state]}</Badge>
-      {live && <EnforcePointList compact points={checkedPoints(block, checkers)} />}
+      <Badge tone={BLOCK_STATE_TONE[state]} className="self-start">{blockStateLabel(block, state)}</Badge>
+      <EnforcePointList compact points={checkedPoints(block, checkers, now)} />
       {live && (
         <span className="text-xs text-ink-muted">
           {block.expires_at ? <>만료 <Time value={block.expires_at} format="short" className="whitespace-nowrap" /></> : '만료 없음'}
@@ -57,31 +59,34 @@ export interface SourceBlockDetailProps {
 /** 상세의 차단 상태: 요청 · 집행 확인 · 만료(해제) · 사유 · 방식 · 집행 메모 · 지점별 결과 · 금지 대역 */
 export function SourceBlockDetail({ block, checkers, now, exempt, exemptRange }: SourceBlockDetailProps) {
   const state = block ? blockState(block, now) : null
+  const checkedAt = block && state ? gatewayCheckedAt(block, state) : null
+  // 관문을 요청하지 않은 행에 남은 관문 방식 · 메모는 보이지 않는다(관문 칸이 대신한다, 이슈 #77)
+  const record = block ? enforceRecord(block) : null
   return (
     <div className="flex flex-col gap-3">
       {block && state ? (
         <>
           <dl className="m-0 grid grid-cols-2 gap-x-4 gap-y-2 text-sm" data-block-state={state}>
-            <Fact label="상태" value={<Badge tone={BLOCK_STATE_TONE[state]}>{BLOCK_STATE_LABEL[state]}</Badge>} />
+            <Fact label="상태" value={<Badge tone={BLOCK_STATE_TONE[state]}>{blockStateLabel(block, state)}</Badge>} />
             <Fact label="요청" value={<Time value={block.created_at} format="datetime" />} />
             <Fact
-              label={state === 'mismatch' ? '마지막 집행 확인' : '집행 확인'}
-              value={block.enforced_at && (state === 'enforced' || state === 'mismatch') ? <Time value={block.enforced_at} format="datetime" /> : blockStateHint(block, state)}
+              label={checkedAt && state === 'mismatch' ? '마지막 집행 확인' : '집행 확인'}
+              value={checkedAt ? <Time value={checkedAt} format="datetime" /> : blockStateHint(block, state)}
             />
             <Fact
               label={block.released_at ? '해제' : '만료'}
               value={block.released_at ? <Time value={block.released_at} format="datetime" /> : block.expires_at ? <Time value={block.expires_at} format="datetime" /> : '만료 없음'}
             />
             <Fact label="사유" value={<UntrustedText value={block.reason} fallback="—" />} />
-            <Fact label="방식" value={<UntrustedText value={block.method} max={64} fallback="—" />} />
+            <Fact label="방식" value={<UntrustedText value={record?.method} max={64} fallback="—" />} />
             <Fact label="요청자" value={<UntrustedText value={block.requested_by} max={64} fallback="미기록" />} />
           </dl>
-          {block.enforce_note && (
+          {record?.note && (
             <p className="m-0 text-xs break-words text-ink-muted">
-              집행 메모 <UntrustedText value={block.enforce_note} />
+              집행 메모 <UntrustedText value={record.note} />
             </p>
           )}
-          {LIVE_BLOCK_STATES.includes(state) && <EnforcePointList points={checkedPoints(block, checkers)} />}
+          <EnforcePointList points={checkedPoints(block, checkers, now)} />
         </>
       ) : (
         <span className="text-sm text-ink-muted">차단한 적 없음</span>

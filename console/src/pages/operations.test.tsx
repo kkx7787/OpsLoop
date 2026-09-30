@@ -202,6 +202,20 @@ describe('감사 기록',()=>{
     fireEvent.click(screen.getByRole('button', { name: '조회' }))
     await waitFor(() => expect(fetch.mock.calls.some(([raw]) => new URL(String(raw), 'http://localhost').searchParams.get('target') === 'kim')).toBe(true))
   })
+  it('차단 감사는 한글 이름으로 보이고, 살아 있는 차단의 지점 넓힘(#77)은 차단 지점 넓힘이다', async () => {
+    const at = (eventid: string, detail: string) => ({ ...auditEntry(0), actor: 'han', target: '203.0.113.10', eventid, detail })
+    const rows = [at('console.block.points', 'ip=203.0.113.10 from=fw to=gateway,fw'), at('console.block.rearmed', 'ip=203.0.113.10 expires=x points=fw released_by=boss requested_by=boss')]
+    vi.stubGlobal('fetch', vi.fn<typeof globalThis.fetch>(async (input) => {
+      const url = new URL(String(input), 'http://localhost')
+      if (url.pathname === '/api/me') return json({ username: 'root', role: 'admin' })
+      if (url.pathname === '/api/audit') return json({ rows, total: rows.length, limit: 25, offset: 0 })
+      return json({}, 404)
+    }))
+    renderRoutes([{ path: '/audit', element: <AuditPage /> }], '/audit', noRetryClient())
+    const table = await screen.findByRole('region', { name: '감사 기록 표' })
+    expect(within(table).getAllByRole('row').slice(1).map(r => within(r).getAllByRole('cell')[2].textContent)).toEqual(['차단 지점 넓힘', '차단 재요청'])
+  })
+
   it.each(['/rules','/nodes','/audit'])('%s 조회 실패를 빈 목록으로 숨기지 않는다',async path=>{
     setup(path,'admin',true)
     expect(await screen.findByText('일시 오류 (HTTP 503)')).toBeInTheDocument()

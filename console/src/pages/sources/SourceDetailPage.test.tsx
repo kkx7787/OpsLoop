@@ -83,9 +83,10 @@ describe('출발지 상세', () => {
     expect(screen.getByRole('region', { name: '도구 지문' })).toBe(prints)
     expect(within(prints).getAllByRole('link', { name: '같은 지문 출발지' })[0]).toHaveAttribute('href', `/sources?include_test=true&fp_kind=hassh&fp=${HASSH}`)
 
-    // 차단 상태: 사건 상세와 같은 나눔 · 지점별 결과(EnforcePointList)
+    // 차단 상태: 사건 상세와 같은 나눔 · 지점별 결과(EnforcePointList). 요청한 두 지점 가운데 내부 방화벽이 대기라 집행 대기다(#77)
     const block = screen.getByRole('region', { name: '차단 상태' })
-    expect(block.querySelector('[data-block-state]')).toHaveAttribute('data-block-state', 'enforced')
+    expect(block.querySelector('[data-block-state]')).toHaveAttribute('data-block-state', 'pending')
+    expect(within(block).getByText('내부 방화벽 반영 확인 전')).toBeInTheDocument()
     expect([...block.querySelectorAll('[data-enforce-point]')].map((el) => el.getAttribute('data-point-state'))).toEqual(['confirmed', 'pending'])
     expect(within(block).getByText('han')).toBeInTheDocument()
 
@@ -163,6 +164,26 @@ describe('출발지 상세', () => {
     expect(screen.getByText(/AWS 관문 · 10분 넘게 확인 없음$/).closest('[data-infotip]')).toBeNull()
     expect(block.querySelector('[data-block-exempt]')!.closest('[data-infotip]')).toBeNull()
     expect(within(block.querySelector<HTMLElement>('[data-enforce-point="gateway"]')!).getByRole('button', { name: /설명$/ })).toHaveAccessibleDescription(/마지막 적용 확인을 믿지 않습니다/)
+  })
+
+  it('내부 방화벽만 요청한 차단은 관문 칸이 미요청이고 멈춤으로 덮지 않으며, 해제 뒤에는 요청 지점마다 빠짐 확인 전 · 빠짐이다(#77)', async () => {
+    const fwOnly = { ...LIVE_BLOCK, points: ['fw' as const], method: null, enforced_at: null, enforce_note: null, enforcement: { fw: { state: 'confirmed' as const, since: '2026-09-29T02:00:30Z', mode: 'nft', note: null } } }
+    const { unmount } = setup(`/sources/detail?ip=${IP}`, () => json(sourceDetail({ block: fwOnly, checkers: { gateway_stale: true, fw_stale: false } })))
+    const block = await screen.findByRole('region', { name: '차단 상태' })
+    const states = () => [...block.querySelectorAll('[data-enforce-point]')].map((el) => [el.getAttribute('data-enforce-point'), el.getAttribute('data-point-state')])
+    expect(block.querySelector('[data-block-state]')).toHaveAttribute('data-block-state', 'enforced')
+    expect(within(block).getByText('내부 방화벽 반영 확인')).toBeInTheDocument()
+    // 관문 집행기가 멈췄어도 미요청은 요청 사실이라 확인 지연으로 바꾸지 않는다
+    expect(states()).toEqual([['gateway', 'unrequested'], ['fw', 'confirmed']])
+    expect(block.querySelector('[data-enforce-point="gateway"]')).toHaveTextContent(/^AWS 관문미요청$/)
+    unmount()
+
+    const released = { ...LIVE_BLOCK, released_at: '2026-09-29T02:30:00Z', enforced_at: null, enforcement: { fw: { state: 'removing' as const, since: '2026-09-29T02:31:00Z', mode: 'nft', note: null } } }
+    setup(`/sources/detail?ip=${IP}`, () => json(sourceDetail({ block: released })))
+    const after = await screen.findByRole('region', { name: '차단 상태' })
+    expect([...after.querySelectorAll('[data-enforce-point]')].map((el) => [el.getAttribute('data-enforce-point'), el.getAttribute('data-point-state')])).toEqual([['gateway', 'gone'], ['fw', 'removing']])
+    expect(within(after).getByText('사람이 풂 · 내부 방화벽에서 빠졌는지 확인 전')).toBeInTheDocument()
+    expect(after.querySelector('[data-enforce-point="fw"]')).toHaveTextContent(/^내부 방화벽빠짐 확인 전/)
   })
 
   it('기록이 없는 주소(404)는 없음 화면과 목록으로 돌아가는 링크를 보인다', async () => {
