@@ -34,7 +34,7 @@ export interface TargetCardProps {
  * 관제 대상 카드 한 장(#52): 머리(이름 · 역할 · 수집 상태) 아래에 수집 · 보안 · 최근 사건 · 시스템 · 대응 · 취약점을 한 줄 요약으로 쌓는다.
  * 수집 상태는 서버가 생존 신호로 정한다. 신호가 없는 대상은 마지막 로그 시각을 보이되 색을 입히지 않는다('생존 상태 미확인' 은 배지가 말한다).
  * 판정 근거(수신 없음 기준 · 정상일 때 서버의 까닭 · 정상 보고 시각)는 구역 제목 옆 도움말(ⓘ)에 두고,
- * 수신 없음 · 미확인의 까닭과 보고 문제 · 집행기 멈춤은 본문에 둔다.
+ * 수신 없음 · 미확인의 까닭과 보고 문제 · 집행기 멈춤 · 수집 경고 표지(#82 웹 로그 적재 없음)는 본문에 둔다.
  * 콘솔 카드의 현재 콘솔은 실시간 연결(hello)의 이름이다. REST 요청은 콘솔 두 대에 번갈아 가므로 응답의 콘솔 이름은 쓰지 않는다.
  * 등록 노드 카드(#64)는 web-01 카드와 같은 틀이다. 이름(hostname)은 노드가 적어 낸 값이라 비신뢰 문자열로 그리고,
  * 이름이 node_id 와 다르면 역할 옆에 node_id 를 붙여 수집 노드 화면과 맞춰 보게 한다.
@@ -81,7 +81,7 @@ export function TargetCard({ target, asOf, cti, variant = 'card', className }: T
         )}
       </div>
       <dl className="m-0 flex min-w-0 flex-col @4xl:grid @4xl:grid-flow-col @4xl:grid-cols-2 @4xl:grid-rows-[repeat(3,auto)]">
-        <Row title="수집" tip={collectionTip(target.collection)} className={EDGE[0]}>
+        <Row title="수집" tip={collectionTip(target)} className={EDGE[0]}>
           <CollectionFacts target={target} collection={target.collection} asOf={asOf} />
         </Row>
         <Row title="보안" className={EDGE[1]}>
@@ -152,8 +152,12 @@ function settled(collection: TargetCollection): boolean {
   return state === 'ok' || state === 'quiet'
 }
 
-/** 수집 구역 도움말: 수신 없음 기준과, 정상 · 요청 없음일 때의 서버 까닭. 둘 다 없으면 단추를 두지 않는다 */
-function collectionTip(collection: TargetCollection): RowTip | null {
+/**
+ * 수집 구역 도움말: 수신 없음 기준과, 정상 · 요청 없음일 때의 서버 까닭. 둘 다 없으면 단추를 두지 않는다.
+ * AWS 센서는 적재기가 확인할 때의 신호 지연으로 가르고, 적재기 확인이 30분(app/targets.py CHECKER_STALE) 넘게 없으면 확인 중단이다(#82)
+ */
+function collectionTip(target: Target): RowTip | null {
+  const collection = target.collection
   const signal = collection.signal
   const reason = settled(collection) && collection.reason ? collection.reason : null
   if (!signal && !reason) return null
@@ -161,7 +165,13 @@ function collectionTip(collection: TargetCollection): RowTip | null {
     label: '수집 상태',
     content: (
       <>
-        {signal && <span className="block">{Math.round(signal.stale_after_seconds / 60)}분 넘게 새 신호가 없으면 수신 없음입니다.</span>}
+        {signal && (
+          <span className="block">
+            {target.id === 'aws-sensor'
+              ? `적재기가 확인할 때 신호가 ${Math.round(signal.stale_after_seconds / 60)}분 넘게 멈춰 있었으면 수신 없음 · 적재기 확인이 30분 넘게 없으면 확인 중단입니다.`
+              : `${Math.round(signal.stale_after_seconds / 60)}분 넘게 새 신호가 없으면 수신 없음입니다.`}
+          </span>
+        )}
         {signal && reason && ' '}
         {/* 까닭에는 기록한 쪽이 남긴 읽기 문제가 섞일 수 있어 비신뢰 문자열로 그린다 */}
         {reason && (
@@ -199,6 +209,7 @@ function CollectionFacts({ target, collection, asOf }: { target: Target; collect
   const signal = collection.signal
   const last = latestLog(collection.logs)
   const logs = signal?.seen_at || collection.logs.length > 1 ? collection.logs : []
+  const warnings = Array.isArray(collection.warnings) ? collection.warnings : []
   // 신호 없이 마지막 로그만 보일 때 정상으로 읽히지 않게 미확인을 붙인다. 배지가 이미 미확인 · 수신 없음이면 되풀이하지 않는다
   const mark = settled(collection)
   return (
@@ -230,6 +241,18 @@ function CollectionFacts({ target, collection, asOf }: { target: Target; collect
           읽기 문제: <UntrustedText value={signal.problem} max={160} />
         </span>
       )}
+      {/* 경고 표지(#82): 선언한 웹 로그가 도착하는데 적재되지 않는다. 서버는 state 를 바꾸지 않으므로 주의색 글로 따로 둔다 */}
+      {warnings.map((warning) => (
+        <span key={warning.key} className="break-words text-warning" data-collection-warning={warning.key}>
+          {warning.label}
+          {warning.at && (
+            <>
+              {' · 마지막 도착 '}
+              <Time value={warning.at} format="relative" now={asOf} />
+            </>
+          )}
+        </span>
+      ))}
       {targetKind(target) === 'fixed' && target.id === 'console' && <ConsoleLine name={live.console} connected={live.status === 'connected'} />}
       {/* 등록 노드의 로그 이름은 노드 이름(hostname)에서 온다. 비신뢰 문자열로 그린다 */}
       {logs.length > 0 && (

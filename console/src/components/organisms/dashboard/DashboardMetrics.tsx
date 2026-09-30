@@ -15,6 +15,7 @@ export interface DashboardMetricsProps {
  * 미판정 수치 네 칸(가장 오래된 미판정 · 미판정 · 판정 목표 초과 · 활성 차단 요청).
  * 활성 차단 칸은 지점별(AWS 관문 · 내부 방화벽) 적용 · 실패 · 미확인 두 줄이다(#72). 칸 이름의 요청 수에는 집행 제외가 들어 있어
  * 두 줄 합과 다르므로, 아래 줄 맨 앞에 집행 제외 수를 둔다. 집행기 확인이 멈춘 지점은 그 줄 끝에 멈춤을 붙인다(서버가 적용 · 실패를 미확인에 합쳤다).
+ * 생존 신호 표를 읽을 수 없어 합친 것(unreadable)은 멈춤이 아니라 '집행 확인 불가' 다(#82). 서버 까닭은 말풍선으로 본다.
  * 이전 서버(지점별 없음)는 집행 확인 · 대기 · 제외 한 줄, 그보다 앞선 서버는 요청 수와 '집행 상태 미확인' 이다.
  * 계산 기준(판정 목표 · 첫 사건)은 값 옆 도움말(ⓘ)에 둔다.
  * 좁으면(md 미만) 2열이고 가장 오래된 미판정 · 활성 차단 칸은 두 열 폭이다(빈 칸이 생기지 않게).
@@ -51,8 +52,8 @@ function PointLines({ points }: { points: readonly PointCounts[] }) {
           {p.stalled && (
             <>
               {' '}
-              <span className="whitespace-nowrap text-warning" data-block-stalled="">
-                · 집행기 멈춤
+              <span className={cn('whitespace-nowrap', p.unreadable === true ? 'text-ink-muted' : 'text-warning')} data-block-stalled={p.unreadable === true ? 'unreadable' : ''} title={p.stalled}>
+                {p.unreadable === true ? '· 집행 확인 불가' : '· 집행기 멈춤'}
               </span>
             </>
           )}

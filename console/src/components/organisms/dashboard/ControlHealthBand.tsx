@@ -11,15 +11,17 @@ export interface ControlHealthBandProps {
   className?: string
 }
 
-/** 멈춤 기준(app/targets.py CHECKER_STALE · BLOCK_CHECKER_STALE · HEARTBEAT_STALE · 노드 수신 판정) */
-const STALE_NOTE = '적재기 30분 · 집행기 10분 · 탐지 15분 · 노드 10분 넘게 확인이 없으면 멈춤입니다.'
+/** 멈춤 기준(app/targets.py CHECKER_STALE · BLOCK_CHECKER_STALE · HEARTBEAT_STALE · 노드 수신 판정). 센서는 적재기 확인 때 신호가 멈춘 시간이다 */
+const STALE_NOTE = '적재기 30분 · 집행기 10분 · 센서 15분 · 탐지 15분 · 노드 10분 넘게 확인이 없으면 멈춤입니다.'
 
 /**
- * 관제 이상 띠(#72). 적재기 · 집행기 확인 멈춤, 탐지 경로 멈춤, 지점별 적용 실패 · 관문 불일치, 활성 노드 전부 수신 없음과
- * 읽을 수 없는 표(모름)를 한 줄씩 보인다. 이상이 없거나 받는 중이면 보이는 것이 없다.
+ * 관제 이상 띠(#72 · #82). 적재기 · 집행기 확인 멈춤, 센서 · 관문 기록 수신 끊김, 탐지 경로 멈춤, 지점별 적용 실패 · 불일치 · 보고 멈춤,
+ * 활성 노드 수신 끊김(한 대라도) · 노드별 웹 로그 적재 없음 · 자원 지표 오래됨과 읽을 수 없는 표(모름)를 한 줄씩 보인다.
+ * 대상 카드가 이상 · 확인 불가로 보이는 수집 · 탐지 · 집행 상태는 여기에도 있다. 이상이 없거나 받는 중이면 보이는 것이 없다.
  * 조회가 실패하면(재시도 뒤) 이전 항목 대신 '관제 상태 확인 불가' 한 줄이다(사이드바 요약과 같은 판정, controlHealthView).
  * 그 status 자리는 비어 있어도(보이지 않고 이름 없음) 늘 두고 글만 바꾼다. 글과 함께 새로 끼우면 낭독되지 않을 수 있다.
- * 차단 집행 쪽 항목은 차단 목록, 노드 수신은 수집 노드로 잇는다. 기준은 ⓘ 하나에 둔다.
+ * 항목은 볼 화면으로 잇는다(monitorItemHref: 차단 집행 쪽은 차단 목록, 노드 수신 · 자원 지표는 수집 노드, 웹 로그 적재는 장비 최근 로그).
+ * 기준은 ⓘ 하나에 둔다.
  */
 export function ControlHealthBand({ health, className }: ControlHealthBandProps) {
   const view = controlHealthView(health)
@@ -65,7 +67,7 @@ function ItemsBand({ items, alert, className }: { items: MonitorItem[]; alert: b
 }
 
 /**
- * 항목 한 줄: '{이름} · {까닭 또는 건수}'. 까닭에는 탐지 버전 이름이 섞일 수 있어 비신뢰 문자열로 그린다.
+ * 항목 한 줄: '{이름} · {까닭 또는 건수}'. 까닭에는 탐지 버전 · 노드 이름 · 지점 보고 문제가 섞일 수 있어 비신뢰 문자열로 그린다.
  * 링크 안에 펼치기 단추를 두지 않도록 자르기(clip)만 쓰고 전체는 말풍선으로 본다
  */
 function Item({ item }: { item: MonitorItem }) {

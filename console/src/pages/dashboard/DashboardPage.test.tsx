@@ -265,6 +265,22 @@ describe('대시보드', () => {
     expect(screen.queryByRole('link', { name: '16건' })).toBeNull()
   })
 
+  it('생존 신호 표를 읽을 수 없어 합친 지점은 집행기 멈춤이 아니라 집행 확인 불가(흐린 글)이고 서버 까닭은 말풍선이다(#82)', async () => {
+    const unread = '집행 보고를 읽을 수 없음 · 적용 여부 확인 불가'
+    const points = BLOCKS_BY_POINT.map((p) => ({ ...p, applied: 0, failed: 0, unverified: 3, stalled: unread, unreadable: true }))
+    stubDashboard({ summary: { ...MONITORING_SUMMARY, blocked_ips: 3, blocks_by_point: points } })
+    const { container } = renderPage()
+    await screen.findByText('활성 차단 요청 3건')
+    for (const point of ['gateway', 'fw']) {
+      const line = container.querySelector(`[data-block-point="${point}"]`) as HTMLElement
+      expect(line).toHaveTextContent(/적용 0 · 실패 0 · 미확인 3 · 집행 확인 불가$/)
+      expect(line).not.toHaveTextContent('집행기 멈춤')
+      const mark = line.querySelector('[data-block-stalled="unreadable"]')
+      expect(mark).toHaveClass('text-ink-muted')
+      expect(mark).toHaveAttribute('title', unread)
+    }
+  })
+
   it('집행 제외가 0 이면 아래 줄에 적지 않는다', async () => {
     stubDashboard({ summary: { ...MONITORING_SUMMARY, blocks_by_point: [{ ...BLOCKS_BY_POINT[0], applied: 1, unverified: 1 }, { ...BLOCKS_BY_POINT[1], unverified: 2, stalled: null }] } })
     const { container } = renderPage()
@@ -398,7 +414,19 @@ describe('대시보드 · 관제 이상 띠(#72)', () => {
     ['적용 실패 · 관문 불일치', [MONITOR.failedGateway, MONITOR.mismatch], [
       ['block_failed:gateway', 'AWS 관문 적용 실패 · 2건', '/blocklist'],
       ['gateway_mismatch', '관문 불일치 · 1건', '/blocklist']]],
-    ['활성 노드 전부 수신 없음', [MONITOR.nodesSilent], [['nodes_silent', '노드 수신 · 활성 노드 2대 모두 10분 넘게 수신 없음', '/nodes']]],
+    ['활성 노드 전부 수신 없음', [MONITOR.nodesSilent], [['nodes_silent', '노드 수신 · 노드 2대 수신 끊김', '/nodes']]],
+    // #82
+    ['센서 · 관문 기록 수신 끊김', [MONITOR.sensor, MONITOR.gatewayUploader], [
+      ['sensor', 'AWS 센서 수신 · 업로더 생존 신호 40분 전 · 적재기 확인 2분 전 · 확인 때 이미 15분 넘게 새 신호 없음 · 관문 기록 신호 40분 전', null],
+      ['gateway_uploader', 'AWS 관문 기록 수신 · 관문 기록 신호 40분 전 · 적재기 확인 2분 전 · 확인 때 이미 15분 넘게 새 신호 없음', null]]],
+    ['기대 탐지 버전 기록 없음', [MONITOR.detectBridgeMissing], [['detect:bridge', '노드 · 관제 탐지(1분) · c1 · sg1 24시간 넘게 실행 없음', null]]],
+    ['내부 방화벽 불일치 · 지점 보고 멈춤', [MONITOR.pointStaleFw, MONITOR.reportFw], [
+      ['point_stale:fw', '내부 방화벽 불일치 · 2건', '/blocklist'],
+      ['report:fw', '내부 방화벽 보고 · 마지막 보고 20분 전', '/blocklist']]],
+    ['활성 노드 일부 수신 없음 · 웹 로그 적재 없음 · 자원 지표 오래됨', [MONITOR.nodesSilentSome, MONITOR.parse, MONITOR.metrics], [
+      ['nodes_silent', '노드 수신 · node-b 수신 끊김 · 마지막 수신 12분 전', '/nodes'],
+      ['parse:web-01', 'web-01 웹 로그 적재 · 로그는 도착하는데 적재되지 않음 · 마지막 도착 3분 전', '/devices/web-01/logs'],
+      ['metrics:node-e', 'node-e 자원 지표 · 마지막 지표 25분 전', '/nodes']]],
   ])('%s 를 띠에 항목마다 한 줄로 보이고 볼 화면으로 잇는다', async (_name, items, expected) => {
     stubDashboard({ health: controlHealth({ items }) })
     renderPage()
@@ -408,7 +436,7 @@ describe('대시보드 · 관제 이상 띠(#72)', () => {
     const lines = [...band.querySelectorAll<HTMLElement>('[data-monitor-item]')]
     expect(lines.map((li) => [li.dataset.monitorItem, li.textContent, li.querySelector('a')?.getAttribute('href') ?? null])).toEqual(expected)
     // 기준은 ⓘ 하나에 둔다
-    expect(within(band).getByRole('button', { name: '관제 이상 기준 설명' })).toHaveAccessibleDescription('적재기 30분 · 집행기 10분 · 탐지 15분 · 노드 10분 넘게 확인이 없으면 멈춤입니다.')
+    expect(within(band).getByRole('button', { name: '관제 이상 기준 설명' })).toHaveAccessibleDescription('적재기 30분 · 집행기 10분 · 센서 15분 · 탐지 15분 · 노드 10분 넘게 확인이 없으면 멈춤입니다.')
     expect(within(band).getAllByRole('button')).toHaveLength(1)
   })
 

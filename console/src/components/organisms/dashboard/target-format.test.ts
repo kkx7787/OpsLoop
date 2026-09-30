@@ -157,6 +157,20 @@ describe('무리 · 머리 배지 · 경고 배지 · 미판정 주소(#72)', ()
     expect(flags({ response: {}, collection: { stopped: 'loader' as never } })).toEqual([])
   })
 
+  it('경고 배지(#82): 탐지 경로 멈춤 · 웹 로그 적재 없음은 주의색, 생존 신호 표를 읽을 수 없으면 집행기 멈춤이 아니라 집행 확인 불가(중립색)', () => {
+    const flags = (t: Parameters<typeof summaryFlags>[0]) => summaryFlags(t).map((f) => [f.key, f.text, f.tone])
+    expect(flags(dataNodeStopped(['loader', 'detect']))).toEqual([['loader', '적재기 멈춤', 'warning'], ['detect', '탐지 멈춤', 'warning']])
+    expect(headBadge(dataNodeStopped(['detect']))).toEqual({ label: '주의', tone: 'warning' })
+    const parse = { key: 'parse' as const, label: '웹 로그 도착 · 적재 없음(형식 밖 · 선언 밖)', at: null }
+    expect(flags(web01({ collection: { ...web01().collection, warnings: [parse, parse] } }))).toEqual([['parse', '웹 로그 적재 없음', 'warning']])
+    expect(flags({ response: {}, collection: { warnings: [{ key: 'other' as never, label: '', at: null }] } })).toEqual([])
+    const unread = { stalled: '집행 보고를 읽을 수 없음 · 적용 여부 확인 불가', unreadable: true }
+    expect(flags({ response: unread, collection: {} })).toEqual([['unreadable', '집행 확인 불가', 'neutral']])
+    expect(flags({ response: { ...unread, unreadable: false }, collection: {} })).toEqual([['enforcer', '집행기 멈춤', 'warning']])
+    // 이전 서버(unreadable 없음)는 지금처럼 멈춤이다
+    expect(flags({ response: { stalled: '집행기 확인 기록 없음' }, collection: {} })).toEqual([['enforcer', '집행기 멈춤', 'warning']])
+  })
+
   it('미판정 주소는 판정 전 · 장비 조건만(기간 없음)이고 값을 인코딩한다', () => {
     expect(pendingHref('web-01')).toBe('/incidents?judged=false&device=web-01')
     expect(pendingHref('_unconfirmed')).toBe('/incidents?judged=false&device=_unconfirmed')
