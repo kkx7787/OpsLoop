@@ -64,9 +64,20 @@ describe('TargetCard(#52)', () => {
     expect(tip).toHaveAttribute('aria-expanded', 'false')
     const panel = tipPanel(tip)
     expect(collect).toContainElement(panel)
-    expect(panel).toHaveTextContent('15분 넘게 새 신호가 없으면 수신 없음입니다. 업로더 생존 신호 3분 전 · 최근 1시간 로그 있음')
+    // 센서는 적재기가 확인할 때의 신호 지연 · 적재기 확인 중단으로 가른다(#82)
+    expect(panel).toHaveTextContent('적재기가 확인할 때 신호가 15분 넘게 멈춰 있었으면 수신 없음 · 적재기 확인이 30분 넘게 없으면 확인 중단입니다. 업로더 생존 신호 3분 전 · 최근 1시간 로그 있음')
     expect(panel).toContainElement(within(collect).getByText(/최근 1시간 로그 있음/))
     expect(collect.querySelector('[data-signal]')).not.toHaveAttribute('title')
+  })
+
+  it('센서가 아닌 대상의 수신 없음 기준은 그 신호의 기준 시간이다(노드 수신 10분 · 탐지 실행 15분)', () => {
+    for (const [target, text] of [[web01(), '10분 넘게 새 신호가 없으면 수신 없음입니다.'], [dataNode(), '15분 넘게 새 신호가 없으면 수신 없음입니다.']] as const) {
+      const { card, unmount } = renderCard(target)
+      const panel = tipPanel(within(card).getByRole('button', { name: '수집 상태 설명' }))
+      expect(panel).toHaveTextContent(text)
+      expect(panel).not.toHaveTextContent('적재기가 확인할 때')
+      unmount()
+    }
   })
 
   it('생존 신호가 없는 대상은 마지막 로그 시각을 보이고, 미확인은 배지 한 곳에만 둔다', () => {
@@ -96,7 +107,7 @@ describe('TargetCard(#52)', () => {
     expect(row('수집')).toHaveTextContent('읽기 문제: 없음')
     // 미확인의 까닭은 본문, 도움말에는 수신 없음 기준만 있다
     const panel = tipPanel(within(card).getByRole('button', { name: '수집 상태 설명' }))
-    expect(panel).toHaveTextContent('15분 넘게 새 신호가 없으면 수신 없음입니다.')
+    expect(panel).toHaveTextContent('적재기가 확인할 때 신호가 15분 넘게 멈춰 있었으면 수신 없음 · 적재기 확인이 30분 넘게 없으면 확인 중단입니다.')
     expect(panel).not.toHaveTextContent('생존 신호 미기록')
     expect(row('수집')).toHaveTextContent('생존 신호 미기록')
   })
@@ -132,6 +143,26 @@ describe('TargetCard(#52)', () => {
     // 도움말 상자는 수집 칸 안에 있으므로, 상자에 없는 '(멈춤)' 이 칸에 보이면 본문이다
     expect(row('수집')).toHaveTextContent('적재기 확인 1분 전 · 집행기 확인 12분 전 (멈춤)')
     expect(panel).not.toHaveTextContent('(멈춤)')
+  })
+
+  it('선언한 웹 로그가 도착하는데 적재되지 않으면 수집 본문에 주의색 표지와 마지막 도착을 둔다(#82). 배지는 서버 상태 그대로다', () => {
+    const base = web01()
+    const warned = renderCard(web01({ collection: { ...base.collection, warnings: [{ key: 'parse', label: '웹 로그 도착 · 적재 없음(형식 밖 · 선언 밖)', at: minutesAgo(3) }] } }))
+    const mark = warned.row('수집').querySelector('[data-collection-warning="parse"]')
+    expect(mark).toHaveTextContent(/^웹 로그 도착 · 적재 없음\(형식 밖 · 선언 밖\) · 마지막 도착 3분 전$/)
+    expect(mark).toHaveClass('text-warning')
+    // 까닭(요청 없음)이 도움말로 가도 표지는 본문에 남는다
+    const panel = tipPanel(within(warned.card).getByRole('button', { name: '수집 상태 설명' }))
+    expect(panel).not.toContainElement(mark as HTMLElement)
+    expect(within(warned.card).getByText('요청 없음')).toHaveAttribute('data-collection-badge')
+    warned.unmount()
+    // 경고가 없거나(빈 목록) 이전 서버(칸 없음)면 표지가 없다
+    for (const target of [web01({ collection: { ...base.collection, warnings: [] } }), web01()]) {
+      const { row, unmount } = renderCard(target)
+      expect(row('수집').querySelector('[data-collection-warning]')).toBeNull()
+      expect(row('수집')).not.toHaveTextContent('적재 없음')
+      unmount()
+    }
   })
 
   it('서버가 수신 없음으로 판정한 대상에는 미확인을 덧붙이지 않고 까닭은 본문에 둔다', () => {

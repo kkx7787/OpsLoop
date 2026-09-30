@@ -188,7 +188,7 @@ export function groupTargets<T extends Pick<Target, 'id' | 'kind'>>(targets: rea
   return groups
 }
 
-/** 머리 배지. 서버가 정상이라 했어도 데이터 노드의 확인(적재기 · 집행기)이 멈췄으면 '주의' 다. data-collection 은 서버 값 그대로 둔다 */
+/** 머리 배지. 서버가 정상이라 했어도 데이터 노드의 확인(적재기 · 집행기) · 탐지 경로가 멈췄으면 '주의' 다. data-collection 은 서버 값 그대로 둔다 */
 export function headBadge(target: { collection: Pick<TargetCollection, 'state' | 'stopped'> }): { label: string; tone: Tone } {
   const state = collectionState(target.collection.state)
   if (state === 'ok' && Array.isArray(target.collection.stopped) && target.collection.stopped.length > 0) return { label: '주의', tone: 'warning' }
@@ -197,25 +197,35 @@ export function headBadge(target: { collection: Pick<TargetCollection, 'state' |
 
 /** 접힌 요약 줄의 경고 배지 하나 */
 export interface SummaryFlag {
-  key: 'failed' | 'enforcer' | 'loader'
+  key: 'failed' | 'enforcer' | 'unreadable' | 'loader' | 'detect' | 'parse'
   text: string
   tone: Tone
 }
 
 /**
- * 접힌 요약 줄의 경고 배지: 지점 적용 실패 n(빨강) · 집행기 멈춤 · 적재기 멈춤(주의색). 0 · 해당 없음은 만들지 않는다.
+ * 접힌 요약 줄의 경고 배지: 지점 적용 실패 n(빨강) · 집행기 멈춤 · 적재기 멈춤 · 탐지 멈춤 · 웹 로그 적재 없음(주의색) ·
+ * 집행 확인 불가(중립색, 생존 신호 표를 읽을 수 없어 멈춤을 모른다 #82). 0 · 해당 없음은 만들지 않는다.
  * 집행기 멈춤은 대응(stalled)과 데이터 노드 멈춤(stopped)에서 한 번만 나온다. 수집 끊김은 머리 배지 '수신 없음' 이 말한다(Q13)
  */
-export function summaryFlags(target: { response: Pick<TargetResponse, 'failed' | 'stalled'>; collection: Pick<TargetCollection, 'stopped'> }): SummaryFlag[] {
+export function summaryFlags(target: {
+  response: Pick<TargetResponse, 'failed' | 'stalled' | 'unreadable'>
+  collection: Pick<TargetCollection, 'stopped' | 'warnings'>
+}): SummaryFlag[] {
   const flags: SummaryFlag[] = []
   const add = (flag: SummaryFlag) => {
     if (!flags.some((f) => f.key === flag.key)) flags.push(flag)
   }
   if (positive(target.response.failed)) add({ key: 'failed', text: `적용 실패 ${count(target.response.failed)}`, tone: 'danger' })
-  if (target.response.stalled) add({ key: 'enforcer', text: '집행기 멈춤', tone: 'warning' })
+  if (target.response.stalled) {
+    add(target.response.unreadable === true ? { key: 'unreadable', text: '집행 확인 불가', tone: 'neutral' } : { key: 'enforcer', text: '집행기 멈춤', tone: 'warning' })
+  }
   for (const stop of Array.isArray(target.collection.stopped) ? target.collection.stopped : []) {
     if (stop === 'loader') add({ key: 'loader', text: '적재기 멈춤', tone: 'warning' })
     else if (stop === 'enforcer') add({ key: 'enforcer', text: '집행기 멈춤', tone: 'warning' })
+    else if (stop === 'detect') add({ key: 'detect', text: '탐지 멈춤', tone: 'warning' })
+  }
+  for (const warning of Array.isArray(target.collection.warnings) ? target.collection.warnings : []) {
+    if (warning?.key === 'parse') add({ key: 'parse', text: '웹 로그 적재 없음', tone: 'warning' })
   }
   return flags
 }

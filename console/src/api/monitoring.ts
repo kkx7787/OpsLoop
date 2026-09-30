@@ -49,7 +49,10 @@ export interface BlockCounts {
   mismatch: number
 }
 
-/** 한 집행 지점의 살아 있는 차단(만료 없음 · 집행 제외 뺌). stalled 는 집행기 확인이 멈춘 까닭 글, 정상이면 null */
+/**
+ * 한 집행 지점의 살아 있는 차단(만료 없음 · 집행 제외 뺌). stalled 는 집행기 확인이 멈춘 까닭 글, 정상이면 null.
+ * unreadable 이면 멈춤이 아니라 생존 신호 표를 읽을 수 없어 합친 것이다(확인 불가, #82). 이전 서버에는 없다
+ */
 export interface PointCounts {
   point: 'gateway' | 'fw'
   label: string
@@ -57,6 +60,7 @@ export interface PointCounts {
   failed: number
   unverified: number
   stalled: string | null
+  unreadable?: boolean
 }
 
 export interface BlockEntry extends ActorBlock {

@@ -1,6 +1,6 @@
 /**
  * 관제 현황(대시보드) 조각(#52 · #72). 페이지(pages/dashboard)가 조립만 한다.
- *  ControlHealthBand(관제 이상 띠: 멈춤 · 탐지 경로 · 적용 실패 · 불일치 · 노드 수신, 조회 실패는 '관제 상태 확인 불가')
+ *  ControlHealthBand(관제 이상 띠: 멈춤 · 센서 · 탐지 경로 · 적용 실패 · 불일치 · 지점 보고 · 노드 수신 · 웹 로그 적재 · 자원 지표, 조회 실패는 '관제 상태 확인 불가')
  *  TargetBoard(보호 대상: 넓으면 카드 격자 · 좁으면 접힌 요약) · TargetCard(대상 한 장) · TargetSummaryList(대상마다 한 줄로 접은 목록)
  *  SupportTargets(관측 센서 · 관제 시스템 접힌 줄) · DashboardMetrics(수치 네 칸 · 지점별 차단) · PendingQueue(먼저 처리할 사건) · AgeDistribution(경과 분포)
  *  target-format(수집 상태 · 머리 배지 · 경고 배지 · 대응 문구(숫자 0 없음) · 자원 지표 · 취약점 한 줄 · 무리 나누기 · 카드 순서 · 미판정 목록 주소)

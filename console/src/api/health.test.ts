@@ -110,14 +110,29 @@ describe('관제 이상 판정(#72)', () => {
     expect(controlHealthView({ data, isError: false, errorUpdatedAt: 5, dataUpdatedAt: 9 })).toEqual({ state: 'ok', alerts: [MONITOR.loader], unknowns: [MONITOR.nodes] })
   })
 
-  it('항목 글은 까닭, 없으면 건수. 링크는 차단 집행 쪽 → 차단 목록, 노드 수신 → 수집 노드', () => {
+  it('항목 글은 까닭, 없으면 건수', () => {
     expect(monitorItemText(MONITOR.loader)).toBe('적재기 확인 중단 · 마지막 45분 전')
     expect(monitorItemText(MONITOR.failedGateway)).toBe('2건')
+    expect(monitorItemText(MONITOR.pointStaleFw)).toBe('2건')
     expect(monitorItemText({ reason: null, count: 1234 })).toBe('1,234건')
-    expect(monitorItemText(MONITOR.nodesSilent)).toBe('활성 노드 2대 모두 10분 넘게 수신 없음')
+    expect(monitorItemText(MONITOR.nodesSilent)).toBe('노드 2대 수신 끊김')
+    // 일부만 끊겨도 까닭(대수 · 이름)이 건수보다 먼저다
+    expect(monitorItemText(MONITOR.nodesSilentSome)).toBe('node-b 수신 끊김 · 마지막 수신 12분 전')
     expect(monitorItemText({ reason: null, count: null })).toBeNull()
-    expect(['enforcer:gateway', 'enforcer:fw', 'block_failed:fw', 'gateway_mismatch'].map(monitorItemHref)).toEqual(['/blocklist', '/blocklist', '/blocklist', '/blocklist'])
-    expect(['nodes_silent', 'nodes'].map(monitorItemHref)).toEqual(['/nodes', '/nodes'])
-    expect(['loader', 'detect:honeypot', 'detect:bridge', 'heartbeats', 'other'].map(monitorItemHref)).toEqual([null, null, null, null, null])
+  })
+
+  it.each<[string, string | null]>([
+    // 차단 집행 쪽 → 차단 목록
+    ['enforcer:gateway', '/blocklist'], ['enforcer:fw', '/blocklist'], ['block_failed:fw', '/blocklist'], ['gateway_mismatch', '/blocklist'],
+    ['point_stale:fw', '/blocklist'], ['point_stale:gateway', '/blocklist'], ['report:fw', '/blocklist'], ['report:gateway', '/blocklist'],
+    // 노드 수신 · 자원 지표 → 수집 노드
+    ['nodes_silent', '/nodes'], ['nodes', '/nodes'], ['metrics:web-01', '/nodes'], ['metrics:node-e', '/nodes'],
+    // 웹 로그 적재 → 그 장비의 최근 로그(id 는 주소 조각으로 감싼다)
+    ['parse:web-01', '/devices/web-01/logs'], ['parse:node a/1', '/devices/node%20a%2F1/logs'], ['parse:', null],
+    // 볼 화면이 없는 것 · 모르는 키
+    ['loader', null], ['heartbeats', null], ['sensor', null], ['gateway_uploader', null], ['detect:honeypot', null], ['detect:bridge', null],
+    ['other', null], ['nodes_silent_x', null], ['reports', null],
+  ])('링크: %s → %s', (key, href) => {
+    expect(monitorItemHref(key)).toBe(href)
   })
 })

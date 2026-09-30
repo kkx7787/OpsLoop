@@ -72,6 +72,13 @@ export interface TargetExtra {
   note: string | null
 }
 
+/** 수집 경고 표지(#82). parse: 선언한 웹 로그가 도착하는데 적재되지 않음(형식 밖 · 선언 밖). at 은 마지막 도착 시각 */
+export interface TargetWarning {
+  key: 'parse'
+  label: string
+  at: string | null
+}
+
 export interface TargetCollection {
   state: CollectionState
   /** 상태를 정한 까닭 한 문장 */
@@ -80,8 +87,13 @@ export interface TargetCollection {
   signal: TargetSignal | null
   logs: TargetLog[]
   extra: TargetExtra[]
-  /** 데이터 노드만: 멈춘 확인(적재기 · 집행기 지점 하나라도). state 는 그대로라 화면이 '주의' 로 보인다. 이전 서버에는 없다 */
-  stopped?: Array<'loader' | 'enforcer'>
+  /**
+   * 데이터 노드만: 멈춘 확인(적재기 · 집행기 지점 하나라도) · 탐지 경로(detect, #82). state 는 그대로라 화면이 '주의' 로 보인다.
+   * 이전 서버에는 없다
+   */
+  stopped?: Array<'loader' | 'enforcer' | 'detect'>
+  /** web-01 · 등록 노드만: 경고 표지(#82). state 는 그대로다. 이전 서버에는 없다 */
+  warnings?: TargetWarning[]
 }
 
 /** 발생원(Cowrie · 웹 디코이 · AWS 관문) 하나의 수치. AWS 센서만 있다 */
@@ -150,6 +162,8 @@ export interface TargetResponse {
   report: TargetReport | null
   /** 집행기 확인이 멈췄거나 기록이 없어 적용 확인을 믿지 않을 때의 까닭. 그때 서버는 적용 · 실패를 미확인에 합친다. 이전 서버에는 없다 */
   stalled?: string | null
+  /** stalled 가 집행기 멈춤이 아니라 생존 신호 표를 읽을 수 없어서다(확인 불가, #82). 지점이 없으면 null. 이전 서버에는 없다 */
+  unreadable?: boolean | null
 }
 
 export interface TargetAssetVulns {

@@ -161,7 +161,7 @@ export function nodeTarget(id = 'web-02', extra: Partial<Target> = {}): Target {
 /**
  * 데이터 노드: 서버는 정상(ok)이라 했지만 적재기 · 집행기 확인이 멈췄다(#72 collection.stopped). 머리 배지는 '주의' 다
  */
-export function dataNodeStopped(stopped: Array<'loader' | 'enforcer'> = ['loader', 'enforcer']): Target {
+export function dataNodeStopped(stopped: Array<'loader' | 'enforcer' | 'detect'> = ['loader', 'enforcer']): Target {
   const base = dataNode()
   return dataNode({
     collection: {

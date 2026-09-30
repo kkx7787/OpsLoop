@@ -29,14 +29,28 @@ export function monitorItem(extra: Partial<MonitorItem> & Pick<MonitorItem, 'key
   return { level: 'alert', reason: null, at: null, count: null, ...extra }
 }
 
-/** 관제 이상 네 종(멈춤 · 탐지 경로 · 적용 실패/불일치 · 노드 전부 수신 없음)과 모름 */
+/**
+ * 관제 이상 항목(#72 · #82): 멈춤 · 센서 · 관문 기록 수신 · 탐지 경로 · 적용 실패 · 지점 불일치 · 관문 불일치 · 지점 보고 · 노드 수신(전부 · 일부) ·
+ * 웹 로그 적재 · 자원 지표와 모름
+ */
 export const MONITOR = {
   loader: monitorItem({ key: 'loader', label: '적재기', reason: '적재기 확인 중단 · 마지막 45분 전', at: '2026-09-23T07:15:00Z' }),
   enforcerFw: monitorItem({ key: 'enforcer:fw', label: '내부 방화벽 집행기', reason: '집행기 확인 중단 · 마지막 확인 12분 전' }),
+  /** 까닭은 카드 까닭 그대로다(관문 업로더가 있으면 끝에 관문 기록 신호 시각) */
+  sensor: monitorItem({ key: 'sensor', label: 'AWS 센서 수신', reason: '업로더 생존 신호 40분 전 · 적재기 확인 2분 전 · 확인 때 이미 15분 넘게 새 신호 없음 · 관문 기록 신호 40분 전', at: '2026-09-23T07:20:00Z' }),
+  gatewayUploader: monitorItem({ key: 'gateway_uploader', label: 'AWS 관문 기록 수신', reason: '관문 기록 신호 40분 전 · 적재기 확인 2분 전 · 확인 때 이미 15분 넘게 새 신호 없음', at: '2026-09-23T07:20:00Z' }),
   detectBridge: monitorItem({ key: 'detect:bridge', label: '노드 · 관제 탐지(1분)', reason: 'w2 마지막 실행 16분 전', at: '2026-09-23T07:44:00Z' }),
+  /** 기대 버전(수집 설정)에 기록이 없다. 마지막 실행 시각이 없다 */
+  detectBridgeMissing: monitorItem({ key: 'detect:bridge', label: '노드 · 관제 탐지(1분)', reason: 'c1 · sg1 24시간 넘게 실행 없음' }),
   failedGateway: monitorItem({ key: 'block_failed:gateway', label: 'AWS 관문 적용 실패', count: 2 }),
+  pointStaleFw: monitorItem({ key: 'point_stale:fw', label: '내부 방화벽 불일치', count: 2 }),
   mismatch: monitorItem({ key: 'gateway_mismatch', label: '관문 불일치', count: 1 }),
-  nodesSilent: monitorItem({ key: 'nodes_silent', label: '노드 수신', reason: '활성 노드 2대 모두 10분 넘게 수신 없음', count: 2 }),
+  reportFw: monitorItem({ key: 'report:fw', label: '내부 방화벽 보고', reason: '마지막 보고 20분 전' }),
+  nodesSilent: monitorItem({ key: 'nodes_silent', label: '노드 수신', reason: '노드 2대 수신 끊김', count: 2 }),
+  nodesSilentSome: monitorItem({ key: 'nodes_silent', label: '노드 수신', reason: 'node-b 수신 끊김 · 마지막 수신 12분 전', count: 1 }),
+  parse: monitorItem({ key: 'parse:web-01', label: 'web-01 웹 로그 적재', reason: '로그는 도착하는데 적재되지 않음 · 마지막 도착 3분 전' }),
+  /** 카드 시스템 구역에는 까닭 글이 없어 서버가 마지막 지표 시각으로 적는다 */
+  metrics: monitorItem({ key: 'metrics:node-e', label: 'node-e 자원 지표', reason: '마지막 지표 25분 전', at: '2026-09-23T07:35:00Z' }),
   heartbeats: monitorItem({ key: 'heartbeats', level: 'unknown', label: '생존 신호', reason: '생존 신호 표를 읽을 수 없음' }),
   nodes: monitorItem({ key: 'nodes', level: 'unknown', label: '노드 수신', reason: '노드 표를 읽을 수 없음' }),
 } as const
