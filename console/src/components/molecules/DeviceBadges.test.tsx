@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import { MemoryRouter } from 'react-router'
 import { describe, expect, it } from 'vitest'
 import type { DeviceBasis, IncidentDevice } from '@/api/incidents'
 import { expectInertDom, expectMixedRevealed, MIXED } from '@/test/hostile-fixtures'
@@ -130,6 +131,39 @@ describe('DeviceBadges', () => {
     const { container } = render(<DeviceBadges source={{ devices: [WEB, hostile, DECOY] }} mode="compact" max={1} />)
     expectInertDom(container)
     expect(container.querySelector('[data-device-more]')).toHaveAttribute('title', `${revealHidden(`${MIXED} · SSH 인증`)}, 웹 디코이 · 웹 요청`)
+  })
+
+  it('full · logLinks: 확인된 보호 대상 뒤에만 최근 로그(새 탭) 링크가 있고 인쇄에는 빠진다(#73)', () => {
+    const confirmedNode = device('web-02', { label: 'web02.lab', logs: ['SSH 인증'] })
+    const scopedWeb = device('web-01', { logs: ['웹 접근'], basis: 'rule_scope' })
+    const monitor = device('console', { label: '관제 콘솔', group: 'monitor', logs: ['감사 기록'] })
+    const { container } = render(
+      <MemoryRouter>
+        <DeviceBadges source={{ devices: [DECOY, WEB, NODE, confirmedNode, monitor, device('_unconfirmed', { label: '이상한 값' })] }} mode="full" logLinks />
+      </MemoryRouter>,
+    )
+    const links = screen.getAllByRole('link', { name: '최근 로그 (새 탭)' })
+    expect(links.map((a) => a.getAttribute('data-device-logs'))).toEqual(['web-01', 'web-02'])
+    expect(links.map((a) => a.getAttribute('href'))).toEqual(['/devices/web-01/logs', '/devices/web-02/logs'])
+    for (const link of links) {
+      expect(link).toHaveAttribute('target', '_blank')
+      expect(link).toHaveAttribute('rel', 'noopener noreferrer')
+      expect(link).toHaveClass('print:hidden')
+      expect(link.querySelector('.sr-only')).toHaveTextContent('(새 탭)')
+    }
+    // 링크는 배지 · 근거 글자 뒤에 붙는다
+    expect(badgeOf(container, 'web-01').nextElementSibling?.nextElementSibling).toBe(links[0])
+    // 규칙 범위 · 센서 · 관제 시스템 · 형식 밖 id 에는 없다
+    expect(container.querySelectorAll('[data-device-logs]')).toHaveLength(2)
+
+    // 규칙 범위만 있으면 링크가 없다. compact 는 logLinks 를 줘도 링크를 두지 않는다(행 · 카드가 통째로 링크)
+    const scoped = render(
+      <MemoryRouter>
+        <DeviceBadges source={{ devices: [scopedWeb] }} mode="full" logLinks />
+        <DeviceBadges source={{ devices: [WEB] }} mode="compact" logLinks />
+      </MemoryRouter>,
+    )
+    expect(scoped.container.querySelectorAll('a')).toHaveLength(0)
   })
 
   it('className 을 겉에 합친다', () => {

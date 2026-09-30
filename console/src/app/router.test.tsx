@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { renderRoutes, stubMe } from '@/test/render'
 import { routes } from './router'
 import { MONITORING_SUMMARY } from '@/test/monitoring-fixtures'
+import { logsResult } from '@/test/device-logs-fixtures'
 
 function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
@@ -20,6 +21,7 @@ function stubIncidents(me: unknown) {
     if (url.pathname === '/api/nodes') return json({ as_of: '', rows: [] }, 200)
     if (url.pathname === '/api/assets') return json({ as_of: '', available: false }, 200)
     if (url.pathname === '/api/sources') return json({ as_of: '2026-09-29T00:00:00+00:00', total: 0, limit: 50, offset: 0, checkers: { gateway_stale: false, fw_stale: false }, items: [] }, 200)
+    if (url.pathname === '/api/devices/web-01/logs') return json(logsResult(), 200)
     if (url.pathname === '/api/rules/quality') return json(url.searchParams.has('details') ? { rows: [], versions: [], runs: [] } : [], 200)
     if (url.pathname === '/api/accounts') return json({ accounts: [{ username: 'root', role: 'admin', active: true, disabled_at: null, created_at: '2026-09-20T00:00:00Z', last_login_at: null, updated_at: null, locked: 'self' }] }, 200)
     return json({ detail: '없는 경로' }, 404)
@@ -67,6 +69,16 @@ describe('경로표', () => {
     expect(screen.getByRole('navigation', { name: '현재 위치' })).toHaveTextContent('관제›인시던트›사건 상세')
     expect(screen.getByRole('link', { name: '인시던트' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('link', { name: '인시던트 목록으로' })).toHaveAttribute('href', '/incidents')
+  })
+
+  it('/devices/:id/logs 는 장비 최근 로그 화면이고(#73) 메뉴에는 없어 경로 표시는 화면 이름뿐이다', async () => {
+    const fetch = stubIncidents({ username: 'han', role: 'viewer' })
+    renderRoutes(routes, '/devices/web-01/logs')
+    expect(await screen.findByRole('heading', { level: 1, name: 'web-01 최근 로그' })).toBeInTheDocument()
+    expect(await screen.findByRole('table', { name: '최근 로그, 최신 순' })).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: '현재 위치' })).toHaveTextContent(/^최근 로그$/)
+    expect(within(screen.getByRole('navigation', { name: '주 메뉴' })).queryByRole('link', { current: 'page' })).toBeNull()
+    expect(fetch.mock.calls.some(([input]) => String(input) === '/api/devices/web-01/logs?limit=100')).toBe(true)
   })
 
   it('/inventory 는 수집 묶음의 자산 · 취약점 메뉴가 현재 위치다', async () => {

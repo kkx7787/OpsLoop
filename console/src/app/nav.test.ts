@@ -52,4 +52,10 @@ describe('findNavItem', () => {
     expect(findNavItem(NAV_GROUPS, '/nowhere')).toBeUndefined()
     expect(findNavItem(NAV_GROUPS, '/dev/components')).toBeUndefined()
   })
+
+  it('장비 최근 로그(#73)는 메뉴에 없다(카드 · 사건 상세에서 연다)', () => {
+    expect(findNavItem(NAV_GROUPS, '/devices/web-01/logs')).toBeUndefined()
+    expect(NAV_GROUPS.flatMap((g) => g.items.map((i) => i.to)).filter((to) => to.startsWith('/devices'))).toEqual([])
+    expect(Object.values(SCREENS).map((screen) => screen.title)).not.toContain('최근 로그')
+  })
 })

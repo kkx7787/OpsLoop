@@ -64,7 +64,7 @@ export function IncidentHeader({ detail, className }: IncidentHeaderProps) {
                 <div className="flex min-w-0 flex-col gap-1">
                   <dt className="text-ink-muted">장비 {button}</dt>
                   <dd className="m-0">
-                    <DeviceBadges source={detail} mode="full" />
+                    <DeviceBadges source={detail} mode="full" logLinks />
                     {panel}
                   </dd>
                 </div>
