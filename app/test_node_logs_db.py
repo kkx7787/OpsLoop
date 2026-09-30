@@ -15,9 +15,10 @@
   7. 시각: 마지막 적재 · job 별 마지막 줄 · 선언 · nodes 행 없음. 탐지는 w2 · c1 · sg1 로 정해지고 더 늦은 i2 · 허니팟 실행은 쓰지 않음
   8. 색인: 세 색인 · 다른 발생원 줄 수천 · ANALYZE 뒤, 순차 · 비트맵 읽기를 끈 계획에서 필터 없음 · 종류 필터가
      idx_events_sensor_ts 로 내려가고 일반 Sort 가 없음(같은 시각 사이는 Incremental Sort)
-  9. 사건 상세(main.get_incident): 같은 출발지 · 구간에 섞인 줄 가운데 보호 대상(web-01 · 등록 노드) 줄만 ② 행위 · ④ 원문에서
+  9. 사건 상세(main.get_incident): 같은 출발지 · 구간에 섞인 줄 가운데 관제 대상(web-01 · 등록 노드) 줄만 ② 행위 · ④ 원문에서
      가려지고, 허니팟 · 디코이 · 관문 · 콘솔 줄은 원문 그대로다(password 원문 칸은 없고 has_password 는 그대로).
-     요청 경로 서명 사건(R107 · sg1)은 jsonb 근거의 ① 표본도 web-01 항목만 ④ 와 같은 값으로 가려지고 디코이 항목은 원문이다
+     요청 경로 서명 사건(R107 · sg1)은 jsonb 근거의 ① 표본도 web-01 항목만 ④ 와 같은 값으로 가려지고 디코이 항목은 원문이다.
+     노드를 폐기하거나 · nodes 열 권한이 없는 역할이거나 · 발생원이 nodes 표에 없어도 그 줄과 표본은 가린 채다(이슈 #81)
 """
 import hashlib
 import json
@@ -435,6 +436,56 @@ class NodeLogsDatabaseTests(unittest.IsolatedAsyncioTestCase):
         for value in (secret, JWT):
             with self.subTest(secret=value[:12]):
                 self.assertNotIn(value, text)
+
+    async def test_노드를_폐기하거나_nodes_를_읽을_수_없어도_사건_상세는_가린_채다(self):
+        import main
+        await self.conn.execute(DETAIL_TABLES)
+        await self.node("web-02", hostname="web02.lab", logs=["nginx"])
+        actor, key, secret = "203.0.113.52", "R107|sg1|203.0.113.52|t", "webS3cret99"
+        url, other = f"/geoserver/web/?api_key={secret}", f"/a?token={JWT}"
+        masked, other_masked = "/geoserver/web/?api_key=…", "/a?token=…"
+        sample = [{"eventid": "nginx.request", "sensor": "web-02", "http_method": "GET", "url": url, "http_status": 404,
+                   "signatures": ["sg-x"]},
+                  {"eventid": "nginx.request", "sensor": "web-09", "http_method": "GET", "url": other, "http_status": 404,
+                   "signatures": ["sg-x"]}]
+        evidence = {"sample": sample, "sessions": [], "signatures": ["sg-x"], "sensors": ["web-02", "web-09"]}
+        await self.conn.execute("""INSERT INTO incidents (incident_key, rule_id, rule_version, rule_name, severity, actor_ip,
+                first_ts, last_ts, signal_count, session_count, evidence)
+                VALUES ($1, 'R107', 'sg1', '시험 규칙', 'medium', $2, $3, $4, 2, 0, $5::jsonb)""",
+                                key, actor, self.ago(120), self.ago(60), json.dumps(evidence))
+        await self.line(100, sensor="web-02", ip=actor, http_method="GET", url=url, http_status=404)
+        await self.line(95, sensor="web-09", ip=actor, http_method="GET", url=other, http_status=404)   # nodes 표에 없는 발생원
+
+        async def detail():
+            with patch.object(main.app.state, "pool", SimpleNamespace(acquire=self.acquire), create=True):
+                return await main.get_incident(key)
+
+        got = {"활성": await detail()}
+        await self.conn.execute("UPDATE nodes SET status = 'revoked' WHERE node_id = 'web-02'")
+        got["폐기"] = await detail()
+        # nodes 열 권한이 없는 역할: 관련 장비 계산이 등록 노드 카드를 만들지 못한다
+        role = "opsloop_t81_no_nodes"
+        tables = await self.conn.fetch("SELECT tablename FROM pg_tables WHERE schemaname = pg_my_temp_schema()::regnamespace::text")
+        await self.conn.execute(f"DROP ROLE IF EXISTS {role}")
+        await self.conn.execute(f"CREATE ROLE {role} NOLOGIN")
+        try:
+            for row in tables:
+                if row["tablename"] != "nodes":
+                    await self.conn.execute(f"GRANT SELECT ON pg_temp.{row['tablename']} TO {role}")
+            await self.conn.execute(f"SET ROLE {role}")
+            got["nodes 못 읽음"] = await detail()
+        finally:
+            await self.conn.execute("RESET ROLE")
+            await self.conn.execute(f"DROP OWNED BY {role}")
+            await self.conn.execute(f"DROP ROLE {role}")
+        for state, body in got.items():
+            with self.subTest(state=state):
+                raw = {r["sensor"]: r for r in body["raw"]}
+                self.assertEqual((raw["web-02"]["url"], raw["web-09"]["url"]), (masked, other_masked))
+                self.assertEqual([s["url"] for s in body["evidence"]["sample"]], [masked, other_masked])
+                text = json.dumps(body, ensure_ascii=False, default=str)
+                for value in (secret, JWT):
+                    self.assertNotIn(value, text)
 
 
 if __name__ == "__main__":

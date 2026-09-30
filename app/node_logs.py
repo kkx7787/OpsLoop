@@ -10,7 +10,8 @@
   - 가림은 응답에서 한다(브라우저에 원문을 보내지 않는다). password 열은 IS NOT NULL 로만 읽는다(has_password, 사건 상세 원문과 같다).
     url · user_agent · message · username · http_method 는 mask_url · mask_text 를 지난 값이다. SSH 사용자 이름은 보인다.
     쿼리 값 · '=' 없는 쿼리 조각 · 키 모양이 아닌 조각은 모두 가려 쿼리 속 공격 문자열도 가려진다. 사건 상세(① 근거 표본 · ② 행위 ·
-    ④ 원문)도 이 장비들의 줄은 같은 가림을 쓴다(mask_evidence · mask_incident_lines, 허니팟 · 디코이 · 관문 줄은 공격 증거라 원문 그대로)
+    ④ 원문)도 같은 가림을 쓴다(mask_evidence · mask_incident_lines). 원문으로 두는 것은 정해진 발생원(RAW_SOURCES: 허니팟 · 디코이 ·
+    관문 · 콘솔 · 감사 · 수집 관문)뿐이고, 노드 카드 · 상태와 관계없이 정한다(폐기한 노드의 과거 줄도 가린 채다, 이슈 #81)
   - 줄 id 는 line_hash 에서 만든 HMAC 이다(SESSION_SECRET 에서 떼어 낸 키). auth 줄은 시각 · 호스트 · pid 말고는 본문뿐이라
     line_hash 를 그대로 내면 가린 짧은 값을 해시로 되짚을 수 있다. 두 콘솔은 같은 비밀을 써 같은 id 를 낸다
   - 시각 네 가지는 서로 다른 칸이다: 마지막 적재(nodes.last_loaded_at) · 로그 종류별 마지막 줄(nodes.receipt[job].last_line_at,
@@ -237,32 +238,38 @@ def mask_event(row: dict) -> dict:
                       for key, mask in MASKERS.items() if key in row}}
 
 
-def protected_ids(cards) -> frozenset[str]:
-    """보호 대상 장비 id(web-01 · 등록 노드 카드, protected_device 와 같은 판정). 발생원(events.sensor)이 장비 id 그대로다."""
-    return frozenset(o["id"] for o in targets.device_options(cards) if o["group"] == "protected")
+# 사건 상세에서 원문으로 두는 발생원. 고정 대상 가운데 보호 대상(web-01)이 아닌 것이다: 허니팟 · 디코이 · 관문 줄은 공격 증거이고
+#   콘솔 · 감사 · 수집 관문 · 원장 가져오기 줄은 관제 대상 서버의 로그가 아니다. 모두 노드 이름으로 쓸 수 없다(operations.RESERVED)
+RAW_SOURCES = frozenset({"cowrie", "decoy", "gateway", "console", "audit", "collector", "puller"})
 
 
-def mask_incident_lines(rows: list[dict], cards) -> list[dict]:
-    """사건 상세(main.get_incident)의 ② 행위 · ④ 원문 행 가운데 발생원이 보호 대상 장비인 줄만 mask_event 로 가린다.
-    허니팟 · 디코이 · 관문(cowrie · decoy · gateway) 줄은 공격 증거라 원문 그대로, 콘솔 · 수집 관문 · 감사 등 그 밖의 발생원도
-    그대로다(등록 노드 id 는 이 이름들을 쓸 수 없다, operations.RESERVED). cards 는 상세가 이미 읽은 카드라 질의가 늘지 않는다.
-    한계: 목록 화면처럼 카드가 없는 노드(폐기 · 발생원 겹침 · nodes 를 읽을 수 없음)의 줄은 보호 대상으로 확인되지 않아 가리지 않는다."""
-    ids = protected_ids(cards)
-    return [mask_event(row) if row.get("sensor") in ids else row for row in rows]
+def raw_source(item: dict) -> bool:
+    """사건 상세에서 원문으로 둘 줄 · 표본인가. 발생원이 RAW_SOURCES 이고 관제 대상 로그 이벤트(nginx. · sshd.)가 아닐 때만이다.
+    그 밖(web-01 · 등록 노드 · 폐기하거나 카드에서 빠진 노드 · 모르는 발생원 · 발생원이 없거나 글자가 아님)은 노드 카드 · 상태와
+    관계없이 가린다(이슈 #81). 노드 상태가 바뀌어도 과거 줄의 가림은 그대로다. 이벤트 이름 조건은 RESERVED 검사를 거치지 않고 넣은
+    노드 · 발생원 기본값('cowrie')으로 적재된 옛 노드 줄까지 가리기 위한 것이다(원문 발생원은 nginx. · sshd. 를 내지 않는다)."""
+    sensor, eventid = item.get("sensor"), item.get("eventid")
+    return (isinstance(sensor, str) and sensor in RAW_SOURCES
+            and not (isinstance(eventid, str) and eventid.startswith(targets.NODE_PREFIXES)))
 
 
-def mask_evidence(evidence, cards):
-    """사건 상세 ① 규칙 근거(evidence)의 표본(sample) 가운데 발생원이 보호 대상 장비인 객체 항목만 mask_event 로 가린 새 근거.
+def mask_incident_lines(rows: list[dict]) -> list[dict]:
+    """사건 상세(main.get_incident)의 ② 행위 · ④ 원문 행 가운데 원문 발생원(raw_source)이 아닌 줄을 mask_event 로 가린다."""
+    return [row if raw_source(row) else mask_event(row) for row in rows]
+
+
+def mask_evidence(evidence):
+    """사건 상세 ① 규칙 근거(evidence)의 표본(sample) 가운데 원문 발생원(raw_source)이 아닌 객체 항목을 mask_event 로 가린 새 근거.
     요청 경로 서명 규칙(url_signature: c1 R105 · R106 · sg1 R107)은 신호 detail(발생원 · 메서드 · url · 응답 코드 · 서명)을 그대로
-    표본에 남겨(detect.signals_url_signature) 가리지 않으면 ④ 에서 가린 web-01 · 등록 노드 요청의 url 원문이 같은 응답에 다시 나온다.
-    디코이 표본은 공격 증거라 원문 그대로, 발생원 칸이 없는 표본(건수 · 글자 등 다른 규칙의 detail)은 누구 줄인지 몰라 그대로다
-    (지금 규칙 가운데 보호 대상 줄을 표본에 남기는 것은 url_signature 뿐이다). 표본 밖 칸(sessions · signatures · sensors ·
-    관측값)은 식별자 · 수라 그대로다. 근거가 객체가 아니거나 표본이 목록이 아니면 받은 것 그대로다."""
+    표본에 남겨(detect.signals_url_signature) 가리지 않으면 ④ 에서 가린 관제 대상 요청의 url 원문이 같은 응답에 다시 나온다.
+    디코이 표본은 공격 증거라 원문 그대로다. 발생원 칸이 없는 객체 표본(건수 · 이벤트 글자 등 다른 규칙의 detail)은 가릴 칸이 없어
+    값이 그대로이고, 글자 표본도 그대로다 — 글자를 표본에 남기는 규칙(event_match)이 관제 대상 이벤트를 보지 않는 것은 시험이
+    지킨다. 표본 밖 칸(sessions · signatures · sensors · 관측값)은 식별자 · 수라 그대로다. 근거가 객체가 아니거나 표본이 목록이
+    아니면 받은 것 그대로다."""
     if not isinstance(evidence, dict) or not isinstance(evidence.get("sample"), list):
         return evidence
-    ids = protected_ids(cards)
-    return {**evidence, "sample": [mask_event(item) if isinstance(item, dict) and isinstance(item.get("sensor"), str)
-                                   and item["sensor"] in ids else item for item in evidence["sample"]]}
+    return {**evidence, "sample": [mask_event(item) if isinstance(item, dict) and not raw_source(item) else item
+                                   for item in evidence["sample"]]}
 
 
 # ----------------------------------------------------------------------
