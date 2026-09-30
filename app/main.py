@@ -489,7 +489,7 @@ async def get_incident(incident_key: str):
         ev = json.loads(inc["evidence"]) if isinstance(inc["evidence"], str) else inc["evidence"]
         ev = ev if isinstance(ev, dict) else {}
         sensors, sessions = ev.get("sensors"), ev.get("sessions")
-        devices, cards = await targets.incident_devices(c, [{
+        devices, _ = await targets.incident_devices(c, [{
             "incident_key": inc["incident_key"], "rule_id": inc.get("rule_id"), "rule_version": inc.get("rule_version"),
             "actor_ip": inc.get("actor_ip"), "target": inc.get("target"), "first_ts": inc["first_ts"],
             "last_ts": inc["last_ts"], "sensors": sensors if isinstance(sensors, list) else None,
@@ -587,7 +587,7 @@ async def get_incident(incident_key: str):
         follow = await c.fetchrow(FOLLOW_STATE_SQL, incident_key) if actor else None
         absorbs = await c.fetchval(ABSORBS_SQL, inc["rule_version"], inc["rule_id"]) if actor else False
 
-        # ④ 원문. 요약이 아니라 근거가 된 원본 줄이다(보호 대상 장비 줄은 아래에서 가려 보낸다).
+        # ④ 원문. 요약이 아니라 근거가 된 원본 줄이다(관제 대상 로그 줄은 아래에서 가려 보낸다).
         raw = await c.fetch(f"""
             SELECT ts, sensor, eventid, session, username, password IS NOT NULL AS has_password,
                    input, url, shasum, http_method, http_status, user_agent, message
@@ -597,14 +597,13 @@ async def get_incident(incident_key: str):
             ORDER BY ts LIMIT 300""", actor, *window) if actor else []
 
     d = row_to_dict(inc)
-    # ① 근거 표본 · ② · ④ 가운데 보호 대상 장비(web-01 · 등록 노드 카드) 줄은 장비 최근 로그(node_logs, 이슈 #73)와 같은 규칙으로
-    #   가린다(① 은 요청 경로 서명 규칙이 남긴 url). 허니팟 · 디코이 · 관문 줄은 공격 증거라 원문 그대로다. 카드는 관련 장비 계산이
-    #   읽은 것이라 질의가 늘지 않는다
-    d["evidence"] = node_logs.mask_evidence(json.loads(inc["evidence"]) if inc["evidence"] else None, cards)
+    # ① 근거 표본 · ② · ④ 는 장비 최근 로그(node_logs, 이슈 #73)와 같은 규칙으로 가린다(① 은 요청 경로 서명 규칙이 남긴 url).
+    #   원문은 허니팟 · 디코이 · 관문(공격 증거)과 콘솔 · 감사 · 수집 관문 줄뿐이고 노드 카드 · 상태와 관계없다(이슈 #81)
+    d["evidence"] = node_logs.mask_evidence(json.loads(inc["evidence"]) if inc["evidence"] else None)
     d["actions"] = [row_to_dict(r) for r in actions]
     d["verdicts"] = [row_to_dict(r) for r in verdicts]
     d["related"] = [row_to_dict(r) for r in related]
-    d["behavior"] = node_logs.mask_incident_lines([row_to_dict(r) for r in behavior], cards)
+    d["behavior"] = node_logs.mask_incident_lines([row_to_dict(r) for r in behavior])
     d["actor"] = {
         "history": row_to_dict(history) if history else None,
         "rules": [row_to_dict(r) for r in rules_hit],
@@ -612,7 +611,7 @@ async def get_incident(incident_key: str):
         "exempt": exempt,
     }
     # 비밀번호 원문은 화면에 내지 않는다. 타인의 실제 자격증명일 수 있다.
-    d["raw"] = node_logs.mask_incident_lines([row_to_dict(r) for r in raw], cards)
+    d["raw"] = node_logs.mask_incident_lines([row_to_dict(r) for r in raw])
     st = dict(absorbed_state) if absorbed_state else {}
     d["absorbed"] = {
         "items": [row_to_dict(r) | {"reason": absorbed_reason(r)} for r in absorbed],

@@ -12,12 +12,13 @@
   4. 라우터: 세션 없으면 401(풀 · 계정 조회 0) · 422(kind · src_ip · status · limit, 풀 호출 0, src_ip 는 한국어 한 문장) ·
      404(형식 밖 id 는 풀 호출 0, 관측 센서 · 관제 시스템 · 모르는 id 는 같은 문장) · viewer 200 · 트랜잭션 하나 · 질의 9개 이하 ·
      시각 고정 자릿수 · 줄 id(32자 16진, 같은 줄 같은 id, line_hash 는 응답에 없음) · (ts, id) 내림차순
-  5. 사건 상세(main.get_incident ② 행위 · ④ 원문): 보호 대상 장비(web-01 · 카드) 줄만 목록과 같은 가림, 허니팟 · 디코이 · 관문 ·
-     콘솔 · 감사 · 수집 관문 줄은 원문 그대로(같은 사건에 섞인 경우). 칸 · 순서 · has_password 는 그대로, 카드는 관련 장비 계산이
-     읽은 것을 써 nodes 질의가 늘지 않음. 한계: 카드가 없는 노드(발생원 겹침 · nodes 를 읽을 수 없음)의 줄은 가리지 않음.
-     ① 근거 표본(요청 경로 서명 사건 R107 · sg1): 보호 대상 표본만 같은 가림이고 ④ 의 같은 요청과 같은 값, 디코이 · 발생원 없는
-     표본 · 표본 밖 칸은 그대로, 응답 어디에도 보호 대상 줄의 비밀이 없음. 모양이 다른 근거 · 표본(글자 · 발생원 목록 · 글자가
-     아닌 값)에서 500 이 나지 않음
+  5. 사건 상세(main.get_incident ② 행위 · ④ 원문): 원문 발생원(허니팟 · 디코이 · 관문 · 콘솔 · 감사 · 수집 관문 · 원장 가져오기,
+     고정 대상에서 web-01 을 뺀 것 · 모두 RESERVED)이 아니면 목록과 같은 가림이고, 노드 카드 · 상태와 관계없다(이슈 #81: 카드에서
+     빠진 노드 · 폐기 노드 · nodes 를 읽을 수 없음 · 표에 없는 노드 · 모르는 발생원 · 원문 발생원 이름으로 낸 nginx. · sshd. 줄도
+     가림). 칸 · 순서 · has_password 는 그대로, 가림은 질의를 늘리지 않음.
+     ① 근거 표본(요청 경로 서명 사건 R107 · sg1): 원문 발생원이 아닌 표본은 같은 가림이고 ④ 의 같은 요청과 같은 값, 디코이 표본 ·
+     가릴 칸이 없는 표본 · 표본 밖 칸은 그대로, 응답 어디에도 관제 대상 줄의 비밀이 없음. 모양이 다른 근거 · 표본(글자 · 발생원
+     목록 · 글자가 아닌 값)에서 500 이 나지 않음. 글자 표본을 남기는 규칙(event_match)은 관제 대상 이벤트를 보지 않음(규칙 파일 전부)
 main 이 필요한 시험은 test_web 을 먼저 불러 asyncpg 가 없는 곳에서도 가짜를 넣는다(main 보다 먼저).
 """
 import ast
@@ -774,9 +775,10 @@ RAW = [
     raw_row("console", "console.login.failed", username="admin", url="/api/login?password=hunter2"),
     raw_row("audit", "console.block.released", input=f"token={JWT}"),
     raw_row("collector", "collector.agent.rejected", username="web-09", input="reason=bad_token secret=hunter2"),
-    raw_row("web-03", "nginx.request", url="/a?token=abc123"),        # 발생원이 겹친 노드: 카드가 없다(한계)
+    raw_row("web-03", "nginx.request", url="/a?token=abc123"),        # 발생원이 겹친 노드: 카드가 없어도 가린다
 ]
-PROTECTED = {"web-01", "web-02"}
+# 가리는 발생원(원문 발생원이 아닌 것): web-01 · 등록 노드 web-02 · 카드에서 빠진 web-03
+PROTECTED = {"web-01", "web-02", "web-03"}
 
 
 def signature_sample(sensor, eventid, url, method="GET", status=404):
@@ -792,25 +794,41 @@ SIG_URL = f"/cgi-bin/luci/;stok=/locale?form=country&password={WEB_SECRET}&token
 EVIDENCE = {"sample": [signature_sample("web-01", "nginx.request", SIG_URL),
                        signature_sample("decoy", "decoy.request", "/cgi-bin/luci/;stok=/locale?password=hunter2"),
                        signature_sample("web-02", "nginx.request", f"/reset/{HEX32}?pw={WEB_SECRET}"),
-                       signature_sample("web-03", "nginx.request", "/a?token=abc123")],     # 카드가 없는 노드(한계)
+                       signature_sample("web-03", "nginx.request", "/a?token=abc123")],     # 카드가 없는 노드도 가린다
             "sessions": [], "signatures": ["sg-luci"], "sensors": ["decoy", "web-01", "web-02", "web-03"]}
 SIG_WEB_URL = "/cgi-bin/luci/;stok=/locale?form=…&password=…&token=…"
 
 
 class IncidentLineTests(unittest.TestCase):
-    def test_보호_대상_id_는_목록_화면과_같다(self):
-        self.assertEqual(nl.protected_ids(CARDS), {"web-01", "web-02", "web-04"})
-        self.assertEqual(nl.protected_ids([]), {"web-01"})
-        for device in ("web-01", "web-02", "web-03", "probe-01", "aws-sensor"):
-            with self.subTest(device=device):
-                self.assertEqual(device in nl.protected_ids(CARDS), nl.protected_device(device, CARDS) is not None)
-        # 허니팟 · 관제 발생원 이름은 노드 id 로 쓸 수 없어 카드가 되지 않는다(원문 그대로 남는 까닭)
+    def test_원문_발생원은_고정_대상_가운데_보호_대상이_아닌_것이다(self):
         import operations
-        self.assertLessEqual(set(t.SENSOR_TARGET) - {t.WEB_NODE}, operations.RESERVED)
+        self.assertEqual(nl.RAW_SOURCES, set(t.SENSOR_TARGET) - {t.WEB_NODE})
+        self.assertLessEqual(nl.RAW_SOURCES, operations.RESERVED, "노드 이름으로 쓸 수 없다")
+        cases = [({"sensor": "cowrie", "eventid": "cowrie.command.input"}, True),
+                 ({"sensor": "decoy", "eventid": "decoy.request"}, True),
+                 ({"sensor": "gateway", "eventid": "gateway.denied"}, True),
+                 ({"sensor": "console", "eventid": "console.login.failed"}, True),
+                 ({"sensor": "audit", "eventid": "console.block.released"}, True),
+                 ({"sensor": "collector", "eventid": "collector.agent.rejected"}, True),
+                 ({"sensor": "puller", "eventid": "puller.fetch"}, True),
+                 ({"sensor": "cowrie"}, True),                                          # 이벤트 이름이 없는 표본
+                 ({"sensor": "web-01", "eventid": "nginx.request"}, False),
+                 ({"sensor": "web-02", "eventid": "sshd.login.failed"}, False),        # 등록 노드(카드 · 상태와 무관)
+                 ({"sensor": "web-09", "eventid": "nginx.request"}, False),            # 표에 없는 노드
+                 ({"sensor": "unknown", "eventid": "x.y"}, False),                     # 모르는 발생원
+                 ({"sensor": "console", "eventid": "nginx.request"}, False),           # RESERVED 를 우회해 넣은 노드
+                 ({"sensor": "cowrie", "eventid": "sshd.login.success"}, False),       # 발생원 기본값으로 적재된 옛 노드 줄
+                 ({"sensor": None, "eventid": "decoy.request"}, False),
+                 ({"sensor": ["decoy"], "eventid": "decoy.request"}, False),
+                 ({"eventid": "decoy.request"}, False),
+                 ({}, False)]
+        for item, raw in cases:
+            with self.subTest(item=item):
+                self.assertIs(nl.raw_source(item), raw)
 
-    def test_보호_대상_줄만_가리고_허니팟_디코이_관문_줄은_원문이다(self):
+    def test_보호_대상_줄은_가리고_허니팟_디코이_관문_줄은_원문이다(self):
         for name, rows in (("② 행위", BEHAVIOR), ("④ 원문", RAW)):
-            got = nl.mask_incident_lines(rows, CARDS)
+            got = nl.mask_incident_lines(rows)
             self.assertEqual([(r["sensor"], r["eventid"]) for r in got], [(r["sensor"], r["eventid"]) for r in rows])
             for before, after in zip(rows, got):
                 with self.subTest(section=name, sensor=before["sensor"], eventid=before["eventid"]):
@@ -820,22 +838,28 @@ class IncidentLineTests(unittest.TestCase):
                         self.assertNotEqual(after, before)
                         self.assertNotIn("hunter2", json.dumps(after, default=str))
                         self.assertNotIn(HEX_USER, json.dumps(after, default=str))
+                        self.assertNotIn("abc123", json.dumps(after, default=str))
                     else:
                         self.assertIs(after, before)
-        web, node = nl.mask_incident_lines(RAW, CARDS)[:2]
+        web, node = nl.mask_incident_lines(RAW)[:2]
         self.assertEqual((web["url"], web["user_agent"], web["http_method"], web["has_password"]),
                          ("/login?user=…&password=…", f"Authorization: {M}", "GET", True))
         self.assertEqual((node["username"], node["session"], node["message"]),
                          (M, "web-02/sshd/4242", f"Failed password for invalid user {M} from {ACTOR} port 40022 ssh2"))
-        [ssh] = nl.mask_incident_lines(BEHAVIOR[:1], CARDS)
+        [ssh] = nl.mask_incident_lines(BEHAVIOR[:1])
         self.assertEqual((ssh["username"], ssh["session"]), (M, "web-01/sshd/77"))
         # 원문 행은 바꾸지 않는다(새 행을 만든다)
         self.assertEqual((RAW[0]["url"], BEHAVIOR[0]["username"]), ("/login?user=admin&password=hunter2", HEX_USER))
 
-    def test_nodes_를_읽을_수_없으면_web_01_만_가린다(self):
-        got = nl.mask_incident_lines(RAW[:2], [])
-        self.assertEqual(got[0]["url"], "/login?user=…&password=…")
-        self.assertIs(got[1], RAW[1])       # 등록 노드는 확인되지 않는다(목록 화면이 404 인 것과 같다)
+    def test_카드에서_빠진_노드_줄도_가린다(self):
+        # 폐기 · 발생원 겹침 · nodes 를 읽을 수 없음으로 카드가 없는 노드도 같다(가림은 카드를 보지 않는다)
+        uncarded = raw_row("web-03", "nginx.request", url="/a?token=abc123")
+        revoked = raw_row("web-05", "sshd.login.failed", username=HEX_USER,
+                          message=f"Failed password for {HEX_USER} from {ACTOR} port 40022 ssh2")
+        got = nl.mask_incident_lines([uncarded, revoked])
+        self.assertEqual(got[0]["url"], "/a?token=…")
+        self.assertEqual((got[1]["username"], got[1]["message"]),
+                         (M, f"Failed password for {M} from {ACTOR} port 40022 ssh2"))
 
     def test_상세와_목록은_같은_가림이다(self):
         row = {"http_method": "token=hunter2", "url": f"/reset/{HEX32}?password=hunter2",
@@ -848,43 +872,61 @@ class IncidentLineTests(unittest.TestCase):
         self.assertEqual(nl.mask_event({"input": "passwd=hunter2 x"})["input"], f"passwd={M} x")
         self.assertEqual(nl.mask_event({"sensor": "web-01"}), {"sensor": "web-01"})
 
-    def test_근거_표본은_보호_대상_항목만_가리고_디코이_표본은_원문이다(self):
-        # 표본에 다른 규칙의 detail(글자 · 건수)과 모양이 틀린 항목(발생원이 목록 · 칸 값이 글자가 아님)도 섞는다
+    def test_근거_표본은_원문_발생원_항목만_원문이다(self):
+        # 표본에 다른 규칙의 detail(글자 · 건수 · 이벤트 글자)과 모양이 틀린 항목(발생원이 목록 · 칸 값이 글자가 아님)도 섞는다
         odd = ["/geoserver/web/?token=abc123", {"count": 12, "window_seconds": 60, "threshold": 10},
+               {"eventid": "cowrie.command.input", "detail": "wget http://x/y.sh"},
                {"sensor": ["web-01"], "url": "/x?password=hunter2"},
                {"sensor": "web-01", "url": [f"/x?password={WEB_SECRET}"], "http_method": 7, "http_status": 404}]
         evidence = {**EVIDENCE, "sample": EVIDENCE["sample"] + odd, "observed_count_max": 3}
-        got = nl.mask_evidence(evidence, CARDS)
+        got = nl.mask_evidence(evidence)
         self.assertEqual({k: v for k, v in got.items() if k != "sample"},
                          {k: v for k, v in evidence.items() if k != "sample"}, "표본 밖 칸은 그대로다")
         self.assertEqual(len(got["sample"]), len(evidence["sample"]))
         for before, after in zip(evidence["sample"], got["sample"]):
-            mine = isinstance(before, dict) and isinstance(before.get("sensor"), str) and before["sensor"] in PROTECTED
             with self.subTest(sample=str(before)[:40]):
-                if mine:
+                if isinstance(before, dict) and not nl.raw_source(before):
                     self.assertEqual(after, nl.mask_event(before))
-                    self.assertNotEqual(after, before)
                 else:
                     self.assertIs(after, before)
-        web, decoy, node, uncarded, *_, weird = got["sample"]
+        web, decoy, node, uncarded, text_sample, count, event_text, listed, weird = got["sample"]
         self.assertEqual(web, {**EVIDENCE["sample"][0], "url": SIG_WEB_URL})
         self.assertEqual(node["url"], f"/reset/{M}?pw=…")
         self.assertEqual(decoy["url"], "/cgi-bin/luci/;stok=/locale?password=hunter2")
-        self.assertEqual(uncarded["url"], "/a?token=abc123")
+        self.assertEqual(uncarded["url"], "/a?token=…")
+        self.assertEqual((text_sample, count, event_text), tuple(odd[:3]), "가릴 칸이 없는 표본은 값이 그대로다")
+        self.assertEqual(listed["url"], "/x?password=…")
         self.assertEqual((weird["url"], weird["http_method"], weird["http_status"]), (M, M, 404))
         text = json.dumps(got, ensure_ascii=False)
         for secret in (WEB_SECRET, JWT, HEX32):
             self.assertNotIn(secret, text)
         # 원래 근거는 바꾸지 않는다(새 근거를 만든다)
         self.assertEqual(evidence["sample"][0]["url"], SIG_URL)
-        # nodes 를 읽을 수 없으면 web-01 표본만 가린다
-        unread = nl.mask_evidence(EVIDENCE, [])["sample"]
-        self.assertEqual(unread[0]["url"], SIG_WEB_URL)
-        self.assertIs(unread[2], EVIDENCE["sample"][2])
         # 근거가 없거나 모양이 다르면 받은 것 그대로다
         for value in (None, [], "x", {"sessions": []}, {"sample": "x"}, {"sample": None}):
             with self.subTest(evidence=value):
-                self.assertIs(nl.mask_evidence(value, CARDS), value)
+                self.assertIs(nl.mask_evidence(value), value)
+
+    def test_글자_표본_규칙은_관제_대상_이벤트를_보지_않는다(self):
+        # event_match 는 발생원 칸 없는 글자(url · input · message)를 표본에 남긴다(detect.signals_event_match). 관제 대상 이벤트
+        # (nginx. · sshd.)를 볼 수 있는 event_match 규칙이 생기면 그 글자는 사건 상세에서 가려지지 않으므로 여기서 막는다:
+        # 발생원 조건(sensors)이 있으면 모두 원문 발생원이어야 하고, 없으면 이벤트 이름의 앞 글자가 관제 대상 접두와 겹치면 안 된다
+        seen = 0
+        for path in sorted((ROOT / "detector").glob("rules*.json")):
+            for rule in json.loads(path.read_text()).get("rules", []):
+                if rule.get("type") != "event_match":
+                    continue
+                seen += 1
+                params = rule["params"]
+                with self.subTest(rule=f"{path.name}:{rule['id']}"):
+                    if params.get("sensors"):
+                        self.assertLessEqual(set(params["sensors"]), nl.RAW_SOURCES)
+                        continue
+                    name = params.get("eventid") or params["eventid_like"]
+                    head = name.lower() if "eventid" in params else re.split(r"[%_]", name, maxsplit=1)[0].lower()
+                    self.assertTrue(head and not any(head.startswith(p) or p.startswith(head) for p in t.NODE_PREFIXES),
+                                    name)
+        self.assertGreater(seen, 0)
 
 
 INCIDENT = {"incident_key": f"R102|w2|{ACTOR}|t", "rule_id": "R102", "rule_version": "w2", "rule_name": "시험 규칙",
@@ -977,13 +1019,14 @@ class IncidentDetailTests(unittest.TestCase):
         for secret in ("hunter2", "abcDEF123456", HEX_USER):
             self.assertNotIn(secret, text)
         self.assertTrue(all("password" not in r for r in body["raw"]))
-        # 카드는 관련 장비 계산이 읽은 것을 쓴다(nodes 질의가 늘지 않는다)
+        # 가림은 질의를 늘리지 않는다(nodes 는 관련 장비 계산이 한 번 읽는다)
         self.assertEqual((calls.count(t.NODES_READABLE_SQL), calls.count(t.NODES_SQL)), (1, 1))
 
-    def test_nodes_를_읽을_수_없으면_web_01_줄만_가린다(self):
+    def test_nodes_를_읽을_수_없어도_등록_노드_줄을_가린다(self):
         body, calls = self.detail(UnreadableDetailConn)
         self.assertEqual(body["raw"][0]["url"], "/login?user=…&password=…")
-        self.assertEqual(body["raw"][1], self.main.row_to_dict(RAW[1]))
+        self.assertEqual(body["raw"][1], nl.mask_event(self.main.row_to_dict(RAW[1])))
+        self.assertEqual(body["raw"][-1]["url"], "/a?token=…")
         self.assertNotIn(t.NODES_SQL, calls)
 
     def test_서명_사건의_근거_표본도_보호_대상은_가리고_디코이는_원문이다(self):
@@ -995,10 +1038,10 @@ class IncidentDetailTests(unittest.TestCase):
         self.assertEqual((web["sensor"], web["http_method"], web["http_status"], web["signatures"]),
                          ("web-01", "GET", 404, ["sg-luci"]))
         self.assertEqual(node["url"], f"/reset/{M}?pw=…")
-        # 디코이 표본 · ④ 줄은 공격 증거라 원문, 카드가 없는 노드 표본은 확인되지 않아 그대로다(한계)
+        # 디코이 표본 · ④ 줄은 공격 증거라 원문이고, 카드가 없는 노드 표본도 가린다
         self.assertEqual(decoy, EVIDENCE["sample"][1])
         self.assertEqual(body["raw"][1]["url"], "/cgi-bin/luci/;stok=/locale?password=hunter2")
-        self.assertEqual(uncarded, EVIDENCE["sample"][3])
+        self.assertEqual(uncarded, {**EVIDENCE["sample"][3], "url": "/a?token=…"})
         self.assertEqual({k: body["evidence"][k] for k in ("sessions", "signatures", "sensors")},
                          {k: EVIDENCE[k] for k in ("sessions", "signatures", "sensors")})
         # 응답 어디에도 보호 대상 줄의 비밀이 없다(고치기 전에는 ① 에 원문이 남았다)
