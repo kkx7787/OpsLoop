@@ -26,6 +26,9 @@
      1분 다리 기대 버전 대조(BRIDGE_VERSIONS = 수집 설정 RULESETS · 23 · 25시간 · 옛 버전 무시 · 새 버전 기록 없음) · 지점 불일치 ·
      지점 보고 · 웹 로그 적재 없음 · 자원 지표 오래됨 · 겹침 제외 · 생존 신호 표를 읽을 수 없을 때의 대응 · 데이터 노드 탐지 멈춤 ·
      관제 이상 질의 8개 이하
+  9. 대시보드 개편(이슈 #83): 미결(최신 판정이 사람의 판단 유보)은 미판정과 따로 세고 창 밖 미결은 rows(최근 중요 탐지 · 대응 금지
+     대역 수)에 넣지 않음 · 최근 사건 줄의 최신 판정 값 · 취약점 대조 실패 · 대조 오래됨(48시간, 수는 그대로) · 앞선 시각 줄 상한이
+     장비 로그 목록과 같음 · 사건 목록 미결 필터(judged 와 AND)
 main 이 필요한 시험은 test_web 을 먼저 불러 asyncpg 가 없는 곳에서도 가짜를 넣는다(main 보다 먼저).
 """
 import ast
@@ -220,7 +223,7 @@ class TallyTests(unittest.TestCase):
         self.assertEqual((per["console"]["incidents_1h"], per["console"]["pending"]), (1, 0))
         self.assertEqual((per["data-node"]["incidents_1h"], per["data-node"]["pending"]), (0, 0))
         # 붙이지 못한 사건은 숨기지 않는다(f 는 판정됐고 1시간 밖이라 어디에도 세지 않는다)
-        self.assertEqual(unmapped, {"incidents_1h": 1, "pending": 1})
+        self.assertEqual(unmapped, {"incidents_1h": 1, "pending": 1, "undetermined": 0})
         block = t.security_block("aws-sensor", aws, NOW)
         self.assertEqual([p["key"] for p in block["parts"]], ["cowrie", "decoy", "gateway"])
         self.assertEqual(block["parts"][1], {"key": "decoy", "label": "웹 디코이", "incidents_1h": 1, "pending": 1})
@@ -233,7 +236,7 @@ class TallyTests(unittest.TestCase):
         self.assertEqual((latest["incident_key"], latest["severity"], latest["judged"]), ("high-old", "high", True))
         self.assertEqual(latest["last_ts"], (NOW - timedelta(minutes=600)).isoformat())
         self.assertEqual(set(latest), {"incident_key", "rule_id", "rule_name", "severity", "actor_ip", "target",
-                                       "last_ts", "judged"})
+                                       "last_ts", "judged", "verdict"})
 
     def test_높음이_없으면_아무_사건_최신이고_24시간_밖은_없다(self):
         self.assertEqual(t.latest_of([incident("m", 30), incident("l", 3, severity="low")], NOW)["incident_key"], "l")
@@ -244,6 +247,27 @@ class TallyTests(unittest.TestCase):
         # 같은 시각이면 키 순
         self.assertEqual(t.latest_of([incident("b", 5, severity="high"), incident("a", 5, severity="high")],
                                      NOW)["incident_key"], "a")
+
+    def test_미결은_따로_세고_창_밖_미결은_rows_에_넣지_않는다(self):
+        # 미결(최신 판정이 사람의 판단 유보)은 판정됨이라 미판정에 들지 않는다. 창 밖 미결(in_window 거짓, 판정 뒤 24시간 넘게 지남)은
+        #   미결 수에만 세고 rows 에는 넣지 않는다(최근 중요 탐지 · 대응 금지 대역 수가 바뀌지 않게). 시스템 전환 기록은 미결이 아니다
+        def judged(key, minutes, undetermined, in_window=True, **kw):
+            return incident(key, minutes, judged=True, **kw) | {
+                "verdict": "undetermined", "undetermined": undetermined, "in_window": in_window}
+        rows = [judged("in", 5, True), judged("old", 3 * 24 * 60, True, False, severity="high", actor="10.0.0.9"),
+                judged("system", 5, False), judged("lost", 5, True)]
+        attached = {"in": {("web-01", None)}, "old": {("web-01", None)}, "system": {("web-01", None)}, "lost": set()}
+        per, unmapped = t.tally(rows, attached, NOW)
+        web = per["web-01"]
+        self.assertEqual((web["undetermined"], web["pending"], web["incidents_1h"]), (2, 0, 2))
+        self.assertEqual([i["incident_key"] for i in web["rows"]], ["in", "system"])
+        self.assertEqual(unmapped, {"incidents_1h": 1, "pending": 0, "undetermined": 1})
+        block = t.security_block("web-01", web, NOW)
+        self.assertEqual(block["undetermined"], 2)
+        # 최근 사건 줄은 판정됨이면서 최신 판정 값을 싣는다(화면이 '판정됨' 대신 '미결' 로 보인다)
+        self.assertEqual({k: block["latest"][k] for k in ("incident_key", "judged", "verdict")},
+                         {"incident_key": "in", "judged": True, "verdict": "undetermined"})
+        self.assertEqual(t.security_block("console", per["console"], NOW)["undetermined"], 0)
 
 
 # ----------------------------------------------------------------------
@@ -469,7 +493,8 @@ class BlocksTests(unittest.TestCase):
                                           "vuln_reboot_pending": 1, "vuln_fix_unknown": 1,
                                           "collected_at": (NOW - timedelta(hours=1)).isoformat(),
                                           "checked_at": (NOW - timedelta(hours=1)).isoformat(),
-                                          "stale": False, "missing": False}])
+                                          "stale": False, "missing": False, "check_failed": False,
+                                          "check_stale": False}])
         aws = t.vulns_block("aws-sensor", True, assets, NOW)["assets"]
         self.assertEqual([(a["asset_id"], a["stale"], a["missing"]) for a in aws],
                          [("honeypot-dmz", True, False), ("gateway", True, True)])
@@ -482,6 +507,25 @@ class BlocksTests(unittest.TestCase):
         self.assertEqual([a["asset_id"] for a in t.vulns_block("console", True, {}, NOW)["assets"]],
                          ["console-a", "console-b"])
         self.assertEqual([a["asset_id"] for a in t.vulns_block("data-node", True, {}, NOW)["assets"]], ["data-01"])
+
+    def test_취약점_대조_실패와_대조_오래됨은_수를_두고_칸으로_보인다(self):
+        # 대조 실패는 check_error, 대조 오래됨은 마지막 대조가 48시간 넘음(조사 오래됨과 같은 기준). 수는 숨기거나 0 으로 바꾸지 않는다
+        base = {"vuln_total": 4, "vuln_kev": 1, "vuln_fix_available": 2, "vuln_reboot_pending": 0, "vuln_fix_unknown": 2,
+                "collected_at": NOW - timedelta(hours=1)}
+        cases = [({"checked_at": NOW - timedelta(hours=1), "check_error": "대조 오류"}, (True, False)),
+                 ({"checked_at": NOW - timedelta(hours=49), "check_error": None}, (False, True)),
+                 ({"checked_at": NOW - timedelta(hours=49), "check_error": "대조 오류"}, (True, True)),
+                 ({"checked_at": NOW - timedelta(hours=48), "check_error": ""}, (False, False)),    # 48시간 정각은 아직 아니다
+                 ({"checked_at": None, "check_error": None}, (False, False)),                       # 대조 전은 오래됨이 아니다
+                 ({"checked_at": NOW - timedelta(hours=1)}, (False, False))]                        # check_error 칸이 없는 행
+        for extra, want in cases:
+            with self.subTest(extra=extra):
+                [asset] = t.vulns_block("web-01", True, {"web-01": base | extra}, NOW)["assets"]
+                self.assertEqual((asset["check_failed"], asset["check_stale"]), want)
+                self.assertEqual({k: asset[k] for k in t.VULN_COUNTS}, {k: base[k] for k in t.VULN_COUNTS})
+                self.assertNotIn("check_error", asset)          # 오류 글은 싣지 않는다(자산 화면에 있다)
+        [missing] = t.vulns_block("web-01", True, {}, NOW)["assets"]
+        self.assertEqual((missing["missing"], missing["check_failed"], missing["check_stale"]), (True, False, False))
 
 
 # ----------------------------------------------------------------------
@@ -566,6 +610,36 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(t.ENFORCE_MISMATCH, self.main.ENFORCE_MISMATCH)
         self.assertIn(f"FILTER (WHERE enforce_note LIKE '{self.main.ENFORCE_MISMATCH}%') AS mismatch", t.BLOCKS_SQL)
         self.assertIn(f"enforce_note LIKE '{self.main.ENFORCE_MISMATCH}%' THEN 'mismatch'", self.main.BLOCK_STATES_SQL)
+
+    def test_앞선_시각_줄_상한은_장비_로그_목록과_같다(self):
+        # 마지막 로그 · 웹 로그 적재 판정 · 요약 최근 원문 수집은 장비 로그 목록(node_logs)과 같은 기준(기준 시각 + 5분)으로 자른다
+        import node_logs
+        self.assertEqual(t.FUTURE_LIMIT, "interval '5 minutes'")
+        for name, sql in (("장비 로그 목록", node_logs.LINES_SQL), ("앞선 줄 수", node_logs.FUTURE_SQL),
+                          ("마지막 로그", t.LOGS_SQL), ("웹 로그 적재", t.PARSE_SQL), ("요약", self.main.EVENTS_SQL)):
+            with self.subTest(name=name):
+                self.assertIn(f"::timestamptz + {t.FUTURE_LIMIT}", sql)
+
+    def test_사건_목록의_미결_필터는_judged_와_함께_쓰면_둘_다_건다(self):
+        # undetermined=true 는 최신 판정이 사람의 미결인 사건만이다(대시보드 미결 수와 같은 식). judged 와 함께여도 422 가 아니다
+        self.client.cookies.set(self.auth.COOKIE, self.auth.issue("han", "viewer"))
+        human = t.HUMAN_UNDETERMINED.format(v="v")
+        for params, clause in [({"undetermined": "true", "judged": "true"}, f"WHERE v.verdict IS NOT NULL AND {human}"),
+                               ({"undetermined": "true", "device": "web-01"}, f"WHERE {human}"),
+                               ({"undetermined": "false"}, f"WHERE NOT {human}"),
+                               ({}, None)]:
+            self.pool.calls.clear()
+            with self.subTest(params=params):
+                response = self.client.get("/api/incidents", params=params)
+                self.assertEqual(response.status_code, 200)
+                sql = next(c for c in self.pool.calls if isinstance(c, str) and "FROM incidents i" in c)
+                if clause:
+                    self.assertIn(clause, sql)
+                else:
+                    self.assertNotIn(human, sql)
+        # 판정자(operator)는 목록 칸에 싣지 않는다
+        self.assertNotIn("operator", self.main.PAGE_COLUMNS)
+        self.assertEqual(self.client.get("/api/incidents", params={"undetermined": "maybe"}).status_code, 422)
 
     def test_세션이_없으면_401_이다(self):
         for path in ("/api/dashboard/targets", "/api/dashboard/monitor"):
@@ -658,7 +732,7 @@ class RouterTests(unittest.TestCase):
         self.assertEqual([x["system"]["state"] for x in body["targets"]],
                          ["not_collected", "no_privilege", "not_collected", "not_collected"])
         self.assertEqual([x["vulns"] for x in body["targets"]], [{"available": False, "assets": []}] * 4)
-        self.assertEqual(body["unmapped"], {"incidents_1h": 0, "pending": 0})
+        self.assertEqual(body["unmapped"], {"incidents_1h": 0, "pending": 0, "undetermined": 0})
         # 한 트랜잭션(반복 읽기 · 읽기 전용)이고, 없는 표는 읽지 않는다
         self.assertEqual([c for c in self.pool.calls if isinstance(c, tuple)],
                          [("transaction", {"isolation": "repeatable_read", "readonly": True})])
@@ -785,7 +859,7 @@ class NodeResolveTests(unittest.TestCase):
         self.assertEqual(list(per), ["aws-sensor", "web-01", "console", "data-node", "web-02"])
         self.assertEqual((per["web-02"]["incidents_1h"], per["web-02"]["high_1h"], per["web-02"]["pending"]), (2, 1, 2))
         self.assertEqual((per["web-01"]["incidents_1h"], per["web-01"]["high_1h"]), (1, 0))
-        self.assertEqual(unmapped, {"incidents_1h": 1, "pending": 1})
+        self.assertEqual(unmapped, {"incidents_1h": 1, "pending": 1, "undetermined": 0})
         self.assertEqual(t.security_block("web-02", per["web-02"], NOW)["parts"], [])
         self.assertEqual(t.security_block("web-02", per["web-02"], NOW)["latest"]["incident_key"], "a")
 
@@ -845,7 +919,7 @@ class NodeCardTests(unittest.TestCase):
         self.assertEqual(t.vulns_block("web-02", True, assets, NOW)["assets"], [{
             "asset_id": "web-02", "vuln_total": 3, "vuln_kev": 1, "vuln_fix_available": 1, "vuln_reboot_pending": 0,
             "vuln_fix_unknown": 2, "collected_at": (NOW - timedelta(hours=1)).isoformat(),
-            "checked_at": None, "stale": False, "missing": False}])
+            "checked_at": None, "stale": False, "missing": False, "check_failed": False, "check_stale": False}])
         self.assertEqual(t.vulns_block("web-03", True, assets, NOW), {"available": True, "assets": []})
         self.assertEqual(t.vulns_block("web-02", False, assets, NOW), {"available": False, "assets": []})
         blocks = {"gateway_applied": 3, "gateway_failed": 0, "gateway_unverified": 1, "gateway_stale": 0,
@@ -1037,7 +1111,7 @@ class ShownTallyTests(unittest.TestCase):
         links = {"r005": {(AWS, "cowrie"): F}, "n-bare": {(WEB, None): F},
                  "s-bare": {(AWS, None): S, (AWS, "cowrie"): F}, "s-decoy": {(AWS, "decoy"): C}}
         per, unmapped = t.tally(rows, {k: t.shown(v) for k, v in links.items()}, NOW)
-        self.assertEqual(unmapped, {"incidents_1h": 2, "pending": 2})
+        self.assertEqual(unmapped, {"incidents_1h": 2, "pending": 2, "undetermined": 0})
         self.assertEqual((per[AWS]["incidents_1h"], per[AWS]["pending"]), (2, 2))
         self.assertEqual({k: v["pending"] for k, v in per[AWS]["parts"].items()}, {"cowrie": 0, "decoy": 1, "gateway": 0})
         self.assertEqual(per[WEB]["pending"], 0)

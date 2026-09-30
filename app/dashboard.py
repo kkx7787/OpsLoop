@@ -39,6 +39,19 @@ SELECT incident_key, rule_id, rule_version, rule_name, severity, host(actor_ip) 
        age AS pending_seconds, target_seconds, age >= target_seconds AS overdue
 FROM pending ORDER BY first_ts, incident_key"""
 
+# 미결(판단 유보): 사건의 최신 판정이 사람이 남긴 undetermined 다. 시스템 기록(operator 'system:…', v3 전환 일괄 처리)은
+#   사람의 판단이 아니라 빼고 기록은 그대로 둔다(보고서 backlog.undetermined 는 시스템 기록을 포함한 수다, reports.UNDETERMINED_SQL).
+#   {v} 는 최신 판정 한 행(verdict · operator)의 별칭이다. 판정이 없으면(NULL) 거짓이다(참 · 거짓만 낸다).
+#   대시보드 수 · 사건 목록 undetermined 필터(main.incident_page) · 대상 카드 수(targets.INCIDENTS_SQL)가 같은 식을 쓴다
+HUMAN_UNDETERMINED = ("({v}.verdict IS NOT DISTINCT FROM 'undetermined'"
+                      " AND coalesce({v}.operator, '') NOT LIKE 'system:%')")
+
+# 미결 사건 수(사건 단위: 같은 사건 여러 번 미결 → 1건, 미결 뒤 재판정 → 제외). 미판정 수처럼 시험 출발지를 빼지 않는다
+UNDETERMINED_COUNT = f"""
+SELECT count(*) FROM (SELECT DISTINCT ON (incident_key) verdict, operator FROM verdicts
+                      ORDER BY incident_key, created_at DESC, id DESC) v
+WHERE {HUMAN_UNDETERMINED.format(v="v")}"""
+
 RULE_RATES = """
 WITH latest AS (
     SELECT DISTINCT ON (incident_key) incident_key, verdict
@@ -58,6 +71,7 @@ GROUP BY i.rule_id, i.rule_version ORDER BY i.rule_id, i.rule_version
 async def dashboard_metrics(connection, as_of):
     counts = dict(await connection.fetchrow(PENDING_COUNTS, as_of))
     buckets = [counts.pop(f"age_{index}") for index in range(5)]
+    counts["undetermined"] = await connection.fetchval(UNDETERMINED_COUNT)
     oldest = await connection.fetch(OLDEST_PENDING, as_of)
     rates = await connection.fetch(RULE_RATES)
     return {

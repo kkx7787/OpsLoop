@@ -36,7 +36,7 @@ import node_logs
 import targets
 import web
 from proposals import CIRCULAR_RULES, SSH_RULES, propose
-from dashboard import dashboard_metrics
+from dashboard import HUMAN_UNDETERMINED, dashboard_metrics
 from access import masked_validation, require_role
 from operations import router as operations_router
 from notify import router as notify_router
@@ -353,6 +353,7 @@ async def list_incidents(
     since: Optional[datetime] = None,
     until: Optional[datetime] = None,
     judged: Optional[bool] = None,
+    undetermined: Optional[bool] = None,
     device: Optional[str] = Query(None, pattern=DEVICE_PATTERN),
     sort: Literal["pending", "severity", "recent"] = "pending",
     limit: int = Query(50, ge=1, le=500),
@@ -364,6 +365,8 @@ async def list_incidents(
     판정이 사람의 일인 이상 가장 오래 밀린 건이 가장 위험하다. 심각도순으로
     두면 낮은 등급의 오래된 건이 영영 아래에 깔린다. (화면 설계 4장)
     항목마다 관련 장비(devices · device_state · device_fallback)를 싣는다. 조회 때 기존 근거로 계산하고 저장하지 않는다.
+    undetermined=true 는 최신 판정이 사람이 남긴 미결(판단 유보)인 사건만이다(대시보드 미결 수와 같은 기준, false 는 그 밖).
+    judged 와 함께 주면 둘 다 건다(AND).
     """
     # 출발지는 주소여야 한다. 그대로 ::inet 으로 넘기면 캐스팅 오류가 500 이 된다(화면이 주소창의 actor_ip 를 읽는다, 이슈 #58).
     #   IPv6 영역 표기(fe80::1%eth0)는 파이썬은 받지만 inet 이 받지 않아 함께 거른다. 빈 값은 전처럼 조건 없음이다
@@ -383,11 +386,12 @@ async def list_incidents(
     async with app.state.pool.acquire() as c, c.transaction(isolation="repeatable_read", readonly=True):
         return await incident_page(c, status=status, severity=severity, rule_id=rule_id, rule_version=rule_version,
                                    actor_ip=actor_ip, target=target, since=since, until=until, judged=judged,
-                                   device=device, sort=sort, limit=limit, offset=offset)
+                                   undetermined=undetermined, device=device, sort=sort, limit=limit, offset=offset)
 
 
 async def incident_page(c, *, status=None, severity=None, rule_id=None, rule_version=None, actor_ip=None, target=None,
-                        since=None, until=None, judged=None, device=None, sort="pending", limit=50, offset=0) -> dict:
+                        since=None, until=None, judged=None, undetermined=None, device=None, sort="pending", limit=50,
+                        offset=0) -> dict:
     """사건 목록 한 쪽(입력 검사 뒤). 부른 쪽이 반복 읽기 트랜잭션을 연다.
 
     장비 필터(device)는 쪽을 나누기 전에 거른다. 조건에 맞는 사건을 가볍게(키 · 근거만) 모두 읽어 장비를 한 번 계산하고, 그 장비가
@@ -410,6 +414,9 @@ async def incident_page(c, *, status=None, severity=None, rule_id=None, rule_ver
     if until:        add("i.first_ts < ${n}", until)
     if judged is True:  where.append("v.verdict IS NOT NULL")
     if judged is False: where.append("v.verdict IS NULL")
+    # 미결: 최신 판정이 사람이 남긴 판단 유보(dashboard.HUMAN_UNDETERMINED, 시스템 전환 기록 제외)
+    if undetermined is not None:
+        where.append(("" if undetermined else "NOT ") + HUMAN_UNDETERMINED.format(v="v"))
 
     w = ("WHERE " + " AND ".join(where)) if where else ""
     order = {
@@ -418,9 +425,9 @@ async def incident_page(c, *, status=None, severity=None, rule_id=None, rule_ver
                     "WHEN 'medium' THEN 2 ELSE 3 END, i.first_ts DESC",
         "recent":   "i.first_ts DESC",
     }[sort] + ", i.incident_key ASC"  # 같은 시각·등급도 페이지 사이 순서가 바뀌지 않게 한다.
-    # 최근 판정 하나만 붙인다. 재판정이 생겨도 목록에는 마지막 판단이 보여야 한다.
+    # 최근 판정 하나만 붙인다. 재판정이 생겨도 목록에는 마지막 판단이 보여야 한다. 판정자(operator)는 미결 필터에만 쓰고 싣지 않는다
     latest = """LEFT JOIN LATERAL (
-            SELECT verdict FROM verdicts WHERE incident_key = i.incident_key
+            SELECT verdict, operator FROM verdicts WHERE incident_key = i.incident_key
             ORDER BY created_at DESC, id DESC LIMIT 1) v ON true"""
     base = f"""FROM incidents i
         {latest}
@@ -666,6 +673,13 @@ TOP_ACTORS_SQL = """
     FROM incidents WHERE actor_ip IS NOT NULL
     GROUP BY actor_ip ORDER BY n DESC, actor_ip LIMIT 10"""
 
+# 요약의 실제 이벤트 수 · 출발지 수 · 최근 원문 수집. 최근 원문 수집은 앞선 시각 줄(기준 시각 + 5분 넘게, 장비 로그 목록과 같은
+#   기준 targets.FUTURE_LIMIT)을 빼고 고른다. 수는 그대로 센다. $1 기준 시각
+EVENTS_SQL = f"""
+    SELECT count(*) events, count(DISTINCT src_ip) actors,
+           max(ts) FILTER (WHERE ts <= $1::timestamptz + {targets.FUTURE_LIMIT}) latest
+    FROM events WHERE provenance = 'real'"""
+
 
 @app.get("/api/stats/summary")
 async def summary():
@@ -679,9 +693,7 @@ async def summary():
             SELECT to_char(first_ts, 'YYYY-MM-DD') d, count(*)
             FROM incidents GROUP BY 1 ORDER BY 1 DESC LIMIT 14""")
         top = await c.fetch(TOP_ACTORS_SQL)
-        ev = await c.fetchrow("""
-            SELECT count(*) events, count(DISTINCT src_ip) actors, max(ts) latest
-            FROM events WHERE provenance = 'real'""")
+        ev = await c.fetchrow(EVENTS_SQL, as_of)
         blocks = await c.fetchrow(BLOCK_STATES_SQL, as_of)
         # 판정 뒤에 흡수됐는데 차단이 없는 출발지(absorbed.py). 흡수는 첫 사건이 판정 · 차단된 뒤에도 붙고 알림이
         # 없으므로, 함께 차단을 고르지 않았으면 여기서만 드러난다. 흡수 기록 표가 없는 DB(v3 전)에서는 생략한다

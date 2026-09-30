@@ -40,7 +40,7 @@ class DashboardDatabaseTests(unittest.IsolatedAsyncioTestCase):
                 rule_version text, severity text, actor_ip inet, target text, first_ts timestamptz,
                 status text, created_at timestamptz DEFAULT now());
             CREATE TEMP TABLE verdicts (id bigint GENERATED ALWAYS AS IDENTITY, incident_key text,
-                verdict text, created_at timestamptz DEFAULT now());
+                verdict text, operator text, created_at timestamptz DEFAULT now());
             CREATE TEMP TABLE events (ts timestamptz, src_ip inet, provenance text);
             CREATE TEMP TABLE actions (id bigint GENERATED ALWAYS AS IDENTITY, incident_key text,
                 action text, operator text, note text, created_at timestamptz DEFAULT now());
@@ -92,6 +92,45 @@ class DashboardDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((row["incidents"], row["judged_effective"], row["non_action"]), (4, 3, 2))
         self.assertEqual(float(row["non_action_rate"]), 66.7)
         self.assertEqual(data["pending"]["total"], 0)
+
+    async def test_미결은_사람이_남긴_최신_판정만_사건_단위로_센다(self):
+        # 대시보드 미결(이슈 #83) = 최신 판정이 사람이 남긴 undetermined 인 사건 수. 시스템 전환 기록(operator 'system:…')은 빼고
+        #   기록은 지우지 않는다. 보고서의 판단 유보(reports.UNDETERMINED_SQL)는 시스템 기록을 포함한 수로 그대로다
+        import reports
+        for key in ("twice", "rejudged", "system", "no-operator", "human-after-system", "system-after-human", "none"):
+            await self.incident(key, 100)
+        await self.conn.execute("""INSERT INTO verdicts (incident_key, verdict, operator, created_at) VALUES
+            ('twice', 'undetermined', 'han', '2026-09-23 01:00Z'), ('twice', 'undetermined', 'kim', '2026-09-23 02:00Z'),
+            ('rejudged', 'undetermined', 'han', '2026-09-23 01:00Z'), ('rejudged', 'threat', 'han', '2026-09-23 02:00Z'),
+            ('system', 'undetermined', 'system:v3-cutover', '2026-09-23 01:00Z'),
+            ('no-operator', 'undetermined', NULL, '2026-09-23 01:00Z'),
+            ('human-after-system', 'undetermined', 'system:v3-cutover', '2026-09-23 01:00Z'),
+            ('human-after-system', 'undetermined', 'han', '2026-09-23 02:00Z'),
+            ('system-after-human', 'undetermined', 'han', '2026-09-23 01:00Z'),
+            ('system-after-human', 'undetermined', 'system:v3-cutover', '2026-09-23 02:00Z')""")
+        data = await dashboard_metrics(self.conn, self.now)
+        self.assertEqual(data["pending"]["undetermined"], 3)        # twice · no-operator · human-after-system
+        self.assertEqual(data["pending"]["total"], 1)               # 미판정(none)과 따로 센다
+        self.assertEqual(await self.conn.fetchval("SELECT count(*) FROM verdicts WHERE operator LIKE 'system:%'"), 3)
+        self.assertEqual(await self.conn.fetchval(reports.UNDETERMINED_SQL), 5)
+        # 미결이 없으면 0 이다(화면은 0 이면 보이지 않는다)
+        await self.conn.execute("DELETE FROM verdicts WHERE operator IS DISTINCT FROM 'system:v3-cutover'")
+        self.assertEqual((await dashboard_metrics(self.conn, self.now))["pending"]["undetermined"], 0)
+
+    async def test_요약의_최근_원문_수집은_앞선_시각_줄을_뺀다(self):
+        # 장비 로그 목록(node_logs)과 같은 기준: 요약 기준 시각 + 5분 넘게 앞선 줄은 최근 원문 수집이 아니다. 수는 그대로 센다
+        import main
+        await self.conn.execute("""INSERT INTO events (ts, src_ip, provenance) VALUES
+            (now() - interval '1 hour', '192.0.2.1', 'real'), (now() + interval '4 minutes', '192.0.2.2', 'real'),
+            (now() + interval '10 minutes', '192.0.2.3', 'real'), (now() - interval '1 minute', '192.0.2.4', 'simulated')""")
+        near = await self.conn.fetchval("SELECT ts FROM events WHERE src_ip = '192.0.2.2'")
+        with patch.object(main.app.state, "pool", self.pool, create=True):
+            data = await main.summary()
+            self.assertEqual((data["latest_event"], data["events"], data["actors"]), (near.isoformat(), 3, 3))
+            # 앞선 줄뿐이면 최근 원문 수집이 없다
+            await self.conn.execute("DELETE FROM events WHERE src_ip IN ('192.0.2.1', '192.0.2.2')")
+            data = await main.summary()
+        self.assertEqual((data["latest_event"], data["events"]), (None, 1))
 
     async def test_rule_rates_exclude_test_sources(self):
         # 시험 출발지(이슈 #51)의 사건은 규칙별 집계에서 빠지고, 판정 대기에는 그대로 남는다

@@ -1,4 +1,4 @@
-"""관제 대상별 상태판 (이슈 #52 · #64 · #72 · #82). GET /api/dashboard/targets · GET /api/dashboard/monitor(관제 이상)
+"""관제 대상별 상태판 (이슈 #52 · #64 · #72 · #82 · #83). GET /api/dashboard/targets · GET /api/dashboard/monitor(관제 이상)
 
 고정 카드 네 장(AWS 센서 · web-01 · 관제 콘솔 · 데이터 노드) 뒤에 등록 노드 카드(nodes 에서 폐기되지 않고 고정 대상과 겹치지
 않는 노드, node_id 순)를 붙여 수집 · 보안 · 시스템 · 대응 · 취약점을 대상별로 모은다. 등록 노드 카드는 web-01 카드와 같은 모양이다.
@@ -20,6 +20,8 @@
     web-01 이고, 등록 노드가 있는데 고르지 못하면 대체 추정(장비 미확인)이다.
   - 관제 이상: 카드가 이상 · 확인 불가로 보이는 수집 · 탐지 · 집행 상태는 띠에도 항목이 있다(카드와 같은 판정 함수를 쓴다).
     1분 다리 탐지는 돌아야 할 버전(BRIDGE_VERSIONS)과 24시간 안 실행을 대조해, 하루 넘게 멈춘 버전도 멈춤으로 남는다.
+  - 미결: 최신 판정이 사람이 남긴 판단 유보인 사건을 미판정과 따로 센다(대시보드 · 사건 목록 undetermined 필터와 같은 식).
+  - 앞선 시각(미래) 줄: 기준 시각 + 5분 넘게 앞선 로그는 마지막 로그 · 웹 로그 적재 판정에 넣지 않는다(장비 로그 목록과 같은 기준).
 """
 import json
 from datetime import datetime, timedelta
@@ -28,7 +30,7 @@ from fastapi import APIRouter, Request
 
 import cti
 from absorbed import block_nets
-from dashboard import PENDING_ROWS
+from dashboard import HUMAN_UNDETERMINED, PENDING_ROWS
 
 router = APIRouter()
 
@@ -45,6 +47,9 @@ PARSE_LAG = 600                # 도착한 웹 로그 줄(receipt)보다 마지�
 REPORT_PROBLEM_GRACE = 300     # 집행 지점 보고의 읽기 문제는 마지막으로 읽은 보고가 이보다 오래됐을 때만 이상이다(5분, 한두 회차 일시 오류는 넘긴다)
 ACTIVE_RECEPTIONS = ("normal", "silent")   # 활성 노드의 수신. 등록 대기(waiting) · 폐기(revoked)는 의도한 상태라 관제 이상이 아니다
 HIGH_SEVERITIES = ("critical", "high")
+# 앞선 시각(미래) 줄 상한: 기준 시각 + 5분. 장비 로그 목록(node_logs.LINES_SQL)과 같은 기준이다(test_targets 가 맞춰 본다).
+#   마지막 로그(LOGS_SQL) · 웹 로그 적재 판정(PARSE_SQL) · 요약 최근 원문 수집(main.EVENTS_SQL)이 쓴다
+FUTURE_LIMIT = "interval '5 minutes'"
 
 # (id, 이름, 역할). 순서가 카드 순서다
 TARGETS = [
@@ -136,16 +141,36 @@ MONITOR_READABLE_SQL = (f"SELECT ({HEARTBEATS_READABLE_SQL}) AS heartbeats, ({ME
 
 HEARTBEATS_SQL = "SELECT source, kind, role, host, seen_at, checked_at, problem FROM sensor_heartbeats ORDER BY source"
 
-# 매핑 대상 사건: 최근 1시간에 시작했거나, 24시간 안에 이어졌거나, 판정 기록이 없는 것. 근거는 발생원(sensors)만 꺼낸다.
+# 매핑 대상 사건: 최근 1시간에 시작했거나, 24시간 안에 이어졌거나, 판정 기록이 없는 것(창 안, in_window). 창 밖이어도 최신 판정이
+#   사람의 미결(dashboard.HUMAN_UNDETERMINED)이면 읽는다. 창 밖 미결은 미결 수에만 세고 카드 rows(최근 중요 탐지 · 대응 금지 대역 수)에는
+#   넣지 않는다(tally). 판정 여부 · 값은 최신 판정 한 행(lv)으로 낸다. 근거는 발생원(sensors)만 꺼낸다.
 #   시험 출발지를 빼지 않는다(대시보드 미판정 수와 같게). $1 기준 시각 · $2 창(초) · $3 최근 시간(시)
+#   사건마다 최신 판정을 붙이면(LATERAL) 사건이 많을 때 느리다. 최신 판정(lv)은 판정 기록을 볼 사건(jc: 시각 창 안이거나 사람 미결
+#   판정이 한 번이라도 있는 사건)만 한 번에 구하고(DISTINCT ON), 판정 없음은 옛 식(NOT EXISTS)으로 거른다. jc 밖 사건은 lv 가 비어도
+#   창 밖 · 판정 있음이라 WHERE 에서 빠지므로, 읽는 행의 lv 는 늘 최신 판정이다(verdicts.verdict 는 NOT NULL 이라 lv.verdict IS NULL 은
+#   판정 없음). 미결 뒤 재판정된 사건은 jc 에 들어도 WHERE 에서 빠진다
+_WINDOW_TS = """(i.first_ts >= $1::timestamptz - make_interval(secs => $2)
+            OR i.last_ts >= $1::timestamptz - make_interval(hours => $3))"""
+_IN_WINDOW = f"({_WINDOW_TS} OR lv.verdict IS NULL)"
 INCIDENTS_SQL = f"""
+    WITH jc AS (
+        SELECT i.incident_key FROM incidents i WHERE {_WINDOW_TS}
+        UNION
+        SELECT v.incident_key FROM verdicts v WHERE v.verdict = 'undetermined' AND {HUMAN_UNDETERMINED.format(v="v")}),
+    latest AS (
+        SELECT DISTINCT ON (v.incident_key) v.incident_key, v.verdict, v.operator
+        FROM verdicts v JOIN jc ON jc.incident_key = v.incident_key
+        ORDER BY v.incident_key, v.created_at DESC, v.id DESC)
     SELECT i.incident_key, i.rule_id, i.rule_version, i.rule_name, i.severity, host(i.actor_ip) AS actor_ip, i.target,
            i.first_ts, i.last_ts,
            {EVIDENCE_COLUMNS},
-           EXISTS (SELECT 1 FROM verdicts v WHERE v.incident_key = i.incident_key) AS judged
+           lv.verdict IS NOT NULL AS judged, lv.verdict,
+           {HUMAN_UNDETERMINED.format(v="lv")} AS undetermined,
+           {_IN_WINDOW} AS in_window
     FROM incidents i
-    WHERE i.first_ts >= $1::timestamptz - make_interval(secs => $2)
-       OR i.last_ts >= $1::timestamptz - make_interval(hours => $3)
+    LEFT JOIN latest lv ON lv.incident_key = i.incident_key
+    WHERE {_WINDOW_TS}
+       OR {HUMAN_UNDETERMINED.format(v="lv")}
        OR NOT EXISTS (SELECT 1 FROM verdicts v WHERE v.incident_key = i.incident_key)
     ORDER BY i.incident_key"""
 
@@ -201,9 +226,11 @@ SESSION_JOIN_SQL = """
         WHERE ev.session = ANY(q.s) AND ev.sensor = ANY($2::text[]) AND ev.provenance = 'real') e
     ORDER BY q.k, e.sensor"""
 
-# 발생원별 마지막 로그. (sensor, ts) 색인(idx_events_sensor_ts)으로 발생원마다 한 번 내려간다
-LOGS_SQL = """
-    SELECT s AS sensor, (SELECT max(e.ts) FROM events e WHERE e.sensor = s AND e.provenance = 'real') AS last_at
+# 발생원별 마지막 로그. 앞선 시각 줄(FUTURE_LIMIT 넘게)은 빼고 고른다(미래 줄 하나가 수집 '정상' 을 붙잡지 않게).
+#   (sensor, ts) 색인(idx_events_sensor_ts)으로 발생원마다 한 번 내려간다. $1 발생원들 · $2 기준 시각
+LOGS_SQL = f"""
+    SELECT s AS sensor, (SELECT max(e.ts) FROM events e WHERE e.sensor = s AND e.provenance = 'real'
+                         AND e.ts <= $2::timestamptz + {FUTURE_LIMIT}) AS last_at
     FROM unnest($1::text[]) AS s"""
 
 # 노드 수신 판정. operations.py /api/nodes 의 CASE 와 같은 규칙이다(now() 대신 기준 시각 {at})
@@ -251,13 +278,15 @@ METRICS_SQL = """
 
 # 웹 로그 적재 판정(parse_gap)의 재료: 노드의 선언 로그 · 받은 줄 기록과 그 발생원의 마지막 nginx. 이벤트. 받은 줄이 1시간 안일 때만
 #   보고 그보다 10분 넘게 앞선 이벤트는 없는 것과 같아 창($4, 1시간 10분) 안만 읽는다((sensor, ts) 색인). 적재됐는지만 보므로
-#   시험 출발지 줄(provenance fixture: 첫 수신 탐침 · 운영자 회선)도 적재된 것이다.
+#   시험 출발지 줄(provenance fixture: 첫 수신 탐침 · 운영자 회선)도 적재된 것이다. 앞선 시각 줄(FUTURE_LIMIT 넘게)은 빼서
+#   미래 줄 하나가 적재 없음 경고를 가리지 않게 한다.
 #   $1 노드 id 들 · $2 발생원들(같은 순서) · $3 기준 시각 · $4 창(초)
-PARSE_SQL = """
+PARSE_SQL = f"""
     SELECT q.node_id, n.logs, n.receipt,
            (SELECT max(e.ts) FROM events e
             WHERE e.sensor = q.sensor AND e.eventid LIKE 'nginx.%'
-              AND e.ts >= $3::timestamptz - make_interval(secs => $4)) AS nginx_at
+              AND e.ts >= $3::timestamptz - make_interval(secs => $4)
+              AND e.ts <= $3::timestamptz + {FUTURE_LIMIT}) AS nginx_at
     FROM unnest($1::text[], $2::text[]) AS q(node_id, sensor) JOIN nodes n ON n.node_id = q.node_id
     ORDER BY q.node_id"""
 
@@ -834,6 +863,8 @@ VULN_COUNTS = ("vuln_total", "vuln_kev", "vuln_fix_available", "vuln_reboot_pend
 def vulns_block(target_id: str, available: bool, assets: dict, as_of) -> dict:
     """취약점. 자산 표에 없는 자산은 수 0 · 오래됨 · missing 이다(없다고 '취약점 0' 으로 읽히지 않게).
     수는 전체 · KEV · 수정판 있음 · 재부팅 대기 · 수정 여부 미확인(asset_vulnerabilities.fix_state)이다.
+    대조 상태: check_failed 는 마지막 대조가 실패(check_error 있음), check_stale 은 마지막 대조가 48시간 넘음(조사 오래됨 stale 과
+    같은 기준 cti.is_stale)이다. 대조 전(checked_at 없음)은 오래됨이 아니다. 둘 다 수를 바꾸지 않고, 오류 글은 싣지 않는다(자산 화면).
     등록 노드(TARGET_ASSETS 에 없는 대상)는 같은 이름(asset_id = node_id)의 자산이 있을 때만 잇고, 없으면 빈 목록(연결된 자산 없음)이다."""
     if not available:
         return {"available": False, "assets": []}
@@ -845,11 +876,13 @@ def vulns_block(target_id: str, available: bool, assets: dict, as_of) -> dict:
         row = assets.get(asset_id)
         if row is None:
             out.append({"asset_id": asset_id, **{k: 0 for k in VULN_COUNTS}, "collected_at": None,
-                        "checked_at": None, "stale": True, "missing": True})
+                        "checked_at": None, "stale": True, "missing": True, "check_failed": False, "check_stale": False})
             continue
         out.append({"asset_id": asset_id, **{k: int(row[k]) for k in VULN_COUNTS},
                     "collected_at": cti.iso(row["collected_at"]), "checked_at": cti.iso(row["checked_at"]),
-                    "stale": cti.is_stale(row["collected_at"], as_of), "missing": False})
+                    "stale": cti.is_stale(row["collected_at"], as_of), "missing": False,
+                    "check_failed": bool(row.get("check_error")),
+                    "check_stale": row["checked_at"] is not None and cti.is_stale(row["checked_at"], as_of)})
     return {"available": True, "assets": out}
 
 
@@ -1010,7 +1043,8 @@ def monitor_items(checks, points: dict, mismatch: int, node_rows, nodes_readable
 
 
 def latest_of(incidents: list, as_of) -> dict | None:
-    """최근 중요 탐지 한 줄: 24시간 안 critical · high 중 last_ts 최신, 없으면 24시간 안 아무 사건 최신."""
+    """최근 중요 탐지 한 줄: 24시간 안 critical · high 중 last_ts 최신, 없으면 24시간 안 아무 사건 최신.
+    verdict 는 최신 판정 값(없으면 None)이다. 판정됨(judged)이어도 undetermined 면 화면이 '미결' 로 보인다."""
     recent = [i for i in incidents if not older(as_of, i["last_ts"], LATEST_HOURS * 3600)]
     if not recent:
         return None
@@ -1018,30 +1052,36 @@ def latest_of(incidents: list, as_of) -> dict | None:
     best = min(pool, key=lambda i: (-i["last_ts"].timestamp(), i["incident_key"]))
     return {"incident_key": best["incident_key"], "rule_id": best["rule_id"], "rule_name": best["rule_name"],
             "severity": best["severity"], "actor_ip": best["actor_ip"], "target": best["target"],
-            "last_ts": cti.iso(best["last_ts"]), "judged": bool(best["judged"])}
+            "last_ts": cti.iso(best["last_ts"]), "judged": bool(best["judged"]), "verdict": best.get("verdict")}
 
 
 def tally(incidents: list, attached: dict, as_of, extra=()) -> tuple[dict, dict]:
     """대상별 보안 집계와 붙이지 못한 사건 수. attached 는 {사건 키: {(대상, 나눔)}}. 대상별 rows 는 붙은 사건이다.
-    extra 는 등록 노드 카드 id 다."""
+    extra 는 등록 노드 카드 id 다. undetermined 는 최신 판정이 사람의 미결인 사건 수다. 창 밖(in_window 거짓) 행은 미결이어서
+    읽은 것이다. 미결 수에만 세고 rows(최근 중요 탐지 · 대응 금지 대역 수)에는 넣지 않는다(그 수가 미결 확장으로 바뀌지 않게).
+    행에 두 칸이 없으면 창 안 · 미결 아님이다."""
     since = as_of - timedelta(seconds=WINDOW_SECONDS)
-    per = {tid: {"incidents_1h": 0, "high_1h": 0, "pending": 0, "rows": [],
+    per = {tid: {"incidents_1h": 0, "high_1h": 0, "pending": 0, "undetermined": 0, "rows": [],
                  "parts": {key: {"incidents_1h": 0, "pending": 0} for key, _ in AWS_PARTS}}
            for tid in [*(tid for tid, _, _ in TARGETS), *extra]}
-    unmapped = {"incidents_1h": 0, "pending": 0}
+    unmapped = {"incidents_1h": 0, "pending": 0, "undetermined": 0}
     for inc in incidents:
         pairs = attached.get(inc["incident_key"]) or set()
         fresh, pending = inc["first_ts"] >= since, not inc["judged"]
+        undetermined, in_window = bool(inc.get("undetermined")), inc.get("in_window", True)
         if not pairs:
             unmapped["incidents_1h"] += fresh
             unmapped["pending"] += pending
+            unmapped["undetermined"] += undetermined
             continue
         for tid in sorted({t for t, _ in pairs}):
             slot = per[tid]
             slot["incidents_1h"] += fresh
             slot["high_1h"] += fresh and inc["severity"] in HIGH_SEVERITIES
             slot["pending"] += pending
-            slot["rows"].append(inc)
+            slot["undetermined"] += undetermined
+            if in_window:
+                slot["rows"].append(inc)
         for part in sorted({p for _, p in pairs if p}):
             per["aws-sensor"]["parts"][part]["incidents_1h"] += fresh
             per["aws-sensor"]["parts"][part]["pending"] += pending
@@ -1073,7 +1113,7 @@ def security_block(target_id: str, slot: dict, as_of) -> dict:
     parts = [{"key": key, "label": label, **slot["parts"][key]} for key, label in AWS_PARTS] \
         if target_id == "aws-sensor" else []
     return {"incidents_1h": slot["incidents_1h"], "high_1h": slot["high_1h"], "pending": slot["pending"],
-            "parts": parts, "latest": latest_of(slot["rows"], as_of)}
+            "undetermined": slot["undetermined"], "parts": parts, "latest": latest_of(slot["rows"], as_of)}
 
 
 # ----------------------------------------------------------------------
@@ -1168,7 +1208,7 @@ async def targets_view(c, as_of, queue: bool = False) -> dict:
 
     logs = {card["id"]: [(card["sensor"], f"{card['label']} 로그")] for card in cards}
     sensors = sorted({key for rows in [*LOGS.values(), *logs.values()] for key, _ in rows})
-    last = {r["sensor"]: r["last_at"] for r in await c.fetch(LOGS_SQL, sensors)}
+    last = {r["sensor"]: r["last_at"] for r in await c.fetch(LOGS_SQL, sensors, as_of)}
     node = await c.fetchrow(NODE_SQL, WEB_NODE, as_of) if nodes_readable else None
     started = await c.fetchval(DETECTOR_SQL)
     paths = detect_paths(await c.fetch(DETECT_PATHS_SQL, as_of), as_of)

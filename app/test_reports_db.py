@@ -14,7 +14,9 @@ KST 날짜는 09-27 15:00 UTC 에 바뀐다.
   - 규칙: operations.quality 와 같은 행 · 흡수 · 억제 수(시험 출발지 제외) · 기간 중 규칙 버전
   - 차단: 조치 수 · 새 요청(created · rearmed · 만료 뒤 extended)의 요청자 종류 · extended 도 감사 수에 든다 ·
     집행 지연(감사 요청 → 같은 주소의 다음 요청 전 첫 enforced 의 at. 해제 · 만료된 차단도 든다) · 지금 차단 상태
-  - 대상: 상태판에서 추린 행 · 센서별 실제 이벤트 · 탐지 실행 · 지표 최대와 공백(기간 시작 · 끝 포함)
+  - 대상: 상태판에서 추린 행 · 센서별 실제 이벤트 · 탐지 실행 · 지표 최대와 공백(기간 시작 · 끝 포함) · 상태판이 창 밖 미결을
+    읽어도(이슈 #83) 대응 금지 대역 수는 그대로 · 잔량의 판단 유보는 시스템 기록 포함(대시보드 미결은 사람 판정만) ·
+    출력 시각보다 5분 넘게 앞선 줄은 수집 판정에서 뺀다(대시보드 카드와 같다)
   - CTI: 자산별 취약점 · 주목 CVE · 기간 KST 날짜 안의 KEV 등재 가운데 우리 자산 · 신선도
   - 운영 기록: 감사 종류별 수만 · 로그인 실패(실제만) · 알림 발송(시험 발송 제외) · 행위자 · detail · 알림 주소가 실리지 않음
   - 표가 없거나 읽기 권한이 없으면(시험 안에서 만든 역할): 구역은 available=false 와 빠진 표,
@@ -384,6 +386,36 @@ class ReportsDatabaseTests(unittest.IsolatedAsyncioTestCase):
         # web-01 만, 기간 안만. 공백: 60 · 60 · 86220 · 60
         self.assertEqual(section["web"], {"samples": 3, "cpu_pct": 95.5, "mem_used_pct": 55.5, "disk_root_pct": 71.5,
                                           "max_gap_seconds": 86220.0})
+
+    async def test_창_밖_미결은_대상_구역의_대응_금지_대역_수를_바꾸지_않는다(self):
+        # 상태판(targets_view)은 창(24시간) 밖 미결 사건도 읽어 미결 수에 세지만(이슈 #83) 카드 rows 에는 넣지 않는다.
+        #   금지 대역(10.0.0.0/8) 출발지라 rows 에 들면 web-01 대응 exempt 가 1 늘어난다
+        before = (await self.report(["targets"]))["sections"]["targets"]["targets"]
+        await self.incident("u-old", "R301", "critical", "10.9.9.9", at(-3 * 86400, AS_OF), target="node:web-01")
+        await self.verdict("u-old", "undetermined", at(-2 * 86400, AS_OF))
+        self.assertEqual((await self.report(["targets"]))["sections"]["targets"]["targets"], before)
+        web = next(x for x in (await r.targets.targets_view(self.conn, AS_OF))["targets"] if x["id"] == "web-01")
+        self.assertEqual((web["security"]["undetermined"], web["response"]["exempt"]), (1, 0))
+        # 잔량의 판단 유보는 시스템 전환 기록을 포함한 수 그대로이고, 대시보드 미결은 사람 판정만 센다(kst-28 · u-old)
+        await self.conn.execute("""INSERT INTO verdicts (incident_key, verdict, operator, created_at)
+            VALUES ('recreated', 'undetermined', 'system:v3-cutover', $1)""", at(-3600, AS_OF))
+        backlog = (await self.report(["overview"]))["sections"]["overview"]["backlog"]
+        self.assertEqual((backlog["undetermined"], (await r.dashboard_metrics(self.conn, AS_OF))["pending"]["undetermined"]),
+                         (3, 2))
+
+    async def test_대상_구역의_수집_판정은_출력_시각보다_5분_넘게_앞선_줄을_뺀다(self):
+        # 보고서 대상 구역은 상태판(targets_view)을 그대로 쓴다. 앞선 시각 줄 상한(출력 시각 + 5분)도 대시보드 카드와 같다
+        def web(section):
+            return next(x for x in section["targets"] if x["id"] == "web-01")["collection"]
+        await self.event(AS_OF + timedelta(minutes=10), "nginx.request", "web-01")
+        section = (await self.report(["targets"]))["sections"]["targets"]
+        card = next(x for x in (await r.targets.targets_view(self.conn, AS_OF))["targets"] if x["id"] == "web-01")
+        self.assertEqual((web(section)["state"], web(section)["reason"]), ("quiet", "노드 수신 2분 전 · 최근 1시간 요청 없음"))
+        self.assertEqual((web(section)["state"], web(section)["reason"]), (card["collection"]["state"], card["collection"]["reason"]))
+        # 상한 안(+4분)의 줄은 최근 로그로 센다
+        await self.event(AS_OF + timedelta(minutes=4), "nginx.request", "web-01")
+        section = (await self.report(["targets"]))["sections"]["targets"]
+        self.assertEqual((web(section)["state"], web(section)["reason"]), ("ok", "노드 수신 2분 전 · 최근 1시간 로그 있음"))
 
     async def test_실행이_없으면_공백은_기간_전체다(self):
         await self.conn.execute("DELETE FROM detector_runs")
