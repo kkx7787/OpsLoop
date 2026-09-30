@@ -1,4 +1,4 @@
-"""관제 대상별 상태판(targets.py · 이슈 #52 · #64 · #72) 시험. DB 없이 돈다.  python3 -m unittest discover -s app
+"""관제 대상별 상태판(targets.py · 이슈 #52 · #64 · #72 · #82) 시험. DB 없이 돈다.  python3 -m unittest discover -s app
 
 보는 것
   1. 사건 → 대상 매핑(resolve): node:<id> · user:… · 근거의 발생원 · 규칙의 발생원 후보(sensors ∪ 이벤트 접두) ·
@@ -22,8 +22,13 @@
   7. 관련 장비(이슈 #72): 연결 근거(확인 · 규칙 범위 · 대체 추정) 판정표와 실제 규칙 파일 전부 · shown · 옛 모양 ·
      장비 표기(이름 · 무리 · 로그 종류 · 정렬 · 상태) · 대체 추정을 뺀 집계 · 먼저 처리할 사건(앞 · 뒤 묶음) ·
      관제 이상(적재기 · 집행기 · 탐지 경로 · 적용 실패 · 관문 불일치 · 노드 수신) · 데이터 노드 멈춤 구조 값 · 취약점 수정 상태별 수
+  8. 관제 이상 보완(이슈 #82): 센서 · 관문 기록 수신(카드와 같은 판정) · 한 대라도 끊긴 노드(이름 3개까지) · 등록 노드 열 모름 ·
+     1분 다리 기대 버전 대조(BRIDGE_VERSIONS = 수집 설정 RULESETS · 23 · 25시간 · 옛 버전 무시 · 새 버전 기록 없음) · 지점 불일치 ·
+     지점 보고 · 웹 로그 적재 없음 · 자원 지표 오래됨 · 겹침 제외 · 생존 신호 표를 읽을 수 없을 때의 대응 · 데이터 노드 탐지 멈춤 ·
+     관제 이상 질의 8개 이하
 main 이 필요한 시험은 test_web 을 먼저 불러 asyncpg 가 없는 곳에서도 가짜를 넣는다(main 보다 먼저).
 """
+import ast
 import json
 import unittest
 from contextlib import asynccontextmanager
@@ -254,10 +259,10 @@ class SensorCollectionTests(unittest.TestCase):
         self.assertEqual((c["state"], c["reason"]), ("unknown", "생존 신호 미기록 · 생존 신호 표를 읽을 수 없음"))
         self.assertEqual(c["signal"], {"label": "업로더 생존 신호", "seen_at": None, "checked_at": None,
                                        "stale_after_seconds": 900, "problem": None})
-        # 관문 업로더 · 차단 보고 행은 센서 신호가 아니다
+        # 관문 업로더 · 차단 보고 행은 센서 신호가 아니다(관문 기록 신호 시각은 까닭 끝에 붙는다)
         c = t.sensor_collection(NOW, True, [hb("uploader:i-0aaaaaaaa", role="gateway"),
                                             hb("block:gateway", kind="block_report", role="gateway")], LOGS_ACTIVE)
-        self.assertEqual((c["state"], c["reason"]), ("unknown", "생존 신호 미기록"))
+        self.assertEqual((c["state"], c["reason"]), ("unknown", "생존 신호 미기록 · 관문 기록 신호 3분 전"))
         self.assertEqual([(l["key"], l["label"]) for l in c["logs"]],
                          [("cowrie", "Cowrie"), ("decoy", "웹 디코이"), ("gateway", "AWS 관문 기록")])
         self.assertEqual(c["logs"][1]["last_at"], None)
@@ -306,6 +311,32 @@ class SensorCollectionTests(unittest.TestCase):
         rows.append(hb("uploader:i-04", seen=None, problem="형식이 틀림"))
         c = t.sensor_collection(NOW, True, rows, LOGS_ACTIVE)
         self.assertEqual((c["state"], c["reason"]), ("no_signal", "업로더 생존 신호 없음(센서 3대 중 가장 늦은 것) · 형식이 틀림"))
+
+    def test_관문_기록_신호는_센서와_같은_기준이고_카드_까닭_끝에_붙는다(self):
+        gw = hb("uploader:i-0bbbbbbbb", role="gateway", seen=20, checked=1)
+        state, reason, row = t.uploader_signal(NOW, True, [hb("uploader:i-01"), gw], "gateway")
+        self.assertEqual((state, reason, row["host"]),
+                         ("no_signal", "관문 기록 신호 20분 전 · 적재기 확인 1분 전 · 확인 때 이미 15분 넘게 새 신호 없음",
+                          "i-0bbbbbbbb"))
+        # 센서 카드의 state 는 센서 판정 그대로다
+        c = t.sensor_collection(NOW, True, [hb("uploader:i-01"), gw], LOGS_ACTIVE)
+        self.assertEqual((c["state"], c["reason"]), (
+            "ok", "업로더 생존 신호 3분 전 · 적재기 확인 1분 전 · 최근 1시간 로그 있음 · 관문 기록 신호 20분 전"))
+        self.assertEqual(c["signal"]["seen_at"], (NOW - timedelta(minutes=3)).isoformat())
+        c = t.sensor_collection(NOW, True, [hb("uploader:i-01"), gw | {"seen_at": None}], LOGS_ACTIVE)
+        self.assertEqual(c["reason"], "업로더 생존 신호 3분 전 · 적재기 확인 1분 전 · 최근 1시간 로그 있음 · 관문 기록 신호 없음")
+        # 여럿이면 가장 늦은 것 · 확인 때 15분 정각은 새롭다 · 관문 업로더가 없는 구성은 고른 행이 없다
+        rows = [gw, hb("uploader:i-0cccccccc", role="gateway", seen=2)]
+        self.assertEqual(t.uploader_signal(NOW, True, rows, "gateway")[1],
+                         "관문 기록 신호 20분 전(관문 2대 중 가장 늦은 것) · 적재기 확인 1분 전 · 확인 때 이미 15분 넘게 새 신호 없음")
+        self.assertEqual(t.uploader_signal(NOW, True, [hb("uploader:i-0b", role="gateway", seen=16, checked=1)], "gateway")[:2],
+                         (None, "관문 기록 신호 16분 전 · 적재기 확인 1분 전"))
+        self.assertEqual(t.uploader_signal(NOW, True, [hb("uploader:i-01")], "gateway"), ("unknown", "생존 신호 미기록", None))
+        self.assertEqual(t.uploader_signal(NOW, True, [gw | {"checked_at": NOW - timedelta(minutes=31)}], "gateway")[:2],
+                         ("unknown", "적재기 확인 중단 · 마지막 확인 31분 전"))
+        # 적재기가 확인하지 않는 관문 행(떼어 둔 호스트의 남은 행)뿐이면 카드 까닭에 붙이지 않는다
+        c = t.sensor_collection(NOW, True, [hb("uploader:i-01"), gw | {"checked_at": NOW - timedelta(days=3)}], LOGS_ACTIVE)
+        self.assertEqual(c["reason"], "업로더 생존 신호 3분 전 · 적재기 확인 1분 전 · 최근 1시간 로그 있음")
 
 
 class OtherCollectionTests(unittest.TestCase):
@@ -391,33 +422,38 @@ class BlocksTests(unittest.TestCase):
                          "stale")
 
     def test_지점이_없는_대상은_수_대신_null_이다(self):
-        blocks = {"gateway_applied": 0, "gateway_failed": 0, "gateway_unverified": 0,
-                  "fw_applied": 0, "fw_failed": 0, "fw_unverified": 0}
+        blocks = {"gateway_applied": 0, "gateway_failed": 0, "gateway_unverified": 0, "gateway_stale": 0,
+                  "fw_applied": 0, "fw_failed": 0, "fw_unverified": 0, "fw_stale": 0}
         for tid in ("console", "data-node"):
             r = t.response_block(tid, blocks, 2, {}, NOW, True)
             self.assertEqual(r, {"point": None, "point_label": None, "applied": None, "failed": None, "unverified": None,
-                                 "exempt": 2, "report": None, "stalled": None})
+                                 "stale": None, "exempt": 2, "report": None, "stalled": None, "unreadable": None})
 
     def test_지점이_있으면_그_지점의_확인_수와_보고를_낸다(self):
-        blocks = {"gateway_applied": 3, "gateway_failed": 0, "gateway_unverified": 1,
-                  "fw_applied": 0, "fw_failed": 2, "fw_unverified": 4}
+        blocks = {"gateway_applied": 3, "gateway_failed": 0, "gateway_unverified": 1, "gateway_stale": 1,
+                  "fw_applied": 0, "fw_failed": 2, "fw_unverified": 4, "fw_stale": 3}
         report = hb("block:fw", kind="block_report", role="fw", seen=None, checked=1, problem="보고 파일 없음")
-        # 생존 신호 표를 읽을 수 없으면(마이그레이션 전) 멈춤을 판정하지 못해 수를 그대로 둔다
+        # 생존 신호 표를 읽을 수 없으면(마이그레이션 전 · 권한 빠짐) 멈춤을 판정하지 못해 옛 '적용 확인' 을 믿지 않는다(#82)
         aws = t.response_block("aws-sensor", blocks, 0, {"fw": report}, NOW, False)
-        self.assertEqual(aws, {"point": "gateway", "point_label": "AWS 관문", "applied": 3, "failed": 0, "unverified": 1,
-                               "exempt": 0, "report": None, "stalled": None})
-        # 표는 읽는데 그 지점의 집행기 확인 기록이 없으면 적용 확인을 믿지 않는다
+        self.assertEqual(aws, {"point": "gateway", "point_label": "AWS 관문", "applied": 0, "failed": 0, "unverified": 4,
+                               "stale": 0, "exempt": 0, "report": None,
+                               "stalled": "집행 보고를 읽을 수 없음 · 적용 여부 확인 불가", "unreadable": True})
+        # 표는 읽는데 그 지점의 집행기 확인 기록이 없으면 적용 확인을 믿지 않는다(집행기 멈춤이다)
         aws = t.response_block("aws-sensor", blocks, 0, {"fw": report}, NOW, True)
-        self.assertEqual((aws["applied"], aws["failed"], aws["unverified"], aws["stalled"]), (0, 0, 4, "집행기 확인 기록 없음"))
+        self.assertEqual((aws["applied"], aws["failed"], aws["unverified"], aws["stale"], aws["stalled"], aws["unreadable"]),
+                         (0, 0, 4, 0, "집행기 확인 기록 없음", False))
+        # 지점 불일치(stale)는 미확인 가운데 따로 센 수다
         web = t.response_block("web-01", blocks, 1, {"fw": report}, NOW, True)
-        self.assertEqual((web["point"], web["point_label"], web["applied"], web["failed"], web["unverified"], web["exempt"],
-                          web["stalled"]), ("fw", "내부 방화벽", 0, 2, 4, 1, None))
+        self.assertEqual((web["point"], web["point_label"], web["applied"], web["failed"], web["unverified"], web["stale"],
+                          web["exempt"], web["stalled"]), ("fw", "내부 방화벽", 0, 2, 4, 3, 1, None))
         # 집행기 확인이 10분 넘게 멈췄다: 실패 · 적용 · 미확인을 모두 미확인으로 합친다(10분 정각은 아직 확인 중)
         old = hb("block:gateway", kind="block_report", role="gateway", seen=11, checked=11)
         aws = t.response_block("aws-sensor", blocks, 0, {"gateway": old}, NOW, True)
-        self.assertEqual((aws["applied"], aws["unverified"], aws["stalled"]), (0, 4, "집행기 확인 중단 · 마지막 확인 11분 전"))
+        self.assertEqual((aws["applied"], aws["unverified"], aws["stale"], aws["stalled"]),
+                         (0, 4, 0, "집행기 확인 중단 · 마지막 확인 11분 전"))
         edge = hb("block:gateway", kind="block_report", role="gateway", seen=10, checked=10)
-        self.assertEqual(t.response_block("aws-sensor", blocks, 0, {"gateway": edge}, NOW, True)["applied"], 3)
+        self.assertEqual({k: v for k, v in t.response_block("aws-sensor", blocks, 0, {"gateway": edge}, NOW, True).items()
+                          if k in ("applied", "stale")}, {"applied": 3, "stale": 1})
         self.assertEqual(web["report"], {"seen_at": None, "checked_at": (NOW - timedelta(minutes=1)).isoformat(),
                                          "problem": "보고 파일 없음"})
 
@@ -485,6 +521,12 @@ class NodesConn(FakeConn):
             self.calls.append(sql)
             return True
         return await super().fetchval(sql, *args)
+
+    async def fetchrow(self, sql, *args):
+        if sql == t.MONITOR_READABLE_SQL:
+            self.calls.append(sql)
+            return {"heartbeats": False, "metrics": False, "cards": True, "web": True, "parse": True}
+        return await super().fetchrow(sql, *args)
 
     async def fetch(self, sql, *args):
         if sql == t.NODES_SQL:
@@ -569,8 +611,39 @@ class RouterTests(unittest.TestCase):
         self.client.cookies.set(self.auth.COOKIE, self.auth.issue("han", "viewer"))
         items = self.client.get("/api/dashboard/monitor").json()["items"]
         self.assertEqual(items[-1], {"key": "nodes_silent", "level": "alert", "label": "노드 수신",
-                                     "reason": "활성 노드 2대 모두 10분 넘게 수신 없음", "at": None, "count": 2})
+                                     "reason": "노드 2대 수신 끊김", "at": None, "count": 2})
         self.assertIn(t.NODES_SQL, self.pool.calls)
+
+    def test_관제_이상은_질의_8개_이하로_보완_항목을_싣는다(self):
+        self.client.cookies.set(self.auth.COOKIE, self.auth.issue("han", "viewer"))
+        for can, keys in [
+                ({}, ["sensor", "point_stale:fw", "report:fw", "nodes_silent", "parse:web-03", "metrics:web-01"]),
+                # web-01 이 읽는 열만 되면 web-01 한 행으로 판정하고 등록 노드 열은 모름이다
+                ({"cards": False}, ["sensor", "point_stale:fw", "report:fw", "nodes", "metrics:web-01"])]:
+            with self.subTest(can=can):
+                self.pool.calls.clear()
+                self.pool.conn = type("Conn", (MonitorConn,), {"CAN": {**MonitorConn.CAN, **can}})
+                items = self.client.get("/api/dashboard/monitor").json()["items"]
+                self.assertEqual([x["key"] for x in items], keys)
+                self.assertLessEqual(len([c for c in self.pool.calls if isinstance(c, str)]), 8)
+        self.assertEqual(items[3]["reason"], "등록 노드 열을 읽을 수 없음")
+        self.assertIn(t.NODE_SQL, self.pool.calls)
+        self.assertNotIn(t.NODES_SQL, self.pool.calls)
+
+    def test_관제_이상은_web_01_행으로_등록_기록_없음과_폐기의_옛_지표를_가른다(self):
+        # web-01 행이 없으면 카드 '노드 등록 기록 없음' 과 짝인 노드 수신 모름, 폐기된 web-01 의 옛 지표는 싣지 않는다
+        self.client.cookies.set(self.auth.COOKIE, self.auth.issue("han", "viewer"))
+        others = [node_row("web-02", reception="silent", seen=12), node_row("web-03")]
+        for rows, keys in [
+                (others, ["sensor", "point_stale:fw", "report:fw", "nodes_silent", "nodes", "parse:web-03", "metrics:web-01"]),
+                ([node_row("web-01", status="revoked", reception="revoked"), *others],
+                 ["sensor", "point_stale:fw", "report:fw", "nodes_silent", "parse:web-03"])]:
+            with self.subTest(web=[r["reception"] for r in rows if r["node_id"] == "web-01"]):
+                self.pool.conn = type("Conn", (MonitorConn,), {"ROWS": rows})
+                items = self.client.get("/api/dashboard/monitor").json()["items"]
+                self.assertEqual([x["key"] for x in items], keys)
+                if "nodes" in keys:
+                    self.assertEqual(items[keys.index("nodes")]["reason"], "web-01 등록 기록 없음")
 
     def test_표_권한이_없는_DB_에서도_미확인으로_답한다(self):
         self.client.cookies.set(self.auth.COOKIE, self.auth.issue("han", "viewer"))
@@ -775,11 +848,11 @@ class NodeCardTests(unittest.TestCase):
             "checked_at": None, "stale": False, "missing": False}])
         self.assertEqual(t.vulns_block("web-03", True, assets, NOW), {"available": True, "assets": []})
         self.assertEqual(t.vulns_block("web-02", False, assets, NOW), {"available": False, "assets": []})
-        blocks = {"gateway_applied": 3, "gateway_failed": 0, "gateway_unverified": 1,
-                  "fw_applied": 1, "fw_failed": 0, "fw_unverified": 0}
+        blocks = {"gateway_applied": 3, "gateway_failed": 0, "gateway_unverified": 1, "gateway_stale": 0,
+                  "fw_applied": 1, "fw_failed": 0, "fw_unverified": 0, "fw_stale": 0}
         self.assertEqual(t.response_block("web-02", blocks, 1, {}, NOW, True),
                          {"point": None, "point_label": None, "applied": None, "failed": None, "unverified": None,
-                          "exempt": 1, "report": None, "stalled": None})
+                          "stale": None, "exempt": 1, "report": None, "stalled": None, "unreadable": None})
 
 
 # ----------------------------------------------------------------------
@@ -1030,8 +1103,42 @@ def run_row(version, minutes, honeypot):
     return {"rule_version": version, "last_at": NOW - timedelta(minutes=minutes), "honeypot": honeypot}
 
 
-BLOCK_ROW = {"gateway_applied": 3, "gateway_failed": 0, "gateway_unverified": 1,
-             "fw_applied": 1, "fw_failed": 2, "fw_unverified": 0, "mismatch": 0}
+BLOCK_ROW = {"gateway_applied": 3, "gateway_failed": 0, "gateway_unverified": 1, "gateway_stale": 0,
+             "fw_applied": 1, "fw_failed": 2, "fw_unverified": 0, "fw_stale": 0, "mismatch": 0}
+BLOCK_OK = {**BLOCK_ROW, "fw_failed": 0}
+
+
+class MonitorConn(FakeConn):
+    """관제 이상이 읽는 표 · 열을 모두 읽을 수 있는 DB. CAN 은 선검사(MONITOR_READABLE_SQL) 답이다. 센서 신호 20분 전 ·
+    내부 방화벽 보고 20분 전 · 내부 방화벽 불일치 2 · web-02 수신 끊김 · web-03 웹 로그 적재 없음 · web-01 · web-02 자원 지표 오래됨."""
+    CAN = {"heartbeats": True, "metrics": True, "cards": True, "web": True, "parse": True}
+    ROWS = [node_row("web-01"), node_row("web-02", reception="silent", seen=12), node_row("web-03")]
+
+    async def fetchrow(self, sql, *args):
+        self.calls.append(sql)
+        if sql == t.MONITOR_READABLE_SQL:
+            return self.CAN
+        if sql == t.NODE_SQL:
+            return {k: v for k, v in node_row("web-01").items() if k in ("status", "last_seen_at", "last_loaded_at", "reception")}
+        return {**BLOCK_OK, "fw_stale": 2} if sql == t.BLOCKS_SQL else None
+
+    async def fetch(self, sql, *args):
+        self.calls.append(sql)
+        if sql == t.HEARTBEATS_SQL:
+            return [hb("uploader:i-01", seen=20), hb("block:gateway", kind="block_report", role="gateway"),
+                    hb("block:fw", kind="block_report", role="fw", seen=20)]
+        if sql == t.NODES_SQL:
+            return self.ROWS
+        if sql == t.DETECT_PATHS_SQL:
+            return [run_row("v3", 2, True), *(run_row(v, 1, False) for v in t.BRIDGE_VERSIONS)]
+        if sql == t.METRICS_SQL:
+            return [BlocksTests.ROW | {"node_id": n, "ts": NOW - timedelta(minutes=m)}
+                    for n, m in (("web-01", 12), ("web-02", 20), ("web-03", 1)) if n in args[0]]
+        if sql == t.PARSE_SQL:
+            receipt = json.dumps({"nginx": {"last_line_at": (NOW - timedelta(minutes=2)).isoformat()}})
+            return [{"node_id": n, "logs": ["nginx"], "receipt": receipt, "nginx_at": at}
+                    for n, at in (("web-01", NOW - timedelta(minutes=2)), ("web-03", None)) if n in args[0]]
+        return []
 
 
 class MonitorTests(unittest.TestCase):
@@ -1044,12 +1151,16 @@ class MonitorTests(unittest.TestCase):
         return {p: t.point_counts(p, blocks, reports.get(p), NOW, available) for p in t.POINT_LABELS}
 
     def paths(self):
-        return t.detect_paths([run_row("v3", 2, True), run_row("c1", 1, False)], NOW)
+        return t.detect_paths([run_row("v3", 2, True)] + [run_row(v, 1, False) for v in t.BRIDGE_VERSIONS], NOW)
 
-    def items(self, heartbeats=None, blocks=None, mismatch=0, node_rows=(), readable=True, paths=None, available=True):
+    def items(self, heartbeats=None, blocks=None, mismatch=0, node_rows=(), readable=True, paths=None, available=True,
+              **kw):
+        """monitor_view 처럼 생존 신호 행에서 센서 · 관문 기록 판정과 지점 보고를 넘긴다(kw 로 바꾼다)."""
         heartbeats = self.fresh() if heartbeats is None else heartbeats
+        kw = {"as_of": NOW, "reports": t.reports_of(heartbeats), "sensor": t.sensor_signal(NOW, available, heartbeats),
+              "gateway": t.uploader_signal(NOW, available, heartbeats, "gateway"), **kw}
         return t.monitor_items(t.checkers(NOW, available, heartbeats), self.points(heartbeats, blocks, available), mismatch,
-                               list(node_rows), readable, self.paths() if paths is None else paths, available)
+                               list(node_rows), readable, self.paths() if paths is None else paths, available, **kw)
 
     def test_적재기_30분_집행기_10분_경계는_정각이_정상이다(self):
         def stopped(rows):
@@ -1066,22 +1177,27 @@ class MonitorTests(unittest.TestCase):
 
     def test_지점별_수는_카드_대응과_같은_정의다(self):
         report = hb("block:fw", kind="block_report", role="fw", checked=1)
-        self.assertEqual(t.point_counts("gateway", BLOCK_ROW, None, NOW, False),
-                         {"point": "gateway", "label": "AWS 관문", "applied": 3, "failed": 0, "unverified": 1,
-                          "stalled": None})
-        self.assertEqual(t.point_counts("fw", BLOCK_ROW, report, NOW, True),
-                         {"point": "fw", "label": "내부 방화벽", "applied": 1, "failed": 2, "unverified": 0, "stalled": None})
+        blocks = {**BLOCK_ROW, "fw_unverified": 2, "fw_stale": 1}
+        # 생존 신호 표를 읽을 수 없으면 집행 보고를 모르니 적용 · 실패 · 불일치를 미확인에 합친다(옛 '적용 확인' 을 초록으로 두지 않는다)
+        #   집행기가 멈춘 것이 아니라 모르는 것이라 unreadable 로 가른다(화면은 '집행기 멈춤' 이 아니라 '확인 불가')
+        self.assertEqual(t.point_counts("gateway", blocks, None, NOW, False),
+                         {"point": "gateway", "label": "AWS 관문", "applied": 0, "failed": 0, "unverified": 4, "stale": 0,
+                          "stalled": "집행 보고를 읽을 수 없음 · 적용 여부 확인 불가", "unreadable": True})
+        self.assertEqual(t.point_counts("fw", blocks, report, NOW, True),
+                         {"point": "fw", "label": "내부 방화벽", "applied": 1, "failed": 2, "unverified": 2, "stale": 1,
+                          "stalled": None, "unreadable": False})
         # 집행기 확인이 없으면 적용 · 실패를 미확인에 합친다
-        self.assertEqual(t.point_counts("gateway", BLOCK_ROW, None, NOW, True),
-                         {"point": "gateway", "label": "AWS 관문", "applied": 0, "failed": 0, "unverified": 4,
-                          "stalled": "집행기 확인 기록 없음"})
+        self.assertEqual(t.point_counts("gateway", blocks, None, NOW, True),
+                         {"point": "gateway", "label": "AWS 관문", "applied": 0, "failed": 0, "unverified": 4, "stale": 0,
+                          "stalled": "집행기 확인 기록 없음", "unreadable": False})
+        keys = ("applied", "failed", "unverified", "stale", "stalled", "unreadable")
         for tid, point in (("aws-sensor", "gateway"), ("web-01", "fw")):
             for reports, available in (({}, True), ({"fw": report}, True), ({}, False)):
                 with self.subTest(target=tid, reports=list(reports), available=available):
-                    card = t.response_block(tid, BLOCK_ROW, 0, reports, NOW, available)
-                    counts = t.point_counts(point, BLOCK_ROW, reports.get(point), NOW, available)
-                    self.assertEqual({k: card[k] for k in ("applied", "failed", "unverified", "stalled")},
-                                     {k: counts[k] for k in ("applied", "failed", "unverified", "stalled")})
+                    card = t.response_block(tid, blocks, 0, reports, NOW, available)
+                    counts = t.point_counts(point, blocks, reports.get(point), NOW, available)
+                    self.assertEqual({k: card[k] for k in keys}, {k: counts[k] for k in keys})
+        self.assertEqual(t.response_block("console", blocks, 0, {}, NOW, False)["unreadable"], None)
         self.assertEqual(t.point_counts("fw", None, None, NOW, False)["applied"], 0)
 
     def test_이상이_없으면_빈_목록이다(self):
@@ -1115,31 +1231,202 @@ class MonitorTests(unittest.TestCase):
                          ((NOW - timedelta(minutes=45)).isoformat(), (NOW - timedelta(minutes=20)).isoformat()))
 
     def test_생존_신호_표를_읽을_수_없으면_적재기_집행기는_판정하지_않는다(self):
+        # 지점 결과도 믿지 않고 미확인으로 합쳐(point_counts) 적용 실패 항목이 없다. 센서 · 지점 보고도 판정하지 않는다
         items = self.items(heartbeats=[], blocks=BLOCK_ROW, available=False, node_rows=[node_row("web-01")])
         self.assertEqual([(x["key"], x["level"], x["reason"]) for x in items],
-                         [("heartbeats", "unknown", "생존 신호 표를 읽을 수 없음"), ("block_failed:fw", "alert", None)])
+                         [("heartbeats", "unknown", "생존 신호 표를 읽을 수 없음")])
+        self.assertEqual({k: v["stalled"] for k, v in self.points([], BLOCK_ROW, False).items()},
+                         {p: "집행 보고를 읽을 수 없음 · 적용 여부 확인 불가" for p in t.POINT_LABELS})
         # 표는 읽는데 적재기 행이 없으면 모름이다
         rows = [r for r in self.fresh() if r["kind"] != "uploader"]
         self.assertEqual([(x["key"], x["level"], x["reason"]) for x in self.items(heartbeats=rows,
                                                                                   node_rows=[node_row("web-01")])],
                          [("loader", "unknown", "적재기 확인 기록 없음")])
 
-    def test_활성_노드가_모두_끊겼을_때만_노드_수신_이상이다(self):
+    def test_활성_노드가_한_대라도_끊기면_노드_수신_이상이다(self):
         silent, normal = node_row("web-01", reception="silent", seen=11), node_row("web-02", reception="normal")
         waiting = node_row("web-03", status="pending", reception="waiting", seen=None)
         revoked = node_row("probe-01", status="revoked", reception="revoked")
-        blocks = {**BLOCK_ROW, "fw_failed": 0}
-        for rows, want in [([silent, waiting, revoked], [("nodes_silent", "활성 노드 1대 모두 10분 넘게 수신 없음", 1)]),
-                           ([silent, node_row("web-02", reception="silent")],
-                            [("nodes_silent", "활성 노드 2대 모두 10분 넘게 수신 없음", 2)]),
-                           ([silent, normal], []), ([waiting, revoked], []), ([], [])]:
+        many = [node_row(f"web-0{n}", reception="silent", seen=12) for n in (6, 2, 5, 3, 4)]    # node_id 순으로 적는다
+        # 확인한 사실만: 한 대면 그 노드와 마지막 수신, 여러 대면 대수로 묶는다(상세는 /nodes)
+        never = node_row("web-07", reception="silent", seen=None)
+        for rows, want in [([silent, waiting, revoked], [("nodes_silent", "web-01 수신 끊김 · 마지막 수신 11분 전", 1)]),
+                           ([silent, node_row("web-02", reception="silent")], [("nodes_silent", "노드 2대 수신 끊김", 2)]),
+                           ([normal, silent, waiting], [("nodes_silent", "web-01 수신 끊김 · 마지막 수신 11분 전", 1)]),
+                           ([normal, never], [("nodes_silent", "web-07 수신 끊김 · 수신 기록 없음", 1)]),
+                           ([node_row("web-01"), *many[:3]], [("nodes_silent", "노드 3대 수신 끊김", 3)]),
+                           ([node_row("web-01"), *many], [("nodes_silent", "노드 5대 수신 끊김", 5)]),
+                           ([normal], []), ([waiting, revoked], []), ([], [])]:
             with self.subTest(rows=[r["node_id"] for r in rows]):
-                self.assertEqual([(x["key"], x["reason"], x["count"]) for x in self.items(blocks=blocks, node_rows=rows)],
+                self.assertEqual([(x["key"], x["reason"], x["count"]) for x in self.items(blocks=BLOCK_OK, node_rows=rows)],
                                  want)
+
+    def test_등록_노드_열을_읽을_수_없으면_모름이다(self):
+        silent = node_row("web-01", reception="silent", seen=11)
+        for rows, want in [([silent], [("nodes_silent", "alert", "web-01 수신 끊김 · 마지막 수신 11분 전"),
+                                       ("nodes", "unknown", "등록 노드 열을 읽을 수 없음")]),
+                           ([node_row("web-01")], [("nodes", "unknown", "등록 노드 열을 읽을 수 없음")])]:
+            items = self.items(blocks=BLOCK_OK, node_rows=rows, cards_readable=False)
+            self.assertEqual([(x["key"], x["level"], x["reason"]) for x in items], want)
+        # nodes 를 읽을 수 없으면 한 항목이다
+        items = self.items(blocks=BLOCK_OK, readable=False, cards_readable=False, web_expected=True)
+        self.assertEqual([(x["key"], x["reason"]) for x in items], [("nodes", "노드 표를 읽을 수 없음")])
+
+    def test_web_01_등록_기록이_없으면_모름이다(self):
+        # 고정 web-01 카드가 '노드 등록 기록 없음' 이면 띠에도 한 항목이다(카드 ⇒ 띠). 등록 노드 열 모름과 같으면 한 항목에 잇는다
+        rows = [node_row("web-02")]
+        for kw, want in [({}, "web-01 등록 기록 없음"),
+                         ({"cards_readable": False}, "등록 노드 열을 읽을 수 없음 · web-01 등록 기록 없음")]:
+            with self.subTest(kw=kw):
+                items = self.items(blocks=BLOCK_OK, node_rows=rows, web_expected=True, **kw)
+                self.assertEqual([(x["key"], x["level"], x["label"], x["reason"]) for x in items],
+                                 [("nodes", "unknown", "노드 수신", want)])
+        self.assertEqual(t.node_collection(NOW, None, {})["reason"], "노드 등록 기록 없음")
+        # web-01 행이 있으면(등록 대기 · 폐기 포함) 싣지 않는다
+        for row in (node_row("web-01"), node_row("web-01", status="revoked", reception="revoked")):
+            self.assertEqual(self.items(blocks=BLOCK_OK, node_rows=[row], web_expected=True), [])
+
+    def test_센서_수신은_카드와_같은_판정이다(self):
+        web = [node_row("web-01")]
+        rows = [hb("uploader:i-01", seen=20), *self.fresh()[1:]]
+        card = t.sensor_collection(NOW, True, rows, LOGS_ACTIVE)
+        self.assertEqual(card["state"], "no_signal")
+        self.assertEqual(self.items(heartbeats=rows, blocks=BLOCK_OK, node_rows=web), [
+            {"key": "sensor", "level": "alert", "label": "AWS 센서 수신", "reason": card["reason"],
+             "at": (NOW - timedelta(minutes=20)).isoformat(), "count": None}])
+        # 관문 업로더 행이 있으면 까닭 끝의 관문 기록 신호 시각까지 카드와 같은 글이다
+        rows = [hb("uploader:i-01", seen=20), hb("uploader:i-0g", role="gateway", seen=4), *self.fresh()[1:]]
+        card = t.sensor_collection(NOW, True, rows, LOGS_ACTIVE)
+        self.assertTrue(card["reason"].endswith(" · 관문 기록 신호 4분 전"))
+        self.assertEqual([(x["key"], x["reason"]) for x in self.items(heartbeats=rows, blocks=BLOCK_OK, node_rows=web)],
+                         [("sensor", card["reason"])])
+        # 센서 행이 없으면 모름이다(적재기는 관문 업로더 행으로 확인 중이다)
+        rows = [hb("uploader:i-0g", role="gateway"), *self.fresh()[1:]]
+        card = t.sensor_collection(NOW, True, rows, LOGS_ACTIVE)
+        self.assertEqual((card["state"], card["reason"]), ("unknown", "생존 신호 미기록 · 관문 기록 신호 3분 전"))
+        self.assertEqual([(x["key"], x["level"], x["reason"]) for x in self.items(heartbeats=rows, blocks=BLOCK_OK,
+                                                                                  node_rows=web)],
+                         [("sensor", "unknown", card["reason"])])
+        # 표를 읽을 수 없거나 적재기가 멈추면(모든 업로더 행 확인 30분 넘음 · 기록 없음) 그 항목 하나다
+        self.assertEqual([x["key"] for x in self.items(heartbeats=[], available=False, blocks=BLOCK_OK, node_rows=web)],
+                         ["heartbeats"])
+        rows = [hb("uploader:i-01", seen=40, checked=35), hb("uploader:i-0g", role="gateway", seen=40, checked=35),
+                *self.fresh()[1:]]
+        self.assertEqual([x["key"] for x in self.items(heartbeats=rows, blocks=BLOCK_OK, node_rows=web)], ["loader"])
+        self.assertEqual([x["key"] for x in self.items(heartbeats=self.fresh()[1:], blocks=BLOCK_OK, node_rows=web)],
+                         ["loader"])
+
+    def test_관문_기록_수신(self):
+        web = [node_row("web-01")]
+        gw = hb("uploader:i-0g", role="gateway", seen=20, checked=1)
+        items = self.items(heartbeats=[*self.fresh(), gw], blocks=BLOCK_OK, node_rows=web)
+        self.assertEqual([(x["key"], x["level"], x["label"], x["reason"], x["at"]) for x in items], [
+            ("gateway_uploader", "alert", "AWS 관문 기록 수신",
+             "관문 기록 신호 20분 전 · 적재기 확인 1분 전 · 확인 때 이미 15분 넘게 새 신호 없음",
+             (NOW - timedelta(minutes=20)).isoformat())])
+        # 적재기가 더는 확인하지 않는 관문 행뿐이면(구성에서 뺀 호스트의 남은 행) 싣지 않는다. 적재기는 센서 행으로 확인 중이다.
+        #   관문 업로더가 없는 구성도 싣지 않는다
+        dead = gw | {"checked_at": NOW - timedelta(days=3)}
+        self.assertEqual(self.items(heartbeats=[*self.fresh(), dead], blocks=BLOCK_OK, node_rows=web), [])
+        self.assertEqual(self.items(heartbeats=[*self.fresh(), gw | {"checked_at": NOW - timedelta(minutes=31)}],
+                                    blocks=BLOCK_OK, node_rows=web), [])
+        self.assertEqual(self.items(heartbeats=[*self.fresh(), gw | {"seen_at": NOW - timedelta(minutes=16)}],
+                                    blocks=BLOCK_OK, node_rows=web), [])
+        # 센서와 함께 끊기면 둘 다다(센서 먼저, 탐지 경로 앞)
+        rows = [hb("uploader:i-01", seen=20), gw, *self.fresh()[1:]]
+        paths = t.detect_paths([], NOW)
+        self.assertEqual([x["key"] for x in self.items(heartbeats=rows, blocks=BLOCK_OK, node_rows=web, paths=paths)],
+                         ["sensor", "gateway_uploader", "detect:honeypot", "detect:bridge"])
+
+    def test_지점_불일치는_지점별이고_관문은_관문_불일치가_먼저다(self):
+        web = [node_row("web-01")]
+        blocks = {**BLOCK_OK, "gateway_stale": 1, "fw_stale": 2}
+        self.assertEqual(self.items(blocks=blocks, node_rows=web), [
+            {"key": "point_stale:gateway", "level": "alert", "label": "AWS 관문 불일치", "reason": None, "at": None, "count": 1},
+            {"key": "point_stale:fw", "level": "alert", "label": "내부 방화벽 불일치", "reason": None, "at": None, "count": 2}])
+        # 관문 불일치가 있으면 관문 지점 불일치는 그 항목 하나다. 순서는 적용 실패 → 지점 불일치 → 관문 불일치
+        items = self.items(blocks={**blocks, "fw_failed": 1}, mismatch=1, node_rows=web)
+        self.assertEqual([(x["key"], x["count"]) for x in items],
+                         [("block_failed:fw", 1), ("point_stale:fw", 2), ("gateway_mismatch", 1)])
+        # 집행기가 멈춘 지점은 불일치도 미확인에 합친다(멈춤 항목만)
+        rows = [r for r in self.fresh() if r["source"] != "block:fw"]
+        self.assertEqual([x["key"] for x in self.items(heartbeats=rows, blocks=blocks, node_rows=web)],
+                         ["enforcer:fw", "point_stale:gateway"])
+
+    def test_지점_보고가_오래됐거나_문제가_있으면_이상이다(self):
+        web = [node_row("web-01")]
+        base = [r for r in self.fresh() if r["source"] != "block:fw"]
+
+        def got(report):
+            return [(x["key"], x["level"], x["label"], x["reason"], x["at"])
+                    for x in self.items(heartbeats=[*base, report], blocks=BLOCK_OK, node_rows=web)]
+        fw = hb("block:fw", kind="block_report", role="fw", seen=16)
+        self.assertEqual(got(fw), [("report:fw", "alert", "내부 방화벽 보고", "마지막 보고 16분 전",
+                                    (NOW - timedelta(minutes=16)).isoformat())])
+        self.assertEqual(got(fw | {"seen_at": NOW - timedelta(minutes=15)}), [])
+        # 읽기 문제는 5분 넘게 이어질 때만(못 읽은 회차는 옛 seen_at 이 남는다). 한두 회차 일시 오류는 넘긴다
+        self.assertEqual(got(fw | {"seen_at": NOW - timedelta(minutes=1), "problem": "보고 서명이 틀림"}), [])
+        self.assertEqual(got(fw | {"seen_at": NOW - timedelta(minutes=5), "problem": "RequestTimeout"}), [])
+        self.assertEqual(got(fw | {"seen_at": NOW - timedelta(minutes=6), "problem": "보고 서명이 틀림"}),
+                         [("report:fw", "alert", "내부 방화벽 보고", "마지막 보고 6분 전 · 보고 서명이 틀림",
+                           (NOW - timedelta(minutes=6)).isoformat())])
+        self.assertEqual(got(fw | {"seen_at": None, "problem": "보고 파일 없음"}),
+                         [("report:fw", "alert", "내부 방화벽 보고", "받은 보고 없음 · 보고 파일 없음", None)])
+        self.assertEqual(got(fw | {"problem": "보고 파일 없음"})[0][3], "마지막 보고 16분 전 · 보고 파일 없음")
+        # 집행기가 멈춘 지점은 집행기 항목만이다
+        self.assertEqual([x[0] for x in got(fw | {"checked_at": NOW - timedelta(minutes=11)})], ["enforcer:fw"])
+        # 보고 행이 없으면 모름이다(집행기 판정과 따로 넘겼을 때)
+        self.assertEqual([(x["key"], x["level"], x["reason"]) for x in self.items(blocks=BLOCK_OK, node_rows=web, reports={})],
+                         [("report:gateway", "unknown", "보고 기록 없음"), ("report:fw", "unknown", "보고 기록 없음")])
+
+    def test_웹_로그_적재와_자원_지표는_보호_대상별이다(self):
+        rows = [node_row("web-01"), node_row("web-02", reception="silent", seen=12), node_row("web-03")]
+        devices = [{"id": "web-01", "label": "web-01", "gap": None, "metrics_at": NOW - timedelta(minutes=12)},
+                   {"id": "web-02", "label": "web02.lab", "gap": NOW - timedelta(minutes=3),
+                    "metrics_at": NOW - timedelta(minutes=20)},
+                   {"id": "web-03", "label": "web-03", "gap": NOW - timedelta(minutes=1), "metrics_at": None}]
+        # 수신이 끊긴 web-02 는 자원 지표를 싣지 않는다(웹 로그 적재는 다른 현상이라 싣는다)
+        self.assertEqual(self.items(blocks=BLOCK_OK, node_rows=rows, devices=devices), [
+            {"key": "nodes_silent", "level": "alert", "label": "노드 수신",
+             "reason": "web-02 수신 끊김 · 마지막 수신 12분 전", "at": (NOW - timedelta(minutes=12)).isoformat(), "count": 1},
+            {"key": "parse:web-02", "level": "alert", "label": "web02.lab 웹 로그 적재",
+             "reason": "로그는 도착하는데 적재되지 않음 · 마지막 도착 3분 전", "at": (NOW - timedelta(minutes=3)).isoformat(),
+             "count": None},
+            {"key": "parse:web-03", "level": "alert", "label": "web-03 웹 로그 적재",
+             "reason": "로그는 도착하는데 적재되지 않음 · 마지막 도착 1분 전", "at": (NOW - timedelta(minutes=1)).isoformat(),
+             "count": None},
+            {"key": "metrics:web-01", "level": "alert", "label": "web-01 자원 지표", "reason": "마지막 지표 12분 전",
+             "at": (NOW - timedelta(minutes=12)).isoformat(), "count": None}])
+
+    def test_보호_대상별_판정은_카드와_같다(self):
+        cards = [{"id": "web-02", "label": "web02.lab", "sensor": "web-02", "node": None},
+                 {"id": "web-03", "label": "web-03", "sensor": "web-03", "node": None}]
+        row = BlocksTests.ROW
+        metrics = {"web-01": row | {"ts": NOW - timedelta(seconds=601)}, "web-02": row | {"ts": NOW - timedelta(seconds=600)}}
+        gap = NOW - timedelta(minutes=3)
+        got = t.device_checks(NOW, cards, {"web-03": gap}, metrics, True)
+        self.assertEqual(got, [{"id": "web-01", "label": "web-01", "gap": None, "metrics_at": NOW - timedelta(seconds=601)},
+                               {"id": "web-02", "label": "web02.lab", "gap": None, "metrics_at": None},
+                               {"id": "web-03", "label": "web-03", "gap": gap, "metrics_at": None}])
+        for device, registered in zip(got, (False, True, True)):
+            system = t.system_block(device["id"], True, metrics.get(device["id"]), NOW, registered)
+            self.assertEqual(device["metrics_at"] is not None, system["state"] == "stale")
+        # 지표를 읽을 수 없으면(권한 없음) 오래됨이 아니다
+        self.assertEqual([d["metrics_at"] for d in t.device_checks(NOW, cards, {}, metrics, False)], [None] * 3)
+        # 폐기 · 등록 대기(재등록 중)인 장비의 옛 지표는 싣지 않는다. 수신이 끊긴 활성 노드는 nodes_silent 가 겹침을 뺀다
+        old = row | {"ts": NOW - timedelta(hours=2)}
+        pending = [{**cards[0], "node": node_row("web-02", status="pending", reception="waiting", seen=None)}]
+        for web, want in [(node_row("web-01", status="revoked", reception="revoked"), None),
+                          (node_row("web-01", status="pending", reception="waiting", seen=None), None),
+                          (node_row("web-01", reception="silent", seen=30), old["ts"]), (None, old["ts"])]:
+            with self.subTest(web=web and web["reception"]):
+                got = t.device_checks(NOW, pending, {}, {"web-01": old, "web-02": old}, True, web)
+                self.assertEqual([d["metrics_at"] for d in got], [want, None])
 
     def test_탐지_경로(self):
         # 허니팟은 경로 최댓값: 옛 버전(v1)이 멈춰도 v3 가 돌면 정상이다
-        rows = [run_row("c1", 1, False), run_row("v1", 600, True), run_row("v3", 2, True), run_row("w2", 16, False)]
+        rows = [run_row("c1", 1, False), run_row("v1", 600, True), run_row("v3", 2, True), run_row("w2", 16, False),
+                *(run_row(v, 1, False) for v in ("a1", "i2", "s1", "sg1"))]
         honeypot, bridge = t.detect_paths(rows, NOW)
         self.assertEqual({k: honeypot[k] for k in ("key", "label", "last_at", "stale", "reason")},
                          {"key": "honeypot", "label": "허니팟 탐지(5분)", "last_at": (NOW - timedelta(minutes=2)).isoformat(),
@@ -1148,10 +1435,12 @@ class MonitorTests(unittest.TestCase):
         # 1분 다리는 버전별: w2 가 15분 넘게 멈췄다
         self.assertEqual((bridge["stale"], bridge["reason"], bridge["last_at"]),
                          (True, "w2 마지막 실행 16분 전", (NOW - timedelta(minutes=1)).isoformat()))
-        self.assertEqual([(v["rule_version"], v["stale"]) for v in bridge["versions"]], [("c1", False), ("w2", True)])
+        self.assertEqual([(v["rule_version"], v["stale"]) for v in bridge["versions"]],
+                         [("a1", False), ("c1", False), ("i2", False), ("s1", False), ("sg1", False), ("w2", True)])
         # 15분 경계: 정각은 정상
         edge = [{"rule_version": "v3", "last_at": NOW - timedelta(seconds=900), "honeypot": True},
-                {"rule_version": "c1", "last_at": NOW - timedelta(seconds=901), "honeypot": False}]
+                {"rule_version": "c1", "last_at": NOW - timedelta(seconds=901), "honeypot": False},
+                *(run_row(v, 1, False) for v in t.BRIDGE_VERSIONS if v != "c1")]
         self.assertEqual([(p["stale"], p["reason"]) for p in t.detect_paths(edge, NOW)],
                          [(False, None), (True, "c1 마지막 실행 15분 전")])
         # 24시간 안 행이 없으면 멈춤이다
@@ -1176,6 +1465,117 @@ class MonitorTests(unittest.TestCase):
         rows = [hb("uploader:i-01", checked=31), hb("block:gateway", kind="block_report", role="gateway", checked=11)]
         self.assertEqual(t.data_collection(NOW, started, True, rows)["stopped"], ["loader", "enforcer"])
         self.assertEqual(t.data_collection(NOW, None, False, [])["stopped"], [])
+
+    def test_데이터_노드는_탐지_경로가_하나라도_멈추면_주의다(self):
+        started = NOW - timedelta(minutes=1)
+        paths = t.detect_paths([run_row("v3", 2, True)] + [run_row(v, 1, False) for v in t.BRIDGE_VERSIONS if v != "c1"], NOW)
+        c = t.data_collection(NOW, started, True, self.fresh(), paths)
+        self.assertEqual((c["state"], c["reason"], c["stopped"]),
+                         ("ok", "마지막 탐지 실행 1분 전 · 노드 · 관제 탐지(1분) 멈춤 · c1 24시간 넘게 실행 없음", ["detect"]))
+        self.assertIn("detect:bridge",
+                      [x["key"] for x in self.items(paths=paths, blocks=BLOCK_OK, node_rows=[node_row("web-01")])])
+        # 1분 다리 전체가 멈추고 허니팟만 돌아도 주의다(전체 최신 실행만 보면 정상이었다)
+        c = t.data_collection(NOW, started, True, self.fresh(), t.detect_paths([run_row("v3", 1, True)], NOW))
+        self.assertEqual((c["state"], c["reason"], c["stopped"]),
+                         ("ok", "마지막 탐지 실행 1분 전 · 노드 · 관제 탐지(1분) 멈춤 · 24시간 안 실행 기록 없음", ["detect"]))
+        # 두 경로가 돌면 그대로다. 마지막 실행이 15분 넘었으면 수신 없음이 말하므로 붙이지 않는다
+        c = t.data_collection(NOW, started, True, self.fresh(), self.paths())
+        self.assertEqual((c["state"], c["reason"], c["stopped"]), ("ok", "마지막 탐지 실행 1분 전", []))
+        c = t.data_collection(NOW, NOW - timedelta(minutes=20), True, self.fresh(), t.detect_paths([], NOW))
+        self.assertEqual((c["state"], c["reason"], c["stopped"]),
+                         ("no_signal", "마지막 탐지 실행 20분 전 · 15분 넘게 실행 없음", []))
+        # 적재기 멈춤과 함께면 탐지 까닭이 먼저다
+        rows = [hb("uploader:i-01", checked=31), *self.fresh()[1:]]
+        c = t.data_collection(NOW, started, True, rows, t.detect_paths([run_row("v3", 1, True)], NOW))
+        self.assertEqual((c["reason"], c["stopped"]), (
+            "마지막 탐지 실행 1분 전 · 노드 · 관제 탐지(1분) 멈춤 · 24시간 안 실행 기록 없음 · 적재기 확인 중단 · 마지막 31분 전",
+            ["loader", "detect"]))
+
+
+class BridgeVersionTests(unittest.TestCase):
+    """1분 다리가 돌려야 할 버전 대조(이슈 #82). 탐지 경로 창은 24시간이라 25시간 전 실행은 행이 없다."""
+
+    def fresh(self, but=()):
+        return [run_row("v3", 2, True)] + [run_row(v, 1, False) for v in t.BRIDGE_VERSIONS if v not in but]
+
+    def test_다리_버전_목록은_수집_설정_RULESETS_와_같다(self):
+        root = Path(__file__).resolve().parents[1]
+        tree = ast.parse((root / "collector" / "pull_loki.py").read_text())
+        files = next(ast.literal_eval(n.value) for n in tree.body
+                     if isinstance(n, ast.Assign) and any(getattr(x, "id", None) == "RULESETS" for x in n.targets))
+        self.assertEqual(t.BRIDGE_VERSIONS,
+                         tuple(json.loads((root / "detector" / name).read_text())["rule_version"] for name in files))
+
+    def test_기대_버전_하나가_23시간_25시간_멈춰도_멈춤이다(self):
+        _, bridge = t.detect_paths(self.fresh(but=("c1",)) + [run_row("c1", 23 * 60, False)], NOW)
+        self.assertEqual((bridge["stale"], bridge["reason"], bridge["last_at"]),
+                         (True, "c1 마지막 실행 23시간 전", (NOW - timedelta(minutes=1)).isoformat()))
+        # 25시간 전이면 창 밖이라 행이 없다. 기대 버전이라 기록 없음으로 남는다(옛 판정은 경고가 사라졌다)
+        _, bridge = t.detect_paths(self.fresh(but=("c1",)), NOW)
+        self.assertEqual((bridge["stale"], bridge["reason"]), (True, "c1 24시간 넘게 실행 없음"))
+        self.assertEqual([(v["rule_version"], v["last_at"], v["stale"]) for v in bridge["versions"]][:2],
+                         [("a1", (NOW - timedelta(minutes=1)).isoformat(), False), ("c1", None, True)])
+        self.assertEqual([v["rule_version"] for v in bridge["versions"]], sorted(t.BRIDGE_VERSIONS))
+        # 멈춘 버전과 기록 없는 버전이 함께면 두 글을 잇는다
+        _, bridge = t.detect_paths(self.fresh(but=("c1", "w2")) + [run_row("w2", 20, False)], NOW)
+        self.assertEqual(bridge["reason"], "w2 마지막 실행 20분 전 · c1 24시간 넘게 실행 없음")
+
+    def test_기대_밖_옛_버전의_기록은_보지_않는다(self):
+        # 교체된 w1(1시간 전까지) · 떼어 낸 n1 · 정의 없는 zz 는 멈춰 있어도 경보하지 않는다
+        rows = self.fresh() + [run_row("w1", 61, False), run_row("n1", 23 * 60, False), run_row("zz", 30, False)]
+        _, bridge = t.detect_paths(rows, NOW)
+        self.assertEqual((bridge["stale"], bridge["reason"]), (False, None))
+        self.assertEqual([v["rule_version"] for v in bridge["versions"]], sorted(t.BRIDGE_VERSIONS))
+        # 옛 버전 기록만 있으면 기대 버전이 모두 기록 없음이다
+        _, bridge = t.detect_paths([run_row("w1", 61, False)], NOW)
+        self.assertEqual((bridge["reason"], bridge["last_at"]), ("a1 · c1 · i2 · s1 · sg1 · w2 24시간 넘게 실행 없음", None))
+
+    def test_새_기대_버전의_기록이_없으면_멈춤이다(self):
+        rows = self.fresh()
+        with patch.object(t, "BRIDGE_VERSIONS", t.BRIDGE_VERSIONS + ("x1",)):
+            _, bridge = t.detect_paths(rows, NOW)
+        self.assertEqual((bridge["stale"], bridge["reason"]), (True, "x1 24시간 넘게 실행 없음"))
+
+
+class ParseGapTests(unittest.TestCase):
+    """웹 로그 적재 없음(parse_gap) · 카드 경고 표지(이슈 #82)."""
+
+    def node(self, logs=("nginx", "auth", "metrics"), nginx=2, auth=None):
+        receipt = {job: {"lines": 9, "malformed": 9, "last_line_at": (NOW - timedelta(minutes=m)).isoformat()}
+                   for job, m in (("nginx", nginx), ("auth", auth)) if m is not None}
+        return {"node_id": "web-02", "logs": list(logs), "receipt": json.dumps(receipt)}
+
+    def test_도착한_웹_로그가_적재되지_않으면_그_도착_시각이다(self):
+        at = NOW - timedelta(minutes=2)
+        self.assertEqual(t.parse_gap(NOW, self.node(), None), at)
+        self.assertEqual(t.parse_gap(NOW, self.node(), at - timedelta(seconds=601)), at)
+        # 도착보다 10분 안(정각 포함) · 뒤의 이벤트가 있으면 적재된 것이다
+        self.assertIsNone(t.parse_gap(NOW, self.node(), at - timedelta(seconds=600)))
+        self.assertIsNone(t.parse_gap(NOW, self.node(), at))
+        # 1시간 경계(포함). jsonb 가 사전으로 와도 같다
+        self.assertEqual(t.parse_gap(NOW, self.node(nginx=60), None), NOW - timedelta(minutes=60))
+        self.assertEqual(t.parse_gap(NOW, self.node() | {"receipt": json.loads(self.node()["receipt"])}, None), at)
+
+    def test_선언_밖_도착_없음_오래된_도착_모양이_틀린_기록은_경고가_아니다(self):
+        self.assertIsNone(t.parse_gap(NOW, self.node(logs=("auth", "metrics")), None))     # nginx 를 선언하지 않음
+        self.assertIsNone(t.parse_gap(NOW, self.node(nginx=None, auth=1), None))            # 조용한 서버. auth 는 보지 않는다
+        self.assertIsNone(t.parse_gap(NOW, self.node(nginx=61), None))                      # 1시간 넘게 도착 없음
+        self.assertIsNone(t.parse_gap(NOW, None, None))
+        self.assertIsNone(t.parse_gap(NOW, {"node_id": "web-02", "logs": None, "receipt": "{}"}, None))
+        for receipt in (None, "{", "[]", json.dumps({"nginx": {"last_line_at": "2026-09-28T02:59:00"}}),
+                        json.dumps({"nginx": {"last_line_at": 5}}), json.dumps({"nginx": "어제"})):
+            with self.subTest(receipt=receipt):
+                self.assertIsNone(t.parse_gap(NOW, {"node_id": "web-02", "logs": ["nginx"], "receipt": receipt}, None))
+
+    def test_카드는_state_를_두고_경고_표지를_단다(self):
+        gap = NOW - timedelta(minutes=2)
+        sources = [("web-02", "web02.lab 로그")]
+        c = t.node_collection(NOW, node_row("web-02"), {}, sources, gap=gap)
+        self.assertEqual((c["state"], c["reason"]), ("quiet", "노드 수신 2분 전 · 최근 1시간 요청 없음"))
+        self.assertEqual(c["warnings"], [{"key": "parse", "label": "웹 로그 도착 · 적재 없음(형식 밖 · 선언 밖)",
+                                          "at": gap.isoformat()}])
+        self.assertEqual(t.node_collection(NOW, node_row("web-02"), {}, sources)["warnings"], [])
+        self.assertEqual(t.node_collection(NOW, None, {}, readable=False)["warnings"], [])
 
 
 if __name__ == "__main__":

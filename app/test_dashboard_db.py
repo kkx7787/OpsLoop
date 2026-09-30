@@ -171,13 +171,27 @@ class DashboardDatabaseTests(unittest.IsolatedAsyncioTestCase):
             ('192.0.2.7', now() - interval '1 second', NULL, NULL, '{"gateway": {"state": "confirmed"}}'),
             ('192.0.2.8', NULL, NULL, NULL, '{"gateway": {"state": "confirmed"}}'),
             ('192.0.2.9', now() + interval '1 hour', NULL, '집행 제외 · 금지 대역', '{"fw": {"state": "failed"}}')""")
+        from test_targets_db import HEARTBEATS_TABLE
         with patch.object(main.app.state, "pool", self.pool, create=True):
+            unread = await main.summary()
+            # 집행 보고(생존 신호 표)가 새로우면 지점이 확인한 수다. 지점 불일치(stale)는 미확인 가운데 따로 센 수다(#82)
+            await self.conn.execute(HEARTBEATS_TABLE)
+            await self.conn.execute("""INSERT INTO sensor_heartbeats VALUES
+                ('block:gateway', 'block_report', 'gateway', 'i-0fedcba9876543210', now(), now(), NULL),
+                ('block:fw', 'block_report', 'fw', 'fw-opsloop', now(), now(), NULL)""")
             data = await main.summary()
         self.assertEqual(data["blocks_by_point"], [
-            {"point": "gateway", "label": "AWS 관문", "applied": 2, "failed": 1, "unverified": 2, "stalled": None},
-            {"point": "fw", "label": "내부 방화벽", "applied": 1, "failed": 1, "unverified": 3, "stalled": None}])
+            {"point": "gateway", "label": "AWS 관문", "applied": 2, "failed": 1, "unverified": 2, "stale": 0, "stalled": None,
+             "unreadable": False},
+            {"point": "fw", "label": "내부 방화벽", "applied": 1, "failed": 1, "unverified": 3, "stale": 1, "stalled": None,
+             "unreadable": False}])
+        # 생존 신호 표를 읽을 수 없으면 집행 보고를 모르니 옛 '적용 확인' 을 믿지 않고 모두 미확인이다(#82).
+        #   집행기가 멈춘 것이 아니라 모르는 것이라 unreadable 로 가른다
+        self.assertEqual([(p["applied"], p["failed"], p["unverified"], p["stale"], p["stalled"], p["unreadable"])
+                          for p in unread["blocks_by_point"]],
+                         [(0, 0, 5, 0, "집행 보고를 읽을 수 없음 · 적용 여부 확인 불가", True)] * 2)
         self.assertEqual((data["blocked_ips"], data["blocks"]["excluded"], data["blocks"]["mismatch"]), (7, 2, 1))
-        for point in data["blocks_by_point"]:
+        for point in [*data["blocks_by_point"], *unread["blocks_by_point"]]:
             self.assertEqual(point["applied"] + point["failed"] + point["unverified"],
                              data["blocked_ips"] - data["blocks"]["excluded"])
 
