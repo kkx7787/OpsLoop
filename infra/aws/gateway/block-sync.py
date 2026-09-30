@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-OpsLoop - 관문 · 내부 방화벽 차단 목록 동기화 (이슈 #47 · #51)
+OpsLoop - 관문 · 내부 방화벽 차단 목록 동기화 (이슈 #47 · #51 · #77)
 
 데이터 노드 집행기(enforcer/block_enforcer.py)가 원장 버킷에 올린 차단 목록을 1분마다 읽어 nft 집합
 (inet filter opsloop_block)에 반영하고, 반영 결과를 집행 지점의 상태로 올린다. 집행기가 이 상태를 읽어 DB 의
@@ -12,13 +12,20 @@ OpsLoop - 관문 · 내부 방화벽 차단 목록 동기화 (이슈 #47 · #51)
                      실서비스(web-01) 앞에서 외부 역할 세그먼트의 출발지를 막는다 (이슈 #51). 메타데이터(IMDS) 조회는 끈다.
 
   읽기  s3://<버킷>/block/v1/latest.json
-        {"v":1,"generated_at":ISO,"entries":[{"ip":"a.b.c.d","until":ISO}],"digest":"<sha256 hex>"}
+        {"v":1,"generated_at":ISO,"entries":[{"ip":"a.b.c.d","until":ISO}],"digest":"<sha256 hex>",
+         "points":{"fw":{"entries":[..],"digest":"<sha256 hex>"}}}
+        entries 는 관문 목록, points.fw 는 내부 방화벽 목록(목록에 드는 모든 행)이다 (이슈 #77). 관문은 늘 entries 를,
+        내부 방화벽은 points.fw 를 적용한다. points 가 없는 옛 집행기 목록이면 둘 다 entries 다
   쓰기  s3://<버킷>/hb/v1/host=<OPSLOOP_HOST>-block/latest.json   (관문: 인스턴스 ID · 내부 방화벽: fw-<이름>)
-        {"v":1,"at":ISO,"mode":"fail2ban"|"nft","list_digest":..,"list_generated_at":..,"applied":n,
-         "set_count":n,"rejected":[{"ip":..,"why":..}],"errors":[..],"selftest":"ok"|"fail:<사유>"|null}
+        {"v":1,"at":ISO,"mode":"fail2ban"|"nft","list":"gateway"|"fw"|"legacy"|null,"list_digest":..,
+         "list_generated_at":..,"applied":n,"set_count":n,"rejected":[{"ip":..,"why":..}],"errors":[..],
+         "selftest":"ok"|"fail:<사유>"|null}
+        list 는 고른 목록(관문 entries · 내부 방화벽 points.fw · points 없는 옛 목록)이고 목록을 못 읽었으면 null 이다.
+        집행기는 내부 방화벽 보고가 fw 인 동안만 entries 에서 내부 방화벽 전용 행을 뺀다
 
 한 회차
-  1. 목록을 읽고 digest 를 검증한다. 못 읽거나 형식 · digest 가 틀리면 집합을 건드리지 않는다
+  1. 목록을 읽고 digest 를 검증한다. 내부 방화벽은 points 가 있으면 points.fw 를 골라 그 digest 도 검증한다.
+     못 읽거나 형식 · digest 가 틀리거나 그 갈래가 없으면 집합을 건드리지 않는다
      (fail2ban 은 bantime, nft 는 원소 timeout 으로 저절로 빠진다). 목록이 30분 넘게 오래됐으면(집행기는 10분마다
      다시 올린다) 집행기가 멈췄거나 올리지 못하는 것이다. 그사이의 해제 · 단축이 목록에 없으므로 이 목록으로 넣거나
      늘리지 않는다: 새로 넣기 · 다시 걸기 · flush 뒤 되살리기를 멈추고, 집합에 남은 것은 원소 만료로 빠지게 두며,
@@ -37,6 +44,7 @@ OpsLoop - 관문 · 내부 방화벽 차단 목록 동기화 (이슈 #47 · #51)
 
 digest
   sha256(json.dumps(entries, sort_keys=True, separators=(",", ":"), ensure_ascii=True)) 의 16진수.
+  points.fw.digest 도 같은 식으로 points.fw.entries 로 계산한다.
   entries 는 파일에 적힌 순서(집행기가 ip 로 정렬해 둔다) 그대로 쓴다. 다시 정렬하지 않으므로 정렬 방식이
   문자열이든 숫자든 집행기가 올린 순서로 계산한 값과 맞는다
 
@@ -54,9 +62,11 @@ digest
 
 사용 (root)
   set -a; . /etc/default/opsloop-block-sync; set +a
+  set -a; . /etc/default/opsloop-block-sync; . /etc/opsloop/block-sync.env; set +a     (내부 방화벽)
   python3 block-sync.py --dry-run      읽고 계획만 찍는다. 집합 · fail2ban · 상태를 건드리지 않는다
   python3 block-sync.py --selftest     자가 시험 뒤 한 회차
   systemctl start opsloop-block-sync.service
+  요약 줄의 '목록 <list> 확인' 이 고른 목록이다 (관문 gateway · 내부 방화벽 fw · 옛 목록 legacy)
 """
 
 import argparse
@@ -321,8 +331,17 @@ def _no_const(name):
     raise ValueError(name)
 
 
-def load_list(s3, bucket, key=LIST_KEY):
-    """(목록, None) 또는 (None, 사유). 판 번호 · 형식 · digest 까지 본다."""
+def _digest_ok(entries, digest):
+    try:
+        return canonical_digest(entries) == digest.lower()
+    except (ValueError, RecursionError):
+        return False
+
+
+def load_list(s3, bucket, point, key=LIST_KEY):
+    """({"list", "entries", "digest", "generated_at"}, None) 또는 (None, 사유). 판 번호 · 형식 · digest 까지 본다.
+    관문은 늘 entries 를 쓴다(list "gateway", points 가 없으면 "legacy"). 내부 방화벽은 points 가 있으면 points.fw 를
+    검증해 쓰고("fw") 갈래가 없거나 틀리면 거부한다. points 가 없으면 entries 다("legacy") (이슈 #77)."""
     try:
         r = s3.get_object(Bucket=bucket, Key=key)
         body = r["Body"].read(MAX_LIST_BYTES + 1)
@@ -341,13 +360,18 @@ def load_list(s3, bucket, key=LIST_KEY):
         return None, "목록 형식이 틀리다"
     if parse_time(doc.get("generated_at")) is None:
         return None, "목록 generated_at 형식이 틀리다"
-    try:
-        ok = canonical_digest(entries) == digest.lower()
-    except (ValueError, RecursionError):
-        ok = False
-    if not ok:
+    if not _digest_ok(entries, digest):
         return None, "목록 digest 불일치"
-    return doc, None
+    lst = {"list": "legacy", "entries": entries, "digest": digest, "generated_at": doc["generated_at"]}
+    if "points" not in doc:
+        return lst, None
+    if point != "fw":
+        return dict(lst, list="gateway"), None
+    fw = doc["points"].get("fw") if isinstance(doc["points"], dict) else None
+    if not (isinstance(fw, dict) and isinstance(fw.get("entries"), list) and isinstance(fw.get("digest"), str)
+            and _digest_ok(fw["entries"], fw["digest"])):
+        return None, "목록의 내부 방화벽 갈래가 없거나 틀리다"
+    return dict(lst, list="fw", entries=fw["entries"], digest=fw["digest"]), None
 
 
 def check_ip(raw):
@@ -433,12 +457,13 @@ def plan_nft(mode, want, actual, banned, now, grow=True):
 
 
 def new_status(mode, now, selftest):
-    return {"v": 1, "at": iso(now), "mode": mode, "list_digest": None, "list_generated_at": None,
+    return {"v": 1, "at": iso(now), "mode": mode, "list": None, "list_digest": None, "list_generated_at": None,
             "applied": 0, "set_count": None, "rejected": [], "errors": [], "selftest": selftest}
 
 
 def sync(cfg, s3, nft, f2b, now=None, selftest=None, dry_run=False):
-    """한 회차. (상태, 계획 문장 목록). dry_run 이면 읽기만 한다. now 를 주면(시험) 상태 시각도 그 값이다."""
+    """한 회차. (상태, 계획 문장 목록). cfg["point"] 로 적용할 목록을 고른다(load_list).
+    dry_run 이면 읽기만 한다. now 를 주면(시험) 상태 시각도 그 값이다."""
     fixed = now is not None
     now = now or utcnow()
     st = new_status(cfg["mode"], now, selftest)
@@ -451,15 +476,16 @@ def sync(cfg, s3, nft, f2b, now=None, selftest=None, dry_run=False):
         return st, plan
     st["set_count"] = len(actual)
 
-    doc, why = load_list(s3, cfg["bucket"])
-    if doc is None:
+    lst, why = load_list(s3, cfg["bucket"], cfg["point"])
+    if lst is None:
         errors.append(why)
         return st, plan
-    age = (now - parse_time(doc["generated_at"])).total_seconds()
+    st["list"] = lst["list"]
+    age = (now - parse_time(lst["generated_at"])).total_seconds()
     stale = age > STALE_LIST
     if stale:
         errors.append(f"목록이 오래됨 ({int(age // 60)}분) · 넣거나 늘리지 않음")
-    want, rejected, dup = recheck(doc["entries"], now)
+    want, rejected, dup = recheck(lst["entries"], now)
     if dup:
         errors.append(f"목록에 중복 항목 {dup}개")
     if stale:
@@ -552,8 +578,8 @@ def sync(cfg, s3, nft, f2b, now=None, selftest=None, dry_run=False):
     st["rejected"] = rejected[:MAX_REJECTED]
     st["applied"] = len(want) - len(missing)
     if rule_ok and not stale:
-        st["list_digest"] = doc["digest"]
-        st["list_generated_at"] = doc["generated_at"]
+        st["list_digest"] = lst["digest"]
+        st["list_generated_at"] = lst["generated_at"]
     return st, plan
 
 
@@ -709,7 +735,8 @@ def main(argv=None, env=None, s3=None, nft=None, f2b=None):
                         dry_run=args.dry_run)
         for line in plan:
             print(f"  {line}", flush=True)
-        summary = (f"{cfg['mode']} · 목록 {'확인' if st['list_digest'] else '미확인'} · 반영 {st['applied']} · "
+        kind = f"{st['list']} " if st["list"] else ""
+        summary = (f"{cfg['mode']} · 목록 {kind}{'확인' if st['list_digest'] else '미확인'} · 반영 {st['applied']} · "
                    f"집합 {st['set_count']} · 거부 {len(st['rejected'])} · 오류 {len(st['errors'])}")
         if args.dry_run:
             print(f"[계획] {summary}", flush=True)

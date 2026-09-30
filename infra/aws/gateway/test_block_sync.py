@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""관문 차단 목록 동기화 시험 (이슈 #47).  python3 infra/aws/gateway/test_block_sync.py
+"""관문 차단 목록 동기화 시험 (이슈 #47 · #77).  python3 infra/aws/gateway/test_block_sync.py
 
 가짜 nft(집합 · 원자적 묶음 · 원소 만료) · 가짜 fail2ban-client(banip 이 actionban 으로 nft 에 넣는다) · 가짜 S3 로
 두 모드의 반영 · 대조 · 되살림 · 금지 대역 재검사 · digest 불일치 거부 · 상한 · until 지남 · 자가 시험 판정을 본다.
+목록 두 벌(관문 entries · 내부 방화벽 points.fw)은 지점마다 고른 목록과 보고 list 를 보고, P 판 사본
+(testdata/block_sync_p.py)과 같은 목록을 읽혀 결과를 대조한다.
 설정 파일(nftables.conf · fail2ban · systemd)은 글자로 읽어 계약과 맞는지 본다. nft 가 있고 root 면 문법도 본다.
 """
+import ast
 import configparser
 import hashlib
 import importlib.util
+import inspect
 import io
 import ipaddress
 import json
@@ -25,8 +29,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 _spec = importlib.util.spec_from_file_location("block_sync", os.path.join(HERE, "block-sync.py"))
 bs = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(bs)
+_pspec = importlib.util.spec_from_file_location("block_sync_p", os.path.join(HERE, "testdata", "block_sync_p.py"))
+bs_p = importlib.util.module_from_spec(_pspec)
+_pspec.loader.exec_module(bs_p)
 
 HOST = "i-0ffeb29efad03546d"
+FW = "fw-opsloop"
 ELEM_RE = re.compile(r"(add|delete) element inet filter opsloop_block \{ (\S+)(?: timeout (\d+)s)? \}")
 
 
@@ -187,14 +195,21 @@ class Fake:
         return sum(1 for argv, _ in self.calls if argv[:len(prefix)] == prefix)
 
 
-def list_doc(entries, generated_at, digest=None, v=1):
-    canon = json.dumps(entries, sort_keys=True, separators=(",", ":"))
-    d = hashlib.sha256(canon.encode()).hexdigest() if digest is None else digest
-    return json.dumps({"v": v, "generated_at": generated_at, "entries": entries, "digest": d}).encode()
+def sha(entries):
+    return hashlib.sha256(json.dumps(entries, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def list_doc(entries, generated_at, digest=None, v=1, fw=None):
+    """fw 를 주면 #77 모양이다: entries 는 관문 목록, points.fw 는 내부 방화벽 목록."""
+    d = {"v": v, "generated_at": generated_at, "entries": entries, "digest": sha(entries) if digest is None else digest}
+    if fw is not None:
+        d["points"] = {"fw": {"entries": fw, "digest": sha(fw)}}
+    return json.dumps(d).encode()
 
 
 class Base(unittest.TestCase):
     MODE = "fail2ban"
+    HOST = HOST
 
     def setUp(self):
         self.now = datetime.now(timezone.utc).replace(microsecond=0)
@@ -213,22 +228,29 @@ class Base(unittest.TestCase):
     def digest(self):
         return json.loads(self.s3.objects[bs.LIST_KEY])["digest"]
 
-    def round(self, mode=None, dry_run=False):
-        cfg = {"mode": mode or self.MODE, "bucket": "opsloop-archive-test", "host": HOST, "state": self.tmp}
-        st, self.plan = bs.sync(cfg, self.s3, bs.Nft(self.fake), bs.Fail2ban(self.fake), now=self.clock.now,
-                                dry_run=dry_run)
-        return st
+    def fw_digest(self):
+        return json.loads(self.s3.objects[bs.LIST_KEY])["points"]["fw"]["digest"]
 
-    def main(self, *argv, mode=None, host=HOST):
+    def env(self, mode=None, host=None):
+        host = host or self.HOST
         env = {"MODE": mode or self.MODE, "OPSLOOP_BUCKET": "opsloop-archive-test", "OPSLOOP_HOST": host,
                "OPSLOOP_BLOCK_STATE": self.tmp}
         if host.startswith("fw-"):
             env.update(AWS_ACCESS_KEY_ID="AKIATEST", AWS_SECRET_ACCESS_KEY="secret-test")
+        return env
+
+    def round(self, mode=None, dry_run=False, host=None):
+        st, self.plan = bs.sync(bs.config(self.env(mode, host)), self.s3, bs.Nft(self.fake), bs.Fail2ban(self.fake),
+                                now=self.clock.now, dry_run=dry_run)
+        return st
+
+    def main(self, *argv, mode=None, host=None):
         out = io.StringIO()
         old = sys.stdout, sys.stderr
         sys.stdout = sys.stderr = out
         try:
-            rc = bs.main(list(argv), env=env, s3=self.s3, nft=bs.Nft(self.fake), f2b=bs.Fail2ban(self.fake))
+            rc = bs.main(list(argv), env=self.env(mode, host), s3=self.s3, nft=bs.Nft(self.fake),
+                         f2b=bs.Fail2ban(self.fake))
         finally:
             sys.stdout, sys.stderr = old
         return rc, out.getvalue()
@@ -254,7 +276,7 @@ class ListTest(Base):
         for fail in (None, "AccessDenied"):
             self.s3.fail_get = fail
             st = self.round()
-            self.assertIsNone(st["list_digest"])
+            self.assertEqual((st["list"], st["list_digest"]), (None, None))
             self.assertEqual(st["errors"], [f"목록을 읽지 못함 ({fail or 'NoSuchKey'})"])
             self.assertEqual(st["set_count"], 1)
         self.assertEqual(set(self.fake.live()), {"198.51.100.7"})
@@ -426,7 +448,7 @@ class Fail2banModeTest(Base):
         self.assertEqual(set(self.fake.banned), {"198.51.100.7", "203.0.113.9"})
         self.assertEqual({ip: v[0] for ip, v in self.fake.live().items()},
                          {"198.51.100.7": 86400, "203.0.113.9": 86400})    # 원소 timeout 은 jail bantime
-        self.assertEqual(st, {"v": 1, "at": self.clock.now.isoformat(), "mode": "fail2ban",
+        self.assertEqual(st, {"v": 1, "at": self.clock.now.isoformat(), "mode": "fail2ban", "list": "legacy",
                               "list_digest": self.digest(), "list_generated_at": self.iso(), "applied": 2,
                               "set_count": 2, "rejected": [], "errors": [], "selftest": None})
 
@@ -652,10 +674,11 @@ class StateTest(Base):
         key = "hb/v1/host=i-0ffeb29efad03546d-block/latest.json"
         self.assertEqual(self.s3.puts, [(key, "application/json")])
         st = json.loads(self.s3.objects[key].decode("utf-8"))
-        self.assertEqual(list(st), ["v", "at", "mode", "list_digest", "list_generated_at", "applied", "set_count",
-                                    "rejected", "errors", "selftest"])
-        self.assertEqual((st["v"], st["mode"], st["list_digest"], st["applied"], st["set_count"], st["selftest"]),
-                         (1, "nft", self.digest(), 1, 1, None))
+        self.assertEqual(list(st), ["v", "at", "mode", "list", "list_digest", "list_generated_at", "applied",
+                                    "set_count", "rejected", "errors", "selftest"])
+        self.assertEqual((st["v"], st["mode"], st["list"], st["list_digest"], st["applied"], st["set_count"],
+                          st["selftest"]), (1, "nft", "legacy", self.digest(), 1, 1, None))
+        self.assertIn("nft · 목록 legacy 확인 · 반영 1 · 집합 1 · 거부 1 · 오류 0", out)
         self.assertEqual(st["rejected"], [{"ip": "10.0.0.1", "why": "금지 대역 10.0.0.0/8"}])
         self.assertIsNotNone(bs.parse_time(st["at"]))
         with open(os.path.join(self.tmp, "status.json"), encoding="utf-8") as f:
@@ -806,6 +829,188 @@ class SelftestTest(Base):
         self.assertIsNone(json.loads(self.s3.objects[key])["selftest"])
 
 
+class PointsTest(Base):
+    """내부 방화벽은 points.fw, 관문은 늘 entries (이슈 #77). a 는 두 지점, b 는 내부 방화벽 전용 행이다."""
+    MODE, HOST = "nft", FW
+    a, b, c = "203.0.113.9", "203.0.113.10", "198.51.100.7"
+
+    def two(self, sec=3600):
+        """(관문 목록, 내부 방화벽 목록). 지점별 모드의 목록이다."""
+        ea, eb = {"ip": self.a, "until": self.iso(sec)}, {"ip": self.b, "until": self.iso(sec)}
+        return [ea], [ea, eb]
+
+    def test_내부_방화벽은_points_fw_를_적용하고_list_fw(self):
+        self.fake.elems[self.c] = (600, self.clock.t)                  # 목록 밖
+        gw, fw = self.two()
+        self.put_list(gw, fw=fw)
+        st = self.round()
+        self.assertEqual(set(self.fake.live()), {self.a, self.b})
+        self.assertNotEqual(self.fw_digest(), self.digest())
+        self.assertEqual((st["list"], st["list_digest"], st["list_generated_at"], st["applied"], st["errors"]),
+                         ("fw", self.fw_digest(), self.iso(), 2, []))
+
+    def test_points_가_없으면_entries_를_적용하고_legacy(self):
+        gw, fw = self.two()
+        self.put_list(fw)
+        st = self.round()
+        self.assertEqual(set(self.fake.live()), {self.a, self.b})
+        self.assertEqual((st["list"], st["list_digest"], st["applied"]), ("legacy", self.digest(), 2))
+
+    def test_옛_목록에서_새_목록으로_바뀌어도_집합을_건드리지_않는다(self):
+        # 집행기가 전체 모드(entries = 모든 행)에서 지점별 모드로 바뀌어도 내부 방화벽 집합은 그대로다
+        gw, fw = self.two()
+        self.put_list(fw)
+        self.round()
+        self.fake.calls.clear()
+        self.clock.advance(60)
+        self.put_list(gw, fw=fw)
+        st = self.round()
+        self.assertEqual((set(self.fake.live()), self.fake.count("nft", "-f")), ({self.a, self.b}, 0))
+        self.assertEqual((st["list"], st["list_digest"], st["errors"]), ("fw", self.fw_digest(), []))
+
+    def test_갈래가_없거나_틀리면_집합을_건드리지_않는다(self):
+        gw, fw = self.two()
+        self.put_list(gw, fw=fw)
+        self.round()
+        good = {"entries": fw, "digest": sha(fw)}
+        tampered = dict(good, entries=fw + [{"ip": self.c, "until": self.iso(3600)}])
+        bad = [{}, {"gateway": good}, None, [], "fw", {"fw": None}, {"fw": []}, {"fw": {"entries": fw}},
+               {"fw": {"digest": sha(fw)}}, {"fw": {"entries": {}, "digest": sha(fw)}}, {"fw": dict(good, digest=7)},
+               {"fw": dict(good, digest="0" * 64)}, {"fw": tampered}, {"fw": dict(good, entries=[])}]
+        self.fake.calls.clear()
+        for points in bad:
+            self.s3.objects[bs.LIST_KEY] = json.dumps({"v": 1, "generated_at": self.iso(), "entries": [],
+                                                       "digest": sha([]), "points": points}).encode()
+            st = self.round()
+            self.assertEqual((st["list"], st["list_digest"], st["errors"]),
+                             (None, None, ["목록의 내부 방화벽 갈래가 없거나 틀리다"]), points)
+            self.assertEqual(st["set_count"], 2)
+        self.assertEqual((set(self.fake.live()), self.fake.count("nft", "-f")), ({self.a, self.b}, 0))
+        # 관문은 갈래를 보지 않는다: 같은 문서의 entries(빈 목록)를 그대로 적용한다
+        st = self.round(host=HOST)
+        self.assertEqual((st["list"], st["list_digest"], set(self.fake.live())), ("gateway", self.digest(), set()))
+
+    def test_entries_digest_를_먼저_본다(self):
+        gw, fw = self.two()
+        self.s3.objects[bs.LIST_KEY] = list_doc(gw, self.iso(), digest="0" * 64, fw=fw)
+        st = self.round()
+        self.assertEqual((st["list"], st["list_digest"], st["errors"]), (None, None, ["목록 digest 불일치"]))
+        self.assertEqual(self.fake.count("nft", "-f"), 0)
+
+    def test_오래된_목록_규칙은_갈래에도_같다(self):
+        gw, fw = self.two(7200)
+        self.put_list(gw, fw=fw)
+        self.round()
+        # 40분 전 목록: b 는 빠졌고 c 가 새로 들어왔다. 빼기만 하고 넣지 않는다
+        fw2 = [fw[0], {"ip": self.c, "until": self.iso(3600)}]
+        self.put_list(gw, fw=fw2, generated_at=self.iso(-40 * 60))
+        st = self.round()
+        self.assertEqual(set(self.fake.live()), {self.a})
+        self.assertEqual((st["list"], st["list_digest"], st["list_generated_at"], st["applied"], st["errors"]),
+                         ("fw", None, None, 1, ["목록이 오래됨 (40분) · 넣거나 늘리지 않음"]))
+
+    def test_dry_run_은_갈래도_읽기만_한다(self):
+        self.fake.elems[self.c] = (600, self.clock.t)
+        gw, fw = self.two()
+        self.put_list(gw, fw=fw)
+        rc, out = self.main("--dry-run")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("nft add 2 · replace 0 · del 1", out)
+        self.assertIn("[계획] nft · 목록 fw 미확인 · 반영 2 · 집합 1", out)
+        self.assertEqual((self.s3.puts, self.fake.count("nft", "-f"), set(self.fake.live())), ([], 0, {self.c}))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "status.json")))
+
+    def test_요약_줄과_상태에_고른_목록(self):
+        gw, fw = self.two()
+        self.put_list(gw, fw=fw)
+        rc, out = self.main()
+        self.assertEqual(rc, 0, out)
+        self.assertIn("nft · 목록 fw 확인 · 반영 2 · 집합 2 · 거부 0 · 오류 0", out)
+        st = json.loads(self.s3.objects[bs.status_key(FW)])
+        self.assertEqual((st["list"], st["list_digest"]), ("fw", self.fw_digest()))
+
+
+class GatewayPointsTest(Base):
+    """관문은 points 가 있어도 entries 만 적용한다 (이슈 #77). 관문은 #77 판으로 바꾸지 않지만 저장소 판은 같은 파일이다."""
+    a, b = "203.0.113.9", "203.0.113.10"
+
+    def test_points_fw_에만_있는_원소는_관문에서_뺀다(self):
+        # 옛 전체 모드 목록으로 관문에도 걸린 내부 방화벽 전용 행(b)은 지점별 목록에서 빠진다
+        for mode in ("fail2ban", "nft"):
+            self.fake = Fake(self.clock)
+            ea, eb = {"ip": self.a, "until": self.iso(3600)}, {"ip": self.b, "until": self.iso(3600)}
+            self.put_list([ea, eb])
+            self.round(mode)
+            self.assertEqual(set(self.fake.live()), {self.a, self.b}, mode)
+            self.put_list([ea], fw=[ea, eb])
+            st = self.round(mode)
+            self.assertEqual(set(self.fake.live()), {self.a}, mode)
+            if mode == "fail2ban":
+                self.assertEqual(set(self.fake.banned), {self.a})
+                self.assertEqual(self.fake.count("fail2ban-client", "set", "opsloop-block", "unbanip"), 1)
+            self.assertEqual((st["list"], st["list_digest"], st["applied"], st["errors"]),
+                             ("gateway", self.digest(), 1, []), mode)
+
+
+class CrossVersionTest(Base):
+    """P 판(#77 직전 main) 사본과 새 판이 같은 목록을 읽은 결과를 대조한다 (이슈 #77)."""
+    MODE = "nft"
+
+    def p_result(self):
+        """P 판이 이 목록으로 만들 (집합, rejected, list_digest). P 판 sync 는 recheck 의 want 를 그대로 반영한다."""
+        doc, why = bs_p.load_list(self.s3, "b")
+        self.assertIsNone(why)
+        want, rejected, _ = bs_p.recheck(doc["entries"], self.clock.now)
+        return set(want), rejected, doc["digest"]
+
+    def new_result(self, host):
+        self.fake = Fake(self.clock)
+        st = self.round(host=host)
+        return set(self.fake.live()), st["rejected"], st["list_digest"], st["list"]
+
+    def test_P_판은_새_목록을_받고_entries_만_적용한다(self):
+        ea, eb = {"ip": "203.0.113.9", "until": self.iso(3600)}, {"ip": "203.0.113.10", "until": self.iso(3600)}
+        self.put_list([ea], fw=[ea, eb])
+        doc, why = bs_p.load_list(self.s3, "b")
+        self.assertIsNone(why)                                  # 판 · 키 · entries digest 가 그대로라 받는다
+        self.assertEqual(doc["digest"], self.digest())
+        self.assertEqual(set(bs_p.recheck(doc["entries"], self.clock.now)[0]), {"203.0.113.9"})
+
+    def test_옛_판과_새_판이_같은_목록을_읽은_결과(self):
+        until = self.iso(3600)
+        both = [{"ip": ip, "until": until} for ip in ("198.51.100.7", "203.0.113.9")]
+        odd = [{"ip": "10.0.0.1", "until": until}, {"ip": "203.0.113.20", "until": self.iso(-5)}]
+        fw_only = [{"ip": "203.0.113.10", "until": until}]
+        docs = {"옛 목록": (both + odd, None), "전체 모드": (both + odd, both + odd),
+                "지점별 모드": (both + odd, both + odd + fw_only)}
+        for name, (gw, fw) in docs.items():
+            self.put_list(gw, fw=fw)
+            p_set, p_rej, p_digest = self.p_result()
+            self.assertEqual(p_set, {"198.51.100.7", "203.0.113.9"}, name)
+            got = self.new_result(HOST)
+            self.assertEqual(got, (p_set, p_rej, p_digest, "legacy" if fw is None else "gateway"), name)
+            got = self.new_result(FW)
+            if name == "지점별 모드":
+                # 옛 판 내부 방화벽은 entries 만 적용해 전용 행이 빠진다. 집행기는 보고 list 가 fw 일 때만 이 모드를 쓴다
+                self.assertEqual(got, (p_set | {"203.0.113.10"}, p_rej, self.fw_digest(), "fw"), name)
+            else:
+                self.assertEqual(got, (p_set, p_rej, p_digest, "legacy" if fw is None else "fw"), name)
+
+    @unittest.skipUnless(shutil.which("git"), "git 이 없다")
+    def test_사본은_P_판_글자_그대로다(self):
+        p = subprocess.run(["git", "-C", HERE, "show", f"{bs_p.P_COMMIT}:infra/aws/gateway/block-sync.py"],
+                           capture_output=True, text=True)
+        if p.returncode != 0:
+            self.skipTest(f"P 판을 읽지 못함: {p.stderr.strip()[:80]}")
+        with open(os.path.join(HERE, "testdata", "block_sync_p.py"), encoding="utf-8") as f:
+            src = f.read()
+        nodes = [n for n in ast.parse(src).body if isinstance(n, (ast.Assign, ast.FunctionDef))
+                 and not (isinstance(n, ast.Assign) and n.targets[0].id == "P_COMMIT")]
+        self.assertEqual(len(nodes), 12)
+        for n in nodes:
+            self.assertIn(ast.get_source_segment(src, n), p.stdout, getattr(n, "name", None))
+
+
 ENFORCER = os.path.join(HERE, "..", "..", "..", "enforcer", "block_enforcer.py")
 
 
@@ -820,21 +1025,55 @@ class EnforcerCompatTest(Base):
         self.en = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.en)
 
+    def en_doc(self, gw, fw=None):
+        """집행기 list_doc 이 올린 목록(바이트). #77 판은 (관문 목록, 내부 방화벽 목록, 시각)을 받는다."""
+        if len(inspect.signature(self.en.list_doc).parameters) < 3:              # #77 전 판
+            if fw is not None:
+                self.skipTest("집행기 list_doc 이 아직 두 갈래를 받지 않는다")
+            doc = self.en.list_doc(gw, self.clock.now)
+        else:
+            doc = self.en.list_doc(gw, gw if fw is None else fw, self.clock.now)
+        self.s3.objects[bs.LIST_KEY] = json.dumps(doc, ensure_ascii=True).encode("utf-8")
+        return doc
+
     def test_집행기가_만든_목록을_받아들인다(self):
         self.assertEqual((self.en.LIST_KEY, self.en.STATUS_KEY.format(gw=HOST)), (bs.LIST_KEY, bs.status_key(HOST)))
         entries = [{"ip": ip, "until": self.iso(3600 + i)} for i, ip in
                    enumerate(["203.0.113.9", "198.51.100.7", "8.8.8.8", "11.0.0.10", "11.0.0.9"])]
-        doc = self.en.list_doc(entries, self.clock.now)
-        self.s3.objects[bs.LIST_KEY] = json.dumps(doc, ensure_ascii=True).encode("utf-8")
-        got, why = bs.load_list(self.s3, "b")
+        doc = self.en_doc(entries)
+        got, why = bs.load_list(self.s3, "b", "gateway")
         self.assertIsNone(why)
         self.assertEqual(got["digest"], doc["digest"])
+        self.assertIsNone(bs_p.load_list(self.s3, "b")[1])
         st = self.round()
         self.assertEqual((st["applied"], st["errors"], st["list_digest"]), (5, [], doc["digest"]))
 
+    def test_집행기의_두_갈래_목록을_지점마다_고른다(self):
+        ea, eb = {"ip": "203.0.113.9", "until": self.iso(3600)}, {"ip": "11.0.0.10", "until": self.iso(3600)}
+        doc = self.en_doc([ea], [ea, eb])
+        self.assertIsNone(bs_p.load_list(self.s3, "b")[1])                     # P 판 관문도 받는다
+        st = self.round()
+        self.assertEqual((set(self.fake.live()), st["list"], st["list_digest"]), ({ea["ip"]}, "gateway", doc["digest"]))
+        self.fake = Fake(self.clock)
+        st = self.round("nft", host=FW)
+        self.assertEqual((set(self.fake.live()), st["list"], st["list_digest"], st["errors"]),
+                         ({ea["ip"], eb["ip"]}, "fw", doc["points"]["fw"]["digest"], []))
+
+    def test_list_가_든_보고를_집행기가_읽는다(self):
+        ea = {"ip": "203.0.113.9", "until": self.iso(3600)}
+        self.put_list([ea], fw=[ea])
+        reports = [self.round(), self.round("nft", host=FW)]
+        self.put_list([ea])
+        reports.append(self.round())
+        self.s3.fail_get = "AccessDenied"
+        reports.append(self.round())
+        self.assertEqual([r["list"] for r in reports], ["gateway", "fw", "legacy", None])
+        for r in reports:
+            self.assertIsNone(self.en.validate_status(json.loads(json.dumps(r)), self.clock.now)[1], r["list"])
+
     def test_관문_상태를_집행기가_읽는다(self):
         entries = [{"ip": "203.0.113.9", "until": self.iso(3600)}, {"ip": "10.0.0.1", "until": self.iso(3600)}]
-        self.s3.objects[bs.LIST_KEY] = json.dumps(self.en.list_doc(entries, self.clock.now)).encode()
+        self.en_doc(entries)
         st = self.round()
         wire = json.loads(json.dumps(st, ensure_ascii=False).encode("utf-8"))
         got, why = self.en.validate_status(wire, self.clock.now)
