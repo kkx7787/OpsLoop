@@ -1,4 +1,4 @@
-"""관제 대상별 상태판(targets.py · 이슈 #52 · #64 · #72)의 PostgreSQL 시험.  OPSLOOP_TEST_DATABASE_URL=... python3 -m unittest discover -s app
+"""관제 대상별 상태판(targets.py · 이슈 #52 · #64 · #72 · #82)의 PostgreSQL 시험.  OPSLOOP_TEST_DATABASE_URL=... python3 -m unittest discover -s app
 
 연결 전용 임시 표만 쓰고 search_path=pg_temp 로 운영 표를 가린다. 생존 신호 표(sensor_heartbeats)는 계약서 1장 DDL 을
 그대로 임시 표로 만든다(트리거 · 권한은 infra/test_status_board_db.py 가 본다). CTI 표는 마이그레이션(20260925_cti.sql)의
@@ -23,12 +23,15 @@
   - 관련 장비(이슈 #72): 카드 미판정 수 = 장비 필터 목록 수(고정 네 대상 · 등록 노드 · 장비 미확인, 대체 추정 사건 포함) ·
     장비 필터는 쪽을 나누기 전에 거름 · 연결 근거 · 상세와 목록의 장비가 같음 · 탐지 경로 판별(실제 규칙 정의) ·
     관제 이상 · 먼저 처리할 사건이 요약과 같은 기준 · 취약점 수정 상태별 수
+  - 관제 이상 보완(이슈 #82): 같은 스냅숏에서 카드가 이상 · 확인 불가로 보이면 띠에 대응 항목이 있다(생존 신호 표가 없는 DB 포함) ·
+    관제 이상 질의 8개 이하 · 1분 다리 버전이 23 · 25시간 멈춰도 띠와 데이터 노드 카드에 남고 옛 버전 기록은 보지 않음 ·
+    등록 노드 열만 없으면 모름 · 지점 불일치 수 · 생존 신호 표가 없을 때의 대응
 """
 import json
 import os
 import unittest
 from contextlib import asynccontextmanager
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -106,6 +109,64 @@ DEVICE_KEYS = ("devices", "device_state", "device_fallback")
 def cti_tables() -> str:
     """CTI 마이그레이션의 표 · 색인 정의(BEGIN; 뒤 ~ 권한 블록 앞)."""
     return CTI_MIGRATION.read_text().split("BEGIN;", 1)[1].split("\nDO $$", 1)[0]
+
+
+class Counted:
+    """연결을 감싸 질의(fetch · fetchrow · fetchval)를 남긴다. 관제 이상의 질의 수를 본다."""
+
+    def __init__(self, conn):
+        self.conn, self.queries = conn, []
+
+    def __getattr__(self, name):
+        attr = getattr(self.conn, name)
+        if name not in ("fetch", "fetchrow", "fetchval"):
+            return attr
+
+        async def call(sql, *args):
+            self.queries.append(sql)
+            return await attr(sql, *args)
+        return call
+
+
+def band_needs(body) -> list[tuple[str, set]]:
+    """카드 ⇒ 띠 불변식(이슈 #82): 카드가 이상 · 확인 불가로 보이는 것마다 (까닭, 띠에 있어야 할 키 후보). 후보 하나라도 띠에 있어야
+    한다. 의도한 상태(등록 대기 · 폐기 노드와 그 옛 지표, 조용한 서버의 요청 없음, 생존 신호를 보내지 않는 콘솔)는 이상이 아니다."""
+    as_of = datetime.fromisoformat(body["as_of"])
+    detect = {"detect:honeypot", "detect:bridge"}
+    needs = []
+    for card in body["targets"]:
+        tid, c, r = card["id"], card["collection"], card["response"]
+        if tid == "aws-sensor" and c["state"] in ("no_signal", "unknown"):
+            needs.append((f"{tid} 수집 {c['state']}", {"sensor", "heartbeats", "loader"}))
+        if tid == t.WEB_NODE or card["kind"] == "node":
+            idle = c["reason"] in ("노드 폐기됨", "노드 등록 대기 · 수신 전")
+            if c["state"] == "no_signal":
+                needs.append((f"{tid} 수신 끊김", {"nodes_silent"}))
+            elif c["reason"] in ("노드 표를 읽을 수 없음", "노드 등록 기록 없음"):
+                needs.append((f"{tid} {c['reason']}", {"nodes"}))
+            needs += [(f"{tid} {w['key']}", {f"parse:{tid}"}) for w in c["warnings"]]
+            if card["system"]["state"] == "stale" and not idle:
+                needs.append((f"{tid} 자원 지표", {f"metrics:{tid}", "nodes_silent"}))
+        if tid == "data-node":
+            if c["state"] in ("no_signal", "unknown"):
+                needs.append((f"{tid} 탐지 {c['state']}", detect))
+            enforcers = {f"enforcer:{p}" for p in t.POINT_LABELS}
+            needs += [(f"{tid} {stop} 멈춤", {"loader": {"loader"}, "enforcer": enforcers, "detect": detect}[stop])
+                      for stop in c["stopped"]]
+        point, report = r["point"], r["report"]
+        if point is None:
+            continue
+        if r["stalled"]:
+            needs.append((f"{tid} {r['stalled']}", {f"enforcer:{point}", "heartbeats"}))
+        if r["failed"]:
+            needs.append((f"{tid} 적용 실패", {f"block_failed:{point}"}))
+        if r["stale"]:
+            needs.append((f"{tid} 지점 불일치", {f"point_stale:{point}", "gateway_mismatch"}))
+        age = as_of - datetime.fromisoformat(report["seen_at"]) if report and report["seen_at"] else None
+        if report and (age is None or age > timedelta(seconds=t.HEARTBEAT_STALE)
+                       or report["problem"] and age > timedelta(seconds=t.REPORT_PROBLEM_GRACE)):
+            needs.append((f"{tid} 지점 보고", {f"report:{point}", f"enforcer:{point}"}))
+    return needs
 
 
 class Recorder:
@@ -234,6 +295,9 @@ class TargetsDatabaseTests(Base):
             VALUES ('web-01', 'web-01', 'active', $1, $2, $2)""", self.ago(172800), self.ago(120))
         await self.conn.execute("INSERT INTO detector_runs (rule_version, started_at, finished_at) VALUES ('v3', $1, $1), ('v3', $2, $2)",
                                 self.ago(240), self.ago(3600))
+        # 1분 다리가 돌려야 할 버전은 모두 5분 전에 돌았다
+        await self.conn.executemany("INSERT INTO detector_runs (rule_version, started_at, finished_at) VALUES ($1, $2, $2)",
+                                    [(v, self.ago(300)) for v in t.BRIDGE_VERSIONS])
         for line, node, seconds, cpu in [("m1", "web-01", 60, 12.34), ("m2", "web-01", 120, 90.0), ("m3", "web-02", 10, 1.0)]:
             await self.conn.execute("""INSERT INTO node_metrics (line_hash, node_id, ts, cpu_pct, mem_used_pct, disk_root_pct, load1)
                 VALUES ($1, $2, $3, $4, 41.5, 73.5, 0.5)""", line, node, self.ago(seconds), cpu)
@@ -334,8 +398,9 @@ class TargetsDatabaseTests(Base):
         body = await self.view()
         self.assertTrue(body["heartbeats_available"])
         aws = self.target(body, "aws-sensor")["collection"]
+        # 관문 업로더(role=gateway) 신호 시각은 까닭 끝에 붙는다(state 는 센서 판정 그대로다)
         self.assertEqual((aws["state"], aws["reason"]),
-                         ("ok", "업로더 생존 신호 3분 전 · 적재기 확인 1분 전 · 최근 1시간 로그 있음"))
+                         ("ok", "업로더 생존 신호 3분 전 · 적재기 확인 1분 전 · 최근 1시간 로그 있음 · 관문 기록 신호 2분 전"))
         self.assertEqual(aws["signal"], {"label": "업로더 생존 신호", "seen_at": t.cti.iso(self.ago(180)),
                                          "checked_at": t.cti.iso(self.ago(60)), "stale_after_seconds": 900,
                                          "problem": None})
@@ -358,7 +423,7 @@ class TargetsDatabaseTests(Base):
         await self.conn.execute("DELETE FROM events WHERE sensor IN ('cowrie', 'decoy')")
         aws = self.target(await self.view(), "aws-sensor")["collection"]
         self.assertEqual((aws["state"], aws["reason"]),
-                         ("quiet", "업로더 생존 신호 3분 전 · 적재기 확인 1분 전 · 최근 1시간 요청 없음"))
+                         ("quiet", "업로더 생존 신호 3분 전 · 적재기 확인 1분 전 · 최근 1시간 요청 없음 · 관문 기록 신호 2분 전"))
         # 받기가 길어 기록이 늦었을 뿐이면(확인 때 신호가 5분 전) 신호 시각이 18분 전이어도 수신 없음이 아니다
         await self.conn.execute("UPDATE sensor_heartbeats SET seen_at = $1, checked_at = $2 WHERE source = 'uploader:i-0123456789abcdef0'",
                                 self.ago(1080), self.ago(780))
@@ -369,8 +434,9 @@ class TargetsDatabaseTests(Base):
                                 self.ago(1100), self.ago(120))
         aws = self.target(await self.view(), "aws-sensor")["collection"]
         self.assertEqual((aws["state"], aws["reason"]),
-                         ("no_signal", "업로더 생존 신호 18분 전 · 적재기 확인 2분 전 · 확인 때 이미 15분 넘게 새 신호 없음"))
-        # 적재기가 30분 넘게 확인하지 않으면 미확인이다
+                         ("no_signal", "업로더 생존 신호 18분 전 · 적재기 확인 2분 전 · 확인 때 이미 15분 넘게 새 신호 없음"
+                                       " · 관문 기록 신호 2분 전"))
+        # 적재기가 30분 넘게 확인하지 않으면 미확인이다. 관문 기록 신호도 확인하지 않은 것이라 붙이지 않는다
         await self.conn.execute("UPDATE sensor_heartbeats SET checked_at = $1 WHERE kind = 'uploader'", self.ago(1801))
         aws = self.target(await self.view(), "aws-sensor")["collection"]
         self.assertEqual((aws["state"], aws["reason"]), ("unknown", "적재기 확인 중단 · 마지막 확인 30분 전"))
@@ -414,11 +480,11 @@ class TargetsDatabaseTests(Base):
     async def test_대응은_지점이_확인한_것만_적용이다(self):
         body = await self.view()
         aws, web = self.target(body, "aws-sensor")["response"], self.target(body, "web-01")["response"]
-        # 203.0.113.8 은 관문 stale(미확인) · 내부 방화벽 failed(실패). 실패는 미확인에 섞지 않는다
-        self.assertEqual((aws["point"], aws["point_label"], aws["applied"], aws["failed"], aws["unverified"], aws["stalled"]),
-                         ("gateway", "AWS 관문", 2, 0, 2, None))
-        self.assertEqual((web["point"], web["point_label"], web["applied"], web["failed"], web["unverified"], web["stalled"]),
-                         ("fw", "내부 방화벽", 1, 1, 2, None))
+        # 203.0.113.8 은 관문 stale(미확인 가운데 지점 불일치) · 내부 방화벽 failed(실패). 실패는 미확인에 섞지 않는다
+        self.assertEqual((aws["point"], aws["point_label"], aws["applied"], aws["failed"], aws["unverified"], aws["stale"],
+                          aws["stalled"]), ("gateway", "AWS 관문", 2, 0, 2, 1, None))
+        self.assertEqual((web["point"], web["point_label"], web["applied"], web["failed"], web["unverified"], web["stale"],
+                          web["stalled"]), ("fw", "내부 방화벽", 1, 1, 2, 0, None))
         self.assertEqual(aws["report"], {"seen_at": t.cti.iso(self.ago(120)), "checked_at": t.cti.iso(self.ago(30)),
                                          "problem": None})
         self.assertEqual(web["report"], {"seen_at": None, "checked_at": t.cti.iso(self.ago(30)),
@@ -654,13 +720,13 @@ class TargetsDatabaseTests(Base):
                 await self.conn.execute(f"SET ROLE {role}")
                 async with self.conn.transaction(isolation="repeatable_read", readonly=True):
                     seen[name] = (await self.conn.fetchval("SELECT has_table_privilege('nodes', 'SELECT')"),
-                                  await self.view())
+                                  await self.view(), await t.monitor_view(self.conn, self.now))
                 await self.conn.execute("RESET ROLE")
         finally:
             await self.conn.execute("RESET ROLE")
             await self.conn.execute(f"DROP OWNED BY {role}")
             await self.conn.execute(f"DROP ROLE {role}")
-        table_privilege, body = seen["columns"]
+        table_privilege, body, _ = seen["columns"]
         self.assertFalse(table_privilege)
         self.assertEqual([x["id"] for x in body["targets"]], ["aws-sensor", "web-01", "console", "data-node", "web-02"])
         self.assertEqual(self.target(body, "web-01")["collection"]["state"], "ok")
@@ -675,6 +741,11 @@ class TargetsDatabaseTests(Base):
                          self.target(seen["columns"][1], "web-01")["collection"])
         web = self.target(seen["none"][1], "web-01")["collection"]
         self.assertEqual((web["state"], web["reason"]), ("unknown", "노드 표를 읽을 수 없음"))
+        # 관제 이상: 카드 열만 없으면 등록 노드 열 모름(web-01 은 판정한다), 다 없으면 노드 표 모름이다
+        self.assertEqual({name: [(x["key"], x["reason"]) for x in seen[name][2]["items"] if x["key"].startswith("nodes")]
+                          for name in seen},
+                         {"columns": [], "no_hostname": [("nodes", "등록 노드 열을 읽을 수 없음")],
+                          "none": [("nodes", "노드 표를 읽을 수 없음")]})
 
     async def test_API_는_한_트랜잭션에서_DB_시각으로_답한다(self):
         body = await t.dashboard_targets(self.request)
@@ -789,10 +860,109 @@ class TargetsDatabaseTests(Base):
         self.assertEqual(next(r["last_at"] for r in rows if r["rule_version"] == "v3"), self.ago(60))
         honeypot, bridge = t.detect_paths(rows, self.now)
         self.assertEqual((honeypot["stale"], [v["rule_version"] for v in honeypot["versions"]]), (False, ["v1", "v3"]))
+        # 1분 다리는 돌아야 할 버전만 본다(정의 없는 zz 는 보지 않는다)
         self.assertEqual((bridge["stale"], bridge["reason"]), (True, "w2 마지막 실행 16분 전"))
+        self.assertEqual([v["rule_version"] for v in bridge["versions"]], sorted(t.BRIDGE_VERSIONS))
         monitor = await t.monitor_view(self.conn, self.now)
         self.assertEqual(monitor["detect_paths"], [honeypot, bridge])
         self.assertEqual([x["key"] for x in monitor["items"] if x["key"].startswith("detect:")], ["detect:bridge"])
+
+    async def test_1분_다리_버전은_하루_넘게_멈춰도_띠와_데이터_노드_카드에_남는다(self):
+        for hours, reason in ((23, "c1 마지막 실행 23시간 전"), (25, "c1 24시간 넘게 실행 없음")):
+            await self.conn.execute("DELETE FROM detector_runs WHERE rule_version = 'c1'")
+            await self.conn.execute("INSERT INTO detector_runs (rule_version, started_at, finished_at) VALUES ('c1', $1, $1)",
+                                    self.ago(hours * 3600))
+            monitor = await t.monitor_view(self.conn, self.now)
+            data = self.target(await self.view(), "data-node")["collection"]
+            with self.subTest(hours=hours):
+                self.assertEqual([(x["key"], x["reason"]) for x in monitor["items"] if x["key"].startswith("detect:")],
+                                 [("detect:bridge", reason)])
+                # 전체 최신 실행(4분 전)만 보면 정상이다. 한 경로가 멈췄으니 주의(stopped)이고 까닭 끝에 붙는다
+                self.assertEqual((data["state"], data["reason"], data["stopped"]),
+                                 ("ok", f"마지막 탐지 실행 4분 전 · 노드 · 관제 탐지(1분) 멈춤 · {reason}", ["detect"]))
+        # 교체된 옛 버전(w1) · 떼어 낸 버전(n1)의 기록은 멈춰 있어도 보지 않는다
+        await self.conn.execute("DELETE FROM detector_runs WHERE rule_version = 'c1'")
+        await self.conn.execute("""INSERT INTO detector_runs (rule_version, started_at, finished_at)
+            VALUES ('c1', $1, $1), ('w1', $2, $2), ('n1', $3, $3)""", self.ago(300), self.ago(3660), self.ago(23 * 3600))
+        monitor = await t.monitor_view(self.conn, self.now)
+        self.assertEqual([x["key"] for x in monitor["items"] if x["key"].startswith("detect:")], [])
+        self.assertEqual(self.target(await self.view(), "data-node")["collection"]["stopped"], [])
+
+    async def test_카드가_이상이면_띠에도_항목이_있다(self):
+        # 센서 · 관문 기록 신호 끊김, 1분 다리 c1 기록 없음, 지점 불일치(관문 · 내부 방화벽) · 실패 · 보고 문제(block:fw),
+        #   등록 노드 web-02 수신 끊김(지표도 오래됨), web-01 웹 로그 적재 없음 · 자원 지표 오래됨. web-03 은 정상이다
+        await self.conn.execute("ALTER TABLE nodes ADD COLUMN receipt jsonb NOT NULL DEFAULT '{}'")
+        await self.conn.execute("UPDATE sensor_heartbeats SET seen_at = $1, checked_at = $2 WHERE source = $3",
+                                self.ago(1100), self.ago(120), "uploader:i-0123456789abcdef0")
+        await self.conn.execute("UPDATE sensor_heartbeats SET seen_at = $1 WHERE source = $2", self.ago(1500),
+                                "uploader:i-0fedcba9876543210")
+        await self.conn.execute("DELETE FROM detector_runs WHERE rule_version = 'c1'")
+        await self.conn.execute("""INSERT INTO blocklist (actor_ip, expires_at, enforcement) VALUES
+            ('203.0.113.9', $1, '{"gateway": {"state": "confirmed"}, "fw": {"state": "stale"}}')""",
+                                self.now + timedelta(hours=1))
+        receipt = json.dumps({"nginx": {"lines": 30, "malformed": 30, "last_line_at": t.cti.iso(self.ago(60))}})
+        await self.conn.execute("UPDATE nodes SET logs = '{nginx,auth,metrics}', receipt = $1 WHERE node_id = 'web-01'", receipt)
+        await self.node("web-02", hostname="web02.lab", sensor="web-02", seen=1200)
+        await self.node("web-03", sensor="web-03")
+        await self.conn.execute("UPDATE nodes SET logs = '{nginx}', receipt = $1 WHERE node_id = 'web-03'", receipt)
+        await self.event(30, "nginx.request", "web-03", "203.0.113.30")
+        await self.conn.execute("UPDATE node_metrics SET ts = ts - interval '12 minutes'")
+        conn = Counted(self.conn)
+        async with self.conn.transaction(isolation="repeatable_read", readonly=True):
+            body = await self.view()
+            monitor = await t.monitor_view(conn, self.now)
+        keys = [x["key"] for x in monitor["items"]]
+        needs = band_needs(body)
+        self.assertGreaterEqual(len(needs), 10)
+        for why, want in needs:
+            with self.subTest(card=why):
+                self.assertTrue(want & set(keys), f"{why}: 띠 {keys} 에 {sorted(want)} 가 없다")
+        self.assertEqual(keys, ["sensor", "gateway_uploader", "detect:bridge", "block_failed:fw", "point_stale:gateway",
+                                "point_stale:fw", "report:fw", "nodes_silent", "parse:web-01", "metrics:web-01"])
+        items = {x["key"]: x for x in monitor["items"]}
+        # 센서 까닭은 카드 까닭 그대로다(관문 기록 신호 시각까지)
+        self.assertEqual(items["sensor"]["reason"], "업로더 생존 신호 18분 전 · 적재기 확인 2분 전 · 확인 때 이미 15분 넘게 새 신호 없음"
+                                                    " · 관문 기록 신호 25분 전")
+        self.assertEqual(items["sensor"]["reason"], self.target(body, "aws-sensor")["collection"]["reason"])
+        self.assertEqual(items["nodes_silent"]["reason"], "web-02 수신 끊김 · 마지막 수신 20분 전")
+        self.assertEqual(items["report:fw"]["reason"], "받은 보고 없음 · 보고 파일 없음")
+        self.assertEqual(items["parse:web-01"]["reason"], "로그는 도착하는데 적재되지 않음 · 마지막 도착 1분 전")
+        web = self.target(body, "web-01")
+        self.assertEqual((web["collection"]["state"], [w["key"] for w in web["collection"]["warnings"]],
+                          web["response"]["stale"]), ("ok", ["parse"], 1))
+        self.assertEqual(self.target(body, "web-03")["collection"]["warnings"], [])
+        # now 를 더해 8개 이하다
+        self.assertLessEqual(len(conn.queries), 7)
+        self.assertEqual(conn.queries.count(t.PARSE_SQL), 1)
+
+    async def test_시험_출발지로_적재된_웹_로그도_적재다(self):
+        # 노드 추가의 첫 수신 탐침(127.0.0.1 한 줄) · 운영자 회선 요청은 시험 출발지라 fixture 로 적재된다. 적재됐으니 경고가 아니다
+        await self.conn.execute("ALTER TABLE nodes ADD COLUMN receipt jsonb NOT NULL DEFAULT '{}'")
+        await self.node("web-02", sensor="web-02")
+        receipt = json.dumps({"nginx": {"lines": 1, "malformed": 0, "last_line_at": t.cti.iso(self.ago(120))}})
+        await self.conn.execute("UPDATE nodes SET logs = '{nginx,auth,metrics}', receipt = $1 WHERE node_id = 'web-02'", receipt)
+        await self.event(120, "nginx.request", "web-02", "127.0.0.1", provenance="fixture")
+
+        async def parse():
+            monitor = await t.monitor_view(self.conn, self.now)
+            card = self.target(await self.view(), "web-02")["collection"]
+            return [x["key"] for x in monitor["items"] if x["key"].startswith("parse:")], [w["key"] for w in card["warnings"]]
+        self.assertEqual(await parse(), ([], []))
+        # 적재된 줄이 없으면 카드 · 띠 모두 경고다
+        await self.conn.execute("DELETE FROM events WHERE sensor = 'web-02'")
+        self.assertEqual(await parse(), (["parse:web-02"], ["parse"]))
+
+    async def test_폐기_등록_대기인_web_01_의_옛_지표는_띠에_없다(self):
+        await self.conn.execute("UPDATE node_metrics SET ts = ts - interval '2 hours'")
+        for status, want in (("active", ["metrics:web-01"]), ("revoked", []), ("pending", [])):
+            await self.conn.execute("UPDATE nodes SET status = $1 WHERE node_id = 'web-01'", status)
+            monitor = await t.monitor_view(self.conn, self.now)
+            body = await self.view()
+            with self.subTest(status=status):
+                self.assertEqual([x["key"] for x in monitor["items"] if x["key"].startswith("metrics:")], want)
+                keys = {x["key"] for x in monitor["items"]}
+                for why, need in band_needs(body):
+                    self.assertTrue(need & keys, f"{why}: 띠 {sorted(keys)} 에 {sorted(need)} 가 없다")
 
     async def test_관제_이상과_먼저_처리할_사건은_요약과_같은_기준이다(self):
         import main
@@ -846,13 +1016,32 @@ class TargetsWithoutTablesTests(Base):
         self.assertEqual((aws["security"]["incidents_1h"], aws["security"]["high_1h"], aws["security"]["pending"]),
                          (1, 1, 1))
         self.assertIsNone(aws["response"]["report"])
-        self.assertEqual((aws["response"]["applied"], aws["response"]["unverified"]), (0, 0))
+        self.assertEqual((aws["response"]["applied"], aws["response"]["unverified"], aws["response"]["stalled"]),
+                         (0, 0, "집행 보고를 읽을 수 없음 · 적용 여부 확인 불가"))
         web = next(x for x in body["targets"] if x["id"] == "web-01")
         self.assertEqual(web["system"], {"state": "no_privilege", "metrics": None})
         data = next(x for x in body["targets"] if x["id"] == "data-node")
         self.assertEqual([e["note"] for e in data["collection"]["extra"]], ["생존 신호 표를 읽을 수 없음"] * 2)
         self.assertEqual([x["vulns"] for x in body["targets"]], [{"available": False, "assets": []}] * 4)
         json.dumps(body)
+
+    async def test_표가_없어도_카드가_이상이면_띠에도_항목이_있다(self):
+        # 생존 신호 표가 없으면 센서 · 대응(옛 '적용 확인' 은 미확인으로 합침)이 확인 불가이고 띠는 '생존 신호' 하나가 말한다
+        await self.conn.execute("""INSERT INTO blocklist (actor_ip, expires_at, enforcement) VALUES
+            ('203.0.113.1', $1, '{"gateway": {"state": "confirmed"}, "fw": {"state": "failed"}}')""",
+                                self.now + timedelta(hours=1))
+        body = await self.view()
+        keys = [x["key"] for x in (await t.monitor_view(self.conn, self.now))["items"]]
+        needs = band_needs(body)
+        #   web-01 등록 기록이 없으면(카드 '노드 등록 기록 없음') 노드 수신 모름이다
+        self.assertLessEqual({"aws-sensor 수집 unknown", "data-node 탐지 unknown", "web-01 노드 등록 기록 없음",
+                              "aws-sensor 집행 보고를 읽을 수 없음 · 적용 여부 확인 불가"}, {why for why, _ in needs})
+        for why, want in needs:
+            with self.subTest(card=why):
+                self.assertTrue(want & set(keys), f"{why}: 띠 {keys} 에 {sorted(want)} 가 없다")
+        self.assertEqual(keys, ["heartbeats", "detect:honeypot", "detect:bridge", "nodes"])
+        web = next(x for x in body["targets"] if x["id"] == "web-01")["response"]
+        self.assertEqual((web["applied"], web["failed"], web["unverified"]), (0, 0, 1))
 
     async def test_nodes_표가_없으면_고정_네_대상만이다(self):
         await self.conn.execute("DROP TABLE nodes")

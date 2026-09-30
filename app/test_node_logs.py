@@ -450,9 +450,28 @@ class DetectTests(unittest.TestCase):
         self.assertFalse(got["stale"])
 
     def test_실행이_없으면_null_이고_멈춤이다(self):
-        for paths in ([], self.paths({"i2": 1, "v3": 1, "s1": 1})):
-            got = nl.device_detect(paths, self.bridge, "web-01", self.nodes, NOW)
-            self.assertEqual(got, {"last_at": None, "stale": True, "reason": "24시간 안 실행 기록 없음", "versions": []})
+        got = nl.device_detect([], self.bridge, "web-01", self.nodes, NOW)
+        self.assertEqual(got, {"last_at": None, "stale": True, "reason": "24시간 안 실행 기록 없음", "versions": []})
+        # 다리 실행은 있는데 이 장비의 버전(돌아야 할 버전)이 24시간 안에 없으면 기록 없음 · 멈춤이다(이슈 #82)
+        got = nl.device_detect(self.paths({"i2": 1, "v3": 1, "s1": 1}), self.bridge, "web-01", self.nodes, NOW)
+        self.assertEqual(got, {"last_at": None, "stale": True, "reason": "c1 · sg1 · w2 24시간 넘게 실행 없음",
+                               "versions": [{"rule_version": v, "last_at": None, "stale": True} for v in ("c1", "sg1", "w2")]})
+
+    def test_기대_버전_하나가_24시간_넘게_없으면_마지막_탐지는_없음이고_멈춤이다(self):
+        # c1 이 25시간 전에 멈췄다(창 밖이라 행이 없다). 옛 판정은 남은 w2 · sg1 로 정상이었다
+        got = nl.device_detect(self.paths({"s1": 1, "w2": 1, "a1": 1, "i2": 1, "sg1": 2}), self.bridge, "web-01",
+                               self.nodes, NOW)
+        self.assertEqual((got["last_at"], got["stale"], got["reason"]), (None, True, "c1 24시간 넘게 실행 없음"))
+        self.assertEqual([(v["rule_version"], v["stale"]) for v in got["versions"]],
+                         [("c1", True), ("sg1", False), ("w2", False)])
+        # 23시간 전이면 행이 있고 마지막 탐지는 그 시각이다. 기대 밖 옛 버전(w1 · n1)의 기록은 보지 않는다
+        paths = self.paths({"s1": 1, "w2": 1, "a1": 1, "i2": 1, "sg1": 2, "c1": 23 * 60}) + [
+            {"rule_version": "w1", "last_at": NOW - timedelta(minutes=61), "honeypot": False},
+            {"rule_version": "n1", "last_at": NOW - timedelta(minutes=30), "honeypot": False}]
+        got = nl.device_detect(paths, self.bridge, "web-01", self.nodes, NOW)
+        self.assertEqual((got["last_at"], got["stale"], got["reason"]),
+                         ((NOW - timedelta(hours=23)).isoformat(), True, "c1 마지막 실행 23시간 전"))
+        self.assertEqual([v["rule_version"] for v in got["versions"]], ["c1", "sg1", "w2"])
 
 
 class ReceiptTests(unittest.TestCase):

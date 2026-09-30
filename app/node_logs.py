@@ -15,12 +15,12 @@
   - 줄 id 는 line_hash 에서 만든 HMAC 이다(SESSION_SECRET 에서 떼어 낸 키). auth 줄은 시각 · 호스트 · pid 말고는 본문뿐이라
     line_hash 를 그대로 내면 가린 짧은 값을 해시로 되짚을 수 있다. 두 콘솔은 같은 비밀을 써 같은 id 를 낸다
   - 시각 네 가지는 서로 다른 칸이다: 마지막 적재(nodes.last_loaded_at) · 로그 종류별 마지막 줄(nodes.receipt[job].last_line_at,
-    Alloy 가 읽은 시각. 시험 · 형식 밖 · sshd 외 줄도 올린다) · 이 장비 탐지 경로의 마지막 탐지(1분 다리 버전 가운데 가장 오래된 것) ·
-    화면 갱신(as_of, DB now())
+    Alloy 가 읽은 시각. 시험 · 형식 밖 · sshd 외 줄도 올린다) · 이 장비 탐지 경로의 마지막 탐지(1분 다리가 돌려야 할 버전
+    (targets.BRIDGE_VERSIONS) 가운데 가장 오래된 것. 24시간 안 기록이 없는 버전이 있으면 없음 · 멈춤이다) · 화면 갱신(as_of, DB now())
   - 5분 넘게 앞선 시각의 줄(노드가 적은 시각)은 목록에서 빼고 수만 센다(1,001 에서 멈춘다)
 
 한계: 최신 N 줄보다 한 회차에 많이 들어오면 사이 줄을 건너뛴다(화면이 사이 끊김으로 알린다). 늦게 도착한 줄은 최신 N 줄 안에 들 때만
-보인다. 탐지는 24시간 안의 실행만 읽는다(targets.DETECT_PATHS_SQL). 하루 넘게 멈춘 버전은 판정에서 보이지 않는다.
+보인다.
 """
 import hashlib
 import hmac
@@ -319,26 +319,9 @@ def protected_device(device_id: str, cards) -> dict | None:
 
 
 def receipt_times(receipt) -> dict:
-    """nodes.receipt → {job: 마지막 줄 시각 또는 None}(nginx · auth 만). 사전이 아니거나 last_line_at 이 글자가 아니거나
-    ISO 시각이 아니면(시간대가 없는 것 포함) None 이다."""
-    try:
-        rec = cti.loads(receipt)
-    except ValueError:
-        rec = None
-    out = {}
-    for _, _, job in KINDS:
-        cur = rec.get(job) if isinstance(rec, dict) else None
-        value = cur.get("last_line_at") if isinstance(cur, dict) else None
-        at = None
-        if isinstance(value, str):
-            try:
-                at = datetime.fromisoformat(value)
-            except ValueError:
-                at = None
-            if at is not None and at.tzinfo is None:
-                at = None
-        out[job] = at
-    return out
+    """nodes.receipt → {job: 마지막 줄 시각 또는 None}(nginx · auth 만, targets.receipt_at). 사전이 아니거나 last_line_at 이 글자가
+    아니거나 ISO 시각이 아니면(시간대가 없는 것 포함) None 이다."""
+    return {job: targets.receipt_at(receipt, job) for _, _, job in KINDS}
 
 
 def times_lines(state: str, node) -> list[dict]:
@@ -353,9 +336,10 @@ def times_lines(state: str, node) -> list[dict]:
 def device_detect(path_rows, spec_rows, device_id: str, nodes, as_of) -> dict:
     """이 장비 탐지 경로의 마지막 탐지. path_rows 는 targets.DETECT_PATHS_SQL 행, spec_rows 는 1분 다리 버전의 targets.RULES_SQL 행,
     nodes 는 등록 노드 {발생원: 노드 id}(targets.node_sources) 다.
-    버전 안 규칙 하나라도 발생원 후보(targets.candidate_sources)가 이 장비에 붙으면(targets.attach) 이 장비의 버전이다(허니팟 버전은
-    보지 않는다). last_at 은 그 버전들 가운데 가장 오래된 값(보수적 기준)이고, 버전이 없거나 하나라도 15분 넘게 멈추면 멈춤이다.
-    reason · versions 는 targets.detect_paths 의 1분 다리 경로와 같은 모양이다. 24시간 안의 실행만 읽는 한계도 같다."""
+    1분 다리가 돌려야 할 버전(targets.bridge_rows, 24시간 안 기록이 없으면 last_at 없음) 가운데 규칙 하나라도 발생원 후보
+    (targets.candidate_sources)가 이 장비에 붙으면(targets.attach) 이 장비의 버전이다. last_at 은 그 버전들 가운데 가장 오래된
+    값(보수적 기준, 기록 없는 버전이 있으면 없음)이고, 버전이 없거나 하나라도 15분 넘게 멈추거나 기록이 없으면 멈춤이다.
+    reason · versions 는 targets.detect_paths 의 1분 다리 경로와 같은 모양이다."""
     specs: dict[str, list] = {}
     for row in spec_rows:
         specs.setdefault(row["rule_version"], []).append(targets.rule_spec(row))
@@ -363,19 +347,17 @@ def device_detect(path_rows, spec_rows, device_id: str, nodes, as_of) -> dict:
     def sees(spec) -> bool:
         return device_id in {tid for tid, _ in targets.attach(targets.candidate_sources(spec, nodes), nodes)}
 
-    mine = [r for r in path_rows
-            if not r["honeypot"] and any(sees(spec) for spec in specs.get(r["rule_version"], []))]
+    mine = [r for r in targets.bridge_rows(path_rows)
+            if any(sees(spec) for spec in specs.get(r["rule_version"], []))]
     times = [r["last_at"] for r in mine if r["last_at"] is not None]
-    last = min(times) if times else None
+    last = min(times) if times and len(times) == len(mine) else None
     late = [r for r in mine if targets.older(as_of, r["last_at"], targets.HEARTBEAT_STALE)]
     stale = not mine or bool(late)
     reason = None
     if not mine:
         reason = "24시간 안 실행 기록 없음"
     elif late:
-        names = " · ".join(r["rule_version"] or "버전 없음" for r in late)
-        known = [r["last_at"] for r in late if r["last_at"] is not None]
-        reason = f"{names} 마지막 실행 {targets.ago(as_of, max(known))}" if known else f"{names} 실행 기록 없음"
+        reason = targets.late_reason(late, as_of)
     versions = [{"rule_version": r["rule_version"], "last_at": cti.iso(r["last_at"]),
                  "stale": targets.older(as_of, r["last_at"], targets.HEARTBEAT_STALE)} for r in mine]
     return {"last_at": cti.iso(last), "stale": stale, "reason": reason, "versions": versions}
@@ -444,7 +426,7 @@ async def logs_view(c, device_id: str, *, kind=None, src_ip=None, status=None, l
                               device_id, as_of, names, *params, FUTURE_CAP)
 
     paths = list(await c.fetch(targets.DETECT_PATHS_SQL, as_of))
-    bridge = sorted({r["rule_version"] for r in paths if not r["honeypot"] and r["rule_version"]})
+    bridge = [r["rule_version"] for r in targets.bridge_rows(paths)]
     specs = await c.fetch(targets.RULES_SQL, bridge) if bridge else []
     detect = device_detect(paths, specs, device_id, targets.node_sources(cards), as_of)
 
