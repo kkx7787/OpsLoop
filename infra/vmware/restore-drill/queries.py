@@ -40,7 +40,9 @@ TABLES = ("events", "sessions", "rule_versions", "incidents", "actions", "verdic
 #   audit_console_users). 표(console_users 에 열만 더한다) · FK · 뷰(audit_log 는 교체) · 시퀀스는 그대로다
 # 이슈 #63 뒤: 함수 +3(console_account_create · console_account_delete · console_account_password). 표 · FK · 트리거 · 뷰 ·
 #   시퀀스는 그대로다
-EXPECT = {"tables": 26, "fk": 15, "triggers": 9, "functions": 18, "views": 3}
+# 이슈 #77 뒤: 트리거 +1(trg_blocklist_points) · 함수 +1(blocklist_points_change). 표(blocklist · absorbed_blocks 에 points 열만
+#   더한다) · FK · 뷰 · 시퀀스는 그대로다
+EXPECT = {"tables": 26, "fk": 15, "triggers": 10, "functions": 19, "views": 3}
 S3_SENSORS = ("cowrie", "decoy", "gateway")      # opsloop-ingest SENSORS. 나머지 센서는 관제 대상 로그(Loki · 관문 · 관리 원장)
 DB_ONLY_SENSORS = ("audit", "console")           # DB 에만 있는 이벤트. 원장에서 다시 만들 수 없다
 
@@ -272,9 +274,9 @@ FINGERPRINTS = (
     ("actions", "id::text", "ROW(id, incident_key, action, operator, note, created_at)", "created_at", "actions", ""),
     ("blocklist", "actor_ip::text",
      "ROW(actor_ip, reason, incident_key, created_at, expires_at, released_at, released_by, requested_by, method,"
-     " enforced_at, enforce_note)", "greatest(created_at, released_at, enforced_at)", "blocklist", ""),
+     " enforced_at, enforce_note, points)", "greatest(created_at, released_at, enforced_at)", "blocklist", ""),
     ("absorbed_blocks", "first_key",
-     "ROW(first_key, expires_at, requested_by, created_at, released_at, released_by)",
+     "ROW(first_key, expires_at, requested_by, created_at, released_at, released_by, points)",
      "greatest(created_at, released_at)", "absorbed_blocks", ""),
     ("nodes", "node_id", "ROW(node_id, hostname, role, sensor, status, addr, logs, registered_at, md5(token_hash))",
      "registered_at", "nodes", ""),

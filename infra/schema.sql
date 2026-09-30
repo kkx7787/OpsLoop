@@ -656,10 +656,12 @@ CREATE INDEX IF NOT EXISTS idx_node_metrics_node_loaded ON node_metrics (node_id
 --     console.block.released    살아 있는 차단을 풀거나 지웠다          R201 이 센다
 --     console.block.shortened   살아 있는 차단의 만료를 앞당겼다        R201 이 센다
 --     console.block.extended    살아 있는 차단의 만료를 늦췄다
+--     console.block.points      살아 있는 차단의 적용 지점을 넓혔다 ('차단 적용 지점 선택 (이슈 #77)' 블록의 트리거가 남긴다)
 --     console.block.enforced    집행기가 관문 반영을 확인했다 (enforced_at 이 채워지거나 바뀌었다)
 --     console.block.unenforced  집행 기록을 지웠다 (enforced_at 이 비워졌다). why=released · expired · reset(새 요청 등)
 --     console.block.expired     만료로 집행 목록에서 빠졌다. 행을 고치지 않으므로 트리거가 아니라 집행기가
 --                               note_block_expired(ip, expires) 로 남긴다 (아래 '차단 집행' 블록). 같은 (ip, 만료)는 한 번만
+--   생성 · 재차단 · 만료 변경 줄에는 요청 지점(points=gateway,fw · fw, 열이 없는 DB 는 '-')이 붙는다(이슈 #77).
 --   만료는 행을 풀지 않는다(released_at 을 쓰지 않는다). 활성은 released_at IS NULL 이고, 관문에 넘기는 것은 그 가운데 만료가
 --   남은 행이다. 살아 있는 차단을 released_at 으로 푸는 것은 만료가 지났든 아니든 해제(released)다. 만료가 지났는지는 input 의
 --   past_expiry 로만 남긴다. 호출자가 넣은 해제 시각(미래 · 과거)으로 분류가 갈리지 않는다. 만료 자체는 expired 로 따로 남고
@@ -702,6 +704,7 @@ SET search_path = public, pg_temp
 AS $$
 DECLARE
     v text;
+    p text;
 BEGIN
     IF TG_OP = 'DELETE' THEN
         IF OLD.released_at IS NULL THEN          -- 살아 있는 차단을 지우는 것도 해제다
@@ -712,11 +715,13 @@ BEGIN
         END IF;
         RETURN NULL;
     END IF;
+    -- 요청 지점(이슈 #77 blocklist.points). 열이 없는 DB(이 함수만 먼저 적용)에서도 돌게 to_jsonb 로 읽고, 없으면 '-' 다
+    p := coalesce(nullif(array_to_string(ARRAY(SELECT jsonb_array_elements_text(to_jsonb(NEW) -> 'points')), ','), ''), '-');
     IF TG_OP = 'INSERT' THEN
         -- ON CONFLICT DO UPDATE 로 기존 행을 고친 것은 INSERT 가 아니라 아래 UPDATE 로 온다
         PERFORM audit_event('console.block.created',
-                            format('ip=%s incident=%s expires=%s requested_by=%s', host(NEW.actor_ip),
-                                   coalesce(NEW.incident_key, '-'), coalesce(NEW.expires_at::text, 'none'),
+                            format('ip=%s incident=%s expires=%s points=%s requested_by=%s', host(NEW.actor_ip),
+                                   coalesce(NEW.incident_key, '-'), coalesce(NEW.expires_at::text, 'none'), p,
                                    coalesce(NEW.requested_by, '-')));
         RETURN NULL;
     END IF;
@@ -737,12 +742,13 @@ BEGIN
         PERFORM audit_event(
             CASE WHEN NEW.expires_at IS NOT NULL AND (OLD.expires_at IS NULL OR NEW.expires_at < OLD.expires_at)
                  THEN 'console.block.shortened' ELSE 'console.block.extended' END,
-            format('ip=%s from=%s to=%s', host(NEW.actor_ip), coalesce(OLD.expires_at::text, 'none'),
-                   coalesce(NEW.expires_at::text, 'none')));
+            format('ip=%s from=%s to=%s points=%s', host(NEW.actor_ip), coalesce(OLD.expires_at::text, 'none'),
+                   coalesce(NEW.expires_at::text, 'none'), p));
     ELSIF OLD.released_at IS NOT NULL AND NEW.released_at IS NULL THEN
         PERFORM audit_event('console.block.rearmed',
-                            format('ip=%s incident=%s expires=%s released_by=%s requested_by=%s', host(NEW.actor_ip),
-                                   coalesce(NEW.incident_key, '-'), coalesce(NEW.expires_at::text, 'none'),
+                            format('ip=%s incident=%s expires=%s points=%s released_by=%s requested_by=%s',
+                                   host(NEW.actor_ip), coalesce(NEW.incident_key, '-'),
+                                   coalesce(NEW.expires_at::text, 'none'), p,
                                    coalesce(OLD.released_by, '-'), coalesce(NEW.requested_by, '-')));
     END IF;
     -- 집행 기록. 위 분류와 따로 본다(재차단이 집행 기록을 함께 비우면 두 줄이 남는다). 같은 값을 다시 쓰면 남지 않는다
@@ -1769,3 +1775,77 @@ BEGIN
     END IF;
 END
 $$;
+
+-- 차단 적용 지점 선택 (이슈 #77)
+--   차단 요청마다 적용 지점을 고른다. 내부 방화벽은 늘 막고 AWS 관문은 고른 요청만 막는다(관문 전용은 없다). 기본값은 콘솔 ·
+--   triage 가 규칙으로 정한다(app/block_points.py). 집행기는 목록 문서의 entries(관문 목록)에 관문을 요청한 행을, points.fw(내부
+--   방화벽 목록)에 모든 행을 싣는다(enforcer/block_enforcer.py).
+--     blocklist.points  요청 지점. '{gateway,fw}' · '{fw}' 두 값만 받는다(정규 순서, CHECK blocklist_points_valid). 기존 행과 열을
+--                  모르는 옛 문장(콘솔 · triage 옛 판)은 기본값 두 지점이라 #77 전 동작 그대로다. 상수 기본값이라 표를 다시 쓰지 않는다.
+--     absorbed_blocks.points  흡수 후속 차단 약속의 지점. 같은 기본값 · CHECK(absorbed_blocks_points_valid)다.
+--     blocklist_points_change · trg_blocklist_points  points 를 쓰는 갱신마다 돈다. 살아 있는 행(해제 전 · 만료 전)을 풀지 않고
+--                  좁히면 거부한다(23514 blocklist_points_narrow). 좁히기는 감사 없는 부분 해제라서, 관리자의 '관문 빼기' 는 콘솔이
+--                  한 트랜잭션에서 해제 뒤 다시 건다. 살아 있는 행을 넓히면 console.block.points(ip · from · to)로 남긴다. 해제 · 만료된
+--                  행을 다시 거는 것은 어느 값이든 받는다(기록은 audit_blocklist 의 rearmed · extended 줄 points=). SECURITY DEFINER 다
+--                  (audit_blocklist 와 같다).
+--   enforcement(#51 블록)의 상태에 removing 을 더한다: 목록에서 빠진 행(해제 · 만료 · 제외)이나 요청했다가 뺀 지점(관리자 관문 빼기)을
+--   그 지점이 뺐다고 확인하기 전이다. 확인한 지점 키는 지우고 모두 지워지면 NULL 이다. 그 밖에 요청하지 않은 지점은 키가 없고, 목록 행의
+--   요청 지점에는 removing 이 없다.
+--   권한은 새로 주지 않는다: 콘솔(triage 포함)은 표 INSERT · UPDATE 로 쓰고, 집행 역할은 표 SELECT 로 읽기만 한다(열 UPDATE 목록에
+--   points 가 없다). 탐지 역할은 차단 목록을 보지 못하고 백업은 pg_read_all_data 로 읽는다.
+--   infra/migrations/20261003_block_points_choice.sql 이 이 블록과 같다(lock_timeout 한 줄만 다르다. infra/test_block_points_choice_db.py
+--   가 대조한다). 여러 번 적용해도 결과가 같고, 역할 블록 · 20260927 · 20260929 · 20260930 을 다시 적용한 뒤 다시 적용하지 않아도
+--   된다(권한을 주지 않는다). 콘솔 · triage 새 판보다 먼저, 복원 뒤에도 적용한다.
+-- 열 · 제약은 없을 때만 더한다. ALTER TABLE 은 IF NOT EXISTS 여도 ACCESS EXCLUSIVE 부터 잡으므로, 이미 있으면 표를 잠그지 않아
+-- 다시 적용이 읽는 트랜잭션(백업 pg_dump · 콘솔 조회)을 기다리지 않는다
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_attribute
+                    WHERE attrelid = 'blocklist'::regclass AND attname = 'points' AND NOT attisdropped) THEN
+        ALTER TABLE blocklist ADD COLUMN points text[] NOT NULL DEFAULT '{gateway,fw}';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_attribute
+                    WHERE attrelid = 'absorbed_blocks'::regclass AND attname = 'points' AND NOT attisdropped) THEN
+        ALTER TABLE absorbed_blocks ADD COLUMN points text[] NOT NULL DEFAULT '{gateway,fw}';
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                    WHERE conrelid = 'blocklist'::regclass AND conname = 'blocklist_points_valid') THEN
+        ALTER TABLE blocklist ADD CONSTRAINT blocklist_points_valid
+            CHECK (points IN ('{gateway,fw}'::text[], '{fw}'::text[]));
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                    WHERE conrelid = 'absorbed_blocks'::regclass AND conname = 'absorbed_blocks_points_valid') THEN
+        ALTER TABLE absorbed_blocks ADD CONSTRAINT absorbed_blocks_points_valid
+            CHECK (points IN ('{gateway,fw}'::text[], '{fw}'::text[]));
+    END IF;
+END
+$$;
+CREATE OR REPLACE FUNCTION blocklist_points_change() RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+    IF OLD.released_at IS NOT NULL OR OLD.expires_at <= now() THEN
+        RETURN NULL;                             -- 해제 · 만료된 행을 다시 거는 것은 어느 값이든 받는다
+    END IF;
+    IF NEW.released_at IS NULL AND NOT NEW.points @> OLD.points THEN
+        RAISE EXCEPTION USING ERRCODE = 'check_violation', CONSTRAINT = 'blocklist_points_narrow',
+            TABLE = 'blocklist', COLUMN = 'points',
+            MESSAGE = format('살아 있는 차단의 적용 지점은 좁히지 못한다(해제 뒤 다시 건다): %s %s → %s', host(NEW.actor_ip),
+                             array_to_string(OLD.points, ','), array_to_string(NEW.points, ','));
+    END IF;
+    IF NEW.released_at IS NULL AND (NEW.expires_at IS NULL OR NEW.expires_at > now())
+       AND NEW.points IS DISTINCT FROM OLD.points THEN
+        PERFORM audit_event('console.block.points',
+                            format('ip=%s from=%s to=%s', host(NEW.actor_ip), array_to_string(OLD.points, ','),
+                                   array_to_string(NEW.points, ',')));
+    END IF;
+    RETURN NULL;
+END;
+$$;
+-- 트리거 함수는 직접 부를 수 없지만 SECURITY DEFINER 이므로 PUBLIC 실행 권한도 거둔다 (audit_blocklist 와 같다)
+REVOKE ALL ON FUNCTION blocklist_points_change() FROM PUBLIC;
+CREATE OR REPLACE TRIGGER trg_blocklist_points
+    AFTER UPDATE OF points ON blocklist
+    FOR EACH ROW EXECUTE FUNCTION blocklist_points_change();

@@ -2,7 +2,7 @@
 """콘솔 계정 추가 · 삭제 · 비밀번호(이슈 #63) DB 시험.  python3 infra/test_console_accounts_manage_db.py
 
 DB 없이 도는 글자 시험: 마이그레이션(infra/migrations/20261002_console_accounts_manage.sql)이 schema.sql 의 '콘솔 계정 추가 · 삭제 ·
-비밀번호 (이슈 #63)' 블록을 글자 그대로 담는지, 블록이 #59 블록 뒤 파일 끝에 있는지, 세 함수(console_account_create ·
+비밀번호 (이슈 #63)' 블록을 글자 그대로 담는지, 블록이 #59 블록 뒤(그 뒤에는 #77 블록만)에 있는지, 세 함수(console_account_create ·
 console_account_delete · console_account_password)의 모양 · 결과 차례 · 해시 형식 검사(app/auth.py hash_password 와 같은 모양) ·
 아이디 검사(명령줄과 같은 식) · 권한 줄이 계약과 같은지(콘솔 역할에 계정 표 쓰기 권한을 늘리지 않는지), verify-db-roles.sh 에 #63 절이
 있고 #59 절이 그대로인지, 복원 훈련의 함수 수 기대값이 늘었는지 본다.
@@ -36,6 +36,7 @@ ACCOUNTS59 = os.path.join(ROOT, "infra", "test_console_accounts_db.py")
 
 HEADER = "-- 콘솔 계정 추가 · 삭제 · 비밀번호 (이슈 #63)"
 HEADER59 = "-- 콘솔 계정 관리 (이슈 #59)"
+NEXT_HEADER = "-- 차단 적용 지점 선택 (이슈 #77)"      # 이 블록 뒤에 오는 다음 블록(infra/test_block_points_choice_db.py)
 VERIFY_SECTION = 'echo "== 콘솔 계정 추가 · 삭제 · 비밀번호 (이슈 #63'
 SIGS = {"console_account_create": "console_account_create(text, text, text)",
         "console_account_delete": "console_account_delete(text)",
@@ -102,9 +103,11 @@ BAD_NAMES = [None, "", "a" * 65, "han seong", "op1\n", "관제사", "op1;drop", 
 
 
 def block63(text):
-    """'콘솔 계정 추가 · 삭제 · 비밀번호 (이슈 #63)' 블록(머리 주석 · 함수 셋 · 권한). 파일 끝의 블록이다."""
+    """'콘솔 계정 추가 · 삭제 · 비밀번호 (이슈 #63)' 블록(머리 주석 · 함수 셋 · 권한). 뒤에 #77 블록이 있으면 그 앞까지다."""
     start = text.index(HEADER + "\n")
-    end = text.rindex("END\n$$;") + len("END\n$$;")
+    stop = text.find("\n" + NEXT_HEADER, start)
+    region = text if stop < 0 else text[:stop]
+    end = region.rindex("END\n$$;") + len("END\n$$;")
     return text[start:end]
 
 
@@ -134,13 +137,15 @@ class ManageTextTest(unittest.TestCase):
         self.assertIn("< infra/migrations/20261002_console_accounts_manage.sql", head)
         self.assertIn("infra/vmware/scripts/verify-db-roles.sh 의 '콘솔 계정 추가 · 삭제 · 비밀번호' 줄", head)
 
-    def test_블록은_59_블록_뒤_파일_끝에_있다(self):
-        # #59 블록의 도장 · 감사 트리거가 이 함수들의 변경을 찍고 남긴다. 역할 블록보다도 뒤다(실행 권한만 주므로 다시 적용해도 남는다)
+    def test_블록은_59_블록_뒤에_있고_그_뒤에는_77_블록만_온다(self):
+        # #59 블록의 도장 · 감사 트리거가 이 함수들의 변경을 찍고 남긴다. 역할 블록보다도 뒤다(실행 권한만 주므로 다시 적용해도 남는다).
+        # 스키마 끝은 #77 블록이다(infra/test_block_points_choice_db.py)
         schema = read(SCHEMA)
         at = schema.index(HEADER + "\n")
         self.assertGreater(at, schema.index(HEADER59 + "\n"))
         self.assertGreater(at, schema.index("GRANT pg_read_all_data TO opsloop_backup"))
-        self.assertEqual(schema.rstrip("\n"), schema[:at] + block63(schema))
+        rest = schema[at + len(block63(schema)):].strip("\n")
+        self.assertTrue(rest.startswith(NEXT_HEADER), rest[:80])
         self.assertEqual(schema.count(HEADER + "\n"), 1)
 
     def test_세_함수의_약속(self):
@@ -203,7 +208,8 @@ class ManageTextTest(unittest.TestCase):
         self.assertLess(text.index('echo "== 콘솔 계정 관리 (이슈 #59'), text.index(VERIFY_SECTION))
 
     def test_복원_훈련은_새_함수_셋을_센다(self):
-        self.assertEqual(QUERIES.EXPECT, {"tables": 26, "fk": 15, "triggers": 9, "functions": 18, "views": 3})
+        # 함수 18 = #59 뒤 15 + 이 블록의 셋. #77 이 트리거 +1 · 함수 +1 을 더했다(infra/test_block_points_choice_db.py)
+        self.assertEqual(QUERIES.EXPECT, {"tables": 26, "fk": 15, "triggers": 10, "functions": 19, "views": 3})
 
 
 class ManageCase(ACC.AccountsCase):
