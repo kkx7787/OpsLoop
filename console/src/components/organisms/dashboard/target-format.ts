@@ -158,6 +158,14 @@ export function pendingHref(deviceId: string): string {
   return `/incidents?${new URLSearchParams({ judged: 'false', device: deviceId })}`
 }
 
+/**
+ * 최근 로그 화면(#73)이 있는 대상: web-01 과 등록 노드. 서버의 보호 대상 판정(device_options 의 protected)과 같다.
+ * groupTargets 가 숨기지 않으려고 보호 대상에 둔 모르는 고정 id 는 들지 않는다(서버가 404 로 답한다)
+ */
+export function isLogDevice(target: Pick<Target, 'id' | 'kind'>): boolean {
+  return targetKind(target) === PROTECTED_KIND || (PROTECTED_IDS as readonly string[]).includes(target.id)
+}
+
 /** 대시보드 무리(#72): 보호 대상(맨 위 카드) · 관측 센서 · 관제 시스템(아래 접힌 줄) */
 export interface TargetGroups<T> {
   protected: T[]

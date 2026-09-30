@@ -38,6 +38,8 @@ export const routes: RouteObject[] = [
           { path: 'nodes', lazy: async () => ({ Component: (await import('@/pages/nodes/NodesPage')).NodesPage }) },
           { path: 'nodes/new', lazy: async () => ({ Component: (await import('@/pages/nodes/NodeEnrollmentPage')).NodeEnrollmentPage }), handle: { crumb: '노드 추가' } satisfies RouteHandle },
           { path: 'inventory', lazy: async () => ({ Component: (await import('@/pages/assets/AssetsPage')).AssetsPage }) },
+          // 보호 대상 장비 최근 로그(#73). 메뉴에는 없고 대시보드 카드 · 사건 상세 장비 배지에서 연다
+          { path: 'devices/:id/logs', lazy: async () => ({ Component: (await import('@/pages/device-logs/DeviceLogsPage')).DeviceLogsPage }), handle: { crumb: '최근 로그' } satisfies RouteHandle },
           { path: 'alerts', lazy: async () => ({ Component: (await import('@/pages/alerts/AlertsPage')).AlertsPage }) },
           { path: 'audit', lazy: async () => ({ Component: (await import('@/pages/audit/AuditPage')).AuditPage }) },
           { path: 'accounts', lazy: async () => ({ Component: (await import('@/pages/accounts/AccountsPage')).AccountsPage }) },

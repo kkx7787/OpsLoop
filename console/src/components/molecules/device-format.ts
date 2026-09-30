@@ -1,4 +1,4 @@
-import type { DeviceBasis, IncidentBase, IncidentDevice } from '@/api/incidents'
+import { UNCONFIRMED_DEVICE, type DeviceBasis, type IncidentBase, type IncidentDevice } from '@/api/incidents'
 
 /**
  * 관련 장비 표기(#72). 목록 행 · 카드 · 상세 머리 · 대시보드 대기열 · 새 사건 알림이 같은 함수로 가른다.
@@ -80,4 +80,19 @@ export function hasConfirmedProtected(devices?: readonly IncidentDevice[] | null
 /** 목록 device 값(장비 id 또는 '_unconfirmed'). 서버 형식 검사와 같다 */
 export function isDeviceId(v: unknown): v is string {
   return typeof v === 'string' && DEVICE_ID.test(v)
+}
+
+/** 로그 화면(#73)을 여는 장비 id. 형식이 맞고 '_unconfirmed' 가 아니다(보호 대상인지는 서버가 가른다) */
+export function isLogDeviceId(v: unknown): v is string {
+  return isDeviceId(v) && v !== UNCONFIRMED_DEVICE
+}
+
+/** 그 장비의 최근 로그(#73) */
+export function deviceLogsHref(id: string): string {
+  return `/devices/${encodeURIComponent(id)}/logs`
+}
+
+/** 그 장비의 사건 목록(서버 device 필터). 기간 · 판정 조건은 넣지 않는다 */
+export function deviceIncidentsHref(id: string): string {
+  return `/incidents?${new URLSearchParams({ device: id })}`
 }

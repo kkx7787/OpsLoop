@@ -192,6 +192,34 @@ describe('TargetCard(#52)', () => {
     expect(within(node.row('보안')).getByRole('link', { name: '미판정 3' })).toHaveAttribute('href', '/incidents?judged=false&device=web-02')
   })
 
+  it('보호 대상(web-01 · 등록 노드) 카드에만 맨 아래 사건 보기 · 최근 로그 한 줄이 있고 인쇄에는 빠진다(#73)', () => {
+    for (const [target, id] of [[web01(), 'web-01'], [nodeTarget('web-02'), 'web-02']] as const) {
+      const { card, unmount } = renderCard(target)
+      const links = card.querySelector<HTMLElement>('[data-device-links]') as HTMLElement
+      expect(links).toHaveClass('print:hidden')
+      expect(card.lastElementChild).toBe(links)
+      expect(within(links).getByRole('link', { name: '사건 보기' })).toHaveAttribute('href', `/incidents?device=${id}`)
+      expect(within(links).getByRole('link', { name: '최근 로그' })).toHaveAttribute('href', `/devices/${id}/logs`)
+      expect(within(links).getByRole('link', { name: '최근 로그' })).not.toHaveAttribute('target')
+      unmount()
+    }
+    for (const target of [awsSensor(), consoleTarget(), dataNode()]) {
+      const { card, unmount } = renderCard(target)
+      expect(card.querySelector('[data-device-links]')).toBeNull()
+      expect(within(card).queryByRole('link', { name: '최근 로그' })).toBeNull()
+      unmount()
+    }
+    // 모바일에서 펼친 카드(inline)에도 같은 줄이 있다
+    render(
+      <MemoryRouter>
+        <LiveContext.Provider value={CONNECTED}>
+          <TargetCard target={web01()} asOf={AS_OF} variant="inline" />
+        </LiveContext.Provider>
+      </MemoryRouter>,
+    )
+    expect(screen.getByRole('link', { name: '최근 로그' })).toHaveAttribute('href', '/devices/web-01/logs')
+  })
+
   it('데이터 노드 확인이 멈추면 머리 배지는 주의(주의색)이고 data-collection 은 서버 값(ok) 그대로다(#72)', () => {
     const { card } = renderCard(dataNodeStopped())
     const badge = card.querySelector('[data-collection-badge]')

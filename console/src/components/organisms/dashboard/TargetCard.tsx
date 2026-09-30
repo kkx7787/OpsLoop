@@ -11,9 +11,10 @@ import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { Time } from '../../atoms/Time'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { CtiBadge } from '../../molecules/CtiBadge'
+import { deviceIncidentsHref, deviceLogsHref } from '../../molecules/device-format'
 import { InfoTip } from '../../molecules/InfoTip'
 import { incidentHref } from '../incidents/model'
-import { assetHref, collectionState, headBadge, LABEL_MAX, latestLog, pendingHref, responseParts, systemText, vulnText } from './target-format'
+import { assetHref, collectionState, headBadge, isLogDevice, LABEL_MAX, latestLog, pendingHref, responseParts, systemText, vulnText } from './target-format'
 
 export interface TargetCardProps {
   target: Target
@@ -39,6 +40,7 @@ export interface TargetCardProps {
  * 이름이 node_id 와 다르면 역할 옆에 node_id 를 붙여 수집 노드 화면과 맞춰 보게 한다.
  * #72: 머리 배지는 headBadge(데이터 노드 확인 멈춤은 '주의', data-collection 은 서버 값 그대로), '미판정 N' 은 그 장비의 미판정 목록으로 잇는다.
  * 카드가 넓으면(컨테이너 56rem 이상) 두 단(수집 · 보안 · 최근 사건 | 시스템 · 대응 · 취약점)이다. 인쇄는 폭과 관계없이 한 단이다.
+ * #73: 보호 대상(web-01 · 등록 노드) 카드 맨 아래에 '사건 보기 · 최근 로그' 한 줄. 모바일은 펼친 카드(inline) 안에만 있고 인쇄에는 빠진다.
  */
 export function TargetCard({ target, asOf, cti, variant = 'card', className }: TargetCardProps) {
   const titleId = useId()
@@ -98,6 +100,12 @@ export function TargetCard({ target, asOf, cti, variant = 'card', className }: T
           <VulnFacts vulns={target.vulns} asOf={asOf} />
         </Row>
       </dl>
+      {isLogDevice(target) && (
+        <p className="m-0 flex flex-wrap gap-x-4 gap-y-1 border-t border-line px-3 py-1.5 text-xs print:hidden" data-device-links="">
+          <Link to={deviceIncidentsHref(target.id)}>사건 보기</Link>
+          <Link to={deviceLogsHref(target.id)}>최근 로그</Link>
+        </p>
+      )}
     </div>
   )
 }
