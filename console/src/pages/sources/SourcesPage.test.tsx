@@ -69,9 +69,9 @@ describe('출발지 목록', () => {
     expect(within(row).getByText('AWS 센서')).toBeInTheDocument()
     const mix = within(row).getByRole('list', { name: '판정 분포' })
     expect([...mix.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['실제 위협2', '무시 가능1'])
-    // 차단 상태는 사건 상세 · 차단 목록과 같은 나눔 · 같은 지점별 결과
-    expect(row.querySelector('[data-block-state]')).toHaveAttribute('data-block-state', 'enforced')
-    expect(within(row).getByText('집행 확인')).toBeInTheDocument()
+    // 차단 상태는 사건 상세 · 차단 목록과 같은 나눔 · 같은 지점별 결과. 요청한 두 지점 가운데 내부 방화벽이 대기라 집행 대기다(#77)
+    expect(row.querySelector('[data-block-state]')).toHaveAttribute('data-block-state', 'pending')
+    expect(within(row).getByText('집행 대기')).toBeInTheDocument()
     expect([...row.querySelectorAll('[data-enforce-point]')].map((el) => [el.getAttribute('data-enforce-point'), el.getAttribute('data-point-state')]))
       .toEqual([['gateway', 'confirmed'], ['fw', 'pending']])
     // 사건 시각(마지막 · 첫 사건)과 마지막 관측(이벤트)을 따로 적는다

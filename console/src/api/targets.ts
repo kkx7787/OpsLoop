@@ -162,6 +162,10 @@ export interface TargetResponse {
   failed?: number | null
   /** 그 지점에서 적용을 확인하지 못한 살아 있는 차단 수(대기 · 확인 지연 · 기록 없음) */
   unverified: number | null
+  /** 그 지점을 요청하지 않은 살아 있는 차단 수(이슈 #77). 적용 · 실패 · 미확인은 요청한 행만 센다. 지점이 없으면 null. 이전 서버에는 없다 */
+  unrequested?: number | null
+  /** 그 지점을 요청했다가 빼서 그 지점이 뺐다고 확인하기 전인 차단 수(이슈 #77 결정 14). 지점이 없으면 null. 이전 서버에는 없다 */
+  removing?: number | null
   /** 이 대상 사건의 출발지 중 차단 금지 대역(정책상 차단 제외) 주소 수 */
   exempt: number
   report: TargetReport | null

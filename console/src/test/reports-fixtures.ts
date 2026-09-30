@@ -28,9 +28,11 @@ export const BLOCKS_SECTION: BlocksSection = {
   available: true, basis: 'mixed', notes: ['감사 이벤트: 종류별 수(행위자 · 내용은 싣지 않는다)'],
   actions: { block_ip: 9, unblock_ip: 1 },
   requests: { total: 9, console: 6, triage: 3, system: 0, unknown: 0 },
-  audit: [{ eventid: 'console.block.created', count: 8 }, { eventid: 'console.block.extended', count: 1 }],
-  enforcement: { created: 9, enforced: 8, p50_seconds: 42, max_seconds: 310 },
-  states: { total: 5, enforced: 3, pending: 1, excluded: 1, mismatch: 0 },
+  audit: [{ eventid: 'console.block.created', count: 8 }, { eventid: 'console.block.extended', count: 1 }, { eventid: 'console.block.points', count: 1 }],
+  // 관문 반영 지연은 관문을 요청한 새 요청만 센다(#77). 새 요청 9건 가운데 2건은 내부 방화벽만 요청했다. 1건은 관문이 빼기 전에
+  // 다시 건 기존 차단 유지(결정 2)라 지연에서 뺀다
+  enforcement: { created: 7, enforced: 5, maintained: 1, p50_seconds: 42, max_seconds: 310 },
+  states: { total: 5, enforced: 2, pending: 1, excluded: 1, mismatch: 0, failed: 1 },
 }
 
 export const TARGETS_SECTION: TargetsSection = {

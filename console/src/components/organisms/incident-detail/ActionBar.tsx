@@ -1,5 +1,5 @@
 import { useId, useState, type FormEvent, type ReactNode } from 'react'
-import { useActionMutation, type ActionCreated, type ActionInput, type IncidentDetail } from '@/api/incidents'
+import { useActionMutation, type ActionCreated, type ActionInput, type BlockPointsBasis, type IncidentDetail } from '@/api/incidents'
 import { describeError } from '@/api/errors'
 import { useMe, usePermission } from '@/auth/useMe'
 import { cn } from '@/lib/cn'
@@ -33,7 +33,10 @@ type Confirmable = Exclude<IncidentAction, 'acknowledge'>
  * 함께 해제'를 둔다(include_absorbed, 기본 끔). 흡수된 인시던트는 지워져 상세가 없으므로 첫 사건에서만 걸고 푼다.
  * 함께 차단하면 만료 전까지 새로 흡수되는 출발지도 서버가 같은 만료로 올린다(후속 차단). 흡수는 판정 · 차단 뒤에도
  * 붙으므로, 흡수 기록이 아직 없어도 흡수를 쓰는 규칙(absorbs)이면 선택을 보인다. 사람이 푼 곳 · 차단 금지 대역은 넣지 않는다.
- * 차단은 요청이다. 데이터 노드 집행기가 두 지점(AWS 관문 · web-01 앞 내부 방화벽)에 넘기고, 실제 적용 결과는 지점별로 따로 본다(이슈 #47 · #51).
+ * 차단은 요청이다. 데이터 노드 집행기가 요청 지점(AWS 관문 · web-01 앞 내부 방화벽)에 넘기고, 실제 적용 결과는 지점별로 따로 본다(이슈 #47 · #51).
+ * 차단 확인에는 '적용 지점' 묶음을 둔다(이슈 #77, BlockPointsField). 내부 방화벽은 늘 막고 관문은 확인란 하나로 더한다. 기본값은 서버
+ * block_points.default(규칙만으로 정함)이고 흡수 함께 차단 · 후속 차단도 같은 지점이다. 이전 서버(block_points 없음)는 묶음을 두지 않고
+ * 지점을 보내지 않는다(서버가 두 지점으로 본다).
  * 이 출발지가 차단 금지 대역(actor.exempt)이면 차단 단추를 흐리고 까닭을 보인다. 서버도 400 과 같은 까닭으로 거부한다.
  * 결과는 useActionMutation 이 상세 캐시에 바로 반영한다(이력 추가 · 상태 전이).
  * 확인 양식은 무엇을 하는지 한 문장과 안전 경고(집행 제외 · 대량 해제 알림 · 넣지 않을 곳)만 본문에 두고,
@@ -51,6 +54,8 @@ export function ActionBar({ detail, className }: ActionBarProps) {
   const [hours, setHours] = useState(String(DEFAULT_BLOCK_HOURS))
   const [note, setNote] = useState('')
   const [withAbsorbed, setWithAbsorbed] = useState(false)
+  // 관문에서도 막기. null 이면 고르지 않은 것이라 기본값(살아 있는 요청 · 서버 기본값)을 따른다
+  const [gateway, setGateway] = useState<boolean | null>(null)
   const panelId = useId()
 
   const acked = detail.status !== 'open'
@@ -67,6 +72,14 @@ export function ActionBar({ detail, className }: ActionBarProps) {
   const absorbedRelease = absorbedBlocked > 0 || !!follow
   // 이 출발지의 차단이 이미 풀렸어도 흡수 차단 · 약속이 살아 있으면 해제할 수 있다. 그때는 흡수 차단만 푼다
   const absorbedOnlyRelease = !activeBlock && absorbedRelease
+  // 적용 지점(이슈 #77). 살아 있는 차단이 관문을 요청했으면 체크한 채 잠근다(넓히기만). admin 은 풀 수 있고, 그러면 서버가
+  // 한 번에 해제 뒤 다시 건다(operator 가 보내면 403)
+  const blockPoints = detail.block_points ?? null
+  const liveGateway = !!blockPoints?.requested?.includes('gateway')
+  const withGateway = gateway ?? (liveGateway || !!blockPoints?.default.includes('gateway'))
+  const gatewayLocked = liveGateway && me.data?.role !== 'admin'
+  // 관문 빼기(admin). 서버가 해제 뒤 다시 걸되 만료는 살아 있는 차단처럼 앞당기지 않는다
+  const narrowing = !!blockPoints && liveGateway && !withGateway
   const busy = mutation.isPending
   const canConfirm = pending === 'block_ip' ? block.allowed : pending === 'unblock_ip' ? release.allowed : suppress.allowed
 
@@ -80,6 +93,7 @@ export function ActionBar({ detail, className }: ActionBarProps) {
     setNote('')
     setHours(String(DEFAULT_BLOCK_HOURS))
     setWithAbsorbed(false)
+    setGateway(null)
   }
 
   function send(input: ActionInput) {
@@ -98,6 +112,7 @@ export function ActionBar({ detail, className }: ActionBarProps) {
     const input: ActionInput = { action: pending }
     if (trimmed) input.note = trimmed
     if (pending === 'block_ip') input.expires_hours = Number(hours)
+    if (pending === 'block_ip' && blockPoints) input.points = withGateway ? ['gateway', 'fw'] : ['fw']
     if (pending === 'block_ip' && withAbsorbed && offerAbsorbed) input.include_absorbed = true
     if (pending === 'unblock_ip' && (withAbsorbed || absorbedOnlyRelease) && absorbedRelease) input.include_absorbed = true
     send(input)
@@ -190,14 +205,15 @@ export function ActionBar({ detail, className }: ActionBarProps) {
                   차단합니다.{' '}
                   <InfoTip label="차단">
                     {activeBlock && '이미 살아 있는 차단이 있으면 만료를 앞당기지 않습니다. '}
-                    적용 대상: AWS 관문 · web-01 앞 내부 방화벽. 실제 적용 결과는 지점별로 확인합니다.
+                    {!blockPoints && '적용 대상: AWS 관문 · web-01 앞 내부 방화벽. '}
+                    실제 적용 결과는 지점별로 확인합니다.
                   </InfoTip>
                 </span>
               </>
             )}
             {pending === 'block_ip' && legacyBlock && (
               <>
-                출발지 <span className="font-mono font-medium">{detail.actor_ip}</span> 에는 만료 없는 옛 차단이 살아 있어 두 지점 집행에서 빠집니다(집행 제외). 이 요청은 사유 · 요청자만 바꿉니다. 지점에서 막으려면 admin 이 해제한 뒤 다시{' '}
+                출발지 <span className="font-mono font-medium">{detail.actor_ip}</span> 에는 만료 없는 옛 차단이 살아 있어 두 지점 집행에서 빠집니다(집행 제외). 이 요청은 사유 · 요청자{narrowing ? ' · 적용 지점' : ''}만 바꿉니다. 지점에서 막으려면 admin 이 해제한 뒤 다시{' '}
                 <span className="whitespace-nowrap">
                   차단합니다.{' '}
                   <InfoTip label="옛 차단">살아 있는 차단의 만료는 앞당기지 않아, 다시 걸어도 만료가 그대로 없습니다.</InfoTip>
@@ -220,13 +236,22 @@ export function ActionBar({ detail, className }: ActionBarProps) {
               </>
             )}
           </p>
+          {pending === 'block_ip' && blockPoints && (
+            <BlockPointsField
+              checked={withGateway}
+              locked={gatewayLocked}
+              basis={blockPoints.basis}
+              live={liveGateway}
+              onChange={setGateway}
+            />
+          )}
           {pending === 'block_ip' && offerAbsorbed && (
             <AbsorbedCheck
               checked={withAbsorbed}
               onChange={setWithAbsorbed}
               label={absorbedSources > 0 ? `흡수된 출발지 ${absorbedSources}곳도 함께 차단` : '앞으로 흡수되는 출발지도 함께 차단'}
               hint={blockHint(detail.absorbed)}
-              tip="같은 페이로드로 이 사건에 묶인 출발지를 같은 만료로 올리고, 만료 전까지 새로 흡수되는 출발지도 같은 만료로 올립니다(첫 사건의 마지막 판정이 위협일 때만). 다른 사건으로 살아 있는 차단은 그 사건 것으로 두고 만료도 바꾸지 않습니다."
+              tip={`같은 페이로드로 이 사건에 묶인 출발지를 같은 만료로 올리고, 만료 전까지 새로 흡수되는 출발지도 같은 만료로 올립니다(첫 사건의 마지막 판정이 위협일 때만). 다른 사건으로 살아 있는 차단은 그 사건 것으로 두고 만료도 바꾸지 않습니다.${blockPoints ? ' 적용 지점은 이 출발지와 같고, 살아 있는 차단은 넓히기만 합니다.' : ''}`}
             />
           )}
           {pending === 'unblock_ip' && absorbedRelease && (
@@ -284,6 +309,79 @@ export function ActionBar({ detail, className }: ActionBarProps) {
         </Banner>
       )}
     </div>
+  )
+}
+
+/** 기본값의 까닭(서버 block_points.basis, 확인 창 ⓘ). 기본값은 규칙만으로 정하고 장비는 까닭에만 쓴다 */
+const BASIS_NOTE: Record<BlockPointsBasis, string> = {
+  honeypot_abuse: '허니팟 남용 규칙(프록시 남용 시도)이라 기본으로 관문에서도 막습니다.',
+  sensor_only: '허니팟 센서에서만 본 위협이라 관측이 이어지게 기본은 내부 방화벽만입니다. 허니팟 자원 소모 · 침해 의심이면 관문을 더합니다.',
+  protected: '보호 대상에서 본 위협이라 기본은 내부 방화벽입니다.',
+  monitor: '관제 시스템(콘솔 · 데이터 노드)에서 본 위협이라 기본은 내부 방화벽입니다.',
+  unconfirmed: '장비를 확인하지 못해 기본은 내부 방화벽입니다.',
+}
+
+interface BlockPointsFieldProps {
+  checked: boolean
+  /** 살아 있는 차단이 관문을 요청해 operator 는 뺄 수 없다 */
+  locked: boolean
+  basis: BlockPointsBasis
+  /** 살아 있는 차단이 관문을 요청했다. 풀면(admin) 서버가 해제 뒤 다시 건다 */
+  live: boolean
+  onChange: (checked: boolean) => void
+}
+
+/**
+ * 적용 지점(이슈 #77): 내부 방화벽(늘 적용 · 고정) · 'AWS 관문에서도 막기' 확인란 하나. 관문 전용은 없다.
+ * 까닭은 확인란 옆 ⓘ, 늘 보이는 한 줄은 안전 경고(허니팟 관측이 끊김) · 관문 빼기 기록 · 잠긴 까닭뿐이다
+ */
+function BlockPointsField({ checked, locked, basis, live, onChange }: BlockPointsFieldProps) {
+  const noteId = useId()
+  const tipId = useId()
+  const note = locked
+    ? '살아 있는 차단이 관문도 막고 있어 admin 만 뺄 수 있습니다.'
+    : live && !checked
+      ? '해제 뒤 다시 걸기로 기록됩니다.'
+      : checked && !live
+        ? '허니팟 관측이 끊깁니다.'
+        : ''
+  return (
+    <fieldset className="m-0 flex min-w-0 flex-col gap-1 border-0 p-0" data-block-points="">
+      <legend className="mb-1 p-0 text-xs text-ink-muted">적용 지점</legend>
+      <label className="flex items-center gap-2 text-sm font-medium">
+        <input type="checkbox" checked disabled />
+        내부 방화벽 · 늘 적용
+      </label>
+      <InfoTip
+        label="AWS 관문에서도 막기"
+        id={tipId}
+        render={({ button, panel }) => (
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-1.5">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled={locked}
+                  aria-describedby={[note ? noteId : null, tipId].filter(Boolean).join(' ')}
+                  onChange={(e) => onChange(e.target.checked)}
+                />
+                AWS 관문에서도 막기
+              </label>
+              {button}
+            </div>
+            {panel}
+          </div>
+        )}
+      >
+        {BASIS_NOTE[basis] ?? '기본값은 규칙으로 정합니다.'}
+      </InfoTip>
+      {note && (
+        <p id={noteId} className={cn('m-0 text-xs', locked ? 'text-ink-muted' : 'text-warning')} data-block-points-note="">
+          {note}
+        </p>
+      )}
+    </fieldset>
   )
 }
 

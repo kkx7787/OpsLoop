@@ -17,8 +17,10 @@ export interface DashboardMetricsProps {
 
 /**
  * 미판정 수치 네 칸(가장 오래된 미판정 · 미판정 · 판정 목표 초과 · 활성 차단 요청).
- * 활성 차단 칸은 지점별(AWS 관문 · 내부 방화벽) 적용 · 실패 · 미확인 두 줄이다(#72). 칸 이름의 요청 수에는 집행 제외가 들어 있어
- * 두 줄 합과 다르므로, 아래 줄 맨 앞에 집행 제외 수를 둔다. 집행기 확인이 멈춘 지점은 그 줄 끝에 멈춤을 붙인다(서버가 적용 · 실패를 미확인에 합쳤다).
+ * 활성 차단 칸은 지점별(AWS 관문 · 내부 방화벽) 적용 · 실패 · 미확인 두 줄이다(#72). 지점마다 그 지점을 요청한 행만 세고, 요청하지 않은
+ * 행은 그 줄의 '미요청 n', 관문을 뺐는데 관문이 뺐다고 확인하기 전인 행은 '빠짐 확인 전 n' 이다(#77, 0 이면 적지 않는다. 내부 방화벽은
+ * 늘 요청이라 관문 줄에만 생긴다). 칸 이름의 요청 수에는 집행 제외가
+ * 들어 있어 두 줄 합과 다르므로, 아래 줄 맨 앞에 집행 제외 수를 둔다. 집행기 확인이 멈춘 지점은 그 줄 끝에 멈춤을 붙인다(서버가 적용 · 실패를 미확인에 합쳤다).
  * 생존 신호 표를 읽을 수 없어 합친 것(unreadable)은 멈춤이 아니라 '집행 확인 불가' 다(#82). 서버 까닭은 말풍선으로 본다.
  * 이전 서버(지점별 없음)는 집행 확인 · 대기 · 제외 한 줄, 그보다 앞선 서버는 요청 수와 '집행 상태 미확인' 이다.
  * 계산 기준(판정 목표 · 첫 사건)은 값 옆 도움말(ⓘ)에 둔다.
@@ -51,7 +53,7 @@ export function DashboardMetrics({ summary: data, stale = false, className }: Da
   )
 }
 
-/** 지점별 두 줄(관문 · 내부 방화벽, 서버 순서). 0 도 적는다(적용 · 실패 · 미확인의 합이 요청 수를 설명한다) */
+/** 지점별 두 줄(관문 · 내부 방화벽, 서버 순서). 0 도 적는다(적용 · 실패 · 미확인의 합이 요청 수를 설명한다). 미요청 · 빠짐 확인 전은 0 이면 적지 않는다 */
 function PointLines({ points }: { points: readonly PointCounts[] }) {
   const n = (v: number) => (Number.isFinite(v) ? v : 0).toLocaleString('ko-KR')
   return (
@@ -60,6 +62,8 @@ function PointLines({ points }: { points: readonly PointCounts[] }) {
         // 좁은 칸에서도 낱말 가운데서 끊지 않는다(멈춤 표지는 통째로 다음 줄로 간다)
         <span key={p.point} className="block break-keep" data-block-point={p.point}>
           {`${p.label || p.point} 적용 ${n(p.applied)} · 실패 ${n(p.failed)} · 미확인 ${n(p.unverified)}`}
+          {typeof p.unrequested === 'number' && p.unrequested > 0 && <span data-block-unrequested="">{` · 미요청 ${n(p.unrequested)}`}</span>}
+          {typeof p.removing === 'number' && p.removing > 0 && <span data-block-removing="">{` · 빠짐 확인 전 ${n(p.removing)}`}</span>}
           {p.stalled && (
             <>
               {' '}
@@ -88,9 +92,9 @@ function excludedNote(blocks: BlockCounts | undefined): string | undefined {
   return blocks?.excluded ? `집행 제외 ${blocks.excluded.toLocaleString()}건` : undefined
 }
 
-/** 관문 불일치. 요청과 관문 상태가 5분 넘게 다르다(집행기 · 관문 동기화 확인) */
+/** 불일치. 요청한 지점 하나라도 상태가 목록과 5분 넘게 다르다(집행기 · 지점 동기화 확인, #77 부터 두 지점) */
 function mismatchNote(blocks: BlockCounts | undefined): string | undefined {
-  return blocks?.mismatch ? `관문 불일치 ${blocks.mismatch.toLocaleString()}건` : undefined
+  return blocks?.mismatch ? `불일치 ${blocks.mismatch.toLocaleString()}건` : undefined
 }
 
 /** 판정 뒤에 흡수됐는데 차단이 없는 출발지. 첫 사건 상세의 함께 차단(후속 차단)으로 막는다 */

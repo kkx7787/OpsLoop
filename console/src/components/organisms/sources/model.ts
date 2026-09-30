@@ -11,7 +11,7 @@ import {
   type SourceSort,
 } from '@/api/sources'
 import type { ActorBlock } from '@/api/incidents'
-import { enforcementPoints, type PointRow } from '../incident-detail/format'
+import { pointRows, type PointRow } from '../incident-detail/format'
 
 /**
  * 출발지 분석 화면(S-09)의 조각들이 같이 쓰는 값: 주소창 조건 · 경로 · 대상 이름 · 집행 지점 결과.
@@ -131,11 +131,12 @@ export function targetLabel(id: string): string | null {
 export const CHECKER_STALE_NOTE = '집행기 확인이 10분 넘게 멈춰 마지막 적용 확인을 믿지 않습니다. 그사이 이 지점이 규칙을 잃어도 드러나지 않습니다.'
 
 /**
- * 차단 행의 지점별 결과에 집행기 확인 상태를 더한다. 집행기가 멈춘 지점의 '적용 확인'은 '확인 지연'으로 보인다
- * (관문이 그 사이 규칙을 잃었어도 아무도 알리지 않는다). 확인 상태를 모르면(null) 지점 결과를 그대로 둔다
+ * 차단 행의 지점 칸(format.pointRows)에 집행기 확인 상태를 더한다. 집행기가 멈춘 지점의 '적용 확인'은 '확인 지연'으로 보인다
+ * (관문이 그 사이 규칙을 잃었어도 아무도 알리지 않는다). 확인 상태를 모르면(null) 지점 결과를 그대로 둔다.
+ * 미요청 · 빠짐 줄은 결과가 아니라 요청 · 목록 사실이라 멈춤으로 덮지 않는다(이슈 #77). now 는 만료를 가르는 기준 시각
  */
-export function checkedPoints(block: Pick<ActorBlock, 'enforcement'> | null | undefined, checkers: BlockCheckers | undefined): PointRow[] {
-  return enforcementPoints(block).map((row) => {
+export function checkedPoints(block: ActorBlock | null | undefined, checkers: BlockCheckers | undefined, now: number = Date.now()): PointRow[] {
+  return pointRows(block, now).map((row) => {
     const stale = row.key === 'gateway' ? checkers?.gateway_stale : checkers?.fw_stale
     if (stale !== true || row.point.state !== 'confirmed') return row
     return { ...row, point: { ...row.point, state: 'stale', note: CHECKER_STALE_NOTE }, noteTip: true }

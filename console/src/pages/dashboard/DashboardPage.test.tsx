@@ -347,7 +347,7 @@ describe('대시보드', () => {
     expect(fw.querySelector('[data-block-stalled]')).toHaveClass('text-warning')
     expect(gateway.querySelector('[data-block-stalled]')).toBeNull()
     // 요청 수(16)에는 집행 제외가 들어 있어 두 줄 합(3)과 다르다. 그 차이를 아래 줄 맨 앞에 둔다
-    expect(screen.getByText('집행 제외 13건 · 관문 불일치 1건')).toBeInTheDocument()
+    expect(screen.getByText('집행 제외 13건 · 불일치 1건')).toBeInTheDocument()
     expect(screen.queryByText(/집행 확인 2/)).toBeNull()
     expect(screen.queryByRole('link', { name: '16건' })).toBeNull()
   })
@@ -368,6 +368,28 @@ describe('대시보드', () => {
     }
   })
 
+  it('지점을 요청하지 않은 행은 그 지점 줄 끝의 미요청 n 이고, 0 이면 적지 않는다(#77)', async () => {
+    const points = [{ ...BLOCKS_BY_POINT[0], applied: 1, unverified: 0, unrequested: 2 }, { ...BLOCKS_BY_POINT[1], applied: 3, unverified: 0, stalled: null }]
+    stubDashboard({ summary: { ...MONITORING_SUMMARY, blocked_ips: 3, blocks: { enforced: 3, pending: 0, excluded: 0, mismatch: 0, failed: 0 }, blocks_by_point: points } })
+    const { container } = renderPage()
+    await screen.findByText('활성 차단 요청 3건')
+    // 관문 합(1) = 요청(3) − 제외(0) − 관문 미요청(2). 미요청은 미확인 · 실패에 섞지 않는다
+    expect(container.querySelector('[data-block-point="gateway"]')).toHaveTextContent(/^AWS 관문 적용 1 · 실패 0 · 미확인 0 · 미요청 2$/)
+    expect(container.querySelector('[data-block-point="fw"]')).toHaveTextContent(/^내부 방화벽 적용 3 · 실패 0 · 미확인 0$/)
+    expect(container.querySelector('[data-block-point="fw"] [data-block-unrequested]')).toBeNull()
+    expect(container.querySelector('[data-block-removing]')).toBeNull()
+  })
+
+  it('관문을 뺐는데 관문이 뺐다고 확인하기 전인 행은 관문 줄 끝의 빠짐 확인 전 n 이다(#77 결정 14)', async () => {
+    const points = [{ ...BLOCKS_BY_POINT[0], applied: 1, unverified: 0, unrequested: 1, removing: 1 }, { ...BLOCKS_BY_POINT[1], applied: 3, unverified: 0, removing: 0, stalled: null }]
+    stubDashboard({ summary: { ...MONITORING_SUMMARY, blocked_ips: 3, blocks: { enforced: 3, pending: 0, excluded: 0, mismatch: 0, failed: 0 }, blocks_by_point: points } })
+    const { container } = renderPage()
+    await screen.findByText('활성 차단 요청 3건')
+    // 관문 합(1) = 요청(3) − 제외(0) − 관문 미요청(1) − 관문 빠짐 확인 전(1)
+    expect(container.querySelector('[data-block-point="gateway"]')).toHaveTextContent(/^AWS 관문 적용 1 · 실패 0 · 미확인 0 · 미요청 1 · 빠짐 확인 전 1$/)
+    expect(container.querySelector('[data-block-point="fw"]')).toHaveTextContent(/^내부 방화벽 적용 3 · 실패 0 · 미확인 0$/)
+  })
+
   it('집행 제외가 0 이면 아래 줄에 적지 않는다', async () => {
     stubDashboard({ summary: { ...MONITORING_SUMMARY, blocks_by_point: [{ ...BLOCKS_BY_POINT[0], applied: 1, unverified: 1 }, { ...BLOCKS_BY_POINT[1], unverified: 2, stalled: null }] } })
     const { container } = renderPage()
@@ -381,7 +403,7 @@ describe('대시보드', () => {
     renderPage()
     expect(await screen.findByText('활성 차단 요청 16건')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: '집행 확인 2 · 대기 0 · 제외 13' })).toHaveAttribute('href', '/blocklist')
-    expect(screen.getByText('관문 불일치 1건')).toBeInTheDocument()
+    expect(screen.getByText('불일치 1건')).toBeInTheDocument()
     expect(screen.queryByRole('link', { name: '16건' })).toBeNull()
   })
 
@@ -403,7 +425,7 @@ describe('대시보드', () => {
   it('흡수 미차단이 없으면 첫 사건 도움말을 두지 않는다', async () => {
     stubDashboard({ summary: { ...MONITORING_SUMMARY, blocks: { enforced: 2, pending: 0, excluded: 13, mismatch: 1 } } })
     renderPage()
-    expect(await screen.findByText('관문 불일치 1건')).toBeInTheDocument()
+    expect(await screen.findByText('불일치 1건')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '첫 사건 설명' })).toBeNull()
   })
 

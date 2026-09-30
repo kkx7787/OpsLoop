@@ -206,7 +206,16 @@ describe('구역', () => {
     const blocks = screen.getByRole('region', { name: '차단 · 집행' })
     expect(rowOf(within(blocks).getByRole('table', { name: '새 차단 요청의 요청자 (감사 기록)' }))).toEqual(['9', '6', '3', '0', '0'])
     expect(within(within(blocks).getByRole('table', { name: '기간 차단 감사 이벤트' })).getByText('차단 연장')).toBeInTheDocument()
-    expect(rowOf(within(blocks).getByRole('table', { name: '집행 지연 (요청 → 관문 반영)' }))).toEqual(['9', '8', '42초', '5분 10초'])
+    // 살아 있는 차단의 지점 넓힘(#77)은 감사 화면과 같은 이름표
+    expect(within(within(blocks).getByRole('table', { name: '기간 차단 감사 이벤트' })).getByText('차단 지점 넓힘')).toBeInTheDocument()
+    // 관문 반영 지연은 관문을 요청한 새 요청만 센다(#77, 새 요청 9 가운데 관문 요청 7). 기존 차단 유지(결정 2)는 따로 세고 지연에서 뺀다
+    const enforceTable = within(blocks).getByRole('table', { name: '관문 반영 지연 (관문 요청 → 관문 반영)' })
+    expect([...enforceTable.querySelectorAll('th')].map((th) => th.textContent)).toEqual(['관문 요청', '관문 반영 확인', '기존 차단 유지', '중앙값', '최대'])
+    expect(rowOf(enforceTable)).toEqual(['7', '5', '1', '42초', '5분 10초'])
+    // 종합 상태: 요청한 지점이 모두 확인해야 집행 확인. 실패를 따로 세고 불일치에는 지점 이름이 없다
+    const states = within(blocks).getByRole('table', { name: '차단 집행 상태 (출력 시점)' })
+    expect([...states.querySelectorAll('th')].map((th) => th.textContent)).toEqual(['살아 있는 요청', '집행 확인', '집행 대기', '집행 실패', '불일치', '집행 제외'])
+    expect(rowOf(states)).toEqual(['5', '2', '1', '1', '0', '1'])
 
     const targets = screen.getByRole('region', { name: '관제 대상 · 수집' })
     expect(within(targets).getByText('AWS 센서').closest('tr')).toHaveTextContent('차단 적용 3 (수집 관문) · 차단 적용 여부 미확인 1')
@@ -221,6 +230,13 @@ describe('구역', () => {
 
     const ops = screen.getByRole('region', { name: '운영 기록' })
     expect(cells(within(ops).getByRole('table', { name: '알림 발송 (기간 · 시험 발송 제외)' }), '판정 지연')).toEqual(['판정 지연', '실패', '2'])
+  })
+
+  it('이전 서버의 관문 반영 지연에는 기존 차단 유지 수가 없어 — 로 적는다', async () => {
+    const { maintained: _, ...enforcement } = BLOCKS_SECTION.enforcement
+    setup('/reports?period=7d&s=blocks', { report: periodReport({ sections: { blocks: { ...BLOCKS_SECTION, enforcement } } }) })
+    const blocks = await screen.findByRole('region', { name: '차단 · 집행' })
+    expect(rowOf(within(blocks).getByRole('table', { name: '관문 반영 지연 (관문 요청 → 관문 반영)' }))).toEqual(['7', '5', '—', '42초', '5분 10초'])
   })
 
   it('표를 읽을 수 없어 빠진 부분은 0 이 아니라 빠졌다고 적는다', async () => {

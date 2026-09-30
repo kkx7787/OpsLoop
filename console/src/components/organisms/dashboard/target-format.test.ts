@@ -53,6 +53,17 @@ describe('대응 문구(#52): 숫자 0 을 그리지 않는다', () => {
     expect(texts(response({ stalled: '집행기 확인 기록 없음' }))).toEqual(['AWS 관문 집행 대상 차단 없음', '집행기 확인 기록 없음'])
   })
 
+  it('미요청 · 빠짐 확인 전(#77)은 적용 · 실패 · 미확인과 따로 보이고, 그것만 있으면 집행 대상 차단 없음이 아니다', () => {
+    const parts = responseParts(response({ applied: 1, unrequested: 3, removing: 1, exempt: 2 }))
+    expect(parts.map((p) => [p.key, p.text, p.tone])).toEqual([
+      ['applied', '차단 적용 1 (AWS 관문)', 'success'], ['unrequested', '차단 미요청 3 (AWS 관문)', 'neutral'],
+      ['removing', '차단 빠짐 확인 전 1 (AWS 관문)', 'warning'], ['exempt', '정책상 차단 제외 2', 'neutral']])
+    expect(texts(response({ removing: 1 }))).toEqual(['차단 빠짐 확인 전 1 (AWS 관문)'])
+    expect(texts(response({ unrequested: 2 }))).toEqual(['차단 미요청 2 (AWS 관문)'])
+    expect(texts(response({ unrequested: 0, removing: 0 }))).toEqual(['AWS 관문 집행 대상 차단 없음'])
+    expect(texts(response({ unrequested: null, removing: null }))).toEqual(['AWS 관문 집행 대상 차단 없음'])
+  })
+
   it('이전 서버(failed · stalled 없음)도 그린다', () => {
     expect(texts({ point: 'gateway', point_label: 'AWS 관문', applied: 2, unverified: 0, exempt: 0, report: null })).toEqual(['차단 적용 2 (AWS 관문)'])
   })

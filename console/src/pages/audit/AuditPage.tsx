@@ -21,6 +21,8 @@ const EVENTS: Record<string, string> = {
   'console.block.released': '차단 해제',
   'console.block.extended': '차단 연장',
   'console.block.shortened': '차단 만료 단축',
+  // 살아 있는 차단의 적용 지점을 넓힘(이슈 #77, 내부 방화벽 → 관문 + 내부 방화벽). 좁히기는 해제 · 재요청으로 남는다
+  'console.block.points': '차단 지점 넓힘',
   'console.block.created': '차단 요청',
   'console.block.rearmed': '차단 재요청',
   'console.block.enforced': '관문 집행 확인',
