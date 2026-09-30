@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field, field_validator
 
 import auth
 import cti
+import node_logs
 import targets
 import web
 from proposals import CIRCULAR_RULES, SSH_RULES, propose
@@ -41,6 +42,7 @@ from operations import router as operations_router
 from notify import router as notify_router
 from cti import router as cti_router
 from targets import router as targets_router
+from node_logs import router as node_logs_router
 from sources import router as sources_router
 from reports import router as reports_router
 from accounts import router as accounts_router
@@ -120,6 +122,8 @@ app.include_router(notify_router)
 app.include_router(cti_router)
 # 관제 대상별 상태판 (targets.py · 이슈 #52). GET /api/dashboard/targets
 app.include_router(targets_router)
+# 보호 대상 장비 최근 로그 (node_logs.py · 이슈 #73). GET /api/devices/{device_id}/logs
+app.include_router(node_logs_router)
 # 출발지 분석 · 도구 지문 묶음 (sources.py) · 기간 보고서 (reports.py) · 이슈 #58
 app.include_router(sources_router)
 app.include_router(reports_router)
@@ -485,7 +489,7 @@ async def get_incident(incident_key: str):
         ev = json.loads(inc["evidence"]) if isinstance(inc["evidence"], str) else inc["evidence"]
         ev = ev if isinstance(ev, dict) else {}
         sensors, sessions = ev.get("sensors"), ev.get("sessions")
-        devices, _ = await targets.incident_devices(c, [{
+        devices, cards = await targets.incident_devices(c, [{
             "incident_key": inc["incident_key"], "rule_id": inc.get("rule_id"), "rule_version": inc.get("rule_version"),
             "actor_ip": inc.get("actor_ip"), "target": inc.get("target"), "first_ts": inc["first_ts"],
             "last_ts": inc["last_ts"], "sensors": sensors if isinstance(sensors, list) else None,
@@ -583,7 +587,7 @@ async def get_incident(incident_key: str):
         follow = await c.fetchrow(FOLLOW_STATE_SQL, incident_key) if actor else None
         absorbs = await c.fetchval(ABSORBS_SQL, inc["rule_version"], inc["rule_id"]) if actor else False
 
-        # ④ 원문. 요약이 아니라 근거가 된 원본 줄이다.
+        # ④ 원문. 요약이 아니라 근거가 된 원본 줄이다(보호 대상 장비 줄은 아래에서 가려 보낸다).
         raw = await c.fetch(f"""
             SELECT ts, sensor, eventid, session, username, password IS NOT NULL AS has_password,
                    input, url, shasum, http_method, http_status, user_agent, message
@@ -593,11 +597,14 @@ async def get_incident(incident_key: str):
             ORDER BY ts LIMIT 300""", actor, *window) if actor else []
 
     d = row_to_dict(inc)
-    d["evidence"] = json.loads(inc["evidence"]) if inc["evidence"] else None
+    # ① 근거 표본 · ② · ④ 가운데 보호 대상 장비(web-01 · 등록 노드 카드) 줄은 장비 최근 로그(node_logs, 이슈 #73)와 같은 규칙으로
+    #   가린다(① 은 요청 경로 서명 규칙이 남긴 url). 허니팟 · 디코이 · 관문 줄은 공격 증거라 원문 그대로다. 카드는 관련 장비 계산이
+    #   읽은 것이라 질의가 늘지 않는다
+    d["evidence"] = node_logs.mask_evidence(json.loads(inc["evidence"]) if inc["evidence"] else None, cards)
     d["actions"] = [row_to_dict(r) for r in actions]
     d["verdicts"] = [row_to_dict(r) for r in verdicts]
     d["related"] = [row_to_dict(r) for r in related]
-    d["behavior"] = [row_to_dict(r) for r in behavior]
+    d["behavior"] = node_logs.mask_incident_lines([row_to_dict(r) for r in behavior], cards)
     d["actor"] = {
         "history": row_to_dict(history) if history else None,
         "rules": [row_to_dict(r) for r in rules_hit],
@@ -605,7 +612,7 @@ async def get_incident(incident_key: str):
         "exempt": exempt,
     }
     # 비밀번호 원문은 화면에 내지 않는다. 타인의 실제 자격증명일 수 있다.
-    d["raw"] = [row_to_dict(r) for r in raw]
+    d["raw"] = node_logs.mask_incident_lines([row_to_dict(r) for r in raw], cards)
     st = dict(absorbed_state) if absorbed_state else {}
     d["absorbed"] = {
         "items": [row_to_dict(r) | {"reason": absorbed_reason(r)} for r in absorbed],
