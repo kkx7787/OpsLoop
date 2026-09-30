@@ -444,7 +444,7 @@ infra/vmware/scripts/console-join.sh --from image --apply     # 3번 뒤: image 
 - 범위 밖: 화면에서 관리자 계정 추가 · 관리자 부여 · 관리자 비밀번호 변경, 본인 비밀번호 변경 화면, 이력이 있는 계정 삭제, 로그인 실패 횟수에 따른 잠금. triage.py 는 콘솔 역할로 붙고 판정자 이름을 계정 표와 대조하지 않는다(비활성 계정 이름으로도 판정이 남는다).
 - 잔여 위험: 함수는 콘솔이 넘기는 행위자(`opsloop.actor`)를 그대로 믿는다(다른 감사와 같은 수준, `infra/schema.sql` T-8). 콘솔 역할 비밀번호(콘솔 `.env` · `triage.env`)가 새면 관제사 · 조회자 계정의 역할을 바꾸거나 비활성 · 재활성하고, 관제사 계정을 만들거나 비밀번호를 바꿔 그 계정으로 로그인할 수는 있다(모두 감사에 남는다. 판정 · 차단은 콘솔 역할로도 이미 직접 넣을 수 있다). 관리자로 올리거나 관리자 계정을 건드리지는 못한다.
 - 되돌리기: 마이그레이션은 그대로 두고 콘솔 이미지만 옛것으로 되돌려도 돈다(#63 함수는 부르는 쪽이 없을 뿐이다). 다만 옛 이미지는 새 열을 읽지 않으므로 비활성 · 역할 변경 · 세션 무효화가 모두 무시된다(비활성 계정도 로그인되고, 쿠키는 12시간 동안 쿠키의 역할로 쓰인다).
-- 복원 훈련은 적용 뒤 첫 백업(04:30 · 16:30)이 생긴 다음에 한다. 그 전 백업을 복원하면 구조(트리거 · 함수 · 열)가 운영과 다르고 계정 지문이 새 열을 읽지 못해 `verify` 가 ✘ 다. 복원 훈련의 구조 참고값은 20261002 뒤(함수 18)다. 그 전 운영은 함수 15라 '구조 수치 = 계약 참고값' 이 경고로 나온다.
+- 복원 훈련은 적용 뒤 첫 백업(04:30 · 16:30)이 생긴 다음에 한다. 그 전 백업을 복원하면 구조(트리거 · 함수 · 열)가 운영과 다르고 계정 지문이 새 열을 읽지 못해 `verify` 가 ✘ 다. 복원 훈련의 구조 참고값은 #77 뒤(트리거 10 · 함수 19, 아래 '차단 적용 지점 (이슈 #77)' 절)다. 그 전 운영(20261002 뒤 함수 18 · 그 전 15)은 '구조 수치 = 계약 참고값' 이 경고로 나온다.
 
 ## DB 복원 (이슈 #45)
 
@@ -588,6 +588,16 @@ git show "$C:infra/notify.sql" | d1 'docker exec -i opsloop-db psql -U opsloop -
 - 마이그레이션은 따로 돌리지 않는다. 표 · 함수 · 트리거 · 권한은 `schema.sql` 이 모두 담는다(2026-09-27: 새 DB 에 `schema.sql` · `20260925_cti.sql` · `notify.sql` 만 적용한 구조와 덤프 복원 뒤 구조를 `pg_dump -s` 로 대조해 열 순서 하나 말고 같다).
   `20260926_console_connlimit.sql` 은 역할 속성(콘솔 접속 한도 30)이라 역할 목록(4단계)과 `db-console-role.sh` 가 맡는다. 따로 돌리면 `20260924_db_roles.sql` 이 콘솔의 CTI 권한을 거둔다(위 'CVE · KEV 연계').
 - 스키마 재적용은 백업 뒤에 올라간 마이그레이션을 따라잡는다. 여러 번 적용해도 같다.
+- 이슈 #77 뒤에는 6단계 끝에 집행기 배포 커밋(`E`)의 차단 마이그레이션 넷을 27 → 29 → 30 → 77(`20261003_block_points_choice.sql`) 차례로 다시 적용한다.
+  T_b 가 20261003 적용 전이면 덤프에, `C` 가 #77 전이면 `schema.sql` 에 요청 지점 열이 없어 새 콘솔 · triage 의 차단이 오류로 멈춘다.
+  `C` 가 #77 전이면 옛 `audit_blocklist` 도 다시 들어가 감사에서 `points=` 가 빠진다(보고서는 두 지점으로 읽는다).
+
+  ```bash
+  E=$(d1 cat /opt/opsloop/enforcer/VERSION); git cat-file -e "${E}:infra/migrations/20261003_block_points_choice.sql" && echo "$E 는 #77 판"
+  for m in 20260927_block_enforce 20260929_block_points 20260930_status_board 20261003_block_points_choice; do
+    git show "${E}:infra/migrations/$m.sql" | d1 'docker exec -i opsloop-db psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -q' || break
+  done
+  ```
 
 ```bash
 # 7. 원장에서 다시 적재. 관문부터 띄운다 (1단계에서 멈춘 뒤 58분 안에)
@@ -729,7 +739,7 @@ DB 인스턴스를 잃었다고 보고, 백업 한 벌(덤프 + 역할 목록)�
 | `up` | `rto:S1` 백업 선택 · 훈련 DB 컨테이너 · 준비 · 게시 주소 · 메모리 · OOM 점수 · 이미지 · 환경에 비밀번호 없음 · `rto:S2` |
 | `roles` | 역할 목록의 CREATE/ALTER ROLE · GRANT 적용(비밀번호 줄 · 모르는 줄이 있으면 멈춘다) · 로그인 역할마다 새 비밀번호 · env 파일 접속 확인 · 속성 · 멤버십 대조 · `rto:S3` |
 | `restore` | 덤프를 ssh 표준 입력으로 `pg_restore --no-owner --exit-on-error`(data01 에 덤프 파일을 남기지 않는다) · 26개 표 건수 · 목차와 카탈로그 대조 · T_b 하한 · `rto:S4` |
-| `verify` | 훈련 쪽 지문(판정 · 조치 · 차단 · 노드 · 등록 · 계정 · 알림 · 감사) → 무결성 19개 0 · 기준값 · 구조 · 시퀀스 · `verify-db-roles.sh` 문장 123줄 허용 · 거부 → 알림 끄기 · `rto:S5`. 다시 돌리면 지문은 그 복원 뒤 처음 뜬 것을 쓴다 |
+| `verify` | 훈련 쪽 지문(판정 · 조치 · 차단 · 노드 · 등록 · 계정 · 알림 · 감사) → 무결성 19개 0 · 기준값 · 구조 · 시퀀스 · `verify-db-roles.sh` 문장 152줄 허용 · 거부 → 알림 끄기 · `rto:S5`. 다시 돌리면 지문은 그 복원 뒤 처음 뜬 것을 쓴다 |
 | `console` | 이미지 옮기기(ID 대조) · 터널 · 콘솔 · /health · `rto:S6`. 사람이 목록 · 상세 · 차단 · 감사를 보고 시험 사건 1건을 판정한다. 그 뒤 `console --confirm` → `rto:S7`(서비스 재개) |
 | `regen` | 가용 메모리 확인 · `opsloop-ingest --full` · `pull_loki.py --node web-01 --since <T_b−1시간> --ledgers-from-start`(최대 RSS · 시간 기록) · `rto:S8`. console 과는 verify 뒤 어느 쪽이 먼저여도 된다 |
 | `compare` | 따라잡기 한 회차 → T_r. `[T_b−1시간, T_r−30분)` 의 `provenance='real'` events(센서별 건수 · line_hash md5) · sessions · node_metrics 를 운영과 같은 문장으로 대조한다. 창 끝이 T_b 뒤 15분 이상이어야 하므로 T_b + 45분 뒤에 돌린다(이르면 멈추고 다시 돌리라고 알린다). 다르면 차이 줄을 회차 폴더에 남긴다 |
@@ -817,11 +827,11 @@ DB 차단 목록을 AWS 관문에 넘기고 관문의 적용 결과를 DB 에 �
 
 ```bash
 # 1. S3 경계 · 쓰기 사용자: infra/terraform/README.md '차단 목록 전달' 1단계 (plan 기대값 확인 뒤 apply)
-# 2. 데이터 노드: 사용자 · DB 역할 · 세 마이그레이션(20260927 → 20260929 → 20260930, #51 · #52 뒤) · 코드 · 설정 · 단위 (타이머는 새로 켜지 않는다)
+# 2. 데이터 노드: 사용자 · DB 역할 · 네 마이그레이션(20260927 → 20260929 → 20260930 → 20261003, #51 · #52 · #77 뒤) · 코드 · 설정 · 단위 (타이머는 새로 켜지 않는다)
 C=$(git rev-parse --short HEAD)
 git archive "$C" enforcer infra/migrations/20260927_block_enforce.sql infra/migrations/20260929_block_points.sql infra/migrations/20260930_status_board.sql \
-  | ssh -F ~/.ssh/config.opsloop data01 "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo bash /tmp/ol/enforcer/install-enforcer.sh $C"
-#    권한 표 네 줄이 '기대대로' 여야 한다. 마지막 줄의 행 갈래 수에 운영 13건이 exclude 로 나온다
+  infra/migrations/20261003_block_points_choice.sql | ssh -F ~/.ssh/config.opsloop data01 "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo bash /tmp/ol/enforcer/install-enforcer.sh $C"
+#    권한 표 다섯 줄이 '기대대로' 여야 한다. 마지막 줄의 행 갈래 수에 운영 13건이 exclude 로 나온다
 # 3. 목록 쓰기 키: infra/terraform/README.md '차단 목록 전달' 2단계 (0600 root:root)
 # 4. 관문 동기화 설치 (infra/aws/gateway, 관문 담당 절차) 뒤, 할 일만 먼저 본다 (S3 · DB 를 고치지 않는다)
 ssh -F ~/.ssh/config.opsloop data01 'sudo -n opsloop-enforcer run --dry-run'
@@ -832,24 +842,28 @@ ssh -F ~/.ssh/config.opsloop data01 'sudo -n opsloop-enforcer status'   # 관문
 ```
 
 - 첫 회차에 운영의 만료 없는 13건은 enforce_note 만 '집행 제외 · 만료 없음' 이 된다. 집행 열(enforced_at)이 바뀌지 않아 감사 · R201 에 영향이 없다.
-- 역할 블록(schema.sql · 20260924_db_roles.sql)을 다시 적용하면 집행 역할 권한이 사라진다. 그 뒤에는 이 설치기(또는 세 마이그레이션을
-  20260927 → 20260929 → 20260930 순서로)를 다시 돌린다. 설치기는 셋을 이 순서로 적용한다. 마이그레이션만 손으로 적용할 때는 순서가
+- 역할 블록(schema.sql · 20260924_db_roles.sql)을 다시 적용하면 집행 역할 권한이 사라진다. 그 뒤에는 이 설치기(또는 네 마이그레이션을
+  20260927 → 20260929 → 20260930 → 20261003 순서로)를 다시 돌린다. 설치기는 넷을 이 순서로 적용한다. 마이그레이션만 손으로 적용할 때는 순서가
   중요하다. 20260927 만 다시 적용하면 #51 의 enforcement 쓰기 권한과 #52 의 생존 신호 표 권한이 빠진다(enforcement 가 빠지면 집행기
   회차가 실패하고, 생존 신호만 빠지면 집행은 그대로 돌고 로그에 등급 5 한 줄만 남는다).
+  20261003(#77)은 권한을 주지 않아 다시 하지 않아도 되지만 순서는 이대로 둔다. 20260927 은 #77 판이어야 감사에 요청 지점(`points=`)이 남는다.
+  옛 판(#77 전 커밋의 이 설치기 · `install-collector.sh` 의 `schema.sql`)을 적용하면 오류 없이 `points=` 만 조용히 빠진다(보고서 '관문 반영 지연' 이
+  내부 방화벽 전용 요청까지 관문 요청으로 센다). 그때는 #77 판 넷을 이 순서로 다시 적용한다.
   내부 방화벽을 켠 뒤라면 `OPSLOOP_FW_ID` 는 설정 파일에 이미 있으므로 다시 줄 필요가 없다.
 - 원장 읽기 키(`s3-pull.env`)를 다시 넣어도 집행기는 따로 할 일이 없다(LoadCredential 이 회차마다 읽는다).
 - 되돌리기: `sudo systemctl disable --now opsloop-enforcer.timer`. 관문 집합은 항목별 만료(상한 fail2ban bantime 24시간)로 저절로 빈다.
 
 ## 내부 방화벽 차단 집행 (이슈 #51)
 
-사람이 요청한 차단을 AWS 관문뿐 아니라 실서비스(web-01) 앞의 내부 방화벽에서도 집행한다. 목록은 하나이고 두 지점이 각자 가져가
-적용한 뒤 결과를 보고한다. 집행기는 두 보고를 따로 판단해 차단 행의 지점별 결과(`enforcement`)에 적고, 콘솔 차단 목록 · 사건 상세가
-지점마다 대기 · 적용 확인 · 실패 · 확인 지연과 마지막 확인 시각을 보인다.
+사람이 요청한 차단을 AWS 관문뿐 아니라 실서비스(web-01) 앞의 내부 방화벽에서도 집행한다. 목록 객체는 하나이고 두 지점이 각자 자기
+갈래를 가져가 적용한 뒤 결과를 보고한다(이슈 #77 부터 요청마다 지점을 고른다. 아래 '차단 적용 지점'). 집행기는 두 보고를 따로 판단해
+차단 행의 지점별 결과(`enforcement`)에 적고, 콘솔 차단 목록 · 사건 상세가 지점마다 대기 · 적용 확인 · 실패 · 확인 지연 · 미요청 · 빠짐 확인 전과
+마지막 확인 시각을 보인다.
 
 ```
 데이터 노드  opsloop-enforcer (1분) ─ DB blocklist → s3 block/v1/latest.json
-관문         opsloop-block-sync (1분 · fail2ban) ─ 목록 → 허니팟 유입(22 · 23 · 8080) 차단 → hb/v1/host=<관문 ID>-block
-내부 방화벽  opsloop-block-sync (1분 · nft)      ─ 같은 목록 → forward 차단(fw-block-drop) → hb/v1/host=fw-opsloop-block
+관문         opsloop-block-sync (1분 · fail2ban) ─ 목록 entries → 허니팟 유입(22 · 23 · 8080) 차단 → hb/v1/host=<관문 ID>-block
+내부 방화벽  opsloop-block-sync (1분 · nft)      ─ 목록 points.fw → forward 차단(fw-block-drop) → hb/v1/host=fw-opsloop-block
 데이터 노드  opsloop-enforcer ─ 두 보고 → blocklist 관문 세 열(method · enforced_at · enforce_note) · enforcement(지점별)
 ```
 
@@ -865,9 +879,10 @@ ssh -F ~/.ssh/config.opsloop data01 'sudo -n opsloop-enforcer status'   # 관문
 | 방화벽 규칙 | `fw/nftables.conf`: 집합 `opsloop_block`(관문과 같은 꼴) · forward 첫머리 두 줄(`fw-block-drop` 기록 · drop) · `ext` → web-01 80 만 허용 · `ext` 에서 방화벽 자신에는 핑 · NTP 만 |
 | 동기화 | 관문과 같은 파일 `infra/aws/gateway/block-sync.py` · `.service` · `.timer` → `/usr/local/lib/opsloop/` · `/etc/systemd/system/`. `/etc/default/opsloop-block-sync` (`MODE=nft` · `OPSLOOP_HOST=fw-opsloop`) |
 | 비밀 | `/etc/opsloop/block-sync.env` (IAM 사용자 `opsloop-fw-sync` 키, 0600 root:root). 방화벽은 EC2 가 아니라 인스턴스 역할이 없다 |
-| 집행기 | `/etc/default/opsloop-enforcer` 의 `OPSLOOP_FW_ID=fw-opsloop`. 없으면 관문만 본다(이전과 같다) |
+| 집행기 | `/etc/default/opsloop-enforcer` 의 `OPSLOOP_FW_ID=fw-opsloop`. 없으면 관문 목록이 전체이고 내부 방화벽은 확인 지연 '내부 방화벽 설정 없음' 이다(이슈 #77. 그 전에는 관문만 봤다) |
 | 시험 출발지 | DB `test_ranges`(문서용 대역 셋)와 `is_test_source()`. 그 출발지의 사건은 탐지 · 판정 · 차단은 그대로, 규칙별 집계에서만 빠진다 |
-| 지점별 결과 | DB `blocklist.enforcement`. 집행기만 쓴다(트리거 `blocklist_enforcement_guard` 가 콘솔 역할의 쓰기를 막는다). 해제 · 만료된 행은 다음 회차에 비운다 |
+| 지점별 결과 | DB `blocklist.enforcement`. 집행기만 쓴다(트리거 `blocklist_enforcement_guard` 가 콘솔 역할의 쓰기를 막는다). 해제 · 만료된 행과 관리자가 관문을 뺀 행의 관문은 요청했던 지점마다 `removing` 을 거쳐, 그 지점이 뺐다고 보고하면(또는 만료 뒤 24시간) 비운다(이슈 #77) |
+| 요청 지점 | DB `blocklist.points`(`{gateway,fw}` · `{fw}`, 이슈 #77). 콘솔 · triage 만 쓰고 집행기는 읽기만 한다 |
 
 순서 (Mac, 저장소 루트). 방화벽 · Terraform · 타이머 반영은 사람이 돌린다.
 
@@ -901,10 +916,10 @@ ssh -F ~/.ssh/config.opsloop fw 'sudo -n sh -c "set -a; . /etc/default/opsloop-b
 ssh -F ~/.ssh/config.opsloop fw 'sudo -n sh -c "set -a; . /etc/default/opsloop-block-sync; . /etc/opsloop/block-sync.env; set +a; python3 /usr/local/lib/opsloop/block-sync.py --selftest"'
 ssh -F ~/.ssh/config.opsloop fw 'sudo -n systemctl start opsloop-block-sync.service; sudo -n journalctl -u opsloop-block-sync -n 10 --no-pager'
 ssh -F ~/.ssh/config.opsloop fw 'sudo -n systemctl enable --now opsloop-block-sync.timer'
-#    자가 시험 'ok' · 한 회차 요약 'nft · 목록 확인 · …' 이어야 한다
-# 6. 집행기 · DB: 세 마이그레이션(#47 → #51 → #52 순서)과 OPSLOOP_FW_ID. 설치기가 셋을 차례로 적용하고 설정에 없을 때만 줄을 더한다
+#    자가 시험 'ok' · 한 회차 요약 'nft · 목록 fw 확인 · …' 이어야 한다 (집행기가 #77 전 판이면 '목록 legacy 확인')
+# 6. 집행기 · DB: 네 마이그레이션(#47 → #51 → #52 → #77 순서)과 OPSLOOP_FW_ID. 설치기가 넷을 차례로 적용하고 설정에 없을 때만 줄을 더한다
 git archive "$C" enforcer infra/migrations/20260927_block_enforce.sql infra/migrations/20260929_block_points.sql infra/migrations/20260930_status_board.sql \
-  | ssh -F ~/.ssh/config.opsloop data01 "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo OPSLOOP_FW_ID=fw-opsloop bash /tmp/ol/enforcer/install-enforcer.sh $C"
+  infra/migrations/20261003_block_points_choice.sql | ssh -F ~/.ssh/config.opsloop data01 "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo OPSLOOP_FW_ID=fw-opsloop bash /tmp/ol/enforcer/install-enforcer.sh $C"
 ssh -F ~/.ssh/config.opsloop data01 'sudo -n opsloop-enforcer status'     # '내부 방화벽 보고:' 줄이 있어야 한다
 # 7. 콘솔: 화면(npm run build → app/static)과 API 를 콘솔 A 에 올린다 (이슈 #47 과 같은 절차 · 백업 먼저). 콘솔 B 는 합류 때 image 단계가 옮긴다
 # 8. 검증 (7장이 공격자 세그먼트 · 차단 집합 · 정상 출발지 유지를 본다)
@@ -918,8 +933,16 @@ infra/vmware/scripts/verify.sh
 ssh -F ~/.ssh/config.opsloop attacker 'for p in owa/x1 owa/x2 confluence/ x3 x4 x5 x6 x7; do curl -s -o /dev/null -m 5 -w "%{http_code} " http://192.168.50.21/$p; done; echo'
 # 2. 1 ~ 2분 뒤 콘솔에 R102(404 반복) · R105(제품 식별 탐색) 사건이 뜬다. 사건을 열어 benign_positive(의도한 시험)로 판정하고 1시간 차단
 #    "반복 탐색과 제품 식별 요청을 확인하고 운영자가 차단했다" 이고, 침해 성공을 확인한 것이 아니다
-# 3. 2분 안에 두 지점이 적용 확인이 된다 (차단 목록 화면의 지점별 결과)
+#    확인 창의 적용 지점은 기본값 '내부 방화벽'(관문 확인란 꺼짐) 그대로 둔다 (이슈 #77)
+# 3. 2분 안에 내부 방화벽이 적용 확인이 되고 관문 칸은 '미요청' 이다 (차단 목록 화면의 지점별 결과)
 ssh -F ~/.ssh/config.opsloop fw 'sudo -n nft list set inet filter opsloop_block'
+echo "SELECT host(actor_ip), points, enforced_at, enforce_note, enforcement FROM blocklist WHERE actor_ip = '203.0.113.10';" \
+  | ssh -F ~/.ssh/config.opsloop data01 'sudo -n docker exec -i opsloop-db psql -U opsloop -d opsloop'
+#    {fw} · 관문 세 열(method · enforced_at · enforce_note) 비어 있음 · enforcement 에 fw 키만
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n opsloop-enforcer list' | python3 -c 'import json, sys; d = json.load(sys.stdin)
+print("관문", any(e["ip"] == "203.0.113.10" for e in d["entries"]), "· 내부 방화벽", any(e["ip"] == "203.0.113.10" for e in d["points"]["fw"]["entries"]))'
+#    관문 False · 내부 방화벽 True. 관문 집합에 없는지는 infra/terraform/README.md '관문 차단 집행 설치' 0단계의 gwrun 으로 한 번 읽는다(aws login):
+#    gwrun "nft list set inet filter opsloop_block; fail2ban-client get opsloop-block banned"
 # 4. 차단 뒤: 새 연결은 시간 초과, 방화벽에 거부 기록
 ssh -F ~/.ssh/config.opsloop attacker 'curl -s -o /dev/null -m 5 -w "%{http_code}\n" http://192.168.50.21/ || echo 시간초과'
 ssh -F ~/.ssh/config.opsloop fw 'sudo -n journalctl -k --since "-5 min" | grep fw-block-drop | tail -3'
@@ -937,16 +960,94 @@ infra/vmware/scripts/verify.sh        # 7장이 공격자 → web-01 을 '실패
   ```bash
   ssh -F ~/.ssh/config.opsloop attacker 'exec 3<>/dev/tcp/192.168.50.21/80; for i in $(seq 1 10); do printf "GET / HTTP/1.1\r\nHost: w\r\n\r\n" >&3; head -1 <&3; sleep 30; done'
   ```
-- **해제 · 만료 뒤 복구:** 콘솔에서 해제하면 2분 안에 두 집합에서 빠지고 공격자 VM 의 요청이 다시 통과한다. 만료는 원소 timeout 이 목록의
+- **해제 · 만료 뒤 복구:** 콘솔에서 해제하면 2분 안에 요청했던 지점의 집합에서 빠지고(지점 칸 '빠짐 확인 전' → '빠짐') 공격자 VM 의 요청이
+  다시 통과한다. 감사는 released 한 줄이고 관문을 요청하지 않은 행에는 unenforced 가 없다. 만료는 원소 timeout 이 목록의
   until 과 같아 저절로 빠진다(`nft list set` 의 `expires`).
-- **동기화 중단:** 아래로 멈춘 뒤 새 차단은 관문에만 들어가고, 5분 뒤 내부 방화벽 지점이 '확인 지연' 이 된다. 이미 들어간 원소는 만료까지
-  남는다. 다시 켜면 한 회차 안에 맞춰진다.
+- **동기화 중단:** 아래로 멈춘 뒤 관문을 요청한 새 차단만 관문에 들어가고(내부 방화벽만 요청한 차단은 어디에도 들지 않는다), 5분 뒤 내부
+  방화벽 지점이 '확인 지연' 이 된다. 이미 들어간 원소는 만료까지 남는다. 다시 켜면 한 회차 안에 맞춰진다.
 
   ```bash
   ssh -F ~/.ssh/config.opsloop fw 'sudo -n systemctl stop opsloop-block-sync.timer'
   ssh -F ~/.ssh/config.opsloop fw 'sudo -n systemctl start opsloop-block-sync.timer'
   ```
 - **시연 사건:** benign_positive 로 판정한다. 출발지가 시험 대역이라 규칙 품질 · 대시보드 · 규칙 화면의 규칙별 집계에서 빠진다.
+- **허니팟 기본값 (이슈 #77):** 실제 Cowrie 사건의 확인 창 기본값이 '내부 방화벽'(관문 확인란 꺼짐)인지 보고, 그 출발지를 1시간 내부
+  방화벽만 차단한다. DB `{fw}` · 내부 방화벽 집합에 있음 · 관문 집합(gwrun 읽기 한 번)에 없음 · 관문 칸 '미요청' 이면 통과다. 그 출발지가
+  다시 와서 Cowrie 기록이 이어지는지는 필수가 아니다. R004 사건이 있으면 기본값이 '관문에서도 막기' 켜짐인지 본다.
+
+### 차단 적용 지점 (이슈 #77)
+
+차단 요청마다 지점을 고른다. 내부 방화벽은 늘 막고 AWS 관문은 고른 요청만 막는다(기본값 · 규칙은 `docs/2026-09-08-판정-기준.md` §5).
+목록 키 · 판(`block/v1/latest.json`, `v:1`), 관문 동기화 · Terraform · IAM 은 그대로다. 관문은 반영하지 않는다.
+
+```
+{"v":1, "generated_at", "entries":[{ip, until}], "digest",   관문 목록 (관문 동기화는 지금처럼 이것만 적용한다)
+ "points":{"fw":{"entries":[…], "digest"}}}                  내부 방화벽 목록 = 목록에 드는 모든 행
+```
+
+- 관문 목록 모드: 집행기는 회차마다 목록을 만들기 전에 내부 방화벽 보고를 읽는다. `list` 가 `fw`(새 동기화가 `points.fw` 를 적용)면
+  **지점별**(`entries` = 관문을 요청한 행), `OPSLOOP_FW_ID` 없음 · `list` 없음 · `legacy` 면 **전체**(`entries` = 모든 행, #77 전과 같다)다.
+  보고를 못 읽었거나 `list` 가 null 이면 직전 회차에 정한 모드를 잇는다(상태 파일이 끊겼으면 전체). 그래서 반영 순서가 틀리거나 옛 동기화로 돌아가도 내부 방화벽 차단은
+  풀리지 않는다. 모든 행이 두 지점이면 `entries` · `digest` 가 #77 전과 같다.
+- 보는 곳: `opsloop-enforcer status` 의 '관문 목록: 지점별' · '관문 목록: 전체 · 내부 방화벽 확인 전', '지점별 (목록 행): 관문 요청 n · 확인 n ·
+  미요청 n · 빠짐 확인 전 n / 내부 방화벽 요청 n · 확인 n', 보고 줄의 '목록 <list> <digest 앞 8자>'. 동기화 보고의 `list` 는 내부 방화벽 `fw` · `legacy`,
+  관문 `gateway` · `legacy`, 못 읽었으면 null 이다.
+- 관리자 관문 빼기: 콘솔이 한 트랜잭션에서 풀고 `{fw}` 로 다시 건다(관문 세 열 · 지점별 결과는 그대로 둔다). 관문 칸은 관문이 이 주소가 빠진
+  목록을 오류 없이 적용했다고 보고할 때까지(보통 1~2분, 전체 모드면 관문 목록에 남아 계속) '빠짐 확인 전'(`enforcement.gateway` 가 `removing`)
+  이고, 그때 집행기가 관문 세 열을 비운다(`console.block.unenforced` 감사도 그때). 그 전에 관문을 다시 요청하면 `removing` 을 잇지 않고,
+  관문이 이미 이 주소가 빠진 목록을 오류 없이 적용했을 때만 남은 세 열을 비워 새로 확인한다(아직 빠지기 전 목록이면 확인을 잇는다).
+  해제 · 만료된 차단을 관문 없이(`{fw}`) 다시 걸 때(콘솔 · triage · 흡수 후속 차단)도 같다. 다시 걸기(rearmed · extended)는 요청 시각에 남고,
+  관문 세 열 비우기와 `console.block.unenforced` 는 관문이 이 주소가 빠진 목록을 오류 없이 적용했다고 확인한 뒤에만 남는다(2026-10-01 결정).
+  전체 모드로 관문 목록에 다시 들어도 관문이 그 전에 뺐으면 그때 비우고(다시 넣은 것은 적지 않고 '빠짐 확인 전' 을 잇는다), 관문 보고가
+  끊기면 관문이 마지막으로 받은 만료 뒤 24시간에 비운다(새 만료를 기다리지 않는다).
+- 관문을 포함해(`{gateway,fw}`) 다시 걸기(결정 2): 요청 시각에는 다시 걸기(rearmed · extended)만 남고 관문 세 열은 그대로다. 집행기가 다시 든
+  목록을 올린 뒤 판단한다. 관문이 그 사이 이 주소가 빠진 목록을 오류 없이 적용했으면 `console.block.unenforced`(why=reset) 한 번 뒤 새로
+  확인하고, 아니면(관문 차단이 이어짐) unenforced 없이 다시 든 목록을 올린 뒤의 보고로만 확인해 `enforce_note` 끝에 ' · 기존 차단 유지' 를
+  붙인다. 그때까지 관문 칸 · 종합 상태는 '대기' 다(다시 걸기 전 보고로는 확인하지 않는다). 기간 보고서는 기존 차단 유지를 따로 세고 관문
+  반영 지연에서 뺀다. 오류가 있는 보고처럼 관문이 뺐다고 확인하지 못했으면 유지로 본다. 관문 빠짐 확인 전 행(관문 없이 다시 건 행 · 관리자
+  관문 빼기 뒤)을 같은 회차 안에 풀고 다시 걸거나 확인 전에 상태 파일을 잃어도 다시 걸기 전의 확인은 이어받지 않는다. 집행기가 해제 ·
+  만료를 보기 전(같은 회차 안)에 다른 만료로 다시 걸면 다음 회차까지(최대 1분) 옛 확인이 '집행 확인' 으로 보인다(감사 · 보고서에는 남지 않는다).
+- 반영 순서: DB(20261003 만 psql) → 집행기(설치기, 27 → 29 → 30 → 77) → 내부 방화벽 동기화(위 5번의 파일 교체) → 콘솔 A · triage.
+  콘솔 B 는 꺼 둔 채 새 이미지로만 합류한다(`console-join.sh --from image`, 옛 이미지의 재차단은 `{fw}` 를 남긴다). triage 는
+  `puller/install-ingest.sh` 가 parser · detector · puller 를 통째로 바꾸므로 `git diff --stat` 으로 triage.py 말고 바뀐 것이 없는지 먼저 본다.
+- 확인: `infra/vmware/scripts/verify-db-roles.sh` 의 '차단 적용 지점 (이슈 #77. …)' 절(집행 역할 points 읽기 허용 · 갱신 거부, 콘솔 넓히기 허용,
+  좁히기 거부 트리거 · 값 제약).
+- 복원 훈련은 20261003 적용 뒤 첫 백업(04:30 · 16:30) 다음에 한다. 그 전 백업은 지문(blocklist · absorbed_blocks 의 points)을 읽지 못해
+  `verify` 가 ✘ 다. 구조 참고값은 #77 뒤(트리거 10 · 함수 19)다.
+
+제한 행(`{fw}`)이 생긴 뒤 되돌리기. 기본은 앞으로 고치기다. 되돌려야 하면 관문 과차단을 받아들이고 제한 행은 풀지 않는다.
+집행기를 반영하기 전에 `/opt/opsloop/enforcer/VERSION`(아래 `E0`)을 증거에 적어 둔다.
+
+| 되돌리는 것 | 결과 | 할 일 |
+|---|---|---|
+| 콘솔 A · triage (또는 triage 만 미룬 상태) | 집행은 그대로. 옛 화면은 내부 방화벽 전용 행을 '집행 대기' 로 보인다. 옛 콘솔 · triage 가 그 행을 다시 걸면(살아 있는 행 재요청 · 해제 · 만료 행 재무장) `{fw}` 가 남아 R004 여도 관문 미적용이다(보호는 유지) | 찾기 SQL 로 보고 필요하면 넓히기 SQL |
+| 내부 방화벽 동기화 | 옛 판 첫 회차에 내부 방화벽 전용 주소가 빠진다. 집행기가 다음 회차에 옛 판 보고를 읽어 전체로 올리고 옛 판 다음 회차에 다시 들어간다(보통 1분 · 최대 약 2분). 그때부터 관문도 막는다. 옛 판 보고가 S3 에 올라가지 않으면(키 · 네트워크) 집행기는 남은 `list:"fw"` 보고로 지점별을 이어 가 빠진 채 남는다(5분 뒤 내부 방화벽 확인 지연) | 차례대로: 콘솔 차단 요청 · triage 를 멈춘다(운영자에게 알린다. 흡수 후속 차단은 멈추지 않는다) → 넓히기 SQL → 옛 판 설치 → 2분 안에 집행기 로그 '관문 목록 모드: 지점별 → 전체 …'(또는 status '관문 목록: 전체 · 내부 방화벽 확인 전' 과 내부 방화벽 보고 줄 '목록 legacy') 확인 → 넓히기 SQL 한 번 더(그 사이 생긴 행) → 요청 재개. 2분 안에 전체가 되지 않으면 바로 넓히기 SQL 을 돌리고 옛 판 보고가 올라가지 않는 까닭을 본다 |
+| 집행기 | 옛 판이 모든 행을 `entries` 에 실어 관문도 막는다(내부 방화벽 그대로). 내부 방화벽 전용 행에 관문 세 열을 채운다. 되돌린 동안 다시 건 행(관문 포함 여부와 무관)은 옛 판이 남은 관문 확인을 이어받을 수 있어, 그 사이 관문이 뺐다 다시 넣은 것은 감사에 남지 않는다. 관문을 포함한 요청은 새 판으로 돌아오면 이어받은 확인을 쓰지 않고 첫 새 보고로 기존 차단 유지로 다시 확인한다(옛 판이 새 시각으로 확인했으면 새 반영으로 센다) | 코드만 되돌린다(아래 명령. `enforcer.old` 가 반영 전 판일 때만 바꾸고, 아니면 파일만 넣는다). 옛 설치기는 쓰지 않는다(옛 20260927 을 다시 적용해 감사의 `points=` 가 조용히 빠진다. 이미 썼으면 #77 판 넷을 27 → 29 → 30 → 77 로 다시 적용한다). 다시 올리면 새 판이 관문 목록 밖 행으로 비운다(unenforced 감사) |
+| DB | 되돌리지 않는다(새 콘솔 · triage 가 열을 쓴다) | 비상이면 트리거 · 제약만 지운다: `DROP TRIGGER IF EXISTS trg_blocklist_points ON blocklist; ALTER TABLE blocklist DROP CONSTRAINT IF EXISTS blocklist_points_valid;`. 열은 지우지 않는다 |
+| 관문 | 바꾸지 않았다 | — |
+
+```bash
+# 찾기: 기준 시각(되돌린 시각 · triage 를 미룬 시각) 뒤에 생긴 살아 있는 내부 방화벽 전용 행
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n docker exec -i opsloop-db psql -U opsloop -d opsloop' <<'SQL'
+SELECT host(b.actor_ip), b.incident_key, i.rule_id, b.created_at FROM blocklist b LEFT JOIN incidents i USING (incident_key)
+ WHERE b.points = '{fw}' AND b.released_at IS NULL AND b.expires_at > now() AND b.created_at > '<기준 시각>' ORDER BY b.created_at;
+SQL
+# 넓히기: 살아 있는 내부 방화벽 전용 행을 두 지점으로 (감사 console.block.points 가 남는다. 결과는 증거 폴더에 둔다)
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n docker exec -i opsloop-db psql -U opsloop -d opsloop -v ON_ERROR_STOP=1' <<'SQL'
+BEGIN; SELECT set_config('opsloop.actor', '<이름>', true);
+UPDATE blocklist SET points = '{gateway,fw}' WHERE points = '{fw}' AND released_at IS NULL AND expires_at > now() RETURNING host(actor_ip);
+COMMIT;
+SQL
+# 집행기 코드만 되돌리기. E0 = 집행기 반영 전 /opt/opsloop/enforcer/VERSION (반영 때 증거에 적어 둔 값)
+# 설치기를 두 번 돌렸으면 enforcer.old 가 #77 판이라 바꿔도 되돌아가지 않는다. 그때는 판 확인에서 멈춘다
+ssh -F ~/.ssh/config.opsloop data01 "sudo -n sh -c '[ \"\$(cat /opt/opsloop/enforcer.old/VERSION)\" = \"$E0\" ] || { echo \"enforcer.old 가 $E0 판이 아니다\"; exit 1; }
+  systemctl stop opsloop-enforcer.timer && rm -rf /opt/opsloop/enforcer.77 && mv /opt/opsloop/enforcer /opt/opsloop/enforcer.77 &&
+  mv /opt/opsloop/enforcer.old /opt/opsloop/enforcer && systemctl start opsloop-enforcer.service; systemctl start opsloop-enforcer.timer'"
+# 판 확인에서 멈췄으면 파일만 넣는다 (옛 설치기는 쓰지 않는다)
+git archive "$E0" enforcer/block_enforcer.py | ssh -F ~/.ssh/config.opsloop data01 "rm -rf /tmp/olr && mkdir /tmp/olr && tar -x -C /tmp/olr &&
+  sudo -n sh -c 'systemctl stop opsloop-enforcer.timer && install -m 644 -o root -g root /tmp/olr/enforcer/block_enforcer.py /opt/opsloop/enforcer/ &&
+  echo $E0 > /opt/opsloop/enforcer/VERSION && systemctl start opsloop-enforcer.service; systemctl start opsloop-enforcer.timer'"
+```
 
 ### 장비 방화벽 연동 자리
 
@@ -974,7 +1075,8 @@ infra/vmware/scripts/verify.sh        # 7장이 공격자 → web-01 을 '실패
 ssh -F ~/.ssh/config.opsloop fw 'sudo -n systemctl disable --now opsloop-block-sync.timer; sudo -n nft flush set inet filter opsloop_block'
 #    규칙까지: 위 '방화벽 설정 올리기 · 되돌리기' 의 .prev 되돌리기(nft -f 뒤 tailscaled 재시작 포함)
 ssh -F ~/.ssh/config.opsloop data01 "sudo -n sed -i '/^OPSLOOP_FW_ID=/d' /etc/default/opsloop-enforcer"
-#    집행기는 다음 회차부터 관문만 본다. enforcement 의 fw 갈래와 상태 파일의 fw 기록 · 시계도 그 회차에 빠진다(다시 넣으면 새로 센다)
+#    집행기는 다음 회차부터 관문 목록을 전체로 올려 관문이 모든 행을 막고, 목록 행의 내부 방화벽 결과는 확인 지연 '내부 방화벽 설정 없음'
+#    이 된다(이슈 #77. 내부 방화벽은 늘 요청이라 화면 · 관제 이상 띠에 남는다). 목록 밖 행의 fw 갈래는 그 회차에 빠진다
 #    키 · 정책: infra/terraform/README.md '내부 방화벽 동기화' 되돌리기 (접근 키를 먼저 지운다)
 "/Applications/VMware Fusion.app/Contents/Library/vmrun" stop "$HOME/Virtual Machines.localized/opsloop-attacker.vmwarevm/opsloop-attacker.vmx" soft
 ```
@@ -1011,7 +1113,7 @@ ssh -F ~/.ssh/config.opsloop data01 'sudo -n docker exec -i opsloop-db psql -U o
 # 2. 적재기 (pull.py · record_heartbeats.py · opsloop-ingest). 앱 폴더를 통째로 바꾸므로 새 파일도 함께 간다
 git archive "$C" parser detector puller | ssh -F ~/.ssh/config.opsloop data01 \
   "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo bash /tmp/ol/puller/install-ingest.sh $C"
-# 3. 집행기: 위 '차단 집행기 설치' 2번과 같은 명령. 설치기가 #47 → #51 → #52 순으로 적용하고 권한 표에서 생존 신호 표 줄을 확인한다
+# 3. 집행기: 위 '차단 집행기 설치' 2번과 같은 명령. 설치기가 #47 → #51 → #52 → #77 순으로 적용하고 권한 표에서 생존 신호 표 줄을 확인한다
 # 4. 확인 (다음 적재 회차 · 집행 회차 뒤). 줄마다 checked_at 이 5분(업로더) · 1분(차단 보고) 안이어야 한다
 echo "SELECT source, role, host, seen_at, checked_at, problem FROM sensor_heartbeats ORDER BY source;" \
   | ssh -F ~/.ssh/config.opsloop data01 'sudo -n docker exec -i opsloop-db psql -U opsloop -d opsloop'

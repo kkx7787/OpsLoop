@@ -412,6 +412,8 @@ CTI 서비스 전체가 격리됐다는 뜻은 아니다')를 푸는 근거가 �
 
 목록은 바뀔 때와 10분마다(생존 표시) 한 객체를 덮어쓴다. 버저닝이 켜져 있어 덮어쓴 판이 남는다(언제 무엇을 내렸는지.
 회차당 수 KiB, 하루 150판 안팎). 형식 · digest · 관문 보고 형식은 `enforcer/block_enforcer.py` 머리말에 있다.
+이슈 #77 부터 문서는 `entries`(관문 목록, 관문을 고른 요청) 옆에 `points.fw`(내부 방화벽 목록, 모든 행)를 싣는다. 키 · 판(`v:1`) · IAM ·
+버킷 정책은 그대로이고 크기는 최대 약 2배다.
 
 | 주체 | `block/v1/latest.json` | 관문 보고 `hb/v1/host=<관문 ID>-block/latest.json` |
 |---|---|---|
@@ -534,7 +536,7 @@ aws s3api put-object --bucket opsloop-archive-739272173045 --key block/v1/latest
 
 ## 관문 차단 집행 설치 (이슈 #47)
 
-사람이 요청한 차단(콘솔 block_ip · 판정 도구 threat · 흡수 후속 차단)을 관문 forward 체인에서 집행한다. 데이터 노드 집행기가
+사람이 요청한 차단(콘솔 block_ip · 판정 도구 threat · 흡수 후속 차단) 가운데 관문을 고른 것(이슈 #77)을 관문 forward 체인에서 집행한다. 데이터 노드 집행기가
 `block/v1/latest.json` 을 올리고, 관문 동기화(`infra/aws/gateway/block-sync.py`, 1분 타이머)가 읽어 nft 집합
 `inet filter opsloop_block` 에 넣고 뺀 뒤 결과를 `hb/v1/host=<관문 ID>-block/latest.json` 에 올린다. 막는 것은 허니팟 유입
 (DNAT 22 · 23 · 8080)뿐이다. 관문 자신의 관리 경로(SSM · DHCP, input 체인)는 그대로다. 이미 맺어진 연결은 끝까지 가고 새 연결부터 막힌다.
@@ -557,9 +559,12 @@ aws s3api put-object --bucket opsloop-archive-739272173045 --key block/v1/latest
   `systemctl start opsloop-block-sync.service` 를 돌린다.
 - 모드는 fail2ban 이 먼저다. 자가 시험이 `fail:` 이면 `MODE=nft` 로 바꾼다(5단계). 두 모드 모두 집합 · 규칙 · 상태 형식이 같고
   상태의 `mode` 만 다르다. fail2ban 모드는 동기화가 멈춰도 bantime(24시간) 안에, nft 모드는 항목의 만료(until)에 저절로 풀린다.
+  동기화가 도는 동안 목록에서 빠진 주소(해제 · 관문 미요청 등)는 어느 모드든 다음 회차에 뺀다(fail2ban unbanip · nft del).
 - 동기화 한 회차는 오류가 있으면 종료 코드 2 로 끝나 단위가 failed 로 보인다(집행기가 목록을 올리기 전의 `목록을 읽지 못함` 도 그렇다).
   타이머는 그래도 다음 회차를 돌린다. 오류가 없어지면 저절로 정상이 된다.
 - 관문을 다시 만들면(cloud-init) 새 `nftables.conf` 는 들어가지만 fail2ban · 동기화는 이 절차로 다시 설치한다(업로더와 같다).
+- 관문은 #77 판으로 바꾸지 않아도 된다. 동기화는 목록의 `entries`(관문 목록)만 적용하므로 옛 판 · 새 판이 같은 집합을 만들고, 새 판은
+  보고에 `list:"gateway"` 만 더한다. 관문을 다시 만들 때 어느 판을 깔아도 맞다.
 
 ### 0. 준비 (Mac, 저장소 루트)
 
@@ -672,11 +677,11 @@ gwrun "apt-get purge -y -q fail2ban && rm -f /etc/fail2ban/jail.d/opsloop-block.
                   # 패키지까지 뺄 때
 ```
 
-되돌리면 집행기는 5분 뒤부터 행마다 '관문 불일치 · 관문 보고가 5분 넘게 멈춤' 을 쓴다(예상된 표시).
+되돌리면 집행기는 5분 뒤부터 관문을 요청한 행마다 '관문 불일치 · 관문 보고가 5분 넘게 멈춤' 을 쓴다(예상된 표시).
 
 ## 내부 방화벽 동기화 (이슈 #51)
 
-온프레미스 내부 방화벽이 관문과 같은 차단 목록 `block/v1/latest.json` 을 읽고, 적용 결과를 `hb/v1/host=fw-opsloop-block/latest.json` 에
+온프레미스 내부 방화벽이 관문과 같은 차단 목록 `block/v1/latest.json` 의 내부 방화벽 갈래(`points.fw`, 없으면 `entries`, 이슈 #77)를 읽고, 적용 결과를 `hb/v1/host=fw-opsloop-block/latest.json` 에
 쓴다. 방화벽은 EC2 가 아니라 인스턴스 역할이 없으므로 IAM 사용자 `opsloop-fw-sync` 의 키를 쓴다. 그 두 객체뿐이다.
 설치 순서 전체는 `infra/vmware/README.md` '내부 방화벽 차단 집행'.
 
@@ -718,7 +723,7 @@ ssh -F ~/.ssh/config.opsloop fw 'sudo -n ls -l /etc/opsloop/block-sync.env'   # 
 
 ### 3. 검증 (실제 주체로)
 
-동기화의 `--dry-run` 이 목록을 읽고(`목록 확인`), 한 회차가 보고를 올린다(`aws s3 cp s3://…/hb/v1/host=fw-opsloop-block/latest.json -`).
+동기화의 `--dry-run` 이 목록을 읽고(`목록 fw 확인`), 한 회차가 보고를 올린다(`aws s3 cp s3://…/hb/v1/host=fw-opsloop-block/latest.json -`).
 같은 키로 원장(`raw/…`) · 관문 보고 키에 쓰면 AccessDenied 여야 한다. 시험 객체가 남지 않게 거부될 쓰기만 해 본다.
 
 ### 4. 되돌리기
