@@ -97,10 +97,10 @@ SENSORS_SQL = f"""
     FROM events WHERE src_ip = ANY($1::text[]::inet[]) AND {REAL_EVENTS}
     GROUP BY src_ip"""
 
-# 차단 행. 사건 상세(main.get_incident 의 blocked)와 같은 열이다. $1 주소들
+# 차단 행. 사건 상세(main.get_incident 의 blocked)와 같은 열이다(요청 지점 points · 이슈 #77 포함). $1 주소들
 BLOCKS_SQL = """
     SELECT host(actor_ip) AS ip, reason, method, created_at, expires_at, released_at, enforced_at, enforce_note,
-           requested_by, enforcement
+           requested_by, enforcement, points
     FROM blocklist WHERE actor_ip = ANY($1::text[]::inet[])"""
 
 # 사건 없는 주소가 출발지인가(이벤트가 있는가)와 그 마지막 관측. 콘솔 · 감사 기록만 있으면 없는 출발지다(404). $1 주소
@@ -179,13 +179,15 @@ def targets_of(sensors, nodes=None) -> list[str]:
 
 
 def block_of(row) -> dict | None:
-    """차단 행 → 사건 상세 blocked 와 같은 모양. 시각은 UTC ISO, 지점별 결과(enforcement)는 객체로 푼다."""
+    """차단 행 → 사건 상세 blocked 와 같은 모양. 시각은 UTC ISO, 지점별 결과(enforcement)는 객체로 푼다.
+    points 는 요청 지점(이슈 #77, 정규 순서)이다."""
     if row is None:
         return None
     return {"reason": row["reason"], "method": row["method"], "created_at": cti.iso(row["created_at"]),
             "expires_at": cti.iso(row["expires_at"]), "released_at": cti.iso(row["released_at"]),
             "enforced_at": cti.iso(row["enforced_at"]), "enforce_note": row["enforce_note"],
-            "requested_by": row["requested_by"], "enforcement": cti.loads(row["enforcement"])}
+            "requested_by": row["requested_by"], "enforcement": cti.loads(row["enforcement"]),
+            "points": list(row["points"]) if row["points"] is not None else None}
 
 
 def exempt_flag(in_nets: bool, readable: bool) -> bool | None:

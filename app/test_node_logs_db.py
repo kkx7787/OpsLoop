@@ -75,7 +75,7 @@ DETAIL_TABLES = """
     CREATE TEMP TABLE blocklist (actor_ip inet PRIMARY KEY, reason text, method text,
         created_at timestamptz DEFAULT now(), expires_at timestamptz, released_at timestamptz,
         enforced_at timestamptz, enforce_note text, incident_key text, requested_by text, released_by text,
-        enforcement jsonb);
+        enforcement jsonb, points text[] NOT NULL DEFAULT '{gateway,fw}');
     CREATE TEMP TABLE incident_absorbed (first_key text, member_key text, kind text, via_key text,
         rule_id text, rule_version text, actor_ip inet, first_ts timestamptz, last_ts timestamptz,
         signal_count integer, sessions text[] DEFAULT '{}', payloads text[] DEFAULT '{}');

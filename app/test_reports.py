@@ -6,10 +6,14 @@
      관리자가 아닌데 운영 기록을 달라면 403 · 세션 없으면 401. 둘 다 DB 에 닿기 전이다
   3. 라우터: 모르는 기간 · 구역 · 기간 없음은 DB 에 닿기 전에 422 · 한 트랜잭션(반복 읽기 · 읽기 전용) 첫 줄이 statement_timeout ·
      표가 없는 구역은 available=false 와 빠진 표 이름 · 출력자는 세션 사용자
-  4. 다른 모듈과 같은 글자: 차단 상태 분류(main.BLOCK_STATES_SQL) · 규칙별 판정(operations.quality 의 질의)
+  4. 다른 모듈과 같은 글자: 차단 상태 분류(main.BLOCK_STATES_SQL, 같은 상수 block_points.BLOCK_STATES_SQL) · 규칙별 판정
+     (operations.quality 의 질의) · 차단 감사 종류 순서(지점 넓힘은 만료 변경 뒤) · 관문 반영 지연은 관문 요청만(이슈 #77) ·
+     기존 차단 유지 표지는 집행기 NOTE_KEPT 와 같은 글자(결정 2)
 SQL 이 맞는지는 test_reports_db.py 가 시험 DB 로 본다.
 """
+import importlib.util
 import inspect
+import os
 import unittest
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -22,6 +26,7 @@ from fastapi.testclient import TestClient
 import operations
 import reports as r
 
+HERE = os.path.dirname(os.path.abspath(__file__))
 NOW = datetime(2026, 9, 28, 3, 0, tzinfo=timezone.utc)
 ALL = ["overview", "rules", "blocks", "targets", "cti", "ops"]
 
@@ -76,8 +81,30 @@ class SameTextTests(unittest.TestCase):
     def test_차단_상태_분류는_main_과_같다(self):
         import test_web  # asyncpg 가 없는 곳에서 가짜를 넣는다(main 보다 먼저)
         main = test_web.main
+        import block_points
         self.assertEqual(r.BLOCK_STATES_SQL, main.BLOCK_STATES_SQL)
+        # 글자 복사가 아니라 같은 상수다(이슈 #77)
+        self.assertIs(r.BLOCK_STATES_SQL, block_points.BLOCK_STATES_SQL)
+        self.assertIs(main.BLOCK_STATES_SQL, block_points.BLOCK_STATES_SQL)
         self.assertEqual((r.ENFORCE_EXCLUDED, r.ENFORCE_MISMATCH), (main.ENFORCE_EXCLUDED, main.ENFORCE_MISMATCH))
+
+    def test_차단_감사_종류와_관문_반영_지연(self):
+        self.assertEqual(r.BLOCK_EVENTS, ("console.block.created", "console.block.rearmed", "console.block.extended",
+                                          "console.block.shortened", "console.block.points", "console.block.released",
+                                          "console.block.expired", "console.block.enforced", "console.block.unenforced"))
+        # 요청 지점은 감사 detail 의 points= 로 읽고, 관문 반영 지연은 관문 요청(없음 · '-' · gateway 포함)만 짝짓는다
+        self.assertIn("points=([^[:space:]]+)') AS points", r.REQUESTS_CTE)
+        self.assertIn("WHERE r.points IS NULL OR r.points = '-' OR 'gateway' = ANY(string_to_array(r.points, ','))",
+                      r.ENFORCE_SQL)
+        self.assertNotIn("r.points", r.REQUESTERS_SQL)          # 새 요청 수는 모든 요청이다
+        # 기존 차단 유지(결정 2): 짝 확인의 쪽지가 집행기 NOTE_KEPT 로 끝나면 따로 세고 지연에서 뺀다
+        spec = importlib.util.spec_from_file_location(
+            "block_enforcer_for_reports", os.path.join(os.path.dirname(HERE), "enforcer", "block_enforcer.py"))
+        be = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(be)
+        self.assertIn(f" note=관문 반영 · [^=]*{be.NOTE_KEPT}$' AS kept", r.REQUESTS_CTE)
+        self.assertIn("CASE WHEN e.ts IS NOT NULL AND NOT e.kept", r.ENFORCE_SQL)
+        self.assertIn("count(*) FILTER (WHERE f.kept) AS maintained", r.ENFORCE_SQL)
 
     def test_규칙별_판정은_규칙_화면과_같은_질의다(self):
         self.assertIn(r.QUALITY_SQL, inspect.getsource(operations.quality))

@@ -48,10 +48,12 @@ TABLES = """
         decision_seconds integer, created_at timestamptz NOT NULL DEFAULT now());
     CREATE TABLE blocklist (actor_ip inet PRIMARY KEY, reason text, incident_key text,
         created_at timestamptz NOT NULL DEFAULT now(), expires_at timestamptz, released_at timestamptz,
-        method text, requested_by text, enforced_at timestamptz, enforce_note text, released_by text);
+        method text, requested_by text, enforced_at timestamptz, enforce_note text, released_by text,
+        points text[] NOT NULL DEFAULT '{gateway,fw}');
     CREATE TABLE rule_versions (rule_version text PRIMARY KEY, definition jsonb NOT NULL);
     CREATE TABLE absorbed_blocks (first_key text PRIMARY KEY, expires_at timestamptz NOT NULL, requested_by text,
-        created_at timestamptz NOT NULL DEFAULT now(), released_at timestamptz, released_by text);
+        created_at timestamptz NOT NULL DEFAULT now(), released_at timestamptz, released_by text,
+        points text[] NOT NULL DEFAULT '{gateway,fw}');
     CREATE TABLE incident_absorbed (first_key text NOT NULL, member_key text NOT NULL, kind text NOT NULL,
         via_key text, rule_id text NOT NULL, rule_version text NOT NULL, actor_ip inet,
         first_ts timestamptz NOT NULL, last_ts timestamptz NOT NULL, signal_count integer NOT NULL,

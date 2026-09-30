@@ -69,7 +69,8 @@ BASE_TABLES = """
         started_at timestamptz NOT NULL, finished_at timestamptz NOT NULL, incidents integer);
     CREATE TEMP TABLE blocklist (actor_ip inet PRIMARY KEY, reason text, incident_key text,
         created_at timestamptz DEFAULT now(), expires_at timestamptz, released_at timestamptz, method text,
-        requested_by text, enforced_at timestamptz, enforce_note text, released_by text, enforcement jsonb);
+        requested_by text, enforced_at timestamptz, enforce_note text, released_by text, enforcement jsonb,
+        points text[] NOT NULL DEFAULT '{gateway,fw}' CHECK (points IN ('{gateway,fw}'::text[], '{fw}'::text[])));
     CREATE TEMP TABLE block_exempt (cidr cidr PRIMARY KEY, note text NOT NULL);
 """
 METRICS_TABLE = """
@@ -1120,6 +1121,32 @@ class TargetsDatabaseTests(Base):
                          [("node", "front"), ("w-mixed", "front"), ("w-none", "front"), ("nodef", "front"),
                           ("self", "front"), ("audit", "front"), ("old-pending", "back"), ("c-out", "back")])
         self.assertEqual(queue["overdue"], metrics["pending"]["overdue"])
+
+    async def test_내부_방화벽만_요청한_행은_관문_수와_관문_항목에_들지_않는다(self):
+        # 이슈 #77. 지점 수는 그 지점을 요청한 행만 세고 관문 미요청은 따로 센다. 관문 불일치 · 관문 띠 항목은 관문 요청 행만이다.
+        #   남은 관문 결과 · 쪽지(관문 빼기 뒤 관문이 뺐다고 확인하기 전)가 있으면 미요청이 아니라 빠짐 확인 전이고(결정 14) 관문 칸 ·
+        #   띠에 들지 않는다. 기존 행(두 지점) 수는 그대로다
+        def counts(body, tid):
+            return {k: self.target(body, tid)["response"][k] for k in ("applied", "failed", "unverified", "stale",
+                                                                        "unrequested", "removing")}
+
+        def band(monitor):
+            return {x["key"]: x["count"] for x in monitor["items"]}
+        before = await self.view()
+        band_before = band(await t.monitor_view(self.conn, self.now))
+        await self.conn.execute("""INSERT INTO blocklist (actor_ip, expires_at, enforce_note, enforcement, points) VALUES
+            ('203.0.113.40', $1, NULL, '{"fw": {"state": "confirmed"}}', '{fw}'),
+            ('203.0.113.41', $1, '관문 불일치 · 관문 빼기 전 쪽지', '{"gateway": {"state": "failed"}, "fw": {"state": "stale"}}',
+             '{fw}')""", self.now + timedelta(hours=1))
+        after = await self.view()
+        band_after = band(await t.monitor_view(self.conn, self.now))
+        self.assertEqual(counts(after, "aws-sensor"), counts(before, "aws-sensor") | {"unrequested": 1, "removing": 1})
+        gained = {k: counts(after, "web-01")[k] - counts(before, "web-01")[k] for k in counts(before, "web-01")}
+        self.assertEqual(gained, {"applied": 1, "failed": 0, "unverified": 1, "stale": 1, "unrequested": 0, "removing": 0})
+        self.assertEqual((counts(before, "aws-sensor")["unrequested"], counts(before, "aws-sensor")["removing"]), (0, 0))
+        # 띠: 내부 방화벽 불일치만 새로 뜨고 관문 적용 실패 · 관문 불일치 · 관문 지점 불일치 수는 그대로다
+        self.assertEqual({k: v for k, v in band_after.items() if band_before.get(k) != v}, {"point_stale:fw": 1})
+        self.assertNotIn("gateway_mismatch", band_after)
 
 
 @unittest.skipUnless(os.environ.get("OPSLOOP_TEST_DATABASE_URL"), "PostgreSQL 시험 연결 미지정")

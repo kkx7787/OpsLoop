@@ -13,7 +13,10 @@ KST 날짜는 09-27 15:00 UTC 에 바뀐다.
   - 잔량 · 목표 초과는 대시보드(dashboard_metrics)와 같다 · 상위 출발지의 최고 심각도는 순위(high > medium)
   - 규칙: operations.quality 와 같은 행 · 흡수 · 억제 수(시험 출발지 제외) · 기간 중 규칙 버전
   - 차단: 조치 수 · 새 요청(created · rearmed · 만료 뒤 extended)의 요청자 종류 · extended 도 감사 수에 든다 ·
-    집행 지연(감사 요청 → 같은 주소의 다음 요청 전 첫 enforced 의 at. 해제 · 만료된 차단도 든다) · 지금 차단 상태
+    관문 반영 지연(감사 요청 → 같은 주소의 다음 요청 전 첫 enforced 의 at. 해제 · 만료된 차단도 든다) · 지금 차단 상태.
+    이슈 #77: 감사의 points= 를 읽어 관문 반영 지연은 관문 요청만(points= 없는 옛 감사 · '-' 는 두 지점), 새 요청 수는 모든 요청,
+    지점 넓힘(console.block.points)은 감사 수에만 든다. 지금 차단 상태는 요청 지점이 모두 확인이어야 적용이다. 관문이 빼기 전에 다시
+    건 요청(짝 확인의 쪽지가 '· 기존 차단 유지', 결정 2)은 기존 차단 유지로 따로 세고 지연에서 뺀다
   - 대상: 상태판에서 추린 행 · 센서별 실제 이벤트 · 탐지 실행 · 지표 최대와 공백(기간 시작 · 끝 포함) · 상태판이 창 밖 미결을
     읽어도(이슈 #83) 대응 금지 대역 수는 그대로 · 잔량의 판단 유보는 시스템 기록 포함(대시보드 미결은 사람 판정만) ·
     출력 시각보다 5분 넘게 앞선 줄은 수집 판정에서 뺀다(대시보드 카드와 같다)
@@ -64,6 +67,8 @@ def schema_sql(schema: str) -> str:
     for name in TABLES:
         parts.append(re.search(rf"^CREATE TABLE IF NOT EXISTS {name} \(.*?^\);", text, re.S | re.M).group(0))
         parts += re.findall(rf"^ALTER TABLE {name} [^;]*;", text, re.M)
+        # 요청 지점(이슈 #77)은 열이 없을 때만 더하는 DO 블록 안에 있다
+        parts += [a.strip() for a in re.findall(rf"^\s+ALTER TABLE {name} ADD COLUMN points [^;]*;", text, re.M)]
     parts.append(re.search(r"^CREATE OR REPLACE VIEW audit_log AS.*?;", text, re.S | re.M).group(0))
     function = re.search(r"^CREATE OR REPLACE FUNCTION is_test_source\(ip inet\).*?\$\$;", text, re.S | re.M).group(0)
     assert "SET search_path = public, pg_temp" in function
@@ -222,6 +227,9 @@ class ReportsDatabaseTests(unittest.IsolatedAsyncioTestCase):
             await self.conn.execute("""INSERT INTO blocklist (actor_ip, reason, created_at, expires_at, released_at, enforced_at,
                 enforce_note, requested_by) VALUES ($1, '시험', $2, $3, $4, $5, $6, $7)""",
                 ip, created, expires, released, enforced, note, a)
+        # 두 지점 행의 적용은 내부 방화벽 확인도 있어야 한다(이슈 #77)
+        await self.conn.execute("""UPDATE blocklist SET enforcement = '{"gateway": {"state": "confirmed"},
+            "fw": {"state": "confirmed"}}' WHERE actor_ip IN ('198.51.100.1', '198.51.100.4')""")
 
         # 관제 대상: 노드 · 탐지 실행 · 자원 지표
         await self.conn.execute("""INSERT INTO nodes (node_id, sensor, status, registered_at, last_seen_at, last_loaded_at)
@@ -361,22 +369,100 @@ class ReportsDatabaseTests(unittest.IsolatedAsyncioTestCase):
         # 만료 뒤 다시 건 차단 · 살아 있는 차단 연장(extended)도 센다. until 의 expired · enforced 와 since 앞의 created 는 뺀다
         self.assertEqual({x["eventid"]: x["count"] for x in blocks["audit"]}, {
             "console.block.created": 4, "console.block.rearmed": 2, "console.block.extended": 3,
-            "console.block.shortened": 0, "console.block.released": 1, "console.block.expired": 0,
-            "console.block.enforced": 7, "console.block.unenforced": 0})
+            "console.block.shortened": 0, "console.block.points": 0, "console.block.released": 1,
+            "console.block.expired": 0, "console.block.enforced": 7, "console.block.unenforced": 0})
         self.assertEqual([x["eventid"] for x in blocks["audit"]], list(r.BLOCK_EVENTS))
         # 새 요청 r1 ~ r7(기간 앞 · 살아 있는 차단 연장 · from 이 시각이 아닌 extended 제외).
         #   지연 r1 30 · r2 120 · r3 65(at 없음) · r4 50 · r6 20.
         #   r5 는 다음 요청(r6) 전에 확인이 없고, r7 의 확인은 until 이라 뺀다. 차단 목록 행(집행 기록이 비워진 것)과 무관하다
-        self.assertEqual(blocks["enforcement"], {"created": 7, "enforced": 5, "p50_seconds": 50.0, "max_seconds": 120.0})
+        self.assertEqual(blocks["enforcement"], {"created": 7, "enforced": 5, "maintained": 0, "p50_seconds": 50.0,
+                                                 "max_seconds": 120.0})
         # 지금: 만료 경계(expires_at = as_of) · 해제는 살아 있지 않다
-        self.assertEqual(blocks["states"], {"total": 6, "enforced": 2, "pending": 2, "excluded": 1, "mismatch": 1})
+        self.assertEqual(blocks["states"], {"total": 6, "enforced": 2, "pending": 2, "excluded": 1, "mismatch": 1,
+                                            "failed": 0})
+
+    async def test_차단_구역_관문_반영_지연은_관문_요청만(self):
+        # 이슈 #77. 감사 detail 의 points= 로 요청 지점을 읽는다. 내부 방화벽만 요청한 r8 은 새 요청 수에는 들고 관문 반영 지연에서는
+        #   빠진다(뒤에 관문을 더해 관문 확인이 와도 짝짓지 않는다). points= 없는 옛 감사(r1 ~ r7) · '-'(열이 없던 DB, r10)는 두 지점이다
+        a = ACTORS[0]
+        live, enforcer = pg(AS_OF + timedelta(hours=1)), "by=db:opsloop_enforcer"
+        fw_only, both, dash, failed = "198.51.100.30", "198.51.100.31", "198.51.100.32", "198.51.100.33"
+        for when, eventid, detail in [
+                (at(250), "console.block.created",
+                 f"by={a} ip={fw_only} incident=x expires={live} points=fw requested_by={a}"),                # r8
+                (at(252), "console.block.points", f"by={a} ip={fw_only} from=fw to=gateway,fw"),
+                (at(256), "console.block.enforced", f"{enforcer} ip={fw_only} method=nft at={pg(at(254))} note=-"),
+                (at(260), "console.block.created",
+                 f"by={a} ip={both} incident=x expires={live} points=gateway,fw requested_by={a}"),          # r9 지연 5
+                (at(270), "console.block.enforced", f"{enforcer} ip={both} method=nft at={pg(at(265))} note=-"),
+                (at(280), "console.block.rearmed",
+                 f"by={a} ip={dash} incident=x expires={live} points=- released_by={a} requested_by={a}")]:  # r10
+            await self.event(when, eventid, "audit", a, detail)
+        # 내부 방화벽만 요청한 행: 내부 방화벽 확인이면 적용(관문 열이 비어도), 내부 방화벽 실패면 실패
+        for ip, fw in ((fw_only, "confirmed"), (failed, "failed")):
+            await self.conn.execute("""INSERT INTO blocklist (actor_ip, reason, expires_at, requested_by, points, enforcement)
+                VALUES ($1, '시험', $2, $3, '{fw}', $4::jsonb)""", ip, AS_OF + timedelta(hours=1), a,
+                json.dumps({"fw": {"state": fw}}))
+        blocks = (await self.report(["blocks"]))["sections"]["blocks"]
+        self.assertEqual(blocks["requests"], {"total": 10, "console": 6, "triage": 2, "system": 1, "unknown": 1})
+        # 지연 r1 30 · r2 120 · r3 65 · r4 50 · r6 20 · r9 5, 요청은 r8 을 뺀 9
+        self.assertEqual(blocks["enforcement"], {"created": 9, "enforced": 6, "maintained": 0, "p50_seconds": 40.0,
+                                                 "max_seconds": 120.0})
+        audit = {x["eventid"]: x["count"] for x in blocks["audit"]}
+        self.assertEqual((audit["console.block.created"], audit["console.block.rearmed"], audit["console.block.points"],
+                          audit["console.block.enforced"]), (6, 3, 1, 9))
+        self.assertIn("관문 반영 지연(관문 요청만)", " ".join(blocks["notes"]))
+        self.assertIn("살아 있는 차단에 관문을 더한 것(차단 지점 넓힘)은 넣지 않는다", " ".join(blocks["notes"]))
+        self.assertEqual(blocks["states"], {"total": 8, "enforced": 3, "pending": 2, "excluded": 1, "mismatch": 1,
+                                            "failed": 1})
+
+    async def test_차단_구역_기존_차단_유지는_따로_세고_지연에서_뺀다(self):
+        # 결정 2. 해제 · 만료 행을 관문을 포함해 다시 걸면 요청 시각에 관문 세 열을 비우지 않는다. 관문이 빼기 전에 다시 건 요청은
+        #   집행기가 새 보고로 확인하며 쪽지 끝에 '· 기존 차단 유지' 를 붙인다(unenforced 없음) → 새 반영이 아니라 따로 세고 지연에서
+        #   뺀다. 관문이 뺀 뒤 다시 건 요청(unenforced 뒤 새 확인)은 지연에 든다. 살아 있는 차단 연장의 유지 확인은 새 요청이 아니다
+        a = ACTORS[0]
+        live, enforcer = pg(AS_OF + timedelta(hours=1)), "by=db:opsloop_enforcer"
+        kept, removed, expired, extended = "198.51.100.40", "198.51.100.41", "198.51.100.42", "198.51.100.43"
+
+        def applied(ip, n, suffix=""):
+            return (at(n + 5), "console.block.enforced",
+                    f"{enforcer} ip={ip} method=nft at={pg(at(n))} note=관문 반영 · abcd1234 · {pg(at(n))}{suffix}")
+
+        def created(ip, n):
+            return (at(n), "console.block.created", f"by={a} ip={ip} incident=x expires={live} points=gateway,fw requested_by={a}")
+        for when, eventid, detail in [
+                created(kept, 700), applied(kept, 705),                                                     # r11 지연 5
+                (at(720), "console.block.released", f"by={a} ip={kept} incident=x verdict=threat past_expiry=no"),
+                (at(730), "console.block.rearmed",
+                 f"by={a} ip={kept} incident=x expires={live} points=gateway,fw released_by={a} requested_by={a}"),  # r12
+                applied(kept, 785, " · 기존 차단 유지"),                                                        # r12 유지
+                created(removed, 800), applied(removed, 805),                                               # r13 지연 5
+                (at(820), "console.block.released", f"by={a} ip={removed} incident=x verdict=threat past_expiry=no"),
+                (at(830), "console.block.unenforced", f"{enforcer} ip={removed} method=nft was={pg(at(805))} why=released"),
+                (at(840), "console.block.rearmed",
+                 f"by={a} ip={removed} incident=x expires={live} points=gateway,fw released_by={a} requested_by={a}"),  # r14
+                applied(removed, 895),                                                                      # r14 지연 55
+                created(expired, 1000), applied(expired, 1005),                                             # r15 지연 5
+                (at(1100), "console.block.extended",
+                 f"by={a} ip={expired} from={pg(at(1050))} to={live} points=gateway,fw"),                   # r16 만료 뒤 다시 건 차단
+                applied(expired, 1150, " · 기존 차단 유지"),                                                    # r16 유지
+                created(extended, 1200), applied(extended, 1205),                                           # r17 지연 5
+                (at(1300), "console.block.extended", f"by={a} ip={extended} from={live} to={live} points=gateway,fw"),
+                applied(extended, 1350, " · 기존 차단 유지")]:                                                   # 연장: 새 요청 아님
+            await self.event(when, eventid, "audit", a, detail)
+        blocks = (await self.report(["blocks"]))["sections"]["blocks"]
+        # 지연: r1 30 · r2 120 · r3 65 · r4 50 · r6 20 · r11 5 · r13 5 · r14 55 · r15 5 · r17 5 (중앙값 25). 유지 r12 · r16 은 뺀다
+        self.assertEqual(blocks["enforcement"], {"created": 14, "enforced": 10, "maintained": 2, "p50_seconds": 25.0,
+                                                 "max_seconds": 120.0})
+        self.assertIn("'기존 차단 유지' 로 따로 세고 지연(확인 수 · 중앙값 · 최대)에서 뺀다", " ".join(blocks["notes"]))
 
     async def test_대상_구역(self):
         section = (await self.report(["targets"]))["sections"]["targets"]
         self.assertEqual([x["id"] for x in section["targets"]], ["aws-sensor", "web-01", "console", "data-node"])
         web = next(x for x in section["targets"] if x["id"] == "web-01")
         self.assertEqual(web["collection"]["state"], "quiet")          # 노드 수신 2분 전 · web-01 로그 없음
-        self.assertEqual(set(web["response"]), {"point_label", "applied", "failed", "unverified", "exempt", "stalled"})
+        self.assertEqual(set(web["response"]), {"point_label", "applied", "failed", "unverified", "unrequested", "removing",
+                                                "exempt", "stalled"})
         self.assertEqual(set(web), {"id", "label", "collection", "response"})
         # 실제 이벤트만 · until 과 같은 시각 제외 · 감사 · 로그인 기록도 센서로 센다
         self.assertEqual(section["sensors"], [{"sensor": "audit", "events": 19}, {"sensor": "console", "events": 3},

@@ -14,8 +14,12 @@ DB 시험은 OPSLOOP_TEST_DATABASE_URL 이 있을 때만 돈다. 연결 전용 �
     없으면 409. actor_ip 를 주면 이 사건의 흡수 차단 한 행만 푼다(차단 목록 화면). 첫 사건 출발지의 차단은 그대로다
   - 차단 금지 대역(이슈 #47): 콘솔 차단은 트리거 거부(23514)를 400 과 사유(걸린 대역 · 메모)로 돌려주고 조치를 남기지
     않는다. 흡수 차단 · 후속 차단은 DB 금지 대역(block_exempt)과 대역 주소를 미리 뺀다. 후속 차단은 첫 사건의 마지막
-    판정이 위협일 때만 돌고, 한 첫 사건이 거부돼도 다른 첫 사건은 올린다. 살아 있는 차단에 다시 걸면 집행 정보를 두고,
-    새 요청이면 비운다
+    판정이 위협일 때만 돌고, 한 첫 사건이 거부돼도 다른 첫 사건은 올린다. 다시 걸어도 집행 정보(관문 세 열)는 요청 시각에
+    두고 관문이 뺐는지는 집행기가 판단한다(2026-10-01 결정 · 결정 2)
+  - 적용 지점(이슈 #77): 함께 차단 · 약속 · 후속 차단이 요청 지점을 쓰고, 약속 · 이 사건의 흡수 차단은 넓히기만 한다(같은 약속
+    만료로 넓혀 다시 걸면 흡수 행도 넓어지고 만료는 줄지 않는다). 요청이 관문을 포함하면 kept 행은 지점만 넓힌다(만료 · 근거
+    사건 · 요청자 그대로), 내부 방화벽만이면 그대로. 관리자의 관문 빼기는 흡수 행 · 약속을 좁히지 않고, operator 는 403.
+    감사(console.block.points) · 좁히기 거부 트리거는 실제 스키마로 test_block_points 가 본다
 """
 import os
 import secrets
@@ -93,11 +97,13 @@ class AbsorbedDatabaseTests(unittest.IsolatedAsyncioTestCase):
             CREATE TEMP TABLE blocklist (actor_ip inet PRIMARY KEY, reason text, incident_key text,
                 created_at timestamptz NOT NULL DEFAULT now(), expires_at timestamptz, released_at timestamptz,
                 method text, requested_by text, enforced_at timestamptz, enforce_note text, released_by text,
-                enforcement jsonb);
+                enforcement jsonb, points text[] NOT NULL DEFAULT '{gateway,fw}'
+                CHECK (points IN ('{gateway,fw}'::text[], '{fw}'::text[])));
             CREATE TEMP TABLE rule_versions (rule_version text PRIMARY KEY, definition jsonb NOT NULL);
             CREATE TEMP TABLE absorbed_blocks (first_key text PRIMARY KEY, expires_at timestamptz NOT NULL,
                 requested_by text, created_at timestamptz NOT NULL DEFAULT now(), released_at timestamptz,
-                released_by text);
+                released_by text, points text[] NOT NULL DEFAULT '{gateway,fw}'
+                CHECK (points IN ('{gateway,fw}'::text[], '{fw}'::text[])));
             CREATE TEMP TABLE incident_absorbed (first_key text NOT NULL, member_key text NOT NULL,
                 kind text NOT NULL CHECK (kind IN ('absorbed', 'suppressed')), via_key text,
                 rule_id text NOT NULL, rule_version text NOT NULL, actor_ip inet,
@@ -138,7 +144,7 @@ class AbsorbedDatabaseTests(unittest.IsolatedAsyncioTestCase):
     async def block_rows(self):
         return {r["ip"]: dict(r) for r in await self.conn.fetch(
             "SELECT host(actor_ip) ip, reason, incident_key, requested_by, expires_at, released_at, released_by, "
-            "method FROM blocklist")}
+            "method, points FROM blocklist")}
 
     # ------------------------------------------------------------ 상세
 
@@ -224,12 +230,13 @@ class AbsorbedDatabaseTests(unittest.IsolatedAsyncioTestCase):
         tag = main.absorbed_reason_tag(FIRST)
         self.assertEqual(set(rows), {OWN, "198.51.100.2", "198.51.100.3", "198.51.100.4", "198.51.100.5"})
         self.assertEqual(rows[OWN]["reason"], "캠페인")
-        # 빈 자리 · 누가 풀었는지 없는 풀린 차단은 이 사건의 흡수 차단이 된다(집행 정보는 비운다). 만료는 72시간
-        for ip in ("198.51.100.2", "198.51.100.5"):
+        # 빈 자리 · 누가 풀었는지 없는 풀린 차단은 이 사건의 흡수 차단이 된다(집행 정보는 요청 시각에 두고 집행기가 판단한다,
+        # 결정 2). 만료는 72시간
+        for ip, method in (("198.51.100.2", None), ("198.51.100.5", "nft")):
             self.assertEqual((rows[ip]["reason"], rows[ip]["incident_key"], rows[ip]["requested_by"]),
                              (tag, FIRST, "test-operator"))
             self.assertIsNone(rows[ip]["released_at"])
-            self.assertIsNone(rows[ip]["method"])
+            self.assertEqual(rows[ip]["method"], method)
             self.assertGreater(rows[ip]["expires_at"], datetime.now(timezone.utc) + timedelta(hours=71))
         # 다른 사건으로 살아 있는 차단은 그 사건 것으로 두고 만료도 건드리지 않는다. 만료 없는 차단은 그대로 없다
         self.assertEqual((rows["198.51.100.3"]["reason"], rows["198.51.100.3"]["incident_key"],
@@ -550,7 +557,7 @@ class AbsorbedDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(set(await self.block_rows()), {"198.51.100.9"})
         self.assertEqual(await self.conn.fetchval("SELECT count(*) FROM actions WHERE incident_key = $1", FIRST), 0)
 
-    async def test_console_reblock_keeps_live_enforcement_and_clears_new_request(self):
+    async def test_console_reblock_keeps_enforcement_live_or_rearmed(self):
         await self.conn.execute("""INSERT INTO blocklist (actor_ip, reason, incident_key, expires_at, method, enforced_at,
             enforce_note) VALUES ($1, 'old', 'R002|v3|x', now() + interval '72 hours', 'fail2ban', now(),
             '관문 반영 · abcd1234 · x')""", OWN)
@@ -560,12 +567,114 @@ class AbsorbedDatabaseTests(unittest.IsolatedAsyncioTestCase):
         # 만료를 앞당기지 않고 관문에 이미 있는 집행 정보는 그대로(감사에 unenforced 가 남지 않는다)
         self.assertEqual(tuple(row)[:4], tuple(before))
         self.assertEqual(row["incident_key"], FIRST)
-        # 만료된 행에 다시 걸면 새 요청이라 집행 정보를 비운다
+        # 만료된 행에 다시 걸어도(새 요청) 집행 정보를 요청 시각에 비우지 않는다. 관문이 실제로 뺐는지는 집행기가 판단한다(결정 2)
         await self.conn.execute("UPDATE blocklist SET expires_at = now() - interval '1 second'")
         await self.act(main.ActionIn(action="block_ip", expires_hours=2))
         row = await self.conn.fetchrow("SELECT expires_at, method, enforced_at, enforce_note FROM blocklist")
-        self.assertEqual((row["method"], row["enforced_at"], row["enforce_note"]), (None, None, None))
+        self.assertEqual(tuple(row)[1:], tuple(before)[1:])
         self.assertGreater(row["expires_at"], datetime.now(timezone.utc) + timedelta(hours=1))
+
+    # ------------------------------------------------------------ 적용 지점(이슈 #77)
+
+    async def promise(self):
+        return await self.conn.fetchrow("SELECT expires_at, points FROM absorbed_blocks WHERE first_key = $1", FIRST)
+
+    async def test_block_points_reach_absorbed_rows_and_promise_widen_only(self):
+        await self.absorb("198.51.100.2", 5)
+        out = await self.act(main.ActionIn(action="block_ip", expires_hours=48, include_absorbed=True, points=["fw"]))
+        self.assertEqual(out["absorbed"]["blocked"], 1)
+        rows = await self.block_rows()
+        self.assertEqual((rows[OWN]["points"], rows["198.51.100.2"]["points"]), (["fw"], ["fw"]))
+        before = await self.promise()
+        self.assertEqual(before["points"], ["fw"])
+        expires = rows["198.51.100.2"]["expires_at"]
+        # 같은 약속으로 관문을 더해 다시 건다(더 짧은 만료). 약속 · 흡수 행 · 이 출발지 모두 넓어지고 만료는 줄지 않는다
+        await self.act(main.ActionIn(action="block_ip", expires_hours=1, include_absorbed=True, points=["gateway", "fw"]))
+        rows = await self.block_rows()
+        self.assertEqual((rows[OWN]["points"], rows["198.51.100.2"]["points"]), (["gateway", "fw"], ["gateway", "fw"]))
+        self.assertEqual(rows["198.51.100.2"]["expires_at"], expires)
+        after = await self.promise()
+        self.assertEqual((after["points"], after["expires_at"]), (["gateway", "fw"], before["expires_at"]))
+        # 좁힌 요청(내부 방화벽만)은 살아 있는 약속 · 흡수 행을 좁히지 않는다(이 출발지는 관리자만 관문을 뺀다)
+        await self.act(main.ActionIn(action="block_ip", include_absorbed=True, points=["fw"]), ADMIN)
+        rows = await self.block_rows()
+        self.assertEqual((rows[OWN]["points"], rows["198.51.100.2"]["points"]), (["fw"], ["gateway", "fw"]))
+        self.assertEqual((await self.promise())["points"], ["gateway", "fw"])
+
+    async def test_kept_rows_widen_points_only_when_gateway_requested(self):
+        await self.absorb("198.51.100.3", 5)
+        await self.conn.execute("""INSERT INTO blocklist (actor_ip, reason, incident_key, requested_by, expires_at, method,
+            enforced_at, points) VALUES ('198.51.100.3', 'console', 'R002|v3|other', 'han', now() + interval '1 hour',
+            'nft', now(), '{fw}')""")
+        before = (await self.block_rows())["198.51.100.3"]
+        out = await self.act(main.ActionIn(action="block_ip", include_absorbed=True, points=["fw"]))
+        self.assertEqual(out["absorbed"]["kept"], 1)
+        self.assertEqual((await self.block_rows())["198.51.100.3"], before)            # 내부 방화벽만이면 그대로
+        out = await self.act(main.ActionIn(action="block_ip", expires_hours=72, include_absorbed=True,
+                                           points=["fw", "gateway"]))
+        after = (await self.block_rows())["198.51.100.3"]
+        self.assertEqual(after, before | {"points": ["gateway", "fw"]})               # 지점만 넓힌다
+        self.assertEqual((out["absorbed"]["kept"], out["absorbed"]["blocked"]), (1, 0))
+
+    async def test_follow_blocks_with_promise_points(self):
+        await self.threat()
+        await self.act(main.ActionIn(action="block_ip", include_absorbed=True, points=["fw"]))
+        await self.absorb("198.51.100.2", 90)
+        follower = absorbed_mod.AbsorbedFollower(self.pool)
+        self.assertEqual(await follower.step(self.conn), [(FIRST, 1)])
+        self.assertEqual((await self.block_rows())["198.51.100.2"]["points"], ["fw"])
+        # 약속이 넓어지면 뒤의 흡수도 넓게 오른다
+        await self.act(main.ActionIn(action="block_ip", include_absorbed=True, points=["gateway", "fw"]))
+        await self.absorb("198.51.100.4", 95)
+        self.assertEqual(await follower.step(self.conn), [(FIRST, 1)])
+        self.assertEqual((await self.block_rows())["198.51.100.4"]["points"], ["gateway", "fw"])
+
+    async def test_rearm_keeps_gateway_columns_with_or_without_gateway(self):
+        # 만료된 두 지점 행(관문 확인 · 지점 결과 남음)을 내부 방화벽만인 약속이 다시 걸면(후속 차단) 관문 세 열을 둔다. 관문을 요청하는
+        # 함께 차단도 같다(2026-10-01 결정 · 결정 2). 관문이 실제로 뺐는지는 집행기가 판단한다(enforcer RearmPgTest)
+        await self.threat()
+        await self.absorb("198.51.100.2", 5)
+        await self.conn.execute("""INSERT INTO blocklist (actor_ip, reason, incident_key, expires_at, method, enforced_at,
+            enforce_note, enforcement) VALUES ('198.51.100.2', 'old', 'R002|v3|x', now() - interval '1 second', 'nft', now(),
+            '관문 반영 · abcd1234 · x', '{"gateway": {"state": "removing"}, "fw": {"state": "removing"}}')""")
+        await self.conn.execute("""INSERT INTO absorbed_blocks (first_key, expires_at, requested_by, points)
+            VALUES ($1, now() + interval '1 day', 'test-operator', '{fw}')""", FIRST)
+        cols = """SELECT method, enforced_at, enforce_note, enforcement, points, reason, expires_at > now() AS live
+                  FROM blocklist WHERE actor_ip = '198.51.100.2'"""
+        before = await self.conn.fetchrow(cols)
+        self.assertEqual(await absorbed_mod.AbsorbedFollower(self.pool).step(self.conn), [(FIRST, 1)])
+        after = await self.conn.fetchrow(cols)
+        self.assertEqual(tuple(after)[:4], tuple(before)[:4])
+        self.assertEqual((after["points"], after["reason"], after["live"]), (["fw"], main.absorbed_reason_tag(FIRST), True))
+        # 만료된 뒤 관문을 요청해 함께 차단해도 그대로다
+        await self.conn.execute("UPDATE blocklist SET expires_at = now() - interval '1 second' WHERE actor_ip = '198.51.100.2'")
+        await self.act(main.ActionIn(action="block_ip", include_absorbed=True, points=["gateway", "fw"]))
+        after = await self.conn.fetchrow(cols)
+        self.assertEqual(tuple(after)[:4], tuple(before)[:4])
+        self.assertEqual((after["points"], after["live"]), (["gateway", "fw"], True))
+
+    async def test_gateway_removal_is_admin_only_and_rearms_in_one_request(self):
+        await self.act(main.ActionIn(action="block_ip", expires_hours=24))
+        live = (await self.block_rows())[OWN]
+        self.assertEqual(live["points"], ["gateway", "fw"])                         # points 없는 요청 = 두 지점
+        with self.assertRaises(main.HTTPException) as error:
+            await self.act(main.ActionIn(action="block_ip", points=["fw"]))
+        self.assertEqual(error.exception.status_code, 403)
+        self.assertEqual((await self.block_rows())[OWN], live)
+        self.assertEqual(await self.conn.fetchval("SELECT count(*) FROM actions"), 1)
+        # 넓은 요청 · 같은 요청은 operator 도 된다(좁히지 않는다)
+        await self.act(main.ActionIn(action="block_ip", points=["gateway", "fw"]))
+        wide = (await self.block_rows())[OWN]
+        out = await self.act(main.ActionIn(action="block_ip", note="관측 유지", expires_hours=2, points=["fw"]), ADMIN)
+        row = (await self.block_rows())[OWN]
+        self.assertEqual((row["points"], row["released_at"], row["released_by"], row["requested_by"]),
+                         (["fw"], None, None, "test-admin"))
+        self.assertEqual(row["expires_at"], wide["expires_at"])                     # 만료는 앞당기지 않는다(2시간 요청이어도)
+        self.assertEqual(out["note"], "관측 유지 [관문 빼기 · 해제 뒤 다시 걸기]")
+        # 풀린 · 만료된 행에 좁게 다시 거는 것은 관문 빼기가 아니다(operator 도 된다)
+        await self.conn.execute("UPDATE blocklist SET points = '{gateway,fw}', expires_at = now() - interval '1 second'")
+        out = await self.act(main.ActionIn(action="block_ip", points=["fw"]))
+        self.assertEqual(((await self.block_rows())[OWN]["points"], out["note"]), (["fw"], None))
 
 
 if __name__ == "__main__":
