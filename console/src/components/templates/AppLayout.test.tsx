@@ -6,6 +6,8 @@ import { NAV_GROUPS } from '@/app/nav'
 import { expectInertDom, HOSTILE } from '@/test/hostile-fixtures'
 import { controlHealth, json, MONITOR, monitorItem } from '@/test/monitoring-fixtures'
 import { noRetryClient, renderRoutes, stubHanging, stubMe } from '@/test/render'
+import { PageHeader } from '../molecules/PageHeader'
+import { PageRefresh } from '../organisms/PageRefresh'
 import { AppLayout } from './AppLayout'
 import { breadcrumbsFor, type RouteHandle } from './breadcrumbs'
 
@@ -175,6 +177,41 @@ describe('AppLayout', () => {
 
     act(() => FakeSocket.last?.dispatchEvent(Object.assign(new Event('close'), { code: 1006 })))
     expect(within(banner).getByText('실시간 끊김 · 다시 연결 중')).toBeInTheDocument()
+  })
+
+  it('상단바에 현재 시계가 없다. 화면이 머리에 기준 시각 + 새로고침을 두면 상단바 새로고침은 숨고, 떠나면 돌아온다(#79)', async () => {
+    stubMe({ username: 'han', role: 'operator' })
+    const routes: RouteObject[] = [
+      {
+        path: '/',
+        element: <AppLayout groups={NAV_GROUPS} />,
+        children: [
+          { index: true, element: <p>대시보드 본문</p> },
+          {
+            path: 'incidents',
+            element: <PageHeader title="장비 로그" status={<PageRefresh parts={[{ dataUpdatedAt: Date.now(), errorUpdatedAt: 0, isError: false, asOf: '2026-09-30T05:00:05Z' }]} />} />,
+          },
+        ],
+      },
+    ]
+    const { router } = renderRoutes(routes, '/')
+    await screen.findByText('대시보드 본문')
+    const banner = screen.getByRole('banner')
+    expect(banner.querySelector('time')).toBeNull()
+    expect(banner).not.toHaveTextContent(/KST|\d\d:\d\d:\d\d/)
+    expect(within(banner).getByRole('button', { name: '새로고침' })).toBeInTheDocument()
+
+    await router.navigate('/incidents')
+    await screen.findByRole('heading', { level: 1, name: '장비 로그' })
+    // 새로고침은 화면 머리의 기준 시각 옆 하나뿐이다
+    expect(within(banner).queryByRole('button', { name: '새로고침' })).toBeNull()
+    expect(screen.getAllByRole('button', { name: '새로고침' })).toHaveLength(1)
+    expect(within(screen.getByRole('main')).getByRole('button', { name: '새로고침' })).toBeInTheDocument()
+    expect(screen.getByRole('main')).toHaveTextContent('기준 14:00:05')
+
+    await router.navigate('/')
+    await screen.findByText('대시보드 본문')
+    expect(within(banner).getByRole('button', { name: '새로고침' })).toBeInTheDocument()
   })
 
   it('Escape 로 닫아도 초점이 메뉴 단추로 돌아온다', async () => {

@@ -39,8 +39,9 @@ function Cell({ name, title, children }: { name: string; title: ReactNode; child
 }
 
 /**
- * 시각 네 가지(#73)를 따로 둔다: 마지막 적재(nodes.last_loaded_at) · 로그 종류별 마지막 줄(receipt) · 마지막 탐지(이 장비 규칙 버전) · 화면 갱신(as_of).
+ * 시각(#73)을 따로 둔다: 마지막 적재(nodes.last_loaded_at) · 로그 종류별 마지막 줄(receipt) · 마지막 탐지(이 장비 규칙 버전) · 화면 갱신 주기.
  * '화면 5초 갱신' 이 '로그 5초 도착' 으로 읽히지 않게 화면 갱신은 적재와 다른 칸에 두고, 계산 기준은 ⓘ 에 접는다(#65).
+ * 화면 기준 시각(as_of)은 여기 두지 않고 제목 줄 새로고침 옆 하나만 둔다(#79). 이 칸은 주기(5초마다 · 일시정지)만 보인다.
  * 탐지 멈춤은 본문(배지 · 서버 까닭)에 둔다. 서버 까닭에는 규칙 버전 이름(DB 값)이 들어가 비신뢰 문자열로 그린다.
  */
 export function LogTimes({ data, paused, className }: LogTimesProps) {
@@ -87,10 +88,7 @@ export function LogTimes({ data, paused, className }: LogTimesProps) {
               )}
             </Cell>
             <Cell name="refreshed" title="화면 갱신">
-              <span>
-                <Time value={data.as_of} format="time" zone className="font-medium" />
-                <span className="text-ink-muted"> · {paused ? '일시정지' : '5초마다'}</span>
-              </span>
+              <span className="font-medium">{paused ? '일시정지' : '5초마다'}</span>
             </Cell>
           </dl>
           {panel}
@@ -98,9 +96,9 @@ export function LogTimes({ data, paused, className }: LogTimesProps) {
       )}
     >
       <ul className="m-0 flex list-disc flex-col gap-0.5 pl-4">
-        <li>마지막 적재: 1분 적재 회차가 이 장비의 새 줄을 넣은 마지막 시각입니다.</li>
+        <li>마지막 적재: 1분 적재 회차가 이 장비의 새 줄을 넣은 시각입니다.</li>
         <li>
-          마지막 탐지: 적재 뒤 탐지 회차의 실행 시각입니다. 이 장비 규칙 버전 가운데 가장 오래된 것이 기준입니다
+          마지막 탐지: 적재 뒤 탐지 회차의 실행 시각으로, 이 장비 규칙 버전 중 가장 오래된 것이 기준입니다
           {versions.length > 0 && (
             <>
               {' ('}
@@ -116,10 +114,10 @@ export function LogTimes({ data, paused, className }: LogTimesProps) {
           )}
           .
         </li>
-        <li>화면 갱신: 5초마다 다시 받는 주기일 뿐, 새 줄이 들어오는 주기가 아닙니다.</li>
-        <li>목록 시각은 장비가 적은 요청 시각입니다. 마지막 줄은 에이전트가 읽은 시각이고, 목록에 없는 줄(시험 · 형식 밖 · sshd 외)도 셉니다.</li>
+        <li>화면 갱신: 5초마다 다시 받는 주기이며 새 줄 도착 주기가 아닙니다.</li>
+        <li>목록 시각은 장비가 적은 요청 시각, 마지막 줄은 에이전트가 읽은 시각입니다(목록에 없는 시험 · 형식 밖 · sshd 외 줄도 셉니다).</li>
         <li>
-          최근 {data.window_days.toLocaleString('ko-KR')}일 안에서 한 번에 최신 {data.limit.toLocaleString('ko-KR')}줄을 받습니다.
+          한 번에 최근 {data.window_days.toLocaleString('ko-KR')}일 안 최신 {data.limit.toLocaleString('ko-KR')}줄을 받습니다.
         </li>
       </ul>
     </InfoTip>

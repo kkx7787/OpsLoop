@@ -288,6 +288,24 @@ describe('IncidentsPage', () => {
     expect(screen.getByRole('button', { name: 'critical 미판정' })).toHaveAttribute('aria-pressed', 'true')
   })
 
+  it('미결(#83): 빠른 보기와 판정 칸으로 고르고, 대시보드 링크(?undetermined=true&device=)를 그대로 보낸다. 행은 미결 배지다', async () => {
+    const fetch = stubApi(() => json(page(0, [incident(84, { verdict: 'undetermined' })], 1)))
+    const { router } = renderRoutes(routes(), '/incidents?undetermined=true&device=web-02', noRetryClient())
+    await screen.findByRole('table')
+    expect(listUrls(fetch)).toEqual(['/api/incidents?undetermined=true&device=web-02&limit=25&offset=0'])
+    expect(screen.getByRole('combobox', { name: '판정' })).toHaveValue('undetermined')
+    expect(within(screen.getByRole('table')).getByText('미결')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '미결' }))
+    await waitFor(() => expect(router.state.location.search).toBe('?undetermined=true'))
+    await waitFor(() => expect(listUrls(fetch)).toContain('/api/incidents?undetermined=true&limit=25&offset=0'))
+    expect(screen.getByRole('button', { name: '미결' })).toHaveAttribute('aria-pressed', 'true')
+    // 판정 칸에서 미판정을 고르면 미결 조건은 빠진다
+    fireEvent.change(screen.getByRole('combobox', { name: '판정' }), { target: { value: 'false' } })
+    await waitFor(() => expect(router.state.location.search).toBe('?judged=false'))
+    fireEvent.change(screen.getByRole('combobox', { name: '판정' }), { target: { value: 'undetermined' } })
+    await waitFor(() => expect(router.state.location.search).toBe('?undetermined=true'))
+  })
+
   it('실시간 판정으로 마지막 쪽이 사라지면 유효한 마지막 쪽으로 이동한다', async () => {
     let total = 26
     const fetch = stubApi((url) => {

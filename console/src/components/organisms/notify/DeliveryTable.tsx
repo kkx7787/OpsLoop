@@ -37,7 +37,7 @@ export function DeliveryTable({ channels, filters, onFilters, data, pending, fet
   const set = (next: Partial<DeliveryFilters>) => onFilters({ ...filters, ...next, offset: 0 })
   return (
     <Card padding="none" className="min-w-0">
-      <InfoTip label="발송 이력" panelClassName="mx-4 my-2" render={({ button, panel }) => <>
+      <InfoTip label="발송 이력" render={({ button, panel }) => <>
       <CardHeader title="발송 이력" className="[&>div]:max-w-full" aside={<div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 whitespace-nowrap"><label htmlFor={`${id}-channel`}>채널</label>
         <Select id={`${id}-channel`} fieldSize="sm" className="h-7 w-auto" value={filters.channel_id ?? ''} onChange={(e) => set({ channel_id: e.target.value ? Number(e.target.value) : undefined })}>

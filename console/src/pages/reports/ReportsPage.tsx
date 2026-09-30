@@ -99,7 +99,7 @@ function ReportForm({ initial, visible, admin, busy, onSubmit }: {
   }
   return <Card className="print:hidden"><form aria-label="보고서 조건" onSubmit={submit} className="flex flex-col gap-4">
     <fieldset className="m-0 border-0 p-0"><legend className="mb-2 p-0 text-sm font-medium">기간</legend>
-      <InfoTip label="기간" panelClassName="mt-2" render={({ button, panel }) => <>
+      <InfoTip label="기간" render={({ button, panel }) => <>
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">{REPORT_PERIODS.map(p => <label key={p} className="flex cursor-pointer items-center gap-2"><input type="radio" name="report-period" value={p} checked={period === p} onChange={() => setPeriod(p)} className="size-3.5 accent-primary" />{PERIOD_LABEL[p]}</label>)}{button}</div>
         {panel}
       </>}>기간 끝은 보고서를 만든 시각(출력 시각)입니다. 끝 시각은 기간에 들지 않습니다.</InfoTip>
@@ -108,7 +108,7 @@ function ReportForm({ initial, visible, admin, busy, onSubmit }: {
       <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">{visible.map(name => <label key={name} className="flex cursor-pointer items-center gap-2"><input type="checkbox" checked={sections.includes(name)} onChange={e => setSections(e.target.checked ? [...sections, name] : sections.filter(v => v !== name))} className="size-3.5 accent-primary" />{SECTION_LABEL[name]}</label>)}</div>
       {!admin && <p className="m-0 mt-2 text-xs text-ink-muted">운영 기록은 관리자만 실을 수 있습니다.</p>}
     </fieldset>
-    <InfoTip label="보고서 만들기" panelClassName="-mt-2" render={({ button, panel }) => <>
+    <InfoTip label="보고서 만들기" render={({ button, panel }) => <>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <Button type="submit" variant="primary" loading={busy} disabled={!sections.length} disabledReason="구역을 하나 이상 고르세요">보고서 만들기</Button>
         {button}

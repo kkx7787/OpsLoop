@@ -12,6 +12,8 @@ import {
   type TargetLog,
   type TargetMetrics,
   type TargetResponse,
+  type TargetLatest,
+  type TargetVulns,
 } from '@/api/targets'
 import { toDate } from '@/lib/time'
 import type { Tone } from '../../atoms/tones'
@@ -138,6 +140,51 @@ export function assetHref(assetId: string): string {
 }
 
 /**
+ * 보호 대상 카드의 취약점 한 줄(#83).
+ *  main    '수정판 있음 N · KEV N'(이전 서버는 '취약점 N · KEV N'). 수가 없으면 까닭 글(자산 정보 없음 · 조사 기록 없음 · 대조 전 …)
+ *  unknown '미확인 N'(수정 여부 미확인, 흐린 글로 뒤에 둔다). 이전 서버 · 수가 없으면 null
+ *  flags   조사 오래됨(수집 48시간) · 대조 실패(check_error) · 대조 오래됨(대조 48시간). 수를 숨기거나 0 으로 바꾸지 않고 옆에 붙인다
+ * 자산이 여럿이면 수를 더하고 자산 화면 목록으로 잇는다(보호 대상은 보통 같은 이름의 자산 하나다)
+ */
+export interface VulnSummary {
+  main: string
+  /** main 이 수가 아니라 까닭 글이다(흐리게) */
+  muted: boolean
+  unknown: string | null
+  flags: string[]
+  href: string | null
+}
+
+export function vulnSummary(vulns: TargetVulns): VulnSummary {
+  if (!vulns.available) return { main: '취약점 정보 없음', muted: true, unknown: null, flags: [], href: null }
+  const assets = vulns.assets
+  if (!assets.length) return { main: '연결된 자산 없음', muted: true, unknown: null, flags: [], href: null }
+  const href = assets.length === 1 ? assetHref(assets[0].asset_id) : '/inventory'
+  const flags: string[] = []
+  const flag = (text: string) => {
+    if (!flags.includes(text)) flags.push(text)
+  }
+  for (const asset of assets) {
+    if (asset.missing) continue
+    if (asset.stale && asset.collected_at) flag('조사 오래됨')
+    if (asset.check_failed === true) flag('대조 실패')
+    if (asset.check_stale === true) flag('대조 오래됨')
+  }
+  // 수를 믿을 수 있는 자산: 조사 · 대조를 마친 자산(대조 전의 0 은 '없음' 이 아니다)
+  const counted = assets.filter((a) => !a.missing && a.collected_at && a.checked_at)
+  if (!counted.length) {
+    // 까닭은 첫 자산 기준(vulnText 와 같은 순서)
+    const first = assets.find((a) => !a.missing) ?? assets[0]
+    const main = first.missing ? '자산 정보 없음' : !first.collected_at ? '조사 기록 없음' : '취약점 대조 전'
+    return { main, muted: true, unknown: null, flags, href }
+  }
+  const sum = (key: 'vuln_total' | 'vuln_kev' | 'vuln_fix_available' | 'vuln_fix_unknown') => counted.reduce((n, a) => n + (isCount(a[key]) ? a[key] : 0), 0)
+  const split = counted.every((a) => isCount(a.vuln_fix_available) && isCount(a.vuln_fix_unknown))
+  if (!split) return { main: `취약점 ${count(sum('vuln_total'))} · KEV ${count(sum('vuln_kev'))}`, muted: false, unknown: null, flags, href }
+  return { main: `수정판 있음 ${count(sum('vuln_fix_available'))} · KEV ${count(sum('vuln_kev'))}`, muted: false, unknown: `미확인 ${count(sum('vuln_fix_unknown'))}`, flags, href }
+}
+
+/**
  * 카드 순서(#64): 고정 대상 뒤에 등록 노드. 서버가 이미 그렇게 주지만 섞여 와도 고정 대상이 앞자리를 잃지 않게
  * 종류로만 나눈다(각 무리 안은 서버 순서 그대로)
  */
@@ -156,6 +203,17 @@ export function pendingText(target: Pick<Target, 'security'>): string {
 /** 그 장비의 미판정 사건 목록(#72). 카드 수와 같은 기준(서버 device 필터)이고 기간은 넣지 않는다(카드 미판정은 기간 무관) */
 export function pendingHref(deviceId: string): string {
   return `/incidents?${new URLSearchParams({ judged: 'false', device: deviceId })}`
+}
+
+/** 미결 사건 목록(#83): 최신 판정이 사람이 남긴 미결. 장비를 주면 그 장비만(카드 수와 같은 기준) */
+export function undeterminedHref(deviceId?: string): string {
+  return `/incidents?${new URLSearchParams(deviceId ? { undetermined: 'true', device: deviceId } : { undetermined: 'true' })}`
+}
+
+/** 최근 사건 줄의 판정 글(#83): 최신 판정이 미결이면 판정 기록이 있어도 '미결' 이다(VERDICT_LABEL 과 같은 말) */
+export function latestJudgedText(latest: Pick<TargetLatest, 'judged' | 'verdict'>): string {
+  if (latest.verdict === 'undetermined') return '미결'
+  return latest.judged ? '판정됨' : '미판정'
 }
 
 /**
@@ -193,6 +251,15 @@ export function headBadge(target: { collection: Pick<TargetCollection, 'state' |
   const state = collectionState(target.collection.state)
   if (state === 'ok' && Array.isArray(target.collection.stopped) && target.collection.stopped.length > 0) return { label: '주의', tone: 'warning' }
   return { label: COLLECTION_LABEL[state], tone: COLLECTION_TONE[state] }
+}
+
+/** 보호 대상 카드 · 요약 줄의 정상 글(#83). 보고서 표(COLLECTION_LABEL)와 관측 센서 · 관제 시스템은 '정상' 그대로다 */
+export const PROTECTED_OK_LABEL = '수집 정상'
+
+/** 보호 대상의 머리 배지: 정상이면 '수집 정상', 그 밖은 headBadge 와 같다 */
+export function protectedHeadBadge(target: { collection: Pick<TargetCollection, 'state' | 'stopped'> }): { label: string; tone: Tone } {
+  const head = headBadge(target)
+  return head.label === COLLECTION_LABEL.ok ? { ...head, label: PROTECTED_OK_LABEL } : head
 }
 
 /** 접힌 요약 줄의 경고 배지 하나 */

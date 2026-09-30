@@ -38,7 +38,7 @@ export function ChannelTable({ channels, busyId, onEdit, onToggle, onTest }: Pro
   const anyBusy = busyId !== null
   return (
     <Card padding="none" className="min-w-0">
-      <InfoTip label="통보 정책" panelClassName="mx-4 my-2" render={({ button, panel }) => <>
+      <InfoTip label="통보 정책" render={({ button, panel }) => <>
         <CardHeader title="알림 채널" aside={<>{`${channels.length}개`}{button}</>} />
         {panel}
       </>}>즉시 등급은 같은 종류의 첫 사건부터 묶음 시간 동안 모아 한 메시지로 보내고, 일일 요약은 매일 09:00 KST 에 미판정 현황을 보냅니다.</InfoTip>

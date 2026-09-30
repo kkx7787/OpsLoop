@@ -128,3 +128,19 @@ describe('ruleOptionsOf', () => {
     expect(ruleOptionsOf(undefined, undefined)).toEqual([])
   })
 })
+
+describe('미결 조건(#83)', () => {
+  it('undetermined=true 만 읽고(다른 값은 버린다) 판정 칸 뒤에 붙이며 조건 하나로 센다', () => {
+    expect(filtersFromSearch(new URLSearchParams('undetermined=true'))).toEqual({ undetermined: true })
+    expect(filtersFromSearch(new URLSearchParams('undetermined=false'))).toEqual({})
+    expect(filtersFromSearch(new URLSearchParams('undetermined=1'))).toEqual({})
+    // 대시보드 카드 링크: 장비 조건과 함께
+    const card = filtersFromSearch(new URLSearchParams('undetermined=true&device=web-02'))
+    expect(card).toEqual({ undetermined: true, device: 'web-02' })
+    expect(searchFromFilters(card).toString()).toBe('undetermined=true&device=web-02')
+    expect(searchFromFilters({ judged: true, undetermined: true }).toString()).toBe('judged=true&undetermined=true')
+    expect(searchFromFilters({ undetermined: false }).toString()).toBe('')
+    expect(countFilters({ undetermined: true, device: 'web-02' })).toBe(2)
+    expect(clearFilters({ undetermined: true, sort: 'recent' })).toEqual({ sort: 'recent' })
+  })
+})

@@ -30,7 +30,7 @@ export function EnforcePointList({ points, className, compact = false }: { point
         )
         if (!tip) return row()
         return (
-          <InfoTip key={key} label={`${label} ${POINT_STATE_LABEL[point.state]}`} panelClassName="basis-full break-words" render={({ button, panel }) => row(button, panel)}>
+          <InfoTip key={key} label={`${label} ${POINT_STATE_LABEL[point.state]}`} panelClassName="break-words" render={({ button, panel }) => row(button, panel)}>
             <UntrustedText value={point.note} max={160} />
           </InfoTip>
         )

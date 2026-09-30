@@ -3,11 +3,15 @@ import { Link } from 'react-router'
 import type { BlockCounts, PointCounts, Summary } from '@/api/monitoring'
 import { cn } from '@/lib/cn'
 import { formatDuration } from '@/lib/time'
+import { Badge } from '../../atoms/Badge'
 import { Card } from '../../atoms/Card'
 import { InfoTip } from '../../molecules/InfoTip'
+import { undeterminedHref } from './target-format'
 
 export interface DashboardMetricsProps {
   summary: Summary
+  /** 요약 갱신이 실패해 이전 결과를 보이는 중(오른쪽 위에 '이전 결과') */
+  stale?: boolean
   className?: string
 }
 
@@ -19,16 +23,23 @@ export interface DashboardMetricsProps {
  * 이전 서버(지점별 없음)는 집행 확인 · 대기 · 제외 한 줄, 그보다 앞선 서버는 요청 수와 '집행 상태 미확인' 이다.
  * 계산 기준(판정 목표 · 첫 사건)은 값 옆 도움말(ⓘ)에 둔다.
  * 좁으면(md 미만) 2열이고 가장 오래된 미판정 · 활성 차단 칸은 두 열 폭이다(빈 칸이 생기지 않게).
+ * 미판정 칸 아래 줄의 '미결 N건'(#83)은 최신 판정이 사람이 남긴 미결인 사건이고 미결 목록으로 잇는다. 0 이면 적지 않는다.
  */
-export function DashboardMetrics({ summary: data, className }: DashboardMetricsProps) {
+export function DashboardMetrics({ summary: data, stale = false, className }: DashboardMetricsProps) {
   const points = Array.isArray(data.blocks_by_point) && data.blocks_by_point.length > 0 ? data.blocks_by_point : null
   const note = [points ? excludedNote(data.blocks) : undefined, mismatchNote(data.blocks), absorbedNote(data.absorbed_unblocked)].filter(Boolean).join(' · ') || undefined
   return (
-    <Card padding="none" className={className}>
+    <Card padding="none" className={cn('relative', className)} data-stale={stale ? '' : undefined}>
+      {stale && (
+        <Badge tone="warning" className="absolute top-2 right-2" data-stale-badge="">
+          이전 결과
+        </Badge>
+      )}
       {/* 칸 사이 세로선: 넓으면 칸마다, 좁으면(2열) 미판정 · 판정 목표 초과 사이에만(카드 가장자리에 선이 붙지 않게) */}
       <dl className="m-0 grid grid-cols-2 divide-line md:grid-cols-[1fr_1fr_1fr_1.5fr] md:divide-x">
         <Metric label="가장 오래된 미판정" value={data.pending.total ? formatDuration(data.pending.oldest_seconds * 1000) : '없음'} warn={data.pending.overdue > 0} className="col-span-2 md:col-span-1" />
-        <Metric label="미판정" value={`${data.pending.total.toLocaleString()}건`} href="/incidents?judged=false" className="max-md:border-r max-md:border-line" />
+        <Metric label="미판정" value={`${data.pending.total.toLocaleString()}건`} href="/incidents?judged=false" className="max-md:border-r max-md:border-line"
+          note={undeterminedNote(data.pending.undetermined)} tip={data.pending.undetermined ? { at: 'note', label: '미결', content: UNDETERMINED_NOTE } : undefined} />
         <Metric label="판정 목표 초과" value={`${data.pending.overdue.toLocaleString()}건`} note={`목표 임박 ${data.pending.warning.toLocaleString()}건`} warn={data.pending.overdue > 0}
           tip={{ at: 'label', label: '판정 목표', content: VERDICT_TARGET_NOTE }} />
         <Metric label={`활성 차단 요청 ${data.blocked_ips.toLocaleString()}건`} value={points ? <PointLines points={points} /> : blocksValue(data.blocks, data.blocked_ips)} href="/blocklist"
@@ -88,6 +99,18 @@ function absorbedNote(unblocked: { sources: number; incidents: number } | undefi
   return `판정 뒤 흡수 미차단 ${unblocked.sources.toLocaleString()}곳 · 첫 사건 ${unblocked.incidents.toLocaleString()}건`
 }
 
+/** 미결(#83): 판정 없음과 따로 센다. 숫자는 미결 사건 목록으로 잇는다 */
+function undeterminedNote(n: number | undefined): ReactNode {
+  if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return undefined
+  return (
+    <Link to={undeterminedHref()} data-undetermined-link="">
+      미결 {n.toLocaleString()}건
+    </Link>
+  )
+}
+
+const UNDETERMINED_NOTE = '최신 판정이 사람이 남긴 미결인 사건입니다. 시스템 전환 처리 제외.'
+
 /** 판정 목표 초과 · 목표 임박의 기준(lib/domain verdictTargetSeconds · WARN_RATIO, app/dashboard.py PENDING 과 같다) */
 const VERDICT_TARGET_NOTE = '판정 목표는 critical 1시간 · high 4시간 · medium 12시간 · low 24시간이고, 관제 자기 탐지(R2xx) 사건은 1시간입니다. 목표 임박은 목표 시간의 2/3 를 넘긴 사건입니다.'
 const FIRST_INCIDENT_NOTE = '첫 사건은 같은 페이로드의 출발지를 흡수한 사건입니다. 그 사건 상세의 함께 차단으로 막습니다.'
@@ -101,7 +124,7 @@ interface MetricTip {
 
 const VALUE_SIZE = { xl: 'text-xl', base: 'text-base', sm: 'text-sm' } as const
 
-function Metric({ label, value, note, href, warn, size = 'xl', tip, className }: { label: string; value: ReactNode; note?: string; href?: string; warn?: boolean; size?: keyof typeof VALUE_SIZE; tip?: MetricTip; className?: string }) {
+function Metric({ label, value, note, href, warn, size = 'xl', tip, className }: { label: string; value: ReactNode; note?: ReactNode; href?: string; warn?: boolean; size?: keyof typeof VALUE_SIZE; tip?: MetricTip; className?: string }) {
   const cell = (button?: ReactNode, panel?: ReactNode) => <div className={cn('min-w-0 px-4 py-4', className)}>
     <dt className="text-xs text-ink-muted">{label}{tip?.at === 'label' && <> {button}</>}</dt>
     <dd className={cn('m-0 mt-1.5 break-words font-semibold tracking-heading tabular-nums', VALUE_SIZE[size], warn && 'text-warning')}>{href ? <Link to={href}>{value}</Link> : value}</dd>

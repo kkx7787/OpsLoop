@@ -11,10 +11,21 @@ export interface PageHeaderProps extends Omit<ComponentProps<'header'>, 'title'>
   description?: ReactNode
   /** 오른쪽 부가 정보 · 동작(경과 시간 · 담당 · 단추) */
   aside?: ReactNode
+  /**
+   * 화면 기준 시각 + 새로고침(PageRefresh, #79). 모든 폭에서 제목 줄 오른쪽 끝에 둔다.
+   * 넓은 화면은 aside 뒤(맨 오른쪽), 좁은 화면은 aside 가 설명 아래로 내려가도 이것은 제목 줄에 남는다
+   */
+  status?: ReactNode
 }
 
-/** 페이지 머리: 경로 · 제목(24px) · 표지 · 한 줄 설명 · 오른쪽 부가 정보 */
-export function PageHeader({ breadcrumbs, title, badges, description, aside, className, ...rest }: PageHeaderProps) {
+/** 페이지 머리: 경로 · 제목(24px) · 표지 · 한 줄 설명 · 오른쪽 부가 정보 · 기준 시각 */
+export function PageHeader({ breadcrumbs, title, badges, description, aside, status, className, ...rest }: PageHeaderProps) {
+  const heading = (
+    <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+      <h1 className="m-0 text-xl font-semibold tracking-tight md:text-[24px] md:leading-8">{title}</h1>
+      {badges}
+    </div>
+  )
   return (
     <header className={cn('flex flex-col gap-2', className)} {...rest}>
       {breadcrumbs && breadcrumbs.length > 0 && (
@@ -38,16 +49,30 @@ export function PageHeader({ breadcrumbs, title, badges, description, aside, cla
           </ol>
         </nav>
       )}
-      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-        <div className="flex min-w-0 flex-col gap-1.5">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="m-0 text-xl font-semibold tracking-tight md:text-[24px] md:leading-8">{title}</h1>
-            {badges}
+      {status ? (
+        // 좁은 폭: [제목 | 기준 시각] / 설명 / aside, 넓은 폭: [제목 | aside | 기준 시각] / 설명.
+        // DOM(Tab) 순서는 제목 → 설명 → aside → 기준 시각이라 넓은 폭에서 보이는 순서와 같다(좁은 폭은 기준 시각 단추가 aside 뒤)
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 md:grid-cols-[minmax(0,1fr)_auto_auto]">
+          <div className="col-start-1 row-start-1 min-w-0">{heading}</div>
+          {description && <p className="col-span-2 m-0 text-sm text-ink-muted md:col-span-1 md:col-start-1 md:row-start-2">{description}</p>}
+          {aside && (
+            <div className="col-span-2 mt-1.5 flex flex-wrap items-center gap-3 text-sm md:col-span-1 md:col-start-2 md:row-start-1 md:mt-0 md:justify-end">
+              {aside}
+            </div>
+          )}
+          <div className="col-start-2 row-start-1 flex justify-end md:col-start-3" data-page-status="">
+            {status}
           </div>
-          {description && <p className="m-0 text-sm text-ink-muted">{description}</p>}
         </div>
-        {aside && <div className="flex shrink-0 flex-wrap items-center gap-3 text-sm md:justify-end">{aside}</div>}
-      </div>
+      ) : (
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="flex min-w-0 flex-col gap-1.5">
+            {heading}
+            {description && <p className="m-0 text-sm text-ink-muted">{description}</p>}
+          </div>
+          {aside && <div className="flex shrink-0 flex-wrap items-center gap-3 text-sm md:justify-end">{aside}</div>}
+        </div>
+      )}
     </header>
   )
 }

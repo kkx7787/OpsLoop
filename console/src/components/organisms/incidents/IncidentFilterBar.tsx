@@ -36,8 +36,14 @@ function Field({ id, label, children }: { id: string; label: string; children: R
   )
 }
 
+/** 판정 칸 값. 미결(#83)은 판정 여부가 아니라 최신 판정이 사람이 남긴 미결인 사건이다 */
+function judgedValue(value: ListFilters): string {
+  if (value.undetermined) return 'undetermined'
+  return value.judged === undefined ? '' : String(value.judged)
+}
+
 /**
- * 조건 띠: 상태 · 심각도 · 규칙 · 장비 · 판정 여부. 값은 부르는 쪽이 주소에 둔다.
+ * 조건 띠: 상태 · 심각도 · 규칙 · 장비 · 판정 여부(미결 포함). 값은 부르는 쪽이 주소에 둔다.
  * 출발지(actor_ip)는 고르는 칸 없이 출발지 분석(S-09)에서 넘어오므로 칩으로만 보이고 × 로 뺀다.
  */
 export function IncidentFilterBar({ value, onChange, rules = [], devices = [], className }: IncidentFilterBarProps) {
@@ -136,15 +142,16 @@ export function IncidentFilterBar({ value, onChange, rules = [], devices = [], c
           id={`${id}-judged`}
           fieldSize="sm"
           className="w-auto"
-          value={value.judged === undefined ? '' : String(value.judged)}
+          value={judgedValue(value)}
           onChange={(event) => {
             const next = event.target.value
-            patch({ judged: next === 'true' ? true : next === 'false' ? false : undefined })
+            patch({ judged: next === 'true' ? true : next === 'false' ? false : undefined, undetermined: next === 'undetermined' ? true : undefined })
           }}
         >
           <option value="">전체</option>
           <option value="false">미판정</option>
           <option value="true">판정됨</option>
+          <option value="undetermined">미결</option>
         </Select>
       </Field>
 

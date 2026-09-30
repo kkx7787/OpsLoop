@@ -34,7 +34,7 @@ export function NodesPage() {
     {query.isPending ? <LoadingState /> : !query.data ? <ApiErrorState error={query.error} onRetry={() => void query.refetch()} /> : <>
       <Card className="grid grid-cols-2 gap-4 sm:grid-cols-4">{Object.entries(RECEPTION).map(([state,label]) => <div key={state}><div className="text-xs text-ink-muted">{label}</div><div className="mt-1 text-xl font-semibold tabular-nums">{rows.filter(r => r.reception===state).length}개</div></div>)}</Card>
       <Card padding="none" className="min-w-0"><CardHeader title={`등록 노드 ${rows.length}개`} aside={<><span className="whitespace-nowrap"><Time value={query.data.as_of} format="time" zone /> 기준</span><Input aria-label="노드 검색" placeholder="노드 · 호스트 · 주소 검색" fieldSize="sm" value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}} /></>} />
-        <InfoTip label="상태" id={stateNote} panelClassName="mx-4 mt-3 mb-1" render={({ button, panel }) => <>{panel}
+        <InfoTip label="상태" id={stateNote} render={({ button, panel }) => <>{panel}
         <div className="overflow-x-auto" role="region" aria-label="수집 노드 표" tabIndex={0}><table className="w-full text-left text-sm"><thead className="border-b border-line text-xs text-ink-muted"><tr>{['노드 · 호스트','주소','수집 항목','등록 시각 (KST)','마지막 수신 (KST)','상태',...(permission.allowed?['등록 토큰']:[])].map(t => t === '상태'
           ? <th key={t} className="px-4 py-2 whitespace-nowrap" aria-describedby={stateNote}>상태 {button}</th>
           : <th key={t} className="px-4 py-2 whitespace-nowrap">{t}</th>)}</tr></thead><tbody className="divide-y divide-line">{filtered.slice((currentPage-1)*pageSize,currentPage*pageSize).map(n => <tr key={n.node_id}>

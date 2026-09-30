@@ -19,7 +19,11 @@ export interface PendingIncident {
 
 export interface Summary {
   as_of: string
-  pending: { total: number; overdue: number; warning: number; oldest_seconds: number; age_distribution: number[] }
+  /**
+   * undetermined: 최신 판정이 사람이 남긴 미결인 사건 수(#83, 사건 단위 · operator 'system:*' 전환 기록 제외).
+   * 판정 없음(total)과 따로 센다. 이전 서버에는 없다
+   */
+  pending: { total: number; overdue: number; warning: number; oldest_seconds: number; age_distribution: number[]; undetermined?: number }
   oldest_pending: PendingIncident[]
   rule_quality: Array<{ rule_id: string; rule_version: string; incidents: number; judged_effective: number; non_action: number; non_action_rate: number | null }>
   /** 살아 있는(만료 · 해제 전) 차단 요청 수. 실제로 막은 수가 아니다 */

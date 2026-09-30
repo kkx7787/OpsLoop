@@ -91,6 +91,8 @@ export function IncidentsPage() {
     { label: '전체 사건', filters: {}, selected: active === 0 },
     { label: '미판정만', filters: { judged: false }, selected: active === 1 && filters.judged === false },
     { label: 'critical 미판정', filters: { judged: false, severity: 'critical' }, selected: active === 2 && filters.judged === false && filters.severity === 'critical' },
+    // 최신 판정이 사람이 남긴 미결(#83). 미판정과 따로 본다
+    { label: '미결', filters: { undetermined: true }, selected: active === 1 && filters.undetermined === true },
     { label: '조치중', filters: { status: 'in_progress' }, selected: active === 1 && filters.status === 'in_progress' },
   ]
   const start = list?.total ? (page - 1) * pageSize + 1 : 0

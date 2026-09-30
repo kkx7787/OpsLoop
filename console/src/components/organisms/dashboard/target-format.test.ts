@@ -1,7 +1,24 @@
 import { describe, expect, it } from 'vitest'
 import type { TargetResponse } from '@/api/targets'
 import { awsSensor, consoleTarget, dataNode, dataNodeStopped, minutesAgo, nodeTarget, web01 } from '@/test/targets-fixtures'
-import { collectionState, formatPct, groupTargets, headBadge, latestLog, orderTargets, pendingHref, responseParts, summaryFlags, systemText, vulnText } from './target-format'
+import type { TargetAssetVulns } from '@/api/targets'
+import {
+  collectionState,
+  formatPct,
+  groupTargets,
+  headBadge,
+  latestJudgedText,
+  latestLog,
+  orderTargets,
+  pendingHref,
+  protectedHeadBadge,
+  responseParts,
+  summaryFlags,
+  systemText,
+  undeterminedHref,
+  vulnSummary,
+  vulnText,
+} from './target-format'
 
 const response = (extra: Partial<TargetResponse>): TargetResponse => ({ point: 'gateway', point_label: 'AWS 관문', applied: 0, unverified: 0, exempt: 0, report: null, ...extra })
 const texts = (r: TargetResponse) => responseParts(r).map((p) => p.text)
@@ -193,5 +210,56 @@ describe('카드 순서(#64): 고정 대상 뒤 등록 노드', () => {
     const legacy = [nodeTarget('web-02', { kind: undefined }), consoleTarget({ kind: undefined })]
     expect(ids(orderTargets(legacy))).toEqual(['console', 'web-02'])
     expect(orderTargets([])).toEqual([])
+  })
+})
+
+describe('보호 대상 카드 문구(#83)', () => {
+  const asset = (extra: Partial<TargetAssetVulns> = {}): TargetAssetVulns => ({ ...web01().vulns.assets[0], stale: false, check_stale: false, ...extra })
+
+  it('머리 배지는 정상이면 수집 정상, 그 밖은 headBadge 그대로(보고서 · 센서 · 관제 시스템은 정상)', () => {
+    expect(protectedHeadBadge(nodeTarget())).toEqual({ label: '수집 정상', tone: 'success' })
+    expect(protectedHeadBadge(web01())).toEqual(headBadge(web01()))
+    expect(protectedHeadBadge(dataNodeStopped())).toEqual({ label: '주의', tone: 'warning' })
+    expect(headBadge(nodeTarget()).label).toBe('정상')
+  })
+
+  it('취약점 한 줄: 수정판 있음 · KEV 나란히, 미확인은 따로(흐린 글) · 자산 화면으로 잇는다', () => {
+    expect(vulnSummary({ available: true, assets: [asset()] })).toEqual({ main: '수정판 있음 12 · KEV 0', muted: false, unknown: '미확인 4', flags: [], href: '/inventory?asset=web-01' })
+    // 이전 서버(수정 상태별 수 없음)는 총수 · KEV
+    expect(vulnSummary({ available: true, assets: [asset({ vuln_fix_available: undefined, vuln_fix_unknown: undefined })] }).main).toBe('취약점 30 · KEV 0')
+  })
+
+  it('조사 오래됨 · 대조 실패 · 대조 오래됨은 수를 바꾸지 않고 상태 글로 붙인다', () => {
+    const v = vulnSummary({ available: true, assets: [asset({ stale: true, check_failed: true, check_stale: true })] })
+    expect(v.main).toBe('수정판 있음 12 · KEV 0')
+    expect(v.unknown).toBe('미확인 4')
+    expect(v.flags).toEqual(['조사 오래됨', '대조 실패', '대조 오래됨'])
+  })
+
+  it('수가 없으면 까닭 글(0 으로 꾸미지 않는다): 정보 없음 · 자산 없음 · 자산 정보 없음 · 조사 기록 없음 · 대조 전', () => {
+    expect(vulnSummary({ available: false, assets: [] })).toMatchObject({ main: '취약점 정보 없음', muted: true, href: null })
+    expect(vulnSummary({ available: true, assets: [] })).toMatchObject({ main: '연결된 자산 없음', muted: true, href: null })
+    expect(vulnSummary({ available: true, assets: [asset({ missing: true, collected_at: null, checked_at: null, stale: true })] })).toMatchObject({ main: '자산 정보 없음', flags: [] })
+    expect(vulnSummary({ available: true, assets: [asset({ collected_at: null, checked_at: null })] }).main).toBe('조사 기록 없음')
+    const before = vulnSummary({ available: true, assets: [asset({ checked_at: null, check_failed: true })] })
+    expect(before).toMatchObject({ main: '취약점 대조 전', muted: true, unknown: null, flags: ['대조 실패'], href: '/inventory?asset=web-01' })
+  })
+
+  it('자산이 여럿이면 수를 더하고 자산 목록으로 잇는다', () => {
+    const v = vulnSummary(awsSensor().vulns)
+    expect(v).toMatchObject({ main: '수정판 있음 6 · KEV 1', unknown: '미확인 3', href: '/inventory' })
+  })
+
+  it('최근 사건 줄은 최신 판정이 미결이면 판정 기록이 있어도 미결이다', () => {
+    const latest = awsSensor().security.latest!
+    expect(latestJudgedText(latest)).toBe('미판정')
+    expect(latestJudgedText({ ...latest, judged: true, verdict: 'threat' })).toBe('판정됨')
+    expect(latestJudgedText({ ...latest, judged: true, verdict: 'undetermined' })).toBe('미결')
+    expect(latestJudgedText({ ...latest, judged: true })).toBe('판정됨')
+  })
+
+  it('미결 목록 주소: 전체 · 장비별', () => {
+    expect(undeterminedHref()).toBe('/incidents?undetermined=true')
+    expect(undeterminedHref('web-02')).toBe('/incidents?undetermined=true&device=web-02')
   })
 })

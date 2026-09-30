@@ -118,17 +118,22 @@ describe('장비 최근 로그 화면(#73)', () => {
     expect(timeCell('lines')).toHaveTextContent('웹 접근 35초 전 · 13:59:30SSH 인증 기록 없음')
     expect(timeCell('detect')).toHaveTextContent('21초 전 · 13:59:43')
     expect(timeCell('detect')).not.toHaveTextContent('멈춤')
-    expect(timeCell('refreshed')).toHaveTextContent('14:00:05 KST · 5초마다')
+    // 화면 기준 시각은 칸에 두지 않고 제목 줄 새로고침 옆 하나다(#79)
+    expect(timeCell('refreshed')).toHaveTextContent(/^5초마다$/)
+    const status = document.querySelector<HTMLElement>('[data-page-status]') as HTMLElement
+    expect(status).toHaveTextContent(/^기준 14:00:05$/)
+    expect(within(status).getByRole('button', { name: '새로고침' })).toBeInTheDocument()
+    expect(screen.getAllByText(/14:00:05/)).toHaveLength(1)
 
     const tip = within(region).getByRole('button', { name: '시각 기준 설명' })
     fireEvent.click(tip)
     const panel = document.getElementById(tip.getAttribute('aria-controls') ?? '') as HTMLElement
     expect(panel).not.toHaveClass('hidden')
-    expect(panel).toHaveTextContent('마지막 적재: 1분 적재 회차가 이 장비의 새 줄을 넣은 마지막 시각입니다.')
-    expect(panel).toHaveTextContent('이 장비 규칙 버전 가운데 가장 오래된 것이 기준입니다 (c1 21초 전 · sg1 15초 전 · w2 10초 전).')
-    expect(panel).toHaveTextContent('화면 갱신: 5초마다 다시 받는 주기일 뿐, 새 줄이 들어오는 주기가 아닙니다.')
-    expect(panel).toHaveTextContent('목록에 없는 줄(시험 · 형식 밖 · sshd 외)도 셉니다.')
-    expect(panel).toHaveTextContent('최근 7일 안에서 한 번에 최신 100줄을 받습니다.')
+    expect(panel).toHaveTextContent('마지막 적재: 1분 적재 회차가 이 장비의 새 줄을 넣은 시각입니다.')
+    expect(panel).toHaveTextContent('이 장비 규칙 버전 중 가장 오래된 것이 기준입니다 (c1 21초 전 · sg1 15초 전 · w2 10초 전).')
+    expect(panel).toHaveTextContent('화면 갱신: 5초마다 다시 받는 주기이며 새 줄 도착 주기가 아닙니다.')
+    expect(panel).toHaveTextContent('목록에 없는 시험 · 형식 밖 · sshd 외 줄도 셉니다')
+    expect(panel).toHaveTextContent('한 번에 최근 7일 안 최신 100줄을 받습니다.')
   })
 
   it('노드 표를 읽을 수 없음 · 수집 안 함 · 탐지 멈춤은 본문에 적는다', async () => {
@@ -199,7 +204,7 @@ describe('장비 최근 로그 화면(#73)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '일시정지' }))
     expect(screen.getByRole('button', { name: '계속' })).toHaveAttribute('aria-pressed', 'true')
-    expect(timeCell('refreshed')).toHaveTextContent('· 일시정지')
+    expect(timeCell('refreshed')).toHaveTextContent(/^일시정지$/)
     await settle(30_000)
     expect(calls()).toHaveLength(2)
     // 멈춘 동안은 초점 조회도, 네트워크가 다시 붙을 때의 재연결 조회도 하지 않는다
@@ -226,6 +231,36 @@ describe('장비 최근 로그 화면(#73)', () => {
     setVisibility('visible')
     await settle()
     expect(calls()).toHaveLength(5)
+  })
+
+  it('제목 줄 새로고침은 일시정지 중에도 한 번 받고 일시정지는 그대로다(#79)', async () => {
+    vi.useFakeTimers()
+    const { calls } = stubLogs(() => json(logsResult()))
+    renderPage()
+    await settle()
+    fireEvent.click(screen.getByRole('button', { name: '일시정지' }))
+    await settle(30_000)
+    expect(calls()).toHaveLength(1)
+    fireEvent.click(screen.getByRole('button', { name: '새로고침' }))
+    await settle()
+    expect(calls()).toHaveLength(2)
+    expect(screen.getByRole('button', { name: '계속' })).toHaveAttribute('aria-pressed', 'true')
+    await settle(30_000)
+    expect(calls()).toHaveLength(2)
+  })
+
+  it('조회 없이 90초가 지나면(일시정지) 기준 시각 옆에 n분 전 기준을 붙인다', async () => {
+    vi.useFakeTimers()
+    stubLogs(() => json(logsResult()))
+    renderPage()
+    await settle()
+    const status = () => document.querySelector<HTMLElement>('[data-page-status]') as HTMLElement
+    expect(status()).toHaveTextContent(/^기준 14:00:05$/)
+    fireEvent.click(screen.getByRole('button', { name: '일시정지' }))
+    await settle(60_000)
+    expect(status()).toHaveTextContent(/^기준 14:00:05$/)
+    await settle(45_000)
+    expect(status()).toHaveTextContent('기준 14:00:05 · 1분 전 기준')
   })
 
   it('일시정지 중에 조건을 바꾸면 한 번만 받는다', async () => {
@@ -266,7 +301,10 @@ describe('장비 최근 로그 화면(#73)', () => {
     await settle(3_100)
     expect(calls()).toHaveLength(4)
     const banner = container.querySelector<HTMLElement>('[data-refresh-failed]') as HTMLElement
-    expect(banner).toHaveTextContent('로그를 불러오지 못함 · 마지막 갱신 14:00:05')
+    expect(banner).toHaveTextContent(/^로그를 불러오지 못함 · 이전 결과 유지/)
+    // 시각은 띠에 두지 않고 제목 줄 기준 시각 옆에 경고를 붙인다(#79)
+    expect(banner).not.toHaveTextContent('14:00:05')
+    expect(container.querySelector('[data-page-status]')).toHaveTextContent('기준 14:00:05 · 갱신 실패')
     expect(container.querySelector('[data-stale]')).toContainElement(lineRow(container, 3))
     expect(container.querySelector('[data-stale]')).toHaveClass('opacity-50')
 
@@ -275,6 +313,7 @@ describe('장비 최근 로그 화면(#73)', () => {
     await settle()
     expect(container.querySelector('[data-refresh-failed]')).toBeNull()
     expect(container.querySelector('[data-stale]')).toBeNull()
+    expect(container.querySelector('[data-page-status]')).toHaveTextContent(/^기준 14:00:05$/)
   })
 
   it('브라우저가 오프라인이 되어도 조용히 멈추지 않는다: 보내서 실패하면 갱신 실패 경고와 흐림, 다시 붙으면 바로 받는다', async () => {
@@ -292,7 +331,7 @@ describe('장비 최근 로그 화면(#73)', () => {
     await settle(5_000)
     await settle(3_100)
     expect(calls()).toHaveLength(4)
-    expect(container.querySelector('[data-refresh-failed]')).toHaveTextContent('로그를 불러오지 못함 · 마지막 갱신 14:00:05')
+    expect(container.querySelector('[data-refresh-failed]')).toHaveTextContent('로그를 불러오지 못함 · 이전 결과 유지')
     expect(container.querySelector('[data-stale]')).toHaveClass('opacity-50')
 
     offline = false
@@ -363,6 +402,10 @@ describe('장비 최근 로그 화면(#73)', () => {
     expect(container.querySelector('[data-logs-missing]')).toHaveTextContent(LOGS_NOT_DEPLOYED)
     expect(screen.getByRole('heading', { level: 1, name: 'web-01 최근 로그' })).toBeInTheDocument()
     expect(old.calls()).toHaveLength(1)
+    // 배포 전은 갱신 실패가 아니다(대시보드 상태판 404 와 같다): 제목 줄에는 새로고침만
+    const status = container.querySelector<HTMLElement>('[data-page-status]') as HTMLElement
+    expect(status.querySelector('[data-as-of]')).toBeNull()
+    expect(within(status).getByRole('button', { name: '새로고침' })).toBeInTheDocument()
   })
 
   it.each(['/devices/Web_01/logs', '/devices/_unconfirmed/logs', `/devices/${'a'.repeat(64)}/logs`])('형식 밖 장비 id(%s)는 묻지 않고 찾을 수 없음', async (path) => {
@@ -399,6 +442,9 @@ describe('장비 최근 로그 화면(#73)', () => {
     expect(banner).toHaveTextContent('src_ip 는 IP 주소여야 합니다')
     expect(screen.getByRole('group', { name: '로그 조건' }).compareDocumentPosition(banner) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(screen.queryByRole('heading', { name: '로그를 불러오지 못함' })).toBeNull()
+    // 조건 오류는 입력 문제라 제목 줄에 갱신 실패를 붙이지 않는다(본문 띠가 알린다)
+    expect(container.querySelector('[data-page-status]')).not.toHaveTextContent('갱신 실패')
+    expect(container.querySelector('[data-page-status] [data-as-of]')).toBeNull()
     fireEvent.click(within(banner).getByRole('button', { name: '조건 초기화' }))
     await settle()
     expect(router.state.location.search).toBe('')

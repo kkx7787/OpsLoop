@@ -13,6 +13,8 @@ export interface SupportTargetsProps {
   updatedAt: number
   /** 페이지가 한 번 받은 최근 사건 CVE 배지 */
   badges?: Readonly<Record<string, CtiBadge>>
+  /** 받은 뒤 상태판 갱신이 실패했다(이전 결과를 보이는 중). 줄마다 '이전 결과' */
+  stale?: boolean
   className?: string
 }
 
@@ -21,20 +23,20 @@ export interface SupportTargetsProps {
  * 머리 배지(데이터 노드 확인 멈춤은 '주의') · 경고 배지(적용 실패 · 집행기 · 적재기 멈춤) · 미판정만 보이고, 누르면 카드를 펼친다.
  * 넓으면(md 이상) 두 무리를 나란히, 좁으면 쌓는다.
  */
-export function SupportTargets({ data, updatedAt, badges, className }: SupportTargetsProps) {
+export function SupportTargets({ data, updatedAt, badges, stale = false, className }: SupportTargetsProps) {
   if (!data) return null
   const groups = groupTargets(data.targets)
   const asOf = toDate(data.as_of)?.getTime() ?? updatedAt
   if (!groups.sensors.length && !groups.system.length) return null
   return (
     <div className={cn('grid items-start gap-4 md:grid-cols-2', className)}>
-      <Group title="관측 센서" targets={groups.sensors} asOf={asOf} badges={badges} />
-      <Group title="관제 시스템" targets={groups.system} asOf={asOf} badges={badges} />
+      <Group title="관측 센서" targets={groups.sensors} asOf={asOf} badges={badges} stale={stale} />
+      <Group title="관제 시스템" targets={groups.system} asOf={asOf} badges={badges} stale={stale} />
     </div>
   )
 }
 
-function Group({ title, targets, asOf, badges }: { title: string; targets: Target[]; asOf: number; badges: SupportTargetsProps['badges'] }) {
+function Group({ title, targets, asOf, badges, stale }: { title: string; targets: Target[]; asOf: number; badges: SupportTargetsProps['badges']; stale: boolean }) {
   const titleId = useId()
   if (!targets.length) return null
   return (
@@ -42,7 +44,7 @@ function Group({ title, targets, asOf, badges }: { title: string; targets: Targe
       <h2 id={titleId} className="m-0 text-sm font-semibold tracking-heading">
         {title}
       </h2>
-      <TargetSummaryList title={title} targets={targets} asOf={asOf} badges={badges} />
+      <TargetSummaryList title={title} targets={targets} asOf={asOf} badges={badges} stale={stale} />
     </section>
   )
 }

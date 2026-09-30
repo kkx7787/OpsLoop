@@ -120,7 +120,6 @@ export function VerdictPanel({ detail, openedAt, className }: VerdictPanelProps)
                 key={value}
                 label={VERDICT_LABEL[value]}
                 className="absolute top-2.5 right-3"
-                panelClassName="mx-3 mt-0 mb-2"
                 render={({ button, panel }) => (
                   <div
                     className={cn(

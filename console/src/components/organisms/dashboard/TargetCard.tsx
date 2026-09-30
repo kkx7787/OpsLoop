@@ -14,7 +14,7 @@ import { CtiBadge } from '../../molecules/CtiBadge'
 import { deviceIncidentsHref, deviceLogsHref } from '../../molecules/device-format'
 import { InfoTip } from '../../molecules/InfoTip'
 import { incidentHref } from '../incidents/model'
-import { assetHref, collectionState, headBadge, isLogDevice, LABEL_MAX, latestLog, pendingHref, responseParts, systemText, vulnText } from './target-format'
+import { assetHref, collectionState, headBadge, isLogDevice, LABEL_MAX, latestJudgedText, latestLog, pendingHref, responseParts, systemText, vulnText } from './target-format'
 
 export interface TargetCardProps {
   target: Target
@@ -32,6 +32,7 @@ export interface TargetCardProps {
 
 /**
  * 관제 대상 카드 한 장(#52): 머리(이름 · 역할 · 수집 상태) 아래에 수집 · 보안 · 최근 사건 · 시스템 · 대응 · 취약점을 한 줄 요약으로 쌓는다.
+ * #83 부터 대시보드는 관측 센서 · 관제 시스템 접힌 줄을 펼칠 때만 쓴다(보호 대상은 ProtectedCard). #84 에서 정리한다.
  * 수집 상태는 서버가 생존 신호로 정한다. 신호가 없는 대상은 마지막 로그 시각을 보이되 색을 입히지 않는다('생존 상태 미확인' 은 배지가 말한다).
  * 판정 근거(수신 없음 기준 · 정상일 때 서버의 까닭 · 정상 보고 시각)는 구역 제목 옆 도움말(ⓘ)에 두고,
  * 수신 없음 · 미확인의 까닭과 보고 문제 · 집행기 멈춤 · 수집 경고 표지(#82 웹 로그 적재 없음)는 본문에 둔다.
@@ -350,7 +351,8 @@ function LatestLine({ latest, asOf, cti }: { latest: TargetLatest | null; asOf: 
           {' · '}
           <Time value={latest.last_ts} format="relative" now={asOf} />
         </span>
-        <span className={latest.judged ? undefined : 'font-medium text-primary'}>{` · ${latest.judged ? '판정됨' : '미판정'}`}</span>
+        {/* 최신 판정이 미결이면 판정 기록이 있어도 '미결'(#83) */}
+        <span className={latest.judged ? undefined : 'font-medium text-primary'} data-latest-judged="">{` · ${latestJudgedText(latest)}`}</span>
         {cti && (
           <>
             {' '}
