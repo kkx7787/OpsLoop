@@ -331,7 +331,7 @@ function FingerprintList({ tabs }: { tabs: ReactNode }) {
       <Card padding="none" className="worklist-panel flex min-w-0 flex-col overflow-hidden">
         {tabs}
         {/* 어디서 꺼낸 지문인지와 같은 지문 주의는 ⓘ. 값 누름 · 누를 수 없는 값은 링크 모양과 '사건 있는 출발지' 열 머리 ⓘ 가 알린다 */}
-        <InfoTip label={`${FINGERPRINT_LABEL[kind]} 지문`} panelClassName="mx-4 my-2 shrink-0" render={({ button, panel }) => (<>
+        <InfoTip label={`${FINGERPRINT_LABEL[kind]} 지문`} render={({ button, panel }) => (<>
           <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 border-b border-line px-4 py-2">
             <SegmentedControl aria-label="지문 종류" options={KIND_OPTIONS} value={kind} onChange={setKind} />
             {button}

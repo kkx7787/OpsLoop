@@ -4,7 +4,6 @@ import { isDeviceNotFound, isLogsNotDeployed, LOGS_NOT_DEPLOYED, useDeviceLogs, 
 import { isApiError } from '@/api/errors'
 import { Button } from '@/components/atoms/Button'
 import { buttonClasses } from '@/components/atoms/button-styles'
-import { Time } from '@/components/atoms/Time'
 import { UntrustedText } from '@/components/atoms/UntrustedText'
 import { Banner } from '@/components/molecules/Banner'
 import { deviceIncidentsHref, isLogDeviceId } from '@/components/molecules/device-format'
@@ -14,17 +13,20 @@ import { countLogFilters, filterScope, futureText, logFiltersFromSearch, mergeLi
 import { LogFilterBar } from '@/components/organisms/device-logs/LogFilterBar'
 import { LogList } from '@/components/organisms/device-logs/LogList'
 import { LogTimes } from '@/components/organisms/device-logs/LogTimes'
+import { PageRefresh } from '@/components/organisms/PageRefresh'
 import { ApiErrorState } from '@/components/organisms/states/ApiErrorState'
 import { EmptyState } from '@/components/organisms/states/EmptyState'
 import { ErrorState } from '@/components/organisms/states/ErrorState'
 import { LoadingState } from '@/components/organisms/states/LoadingState'
 import { NotFoundState } from '@/components/organisms/states/NotFoundState'
+import { freshnessPart } from '@/lib/freshness'
 
 /**
  * 보호 대상 장비 최근 로그(#73 · /devices/:id/logs, 메뉴 없음). 대시보드 보호 대상 카드 · 사건 상세 장비 배지에서 연다.
  * 대상은 web-01 과 등록 노드뿐이고(그 밖은 서버 404), 줄 글자는 서버가 가려 보낸 비신뢰 값이다.
  * 5초마다 최근 창을 다시 받아 줄 id 로 합친다(숨은 탭 · 일시정지에서는 멈춘다). 새 줄은 1분 적재 회차로 들어오고 사건은 그 뒤 탐지 회차에서 생긴다.
  * 조건(종류 · 출발지 · 응답 코드)은 주소 검색 인자에 둔다. 조건이 바뀌면 합친 목록을 비운다.
+ * 화면 기준 시각(as_of)은 제목 줄 오른쪽 새로고침 옆 하나다(#79). 새로고침은 일시정지 중에도 한 번 받고 일시정지는 그대로다.
  */
 export function DeviceLogsPage() {
   const { id = '' } = useParams()
@@ -109,7 +111,10 @@ function DeviceLogsScreen({ id }: { id: string }) {
   }
 
   const retry = () => void query.refetch()
-  const invalid = isApiError(error) && error.status === 422 ? error.detail : null
+  const invalidInput = isApiError(error) && error.status === 422
+  const invalid = invalidInput ? error.detail : null
+  // 조건 오류(422)는 입력 문제이고 배포 전(404)은 갱신 실패가 아니다(대시보드 상태판 404 와 같다). 본문이 알리므로 기준 시각 칸은 비운다
+  const refreshParts = invalidInput || isLogsNotDeployed(error) ? [] : [freshnessPart(query, data?.as_of)]
 
   let body: ReactNode
   if (isLogsNotDeployed(error)) {
@@ -152,6 +157,7 @@ function DeviceLogsScreen({ id }: { id: string }) {
           </>
         }
         description="로그는 1분 적재 회차로 들어오고, 사건은 그 뒤 탐지 회차에서 생깁니다."
+        status={<PageRefresh parts={refreshParts} />}
         aside={
           <>
             <Button size="sm" aria-pressed={paused} onClick={togglePause}>
@@ -195,7 +201,7 @@ function DeviceLogsScreen({ id }: { id: string }) {
                   </Button>
                 }
               >
-                마지막 갱신 <Time value={data.as_of} format="time" />
+                이전 결과 유지
               </Banner>
             )}
             {data && data.future > 0 && (

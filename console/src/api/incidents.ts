@@ -339,6 +339,11 @@ export interface IncidentFilters {
   rule_id?: string
   /** true 판정된 건만 · false 미판정만 */
   judged?: boolean
+  /**
+   * true 최신 판정이 사람이 남긴 미결(undetermined, 시스템 전환 기록 제외)인 사건만(#83). judged 와 함께 주면 둘 다 맞는 것.
+   * 대시보드 미결 수 · 카드 미결 수와 같은 식이다. 이전 서버는 모르는 인자를 무시한다
+   */
+  undetermined?: boolean
   /** 기본 pending(미판정 오래된 순). 심각도순이 아니다(화면 설계 4장) */
   sort?: IncidentSort
   actor_ip?: string

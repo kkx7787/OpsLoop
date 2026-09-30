@@ -215,7 +215,7 @@ export function AccountsPage() {
       {notice && <Banner tone={notice.tone} title={notice.title} action={<Button size="sm" onClick={() => setNotice(null)}>닫기</Button>}>{notice.body}</Banner>}
       {addOpen && <AddAccountForm id={addFormId} busy={adding} blocked={anyBusy && !adding} onSubmit={add} onClose={() => setAddOpen(false)} />}
       {query.isPending ? <LoadingState title="계정 목록을 불러오는 중입니다" /> : !query.data ? <ApiErrorState error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} /> : <Card padding="none" className="min-w-0">
-        <InfoTip label="콘솔 계정" panelAs="div" panelClassName="mx-4 my-2" render={({ button, panel }) => <>
+        <InfoTip label="콘솔 계정" panelAs="div" render={({ button, panel }) => <>
           <CardHeader title="콘솔 계정" aside={<><span>{`${query.data.accounts.length}개 · 시각 KST`}</span><Link to="/audit">감사 기록</Link>{button}</>} />
           {panel}
         </>}>
@@ -231,7 +231,7 @@ export function AccountsPage() {
         {!query.data.accounts.length && <p className="p-4 text-sm text-ink-muted">계정이 없습니다.</p>}
       </Card>}
       <Card padding="none" className="min-w-0">
-        <InfoTip label="명령줄에서 하는 일" panelAs="div" panelClassName="mx-4 my-2" render={({ button, panel }) => <>
+        <InfoTip label="명령줄에서 하는 일" panelAs="div" render={({ button, panel }) => <>
           {/* 실행 위치(콘솔 노드 · 소유자 접속)는 본문 첫 줄에 한 번만 적는다 */}
           <CardHeader title="명령줄에서 하는 일" aside={button} />
           {panel}
@@ -323,7 +323,7 @@ function AddAccountForm({ id, busy, blocked, onSubmit, onClose }: {
   </Card>
 }
 
-/** 확인 양식의 문장. 세션을 끊는 변경이면 세션 끊김 문장 바로 뒤에 ⓘ(실시간 연결이 끊기는 시간)를 두고 설명은 문단 아래에 펼친다 */
+/** 확인 양식의 문장. 세션을 끊는 변경이면 세션 끊김 문장 바로 뒤에 ⓘ(실시간 연결이 끊기는 시간)를 둔다 */
 function Consequence({ account, change }: { account: Account; change: Change }) {
   const { text, cut } = consequence(change)
   const name = <span className="font-medium break-all"><UntrustedText value={account.username} max={64} /></span>

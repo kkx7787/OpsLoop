@@ -285,6 +285,14 @@ describe('TargetCard(#52)', () => {
     expect(within(link).getByText('CVE 3 · KEV 1 · 자산 미확인')).toHaveAttribute('data-cti-badge')
   })
 
+  it('최근 사건의 최신 판정이 미결이면 판정 기록이 있어도 판정됨이 아니라 미결이다(#83)', () => {
+    const latest = { ...awsSensor().security.latest!, judged: true, verdict: 'undetermined' as const }
+    const { row } = renderCard(awsSensor({ security: { ...awsSensor().security, latest } }))
+    expect(row('최근 사건').querySelector('[data-latest-judged]')).toHaveTextContent(/^· 미결$/)
+    const judged = renderCard(consoleTarget({ security: { ...consoleTarget().security, latest: { ...consoleTarget().security.latest!, verdict: 'false_positive' } } }))
+    expect(judged.row('최근 사건').querySelector('[data-latest-judged]')).toHaveTextContent(/^· 판정됨$/)
+  })
+
   it('최근 사건이 없으면 그렇게 적는다', () => {
     const { row } = renderCard(web01())
     expect(row('최근 사건')).toHaveTextContent('최근 24시간 사건 없음')

@@ -83,7 +83,7 @@ function EnrollmentForm({initial,nodes}:{initial?:NodeEntry;nodes:NodeEntry[]}) 
           <details className="text-xs"><summary className="cursor-pointer">web-01 설치 예시</summary><pre className="overflow-x-auto rounded-panel bg-canvas p-3 leading-5">{'cd infra/ansible\nread -rs OPSLOOP_ENROLL_TOKEN\nexport OPSLOOP_ENROLL_TOKEN\nansible-playbook web01.yml\nunset OPSLOOP_ENROLL_TOKEN'}</pre><p>다른 노드는 해당 인벤토리와 수집 설정을 먼저 준비해야 합니다.</p></details>
           <Button onClick={()=>void cancel()} loading={busy}>등록 토큰 취소</Button>
         </div></Card>}
-        {issued && <Card padding="none"><InfoTip label="등록 · 첫 수신 확인" panelClassName="mx-4 mt-3" render={({ button, panel }) => <>
+        {issued && <Card padding="none"><InfoTip label="등록 · 첫 수신 확인" render={({ button, panel }) => <>
           <CardHeader title="등록 · 첫 수신 확인" aside={<span className="inline-flex items-center gap-1">30초마다 확인{button}</span>} />
           {panel}
         </>}>재등록한 노드는 과거 수신 기록이 남아 있을 수 있습니다. 형식 변환과 규칙 적용은 설치 플레이북의 첫 수신 점검으로 확인하세요.</InfoTip><dl className="m-0 grid grid-cols-[auto_1fr] gap-3 p-4 text-sm"><dt>등록 상태</dt><dd className="m-0">{node ? <ReceptionBadge node={node} /> : '확인 중'}</dd><dt>자기 등록</dt><dd className="m-0"><Time value={node?.registered_at} format="short" zone /></dd><dt>첫 적재</dt><dd className="m-0"><Time value={node?.first_loaded_at} format="short" zone /></dd><dt>마지막 수신</dt><dd className="m-0"><Time value={node?.last_seen_at} format="short" zone /></dd></dl></Card>}

@@ -6,6 +6,7 @@ import { cn } from '@/lib/cn'
 import { sensorOf } from '@/lib/domain'
 import { formatDuration } from '@/lib/time'
 import { revealHidden } from '@/lib/untrusted'
+import { Badge } from '../../atoms/Badge'
 import { Card } from '../../atoms/Card'
 import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { UntrustedText } from '../../atoms/UntrustedText'
@@ -14,26 +15,31 @@ import { InfoTip } from '../../molecules/InfoTip'
 import { incidentHref } from '../incidents/model'
 
 export interface PendingQueueProps {
-  /** 상태판의 먼저 처리할 사건(#72). 있으면 이것을 그린다(요약 조회와 관계없이) */
+  /** 상태판의 판정 대기 사건(queue, #72). 있으면 이것을 그린다(요약 조회와 관계없이) */
   queue?: TargetsQueue
   /** 이전 서버 · 상태판 조회 실패일 때 요약의 오래된 미판정. 발생원은 규칙 번호 분류(sensorOf)로 적는다 */
   oldest?: readonly PendingIncident[]
+  /** 제목(h2) id. 페이지가 '판정 대기 사건' 구역(section)의 이름으로 쓴다(#83, 구역 제목을 따로 두지 않는다) */
+  titleId?: string
+  /** 받은 뒤 갱신이 실패해 이전 결과를 보이는 중(제목 줄에 '이전 결과') */
+  stale?: boolean
   className?: string
 }
 
-const QUEUE_NOTE = '보호 대상 · 관제 시스템 · 장비 미확인 사건을 먼저, 허니팟 · 디코이 사건을 뒤에 두고 각각 오래된 순입니다. 최대 8건 · 전체 규칙 버전.'
+const QUEUE_NOTE = '보호 대상 · 관제 시스템 · 장비 미확인 사건을 우선 확인으로 앞에, 허니팟 · 디코이 사건을 뒤에 두고 각각 오래된 순입니다. 최대 8건 · 전체 규칙 버전.'
+const TITLE = '판정 대기 사건'
 const OLDEST_NOTE = '오래된 순입니다. 최대 8건 · 전체 규칙 버전.'
 const BACK_TITLE = '허니팟 · 디코이'
 
 type Row = PendingIncident & Partial<Pick<QueueItem, 'devices' | 'device_state' | 'device_fallback' | 'lane'>>
 
 /**
- * 먼저 처리할 사건(#72). 앞 묶음(보호 대상 · 관제 시스템 · 장비 미확인) 뒤에 '허니팟 · 디코이' 묶음을 둔다. 순서는 서버가 준 대로다.
+ * 판정 대기 사건(#72 · #83). 우선 확인 묶음(보호 대상 · 관제 시스템 · 장비 미확인) 뒤에 '허니팟 · 디코이' 묶음을 둔다. 순서는 서버가 준 대로다.
  * 한 줄 = 경과 · 목표 | 규칙 번호 + 이름 / 출발지 또는 대상 · 관련 장비 | 심각도. 줄 전체가 상세 링크라 안에 단추를 두지 않는다(#41).
  * 제목 옆 수는 미판정 전체의 묶음별 수다(목록은 최대 8건이라 뒤 묶음이 목록에 없을 수 있다).
  * queue 가 없으면(이전 서버 · 상태판 실패) 요약의 오래된 미판정을 지금 모양(발생원)으로 그린다.
  */
-export function PendingQueue({ queue, oldest, className }: PendingQueueProps) {
+export function PendingQueue({ queue, oldest, titleId, stale = false, className }: PendingQueueProps) {
   const backId = useId()
   const items: Row[] = queue ? queue.items : [...(oldest ?? [])]
   const front = queue ? items.filter((item) => item.lane !== 'back') : items
@@ -42,17 +48,24 @@ export function PendingQueue({ queue, oldest, className }: PendingQueueProps) {
   return (
     <Card padding="none" className={cn('min-w-0', className)} data-queue={queue ? 'lanes' : 'oldest'}>
       <InfoTip
-        label="먼저 처리할 사건"
+        label={TITLE}
         render={({ button, panel }) => (
           <div className="rounded-t-card border-b border-line bg-canvas/60 px-4 py-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
-                <h2 className="m-0 text-md font-semibold tracking-heading">먼저 처리할 사건</h2>
+                <h2 id={titleId} className="m-0 text-md font-semibold tracking-heading">
+                  {TITLE}
+                </h2>
                 {button}
                 {queue && (
                   <span className="text-xs tabular-nums text-ink-muted" data-queue-counts="">
-                    앞 {count(queue.front)} · {BACK_TITLE} {count(queue.back)}
+                    우선 확인 {count(queue.front)} · {BACK_TITLE} {count(queue.back)}
                   </span>
+                )}
+                {stale && (
+                  <Badge tone="warning" data-stale-badge="">
+                    이전 결과
+                  </Badge>
                 )}
               </div>
               <div className="flex items-center gap-3 text-xs text-ink-muted">

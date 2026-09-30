@@ -1,6 +1,6 @@
 import { useId } from 'react'
-import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { act, fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { expectInertDom, expectMixedRevealed, HOSTILE, MIXED } from '@/test/hostile-fixtures'
 import { UntrustedText } from '../atoms/UntrustedText'
 import { InfoTip } from './InfoTip'
@@ -44,6 +44,10 @@ function Header({ tip }: { tip?: Partial<Parameters<typeof InfoTip>[0]> }) {
   )
 }
 
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
 describe('InfoTip', () => {
   it('닫힌 채로 시작하고, 설명은 DOM 에 남아 단추 · 대상의 설명으로 읽힌다', () => {
     render(<Header />)
@@ -61,19 +65,173 @@ describe('InfoTip', () => {
     expect(screen.getByText(RATE)).toBe(panel)
   })
 
-  it('누르면 바로 아래에 펼치고 다시 누르면 접는다', () => {
+  it('누르면 단추 가까이 겹쳐 뜨고(흐름 밖 · 본문을 밀지 않음) 다시 누르면 닫힌다', () => {
     render(<Header />)
     const button = screen.getByRole('button', { name: '정탐률 설명' })
     const panel = panelOf(button)
     fireEvent.click(button)
     expect(button).toHaveAttribute('aria-expanded', 'true')
     expect(panel).not.toHaveClass('hidden')
-    expect(panel).toHaveClass('block')
-    // 단추 바로 뒤(같은 칸)에 붙는다
+    // 흐름 밖(fixed)에 뜨고 자리는 CSS 변수로 받는다. popover 의 가운데 정렬 기본값은 되돌린다
+    expect(panel).toHaveClass('block', 'fixed', 'inset-auto', 'm-0', 'z-50', 'left-(--tip-x)', 'top-(--tip-y)')
+    expect(panel.style.getPropertyValue('--tip-x')).toMatch(/^\d+px$/)
+    expect(panel.style.getPropertyValue('--tip-y')).toMatch(/^\d+px$/)
+    // DOM 자리는 그대로(단추 바로 뒤)라 설명 연결 · 인쇄 순서가 유지된다
     expect(button.nextElementSibling).toBe(panel)
     fireEvent.click(button)
     expect(button).toHaveAttribute('aria-expanded', 'false')
     expect(panel).toHaveClass('hidden')
+  })
+
+  it('한 번에 하나만 열린다', () => {
+    render(
+      <p>
+        <InfoTip label="가">가 설명</InfoTip>
+        <InfoTip label="나">나 설명</InfoTip>
+      </p>,
+    )
+    const a = screen.getByRole('button', { name: '가 설명' })
+    const b = screen.getByRole('button', { name: '나 설명' })
+    fireEvent.click(a)
+    expect(a).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.pointerDown(b)
+    fireEvent.click(b)
+    expect(a).toHaveAttribute('aria-expanded', 'false')
+    expect(panelOf(a)).toHaveClass('hidden')
+    expect(b).toHaveAttribute('aria-expanded', 'true')
+    // 바깥 누르기 없이 열어도(키보드) 앞의 것이 닫힌다
+    fireEvent.click(a)
+    expect(a).toHaveAttribute('aria-expanded', 'true')
+    expect(b).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('바깥을 누르면 닫히고 초점은 옮기지 않는다. 단추 · 설명 안을 누르면 열린 채다', () => {
+    render(
+      <div>
+        <input aria-label="검색" />
+        <InfoTip label="첫 사건">
+          같은 페이로드 · <a href="/incidents">목록</a>
+        </InfoTip>
+      </div>,
+    )
+    const button = screen.getByRole('button', { name: '첫 사건 설명' })
+    fireEvent.click(button)
+    fireEvent.pointerDown(screen.getByRole('link', { name: '목록' }))
+    expect(button).toHaveAttribute('aria-expanded', 'true')
+    fireEvent.pointerDown(button)
+    expect(button).toHaveAttribute('aria-expanded', 'true')
+    const input = screen.getByRole('textbox', { name: '검색' })
+    input.focus()
+    fireEvent.pointerDown(input)
+    expect(button).toHaveAttribute('aria-expanded', 'false')
+    expect(input).toHaveFocus()
+    fireEvent.click(button)
+    fireEvent.pointerDown(document.body)
+    expect(button).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('Esc 는 문서 캡처 단계에서 먼저 받는다: 열려 있으면 감싼 서랍의 Esc 가 먹지 않고, 닫혀 있으면 그대로 간다', () => {
+    const drawer = vi.fn<(event: KeyboardEvent) => void>()
+    // MobileNav 처럼 문서에서 Esc 를 듣는 서랍
+    document.addEventListener('keydown', drawer)
+    try {
+      render(<InfoTip label="판정 목표">critical 1시간</InfoTip>)
+      const button = screen.getByRole('button', { name: '판정 목표 설명' })
+      fireEvent.click(button)
+      button.focus()
+      fireEvent.keyDown(button, { key: 'Escape' })
+      expect(button).toHaveAttribute('aria-expanded', 'false')
+      expect(drawer).not.toHaveBeenCalled()
+      fireEvent.keyDown(button, { key: 'Escape' })
+      expect(drawer).toHaveBeenCalledTimes(1)
+    } finally {
+      document.removeEventListener('keydown', drawer)
+    }
+  })
+
+  it('다른 입력 칸에 초점이 있으면 Esc 로 닫아도 초점을 빼앗지 않는다', () => {
+    render(
+      <div>
+        <input aria-label="검색" />
+        <InfoTip label="판정 목표">critical 1시간</InfoTip>
+      </div>,
+    )
+    const button = screen.getByRole('button', { name: '판정 목표 설명' })
+    fireEvent.click(button)
+    const input = screen.getByRole('textbox', { name: '검색' })
+    input.focus()
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(button).toHaveAttribute('aria-expanded', 'false')
+    expect(input).toHaveFocus()
+  })
+
+  it('화면 가장자리 안에 자리를 잡고, 스크롤 · 창 크기가 바뀌면 다시 잡는다', () => {
+    render(<InfoTip label="표본">표본 설명</InfoTip>)
+    const button = screen.getByRole('button', { name: '표본 설명' })
+    const panel = panelOf(button)
+    // jsdom 은 배치를 계산하지 않는다. 단추 자리 · 상자 크기를 정해 준다(창 1024×768)
+    let rect = { left: 1000, top: 100, bottom: 116, right: 1016, width: 16, height: 16, x: 1000, y: 100 }
+    vi.spyOn(button, 'getBoundingClientRect').mockImplementation(() => ({ ...rect, toJSON: () => rect }) as DOMRect)
+    Object.defineProperty(panel, 'offsetWidth', { configurable: true, value: 300 })
+    Object.defineProperty(panel, 'offsetHeight', { configurable: true, value: 100 })
+    fireEvent.click(button)
+    // 오른쪽이 넘치니 가장자리 16px 안으로 당기고, 아래에 자리가 있으니 단추 아래 4px
+    expect(panel.style.getPropertyValue('--tip-x')).toBe(`${1024 - 16 - 300}px`)
+    expect(panel.style.getPropertyValue('--tip-y')).toBe('120px')
+    expect(panel.style.getPropertyValue('--tip-max')).toBe(`${1024 - 32}px`)
+    // 아래 자리가 없으면 위로 뒤집는다
+    rect = { ...rect, left: 40, top: 700, bottom: 716, y: 700, x: 40 }
+    act(() => void window.dispatchEvent(new Event('scroll')))
+    expect(panel.style.getPropertyValue('--tip-x')).toBe('40px')
+    expect(panel.style.getPropertyValue('--tip-y')).toBe(`${700 - 4 - 100}px`)
+    rect = { ...rect, left: 4, top: 10, bottom: 26, y: 10, x: 4 }
+    act(() => void window.dispatchEvent(new Event('resize')))
+    expect(panel.style.getPropertyValue('--tip-x')).toBe('16px')
+    expect(panel.style.getPropertyValue('--tip-y')).toBe('30px')
+  })
+
+  it('popover 를 쓸 수 있으면 top layer 로 올리고(overflow · 카드에 잘리지 않음), 닫으면 내린다', () => {
+    const show = vi.fn<() => void>()
+    const hide = vi.fn<() => void>()
+    const proto = HTMLElement.prototype as Partial<Pick<HTMLElement, 'showPopover' | 'hidePopover'>>
+    const saved = { show: proto.showPopover, hide: proto.hidePopover }
+    proto.showPopover = show
+    proto.hidePopover = hide
+    try {
+      render(<Header />)
+      const button = screen.getByRole('button', { name: '정탐률 설명' })
+      const panel = panelOf(button)
+      expect(panel).toHaveAttribute('popover', 'manual')
+      fireEvent.click(button)
+      expect(show).toHaveBeenCalledTimes(1)
+      expect(show.mock.contexts[0]).toBe(panel)
+      fireEvent.click(button)
+      expect(hide).toHaveBeenCalledTimes(1)
+    } finally {
+      proto.showPopover = saved.show
+      proto.hidePopover = saved.hide
+    }
+  })
+
+  it('못 쓰면(옛 브라우저) popover 속성 없이 fixed 로만 띄운다', () => {
+    render(<Header />)
+    expect(panelOf(screen.getByRole('button', { name: '정탐률 설명' }))).not.toHaveAttribute('popover')
+  })
+
+  it('인쇄 직전에 떠 있던 말풍선을 닫는다(제자리 펼침만 찍힌다)', () => {
+    render(<Header />)
+    const button = screen.getByRole('button', { name: '정탐률 설명' })
+    fireEvent.click(button)
+    act(() => void window.dispatchEvent(new Event('beforeprint')))
+    expect(button).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('열린 채 사라지면 열림을 비운다(다시 그리면 닫혀 있다)', () => {
+    const { unmount } = render(<Header />)
+    fireEvent.click(screen.getByRole('button', { name: '정탐률 설명' }))
+    unmount()
+    render(<Header />)
+    expect(screen.getByRole('button', { name: '정탐률 설명' })).toHaveAttribute('aria-expanded', 'false')
   })
 
   it.each([
@@ -167,7 +325,8 @@ describe('InfoTip', () => {
     button = screen.getByRole('button', { name: '판정 품질 설명' })
     panel = panelOf(button)
     expect(button).toHaveClass('print:hidden')
-    expect(panel).toHaveClass('hidden', 'print:block')
+    // 종이에는 말풍선이 아니라 제자리(흐름 안)에 보통 글로 찍는다
+    expect(panel).toHaveClass('hidden', 'print:block', 'print:static', 'print:max-w-none', 'print:max-h-none', 'print:shadow-none', 'print:border-0', 'print:p-0')
     expect(panel).not.toHaveClass('print:hidden')
     expect(panel).not.toHaveAttribute('hidden')
   })
@@ -217,6 +376,8 @@ describe('InfoTip', () => {
     expect(panelOf(button).parentElement?.tagName).toBe('SECTION')
     fireEvent.click(button)
     expect(screen.getByText('상태판')).toHaveAttribute('data-open', 'true')
+    // 떨어진 자리에 두어도 같은 말풍선이다(단추 가까이 겹쳐 뜬다)
+    expect(panelOf(button)).toHaveClass('fixed', 'left-(--tip-x)', 'top-(--tip-y)')
   })
 
   it('설명 상자 클래스가 display 를 바꿔도 닫힘이 이긴다', () => {

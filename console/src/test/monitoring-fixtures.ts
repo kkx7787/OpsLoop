@@ -5,7 +5,7 @@ export const AS_OF = '2026-09-23T08:00:00Z'
 /** 요약. 기본값에는 지점별 차단(blocks_by_point)이 없다(이전 서버). 지점별은 BLOCKS_BY_POINT 를 넣는다 */
 export const MONITORING_SUMMARY: Summary = {
   as_of: AS_OF,
-  pending: { total: 12, overdue: 3, warning: 2, oldest_seconds: 22_320, age_distribution: [4, 5, 3, 0, 0] },
+  pending: { total: 12, overdue: 3, warning: 2, oldest_seconds: 22_320, age_distribution: [4, 5, 3, 0, 0], undetermined: 0 },
   oldest_pending: [{ incident_key: 'R003|v2|192.0.2.8', rule_id: 'R003', rule_name: '악성코드 투하', severity: 'critical', actor_ip: '192.0.2.8', target: null, first_ts: '2026-09-23T01:48:00Z', pending_seconds: 22_320, target_seconds: 3600, overdue: true }],
   rule_quality: [
     { rule_id: 'R001', rule_version: 'v2', incidents: 20, judged_effective: 10, non_action: 3, non_action_rate: 30 },

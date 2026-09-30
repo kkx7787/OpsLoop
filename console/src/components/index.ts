@@ -51,6 +51,8 @@ export { VerdictBadge } from './atoms/VerdictBadge'
 export type { VerdictBadgeProps } from './atoms/VerdictBadge'
 
 // molecules
+export { AsOfStatus } from './molecules/AsOfStatus'
+export type { AsOfStatusProps } from './molecules/AsOfStatus'
 export { Banner } from './molecules/Banner'
 export type { BannerProps, BannerTone } from './molecules/Banner'
 export { CtiBadge } from './molecules/CtiBadge'
@@ -91,7 +93,7 @@ export type { SessionExpiredStateProps } from './organisms/states/SessionExpired
 export { StateView } from './organisms/states/StateView'
 export type { StateTone, StateViewProps } from './organisms/states/StateView'
 
-// organisms — 상단바 · 메뉴
+// organisms — 상단바 · 메뉴 · 화면 기준 시각(PageRefresh: 제목 줄 오른쪽 기준 시각 + 새로고침, #79)
 export { MobileNav } from './organisms/MobileNav'
 export type { MobileNavProps } from './organisms/MobileNav'
 export { Brand } from './organisms/nav/Brand'
@@ -108,6 +110,8 @@ export { SideNav } from './organisms/SideNav'
 export type { SideNavProps } from './organisms/SideNav'
 export { TopBar } from './organisms/TopBar'
 export type { TopBarProps } from './organisms/TopBar'
+export { PageRefresh } from './organisms/PageRefresh'
+export type { PageRefreshProps } from './organisms/PageRefresh'
 export { LiveIndicator } from './organisms/LiveIndicator'
 export type { LiveIndicatorProps } from './organisms/LiveIndicator'
 export { NewIncidentToasts } from './organisms/NewIncidentToasts'

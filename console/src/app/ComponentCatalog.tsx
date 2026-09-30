@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { ApiError } from '@/api/errors'
 import { permission } from '@/auth/roles'
 import {
+  AsOfStatus,
   Badge,
   Banner,
   Button,
@@ -57,6 +58,11 @@ function Row({ children }: { children: ReactNode }) {
 
 const NOW = Date.parse('2026-09-18T06:20:04Z')
 
+/** 화면 기준 시각(#79)의 조회 하나. 몇 초 전에 받았는지 · 실패했는지만 바꿔 본다 */
+function asOfPart(agoMs: number, failed = false) {
+  return { dataUpdatedAt: NOW - agoMs, errorUpdatedAt: failed ? NOW - 1_000 : 0, isError: failed, asOf: NOW - agoMs }
+}
+
 /** 관제 이상 요약(사이드바 · 상단바)의 다섯 상태: 조회 전 · 확인 불가 · 이상 · 일부 미확인 · 이상 없음 */
 const OPS_VIEWS: OpsView[] = [
   { state: 'pending' },
@@ -86,12 +92,8 @@ export function ComponentCatalog() {
         title="공통 컴포넌트"
         badges={<Badge tone="info">WBS 3.6.1</Badge>}
         description="atoms · molecules · 상태 화면. 개발 서버에서만 보이는 대조용 화면이다."
-        aside={
-          <>
-            <Time value={NOW} zone className="font-mono text-xs text-ink-muted" />
-            <span className="text-xs text-ink-muted">30초마다 갱신</span>
-          </>
-        }
+        aside={<span className="text-xs text-ink-muted">30초마다 갱신</span>}
+        status={<AsOfStatus parts={[asOfPart(4_000)]} now={NOW} />}
       />
 
       <Banner tone="danger" title="데이터 연결이 끊겼습니다">
@@ -178,10 +180,17 @@ export function ComponentCatalog() {
           <CtiBadge badge={{ cves: 1, kev: 1, applicability: 'unknown', stale: true }} />
           <CtiBadge badge={{ cves: 0, kev: 0, applicability: 'unknown', stale: false }} />
         </Row>
-        {/* 도움말(ⓘ): 누르면 바로 아래에 펼친다 · '기준 보기' 는 인쇄에 펼쳐 찍힌다 */}
+        {/* 도움말(ⓘ): 누르면 단추 가까이 말풍선으로 뜬다(하나만 열림) · '기준 보기' 는 인쇄에 펼쳐 찍힌다 */}
         <Row>
           <span className="text-sm">정탐률 <InfoTip label="정탐률">최근 30일 판정 가운데 위협으로 판정한 비율</InfoTip></span>
           <div><InfoTip variant="text" label="판정 품질" print="expand" panelAs="div">제안이 없던 판정은 뒤집힘으로 세지 않는다</InfoTip></div>
+        </Row>
+        {/* 화면 기준 시각(#79): 정상 · 오래됨 · 일부 실패 · 실패. 대시보드 · 장비 로그는 PageRefresh 로 새로고침과 함께 둔다 */}
+        <Row>
+          <AsOfStatus parts={[asOfPart(4_000)]} now={NOW} />
+          <AsOfStatus parts={[asOfPart(185_000)]} now={NOW} />
+          <AsOfStatus parts={[asOfPart(4_000), asOfPart(40_000, true)]} now={NOW} />
+          <AsOfStatus parts={[asOfPart(40_000, true)]} now={NOW} />
         </Row>
       </Section>
 

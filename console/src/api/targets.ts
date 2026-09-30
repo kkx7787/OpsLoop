@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import type { Verdict } from '@/lib/domain'
 import { api } from './client'
 import { ApiError, isApiError } from './errors'
 import type { IncidentBase } from './incidents'
@@ -11,7 +12,7 @@ import { monitoringKeys } from './monitoring-keys'
  * 수치는 대상별이다. 한 사건이 여러 대상에 붙을 수 있어 카드 합은 전체 사건 수가 아니다.
  * 생존 신호가 없는 대상은 서버가 '미확인'(unknown)으로 답한다. 화면은 로그 시각만으로 정상 · 장애 색을 입히지 않는다.
  * 화면은 대상을 세 무리로 나눠 그린다(#72): 보호 대상(web-01 · 등록 노드) · 관측 센서(aws-sensor) · 관제 시스템(console · data-node).
- * 먼저 처리할 사건(queue)은 이 경로에만 있다(보고서의 같은 계산에는 없다).
+ * 판정 대기 사건(queue, 옛 이름 '먼저 처리할 사건')은 이 경로에만 있다(보고서의 같은 계산에는 없다).
  */
 
 /** 코드에 정한 고정 대상(app/targets.py TARGETS). 카드 순서도 이 순서다 */
@@ -114,6 +115,8 @@ export interface TargetLatest {
   target: string | null
   last_ts: string
   judged: boolean
+  /** 최신 판정 값(#83). 판정됨이어도 undetermined 면 '미결' 이다. 판정 없음은 null. 이전 서버에는 없다 */
+  verdict?: Verdict | null
 }
 
 export interface TargetSecurity {
@@ -123,6 +126,8 @@ export interface TargetSecurity {
   high_1h: number
   /** 판정 기록 없는 이 대상 사건 전체(기간 무관) */
   pending: number
+  /** 최신 판정이 사람이 남긴 미결인 이 대상 사건(#83, 기간 무관 · 시스템 전환 기록 제외). 이전 서버에는 없다 */
+  undetermined?: number
   parts: TargetPart[]
   latest: TargetLatest | null
 }
@@ -179,6 +184,10 @@ export interface TargetAssetVulns {
   stale: boolean
   /** 자산 표에 없다. 수는 0 이지만 '없음'으로 읽지 않는다 */
   missing: boolean
+  /** 마지막 대조가 실패했다(check_error, #83). 수는 그대로다. 이전 서버에는 없다 */
+  check_failed?: boolean
+  /** 마지막 대조가 48시간 넘었다(#83). 대조 전 · missing 은 false. 이전 서버에는 없다 */
+  check_stale?: boolean
 }
 
 export interface TargetVulns {
@@ -213,13 +222,13 @@ export interface TargetsResult {
   /** 순서 고정: aws-sensor, web-01, console, data-node, 그 뒤 등록 노드(node_id 순) */
   targets: Target[]
   /** 장비를 확인하지 못한 사건(화면 글자는 '장비 미확인'). 숨기지 않는다 */
-  unmapped: { incidents_1h: number; pending: number }
-  /** 먼저 처리할 사건(#72). 이전 서버에는 없다(화면은 요약의 oldest_pending 으로 대신한다) */
+  unmapped: { incidents_1h: number; pending: number; undetermined?: number }
+  /** 판정 대기 사건(#72 · #83). 이전 서버에는 없다(화면은 요약의 oldest_pending 으로 대신한다) */
   queue?: TargetsQueue
 }
 
 /**
- * 먼저 처리할 사건 한 줄. 요약 oldest_pending 과 같은 칸에 묶음 · 관련 장비를 더했다(rule_version 은 없다).
+ * 판정 대기 사건 한 줄. 요약 oldest_pending 과 같은 칸에 묶음 · 관련 장비를 더했다(rule_version 은 없다).
  * lane front: 보호 대상 · 관제 시스템 · 장비 미확인, back: AWS 센서(허니팟 · 디코이)뿐
  */
 export type QueueItem = PendingIncident & Pick<IncidentBase, 'devices' | 'device_state' | 'device_fallback'> & { lane: 'front' | 'back' }

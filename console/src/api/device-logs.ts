@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query'
+import { notifyManager, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import { useCallback, useSyncExternalStore } from 'react'
 import { api } from './client'
 import { ApiError, isApiError } from './errors'
 import type { DetectPathVersion } from './health'
@@ -10,6 +11,7 @@ import { shouldRetry } from './queryClient'
  * 대상은 web-01 과 등록 노드뿐이다(그 밖은 404 '보호 대상 장비를 찾을 수 없습니다'). 발생원은 관문이 인증한 node_id 다.
  * 글자 칸(url · user_agent · message · username · http_method)은 서버가 이미 가려서 보낸다. 비밀번호는 있었는지만 온다.
  * 화면은 5초마다 최근 창을 다시 받아 줄 id 로 합친다(log-format.ts mergeLines). 새 줄은 1분 적재 회차로 들어온다.
+ * 대시보드 보호 대상 카드(#83)는 같은 경로에서 최근 10줄을 10초마다 받는다(조회 키에 줄 수를 넣어 로그 화면과 캐시를 나눈다).
  */
 
 export const LOG_KINDS = ['web', 'ssh'] as const
@@ -17,6 +19,8 @@ export type LogKind = (typeof LOG_KINDS)[number]
 
 /** 서버 KIND_LABEL 과 같다(targets.PREFIX_KIND) */
 export const LOG_KIND_LABEL: Readonly<Record<LogKind, string>> = { web: '웹 접근', ssh: 'SSH 인증' }
+/** 좁은 카드 로그 칸(#83)의 짧은 표기. 전체 이름은 낭독용으로 함께 둔다 */
+export const LOG_KIND_SHORT: Readonly<Record<LogKind, string>> = { web: '웹', ssh: 'SSH' }
 
 export function isLogKind(v: unknown): v is LogKind {
   return v === 'web' || v === 'ssh'
@@ -114,14 +118,14 @@ export function isHttpStatus(v: unknown): v is number {
   return typeof v === 'number' && Number.isInteger(v) && v >= 100 && v <= 599
 }
 
-/** 보낼 쿼리. 모르는 종류 · 범위 밖 코드 · 빈 출발지는 빼고, limit 은 늘 100 이다 */
-export function deviceLogsQuery(filters: DeviceLogFilters): Record<string, string | number> {
+/** 보낼 쿼리. 모르는 종류 · 범위 밖 코드 · 빈 출발지는 빼고, limit 은 로그 화면 100 · 대시보드 카드 10 이다 */
+export function deviceLogsQuery(filters: DeviceLogFilters, limit: number = DEVICE_LOGS_LIMIT): Record<string, string | number> {
   const query: Record<string, string | number> = {}
   if (isLogKind(filters.kind)) query.kind = filters.kind
   const src = filters.src_ip?.trim()
   if (src) query.src_ip = src
   if (isHttpStatus(filters.status)) query.status = filters.status
-  query.limit = DEVICE_LOGS_LIMIT
+  query.limit = limit
   return query
 }
 
@@ -148,10 +152,10 @@ function isResult(data: unknown): data is DeviceLogsResult {
   return data.items.every((item) => isRecord(item) && typeof item.id === 'string' && typeof item.ts === 'string')
 }
 
-export async function fetchDeviceLogs(id: string, filters: DeviceLogFilters, signal?: AbortSignal): Promise<DeviceLogsResult> {
+export async function fetchDeviceLogs(id: string, filters: DeviceLogFilters, signal?: AbortSignal, limit: number = DEVICE_LOGS_LIMIT): Promise<DeviceLogsResult> {
   let data: unknown
   try {
-    data = await api.get<unknown>(deviceLogsPath(id), { signal, query: deviceLogsQuery(filters) })
+    data = await api.get<unknown>(deviceLogsPath(id), { signal, query: deviceLogsQuery(filters, limit) })
   } catch (error) {
     // 서버 문장이 아닌 404 는 이 경로를 모르는 이전 서버다. '찾을 수 없음' 대신 배포 전으로 읽히게 한다
     if (isLogsNotDeployed(error)) throw new ApiError({ status: 404, detail: LOGS_NOT_DEPLOYED, body: (error as ApiError).body, cause: error })
@@ -168,12 +172,25 @@ export function isFinalError(error: unknown): boolean {
   return isApiError(error) && error.kind === 'http' && error.status >= 400 && error.status < 500
 }
 
-export function deviceLogsKey(id: string, filters: DeviceLogFilters) {
-  return ['device-logs', id, { kind: filters.kind ?? null, src_ip: filters.src_ip ?? null, status: filters.status ?? null }] as const
+/** 조회 키. 줄 수를 넣어 로그 화면(100)과 대시보드 카드(10)의 캐시를 나눈다 */
+export function deviceLogsKey(id: string, filters: DeviceLogFilters, limit: number = DEVICE_LOGS_LIMIT) {
+  return ['device-logs', id, { kind: filters.kind ?? null, src_ip: filters.src_ip ?? null, status: filters.status ?? null }, limit] as const
 }
 
 /** 주기 조회 간격 */
 export const DEVICE_LOGS_INTERVAL = 5_000
+/** 대시보드 보호 대상 카드(#83)의 최근 로그: 10줄 · 카드가 보이고 탭이 앞일 때 10초마다 */
+export const CARD_LOGS_LIMIT = 10
+export const CARD_LOGS_INTERVAL = 10_000
+
+export interface DeviceLogsOptions {
+  /** 받을 줄 수. 기본 100(로그 화면) */
+  limit?: number
+  /** 주기 조회 간격. 기본 5초(로그 화면) */
+  interval?: number
+  /** 화면에 보이는가(카드가 스크롤 밖이면 false). 안 보이면 주기 · 초점 · 재연결 조회를 끈다. 기본 true */
+  visible?: boolean
+}
 
 /** 주기 · 초점 · 재연결 조회 설정이 보는 조회 상태 */
 interface QueryLike {
@@ -187,22 +204,53 @@ interface QueryLike {
  * '찾을 수 없음' 화면이 5초마다 깜빡이고, 같은 404 · 422 를 계속 보내게 된다.
  * 브라우저가 오프라인이어도 보낸다(networkMode 'always'). 기본('online')은 조회를 오류 없이 멈춰(paused) 갱신 실패 경고 · 흐림이 켜지지 않고
  * 화면 갱신 칸이 '5초마다' 로 남는다. 보내면 네트워크 오류가 되어 갱신 실패로 보인다.
- * 이전 조건의 줄이 새 조건 아래에 보이지 않도록 placeholderData 는 쓰지 않는다
+ * 이전 조건의 줄이 새 조건 아래에 보이지 않도록 placeholderData 는 쓰지 않는다.
+ * 켜짐(enabled)은 두지 않아 늘 켜져 있다. 그래서 새로고침(전체 invalidate)은 일시정지 · 안 보이는 카드의 로그도 한 번 받고,
+ * 멈춤은 주기 조회만 끄므로 그대로 남는다(#83)
  */
-export function deviceLogsQueryOptions(id: string, filters: DeviceLogFilters, paused: boolean) {
+export function deviceLogsQueryOptions(id: string, filters: DeviceLogFilters, paused: boolean, { limit = DEVICE_LOGS_LIMIT, interval = DEVICE_LOGS_INTERVAL, visible = true }: DeviceLogsOptions = {}) {
+  const auto = !paused && visible
   return {
-    queryKey: deviceLogsKey(id, filters),
-    queryFn: ({ signal }: { signal?: AbortSignal }) => fetchDeviceLogs(id, filters, signal),
-    refetchInterval: (query: QueryLike) => (paused || isFinalError(query.state.error) ? false : DEVICE_LOGS_INTERVAL),
+    queryKey: deviceLogsKey(id, filters, limit),
+    queryFn: ({ signal }: { signal?: AbortSignal }) => fetchDeviceLogs(id, filters, signal, limit),
+    refetchInterval: (query: QueryLike) => (!auto || isFinalError(query.state.error) ? false : interval),
     refetchIntervalInBackground: false,
-    refetchOnWindowFocus: (query: QueryLike) => !paused && !isFinalError(query.state.error),
-    refetchOnReconnect: (query: QueryLike) => !paused && !isFinalError(query.state.error),
+    refetchOnWindowFocus: (query: QueryLike) => auto && !isFinalError(query.state.error),
+    refetchOnReconnect: (query: QueryLike) => auto && !isFinalError(query.state.error),
     networkMode: 'always' as const,
     staleTime: 4_000,
     retry: shouldRetry,
   }
 }
 
-export function useDeviceLogs(id: string, filters: DeviceLogFilters, paused: boolean) {
-  return useQuery(deviceLogsQueryOptions(id, filters, paused))
+export function useDeviceLogs(id: string, filters: DeviceLogFilters, paused: boolean, options?: DeviceLogsOptions) {
+  return useQuery(deviceLogsQueryOptions(id, filters, paused, options))
+}
+
+/** 대시보드 카드 로그 조회(#83): 조건 없이 최근 10줄 · 10초 */
+export function useCardLogs(id: string, paused: boolean, visible: boolean) {
+  return useDeviceLogs(id, {}, paused, { limit: CARD_LOGS_LIMIT, interval: CARD_LOGS_INTERVAL, visible })
+}
+
+/**
+ * 지금 화면에 걸린(활성) 카드 로그 조회 가운데 마지막 조회가 실패한 것이 있는가(#83 상단 '일부 갱신 실패').
+ * 떠난 화면 · 접힌 카드의 남은 캐시(비활성)는 세지 않는다. 다시 보내도 같은 답인 4xx(없는 장비 · 배포 전)는 카드 안 글로만 보이고 세지 않는다
+ */
+export function cardLogsFailed(client: QueryClient): boolean {
+  return client
+    .getQueryCache()
+    .findAll({ queryKey: ['device-logs'] })
+    .some((query) => {
+      const { error, status, errorUpdatedAt, dataUpdatedAt } = query.state
+      if (query.queryKey[3] !== CARD_LOGS_LIMIT || !query.isActive() || isFinalError(error)) return false
+      return status === 'error' || errorUpdatedAt > dataUpdatedAt
+    })
+}
+
+/** cardLogsFailed 를 조회 캐시 변화마다 다시 잰다(useIsFetching 과 같은 구독) */
+export function useCardLogsFailed(): boolean {
+  const client = useQueryClient()
+  const subscribe = useCallback((onChange: () => void) => client.getQueryCache().subscribe(notifyManager.batchCalls(onChange)), [client])
+  const snapshot = useCallback(() => cardLogsFailed(client), [client])
+  return useSyncExternalStore(subscribe, snapshot, snapshot)
 }

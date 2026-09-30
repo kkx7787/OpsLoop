@@ -85,13 +85,16 @@ function Missing({ children }: { children: ReactNode }) {
   return <p className="m-0 px-4 pt-3 text-sm text-ink-muted">{children}</p>
 }
 
+/** 보고서에서 미결이 처음 나오는 곳(기간 판정)은 화면 표기 '미결' 과 이슈 · 문서의 '판단 유보' 를 잇는다(#83) */
+const FIRST_VERDICT_LABEL: Record<(typeof VERDICTS)[number], string> = { ...VERDICT_LABEL, undetermined: '미결(판단 유보)' }
+
 function Overview({ s }: { s: OverviewSection }) {
   const { incidents: inc, verdicts, backlog, wait, decision } = s
   return <>
     <CountRow title="기간 사건 (발생 시각 기준)" cells={[['합계', num(inc.total)], ...(['critical', 'high', 'medium', 'low'] as const).map(sev => [sev, num(inc.by_severity[sev])] as const), ['시험 출발지 (따로)', num(inc.test_source)]]} />
     <CountRow title="발생원별 사건" cells={ORIGINS.map(([key, label]) => [label, num(inc.by_origin[key])] as const)} />
-    <CountRow title="기간 판정 (판정 시각 기준)" cells={[['합계', num(verdicts.total)], ...VERDICTS.map(v => [VERDICT_LABEL[v], num(verdicts.by_verdict[v])] as const), ['시험 출발지 (따로)', num(verdicts.test_source)]]} />
-    <CountRow title="미판정 잔량 (출력 시점)" cells={[['판정 없음', num(backlog.unjudged)], ['판단 유보', num(backlog.undetermined)], ['판정 목표 초과', num(backlog.overdue)], ['목표 임박', num(backlog.warning)], ['가장 오래된 미판정', seconds(backlog.oldest_seconds)]]} />
+    <CountRow title="기간 판정 (판정 시각 기준)" cells={[['합계', num(verdicts.total)], ...VERDICTS.map(v => [FIRST_VERDICT_LABEL[v], num(verdicts.by_verdict[v])] as const), ['시험 출발지 (따로)', num(verdicts.test_source)]]} />
+    <CountRow title="미판정 잔량 (출력 시점)" cells={[['판정 없음', num(backlog.unjudged)], ['미결(판단 유보)', num(backlog.undetermined)], ['판정 목표 초과', num(backlog.overdue)], ['목표 임박', num(backlog.warning)], ['가장 오래된 미판정', seconds(backlog.oldest_seconds)]]} />
     <SubTable title="운영 부담" head={['지표', '표본', '중앙값', '90분위']}>
       <tr><td className={cell}>판정 대기 (사건 생성 → 첫 판정)</td><td data-label="표본" className={numCell}>{num(wait.judged)}<div className="text-xs text-ink-muted">생성 {num(wait.incidents)}건 중 판정</div></td><td data-label="중앙값" className={numCell}>{seconds(wait.p50_seconds)}</td><td data-label="90분위" className={numCell}>{seconds(wait.p90_seconds)}</td></tr>
       <tr><td className={cell}>판정 소요 (화면 열기 → 판정 저장)</td><td data-label="표본" className={numCell}>{num(decision.n)}</td><td data-label="중앙값" className={numCell}>{seconds(decision.p50_seconds)}</td><td data-label="90분위" className={numCell}>{seconds(decision.p90_seconds)}</td></tr>

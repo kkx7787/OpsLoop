@@ -1,19 +1,16 @@
 import { useId } from 'react'
 import { Link } from 'react-router'
-import type { CtiBadge } from '@/api/cti'
 import { describeError } from '@/api/errors'
 import { UNCONFIRMED_DEVICE } from '@/api/incidents'
 import { isTargetsNotDeployed, type TargetsResult } from '@/api/targets'
 import { cn } from '@/lib/cn'
 import { toDate } from '@/lib/time'
-import { Button } from '../../atoms/Button'
-import { Time } from '../../atoms/Time'
 import { InfoTip } from '../../molecules/InfoTip'
 import { ApiErrorState } from '../states/ApiErrorState'
 import { LoadingState } from '../states/LoadingState'
-import { badgeOf, useWide } from './dashboard-layout'
+import { useWide } from './dashboard-layout'
+import { ProtectedCard } from './ProtectedCard'
 import { groupTargets, orderTargets, pendingHref } from './target-format'
-import { TargetCard } from './TargetCard'
 import { TargetSummaryList } from './TargetSummaryList'
 
 export interface TargetBoardProps {
@@ -22,29 +19,30 @@ export interface TargetBoardProps {
   pending: boolean
   fetching: boolean
   error: unknown
-  /** 마지막 성공 조회 시각(ms) */
+  /** 받은 뒤 갱신이 실패했다(이전 결과를 보이는 중). 카드마다 '이전 결과' 를 단다 */
+  stale?: boolean
+  /** 마지막 성공 조회 시각(ms). as_of 가 없을 때 상대 시각의 기준 */
   updatedAt: number
   onRetry: () => void
-  /** 페이지가 모든 대상의 최근 사건 키로 한 번 받은 CVE 배지 */
-  badges?: Readonly<Record<string, CtiBadge>>
   className?: string
 }
 
 /**
- * 보호 대상 카드 격자. 카드 최소 22rem(352px, 격자보다 넓으면 격자 폭)으로 채우고 빈 칸은 접는다(auto-fit):
- * 카드 1장이면 폭 전체(넓으면 카드 안 두 단), 본문 768px 이면 2열, 1184px 이면 3열까지. gap-3(0.75rem)
+ * 보호 대상 카드 격자(#83). 넓으면(lg 이상) 두 열 고정, 좁으면 한 열. 1장이어도 반쪽 폭이라 장비가 늘어도 카드 폭 · 높이가 같다
+ * (등록 노드가 생기면 빈 칸에 들어가고 web-01 카드가 다시 흐르지 않는다). 나란한 카드는 격자가 높이를 맞춘다(items-stretch)
  */
-const TARGET_GRID = 'grid gap-3 grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))]'
+const TARGET_GRID = 'grid grid-cols-1 items-stretch gap-3 lg:grid-cols-2'
 
 /**
- * 보호 대상(#72). 대시보드 맨 위에 web-01 과 등록 노드(#64, 수집 노드 표에 등록한 노드) 카드를 둔다.
+ * 보호 대상(#72 · #83). 대시보드 관제 이상 띠 아래에 web-01 과 등록 노드(#64) 카드를 둔다.
  * 관측 센서(AWS 센서) · 관제 시스템(콘솔 · 데이터 노드)은 아래 SupportTargets 가 접힌 줄로 보인다.
- * 넓으면 카드 격자, 좁으면(sm 미만) 대상마다 한 줄로 접어 두고 누르면 카드를 펼친다.
- * 조회 실패는 이 자리만 오류로 보인다. 아래 수치 · 대기열은 따로 조회하므로 막지 않는다.
+ * 넓으면(sm 이상) 카드 격자, 좁으면 대상마다 한 줄로 접어 두고 누르면 카드를 펼친다.
+ * 첫 조회 실패는 이 자리만 오류로 보인다. 받은 뒤 갱신 실패는 경고 띠를 쌓지 않고 카드마다 '이전 결과' 를 달며,
+ * 다시 받기는 화면 머리의 새로고침 하나로 한다(상단 기준 시각 옆 '일부 갱신 실패', #79).
  * 카드 합이 전체와 다른 까닭은 제목 옆 도움말(ⓘ)에 둔다(카드를 받았을 때만).
  * 장비를 확인하지 못한 미판정 사건은 카드에 세지 않고 아래 한 줄로 목록(device=_unconfirmed)에 잇는다.
  */
-export function TargetBoard({ data, pending, fetching, error, updatedAt, onRetry, badges, className }: TargetBoardProps) {
+export function TargetBoard({ data, pending, fetching, error, stale = false, updatedAt, onRetry, className }: TargetBoardProps) {
   const titleId = useId()
   const wide = useWide()
   // 각 무리 안은 서버 순서다. 섞여 와도 web-01 이 등록 노드보다 앞이다
@@ -65,14 +63,14 @@ export function TargetBoard({ data, pending, fetching, error, updatedAt, onRetry
     )
   } else if (wide) {
     body = (
-      <div className={TARGET_GRID}>
+      <div className={TARGET_GRID} data-target-grid="">
         {targets.map((target) => (
-          <TargetCard key={target.id} target={target} asOf={asOf} cti={badgeOf(badges, target)} />
+          <ProtectedCard key={target.id} target={target} asOf={asOf} stale={stale} />
         ))}
       </div>
     )
   } else {
-    body = <TargetSummaryList title="보호 대상" targets={targets} asOf={asOf} badges={badges} />
+    body = <TargetSummaryList title="보호 대상" targets={targets} asOf={asOf} badges={undefined} card="protected" stale={stale} />
   }
 
   return (
@@ -99,22 +97,6 @@ export function TargetBoard({ data, pending, fetching, error, updatedAt, onRetry
           보호 대상
         </h2>
       )}
-      {data && error ? (
-        <div role="status" className="flex flex-wrap items-center gap-2 rounded-panel bg-warning-soft px-3 py-2 text-xs text-warning">
-          <span className="min-w-0 flex-1">
-            <strong className="font-semibold">대상 카드를 갱신하지 못했습니다</strong> · {describeError(error)} · 이전 결과 유지
-            {updatedAt > 0 && (
-              <>
-                {' '}
-                · 마지막 조회 <Time value={updatedAt} format="time" zone />
-              </>
-            )}
-          </span>
-          <Button size="sm" onClick={onRetry} loading={fetching}>
-            다시 조회
-          </Button>
-        </div>
-      ) : null}
       {body}
       {/* 기준 시각은 페이지 머리 하나만 둔다 */}
       {unconfirmed > 0 && (

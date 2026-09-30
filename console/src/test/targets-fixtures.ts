@@ -5,7 +5,8 @@ import type { QueueItem, Target, TargetsQueue, TargetsResult } from '@/api/targe
  * 관제 대상 상태판(#52) 픽스처. 기준 시각은 TARGETS_AS_OF(2026-09-28 19:00 KST).
  * 기본값은 대상 네 곳이 모두 정상이고, 차단 · 취약점 수치가 0 이 아닌 경우와 0 인 경우가 섞여 있다.
  * 취약점은 수정 상태별 수(#72)가 있는 자산(honeypot-dmz · web-01 · data-01)과 없는 자산(이전 서버 모양)이 섞여 있다.
- * targetsResult 기본값에는 queue 가 없다(이전 서버). 먼저 처리할 사건은 targetsQueue() 를 넣는다
+ * targetsResult 기본값에는 queue 가 없다(이전 서버). 먼저 처리할 사건은 targetsQueue() 를 넣는다.
+ * #83 칸(미결 수 undetermined · 최근 사건 verdict · 취약점 대조 check_failed/check_stale)은 서버처럼 모두 싣되 0 · 없음이다
  */
 
 export const TARGETS_AS_OF = '2026-09-28T10:00:00Z'
@@ -36,20 +37,21 @@ export function awsSensor(extra: Partial<Target> = {}): Target {
       incidents_1h: 4,
       high_1h: 1,
       pending: 12,
+      undetermined: 0,
       parts: [
         { key: 'cowrie', label: 'Cowrie', incidents_1h: 3, pending: 10 },
         { key: 'decoy', label: '웹 디코이', incidents_1h: 1, pending: 2 },
         { key: 'gateway', label: 'AWS 관문', incidents_1h: 0, pending: 0 },
       ],
-      latest: { incident_key: LATEST_KEY, rule_id: 'R105', rule_name: '제품 식별 탐색', severity: 'high', actor_ip: '203.0.113.7', target: null, last_ts: minutesAgo(20), judged: false },
+      latest: { incident_key: LATEST_KEY, rule_id: 'R105', rule_name: '제품 식별 탐색', severity: 'high', actor_ip: '203.0.113.7', target: null, last_ts: minutesAgo(20), judged: false, verdict: null },
     },
     system: { state: 'not_collected', metrics: null },
     response: { point: 'gateway', point_label: 'AWS 관문', applied: 2, unverified: 1, exempt: 3, report: { seen_at: minutesAgo(2), checked_at: minutesAgo(1), problem: null } },
     vulns: {
       available: true,
       assets: [
-        { asset_id: 'honeypot-dmz', vuln_total: 12, vuln_kev: 1, vuln_fix_available: 6, vuln_reboot_pending: 1, vuln_fix_unknown: 3, collected_at: minutesAgo(180), checked_at: minutesAgo(170), stale: false, missing: false },
-        { asset_id: 'gateway', vuln_total: 0, vuln_kev: 0, vuln_fix_available: 0, vuln_reboot_pending: 0, vuln_fix_unknown: 0, collected_at: null, checked_at: null, stale: true, missing: true },
+        { asset_id: 'honeypot-dmz', vuln_total: 12, vuln_kev: 1, vuln_fix_available: 6, vuln_reboot_pending: 1, vuln_fix_unknown: 3, collected_at: minutesAgo(180), checked_at: minutesAgo(170), stale: false, missing: false, check_failed: false, check_stale: false },
+        { asset_id: 'gateway', vuln_total: 0, vuln_kev: 0, vuln_fix_available: 0, vuln_reboot_pending: 0, vuln_fix_unknown: 0, collected_at: null, checked_at: null, stale: true, missing: true, check_failed: false, check_stale: false },
       ],
     },
     ...extra,
@@ -68,10 +70,11 @@ export function web01(extra: Partial<Target> = {}): Target {
       logs: [{ key: 'web-01', label: 'web-01 로그', last_at: minutesAgo(200) }],
       extra: [{ label: '마지막 적재', at: minutesAgo(1), note: null }],
     },
-    security: { incidents_1h: 0, high_1h: 0, pending: 0, parts: [], latest: null },
+    security: { incidents_1h: 0, high_1h: 0, pending: 0, undetermined: 0, parts: [], latest: null },
     system: { state: 'ok', metrics: { ts: minutesAgo(1), cpu_pct: 12.4, mem_used_pct: 41.6, disk_root_pct: 63, load1: 0.42 } },
     response: { point: 'fw', point_label: '내부 방화벽', applied: 0, unverified: 0, exempt: 0, report: { seen_at: null, checked_at: minutesAgo(1), problem: '보고 파일 없음' } },
-    vulns: { available: true, assets: [{ asset_id: 'web-01', vuln_total: 30, vuln_kev: 0, vuln_fix_available: 12, vuln_reboot_pending: 0, vuln_fix_unknown: 4, collected_at: minutesAgo(60 * 50), checked_at: minutesAgo(60 * 50), stale: true, missing: false }] },
+    // 조사 · 대조 모두 50시간 전(조사 오래됨 · 대조 오래됨)
+    vulns: { available: true, assets: [{ asset_id: 'web-01', vuln_total: 30, vuln_kev: 0, vuln_fix_available: 12, vuln_reboot_pending: 0, vuln_fix_unknown: 4, collected_at: minutesAgo(60 * 50), checked_at: minutesAgo(60 * 50), stale: true, missing: false, check_failed: false, check_stale: true }] },
     ...extra,
   }
 }
@@ -148,8 +151,9 @@ export function nodeTarget(id = 'web-02', extra: Partial<Target> = {}): Target {
       incidents_1h: 2,
       high_1h: 1,
       pending: 3,
+      undetermined: 0,
       parts: [],
-      latest: { incident_key: `R101|v3|198.51.100.9|${id}`, rule_id: 'R101', rule_name: 'SSH 무차별 대입', severity: 'high', actor_ip: '198.51.100.9', target: null, last_ts: minutesAgo(5), judged: false },
+      latest: { incident_key: `R101|v3|198.51.100.9|${id}`, rule_id: 'R101', rule_name: 'SSH 무차별 대입', severity: 'high', actor_ip: '198.51.100.9', target: null, last_ts: minutesAgo(5), judged: false, verdict: null },
     },
     system: { state: 'not_collected', metrics: null },
     response: { point: null, point_label: null, applied: null, failed: null, unverified: null, exempt: 0, report: null, stalled: null },
@@ -236,7 +240,7 @@ export function targetsResult(extra: Partial<TargetsResult> = {}): TargetsResult
     heartbeats_available: true,
     metrics_available: true,
     targets: [awsSensor(), web01(), consoleTarget(), dataNode()],
-    unmapped: { incidents_1h: 0, pending: 0 },
+    unmapped: { incidents_1h: 0, pending: 0, undetermined: 0 },
     ...extra,
   }
 }

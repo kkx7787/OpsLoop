@@ -22,7 +22,7 @@ const KEY_MAX = 64
 /**
  * ① 규칙이 본 것: 관측값 · 임계치와 비교된 값 · 신호 수 · 세션 수 · 규칙이 남긴 표본.
  * 순환 규칙(R002 · R003 · R004 · R006, lib/domain CIRCULAR_RULES)은 판정 근거와 규칙 조건이 겹친다는 사실을 먼저 보인다(화면 설계 5장).
- * 띠에는 서버 문장(무엇이 겹치는지)만 두고, 품질 지표를 무엇으로 보는지는 도움말(ⓘ)로 띠 아래에 펼친다(띠는 낭독 알림 자리라 밖에 둔다).
+ * 띠에는 서버 문장(무엇이 겹치는지)만 두고, 품질 지표를 무엇으로 보는지는 도움말(ⓘ) 말풍선에 둔다(띠는 낭독 알림 자리라 밖에 둔다).
  */
 export function RuleEvidenceSection({ detail, className }: RuleEvidenceSectionProps) {
   const evidence = detail.evidence

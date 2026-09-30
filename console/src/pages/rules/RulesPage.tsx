@@ -46,7 +46,7 @@ export function RulesPage() {
     <Card><form onSubmit={filter} className="grid gap-3 sm:flex sm:flex-wrap sm:items-end">
       <label htmlFor="rules-field-0" className="grid gap-1 text-xs">시작 (KST)<Input id="rules-field-0" type="datetime-local" value={start} onChange={e => setStart(e.target.value)} /></label>
       <label htmlFor="rules-field-1" className="grid gap-1 text-xs">종료 (KST)<Input id="rules-field-1" type="datetime-local" value={end} onChange={e => setEnd(e.target.value)} /></label>
-      <InfoTip label="조회 구간" panelClassName="sm:basis-full" render={({ button, panel }) => <>
+      <InfoTip label="조회 구간" render={({ button, panel }) => <>
         <div className="flex items-center gap-2"><Button type="submit" variant="primary">구간 조회</Button><Button onClick={() => { setStart(''); setEnd(''); setPeriod({}); setError('') }}>전체 기간</Button>{button}</div>
         {panel}
       </>}>구간을 고르면 사건 시작 시각으로 셉니다. 전체 기간은 버전마다 관측 구간이 다를 수 있습니다.</InfoTip>
@@ -62,7 +62,7 @@ export function RulesPage() {
         {!shown.length && <p className="p-4 text-sm text-ink-muted">선택한 조건에 집계된 사건이 없습니다.</p>}
         <p className="m-0 border-t border-line px-4 py-3 text-xs text-ink-muted">사건별 마지막 판정 기준 <InfoTip label="비조치율" id={rateNote}>비조치 = 무시 가능 + 오탐 + 양성 정탐. 분모는 미결을 뺀 유효 판정입니다.</InfoTip></p>
       </Card>
-      <Card padding="none"><InfoTip label="저장된 사건 기준" panelClassName="mx-4 mt-3" render={({ button, panel }) => <>
+      <Card padding="none"><InfoTip label="저장된 사건 기준" render={({ button, panel }) => <>
           <CardHeader title="리플레이 결과 비교" aside={<span className="inline-flex items-center gap-1">저장된 사건 기준{button}</span>} />
           {panel}
         </>}>원문을 다시 실행하지 않고 저장된 결과만 비교합니다. 두 버전이 같은 입력으로 돌았는지는 최근 탐지 실행에서 확인하세요. 사건 수가 줄었다고 정확도나 재현율이 나아진 것은 아닙니다.</InfoTip>

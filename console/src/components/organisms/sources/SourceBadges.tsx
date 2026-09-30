@@ -20,7 +20,7 @@ export function SourceMarks({ testSource, exempt }: { testSource: boolean | unde
       {exempt === null && (
         <>
           <Badge tone="warning">금지 대역 확인 불가</Badge>
-          <InfoTip label="금지 대역 확인 불가" panelClassName="basis-full">차단 금지 대역 표를 읽을 수 없어 이 주소가 금지 대역인지 모릅니다.</InfoTip>
+          <InfoTip label="금지 대역 확인 불가">차단 금지 대역 표를 읽을 수 없어 이 주소가 금지 대역인지 모릅니다.</InfoTip>
         </>
       )}
     </span>

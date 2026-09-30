@@ -102,7 +102,6 @@ export function VulnLinkPanel({ data, pending, fetching, error, onRetry, classNa
         label="취약점 연계"
         text="공개 정보 신선도"
         panelAs="div"
-        panelClassName="mt-2"
         render={({ button, panel }) => (
           <div className="flex flex-col">
             <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
@@ -222,7 +221,7 @@ function SigmaSourceBlock({ sigma }: { sigma: SigmaSource }) {
       label="원본 규칙"
       text="출처 보기"
       panelAs="div"
-      panelClassName="mt-0 flex flex-col gap-1 text-xs leading-5 text-ink"
+      panelClassName="flex flex-col gap-1"
       render={({ button, panel }) => (
         <div className="flex flex-col gap-1 rounded-sm border border-line px-2.5 py-2 text-xs leading-5" data-sigma-source="">
           <span className="flex flex-wrap items-baseline gap-x-2">

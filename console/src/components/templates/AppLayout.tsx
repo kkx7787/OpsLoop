@@ -1,5 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query'
-import { useRef, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { Outlet, useLocation, useMatches } from 'react-router'
 import { loginHref } from '@/api/client'
 import { isApiError } from '@/api/errors'
@@ -7,6 +6,7 @@ import { controlHealthView, useControlHealth } from '@/api/health'
 import { useLiveUpdates } from '@/api/live'
 import { LiveContext } from '@/api/live-context'
 import { useNewIncidentToasts } from '@/api/new-incidents'
+import { PageRefreshContext, useRefreshAll, type PageRefreshSlot } from '@/api/page-refresh'
 import { parseMe, useMe } from '@/auth/useMe'
 import { useTabBadge } from '@/lib/useTabBadge'
 import { Button } from '../atoms/Button'
@@ -38,6 +38,7 @@ export interface AppLayoutProps {
  * 로그인을 확인한 뒤에만 관제 이상(GET /api/dashboard/monitor)을 받아 사이드바 · 상단바 · 서랍에 같은 요약을 보인다(대시보드 띠와 같은 판정).
  * 새 사건 통보는 보호 대상 장비가 확인된 사건만 본문 오른쪽 아래 알림으로 띄우고, 탭이 숨은 동안 띄운 수를 탭 제목 앞에 붙인다.
  * 인쇄(보고서 #58)에는 틀(건너뛰기 링크 · 사이드바 · 상단바)을 빼고 본문만 여백 없이 찍는다(print:hidden · print:p-0).
+ * 상단바 새로고침은 화면이 머리에 기준 시각 + 새로고침(PageRefresh)을 둔 동안 숨는다(대시보드 · 장비 로그, #79). 동작은 같다(useRefreshAll).
  */
 export function AppLayout({ groups, children }: AppLayoutProps) {
   const me = useMe()
@@ -50,8 +51,18 @@ export function AppLayout({ groups, children }: AppLayoutProps) {
   const live = useLiveUpdates({ onMessage: toasts.onLiveMessage })
   const location = useLocation()
   const matches = useMatches()
-  const queryClient = useQueryClient()
-  const [refreshing, setRefreshing] = useState(false)
+  const { refresh, refreshing } = useRefreshAll()
+  // 화면 머리에 새로고침을 둔 부품 수(PageRefresh). 0 보다 크면 상단바 단추를 숨긴다
+  const [pageRefreshes, setPageRefreshes] = useState(0)
+  const pageRefresh = useMemo<PageRefreshSlot>(
+    () => ({
+      claim: () => {
+        setPageRefreshes((n) => n + 1)
+        return () => setPageRefreshes((n) => n - 1)
+      },
+    }),
+    [],
+  )
   // 서랍을 연 시점의 location.key 를 적어 둔다. 이동하면 key 가 바뀌므로 효과 없이 닫힌 것이 된다.
   // (pathname 으로 적으면 같은 경로로 돌아왔을 때 다시 열린다)
   const [menuOpenKey, setMenuOpenKey] = useState<string | null>(null)
@@ -63,15 +74,6 @@ export function AppLayout({ groups, children }: AppLayoutProps) {
   function closeMenu() {
     setMenuOpenKey(null)
     menuButtonRef.current?.focus()
-  }
-
-  async function refresh() {
-    setRefreshing(true)
-    try {
-      await queryClient.invalidateQueries()
-    } finally {
-      setRefreshing(false)
-    }
   }
 
   // 실시간 재접속 · resync 때 /api/me 를 다시 묻는다. 콘솔 전환 중이라 다시 묻기가 5xx · 네트워크로 실패해도
@@ -113,7 +115,7 @@ export function AppLayout({ groups, children }: AppLayoutProps) {
         <TopBar
           className="print:hidden"
           breadcrumbs={crumbs}
-          onRefresh={refresh}
+          onRefresh={pageRefreshes > 0 ? undefined : () => void refresh()}
           refreshing={refreshing}
           onOpenMenu={() => setMenuOpenKey(location.key)}
           menuOpen={menuOpen}
@@ -123,7 +125,9 @@ export function AppLayout({ groups, children }: AppLayoutProps) {
         />
         {/* tabIndex -1: 건너뛰기 링크 · 마지막 알림을 키보드로 닫을 때 초점을 받는다 */}
         <main id="main" tabIndex={-1} className="flex flex-1 flex-col gap-3 p-4 outline-none md:px-6 md:py-4 print:p-0">
-          <LiveContext.Provider value={live}>{body}</LiveContext.Provider>
+          <LiveContext.Provider value={live}>
+            <PageRefreshContext.Provider value={pageRefresh}>{body}</PageRefreshContext.Provider>
+          </LiveContext.Provider>
         </main>
         <NewIncidentToasts toasts={toasts.toasts} onDismiss={toasts.dismiss} />
       </div>

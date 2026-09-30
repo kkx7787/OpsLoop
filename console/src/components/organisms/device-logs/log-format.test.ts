@@ -4,6 +4,8 @@ import { lineId, secondsAgo, sshLine, webLine } from '@/test/device-logs-fixture
 import { deviceIncidentsHref, deviceLogsHref, isLogDeviceId } from '../../molecules/device-format'
 import { isLogDevice } from '../dashboard/target-format'
 import {
+  kindShort,
+  logTime,
   cardTime,
   compareLines,
   countLogFilters,
@@ -139,6 +141,13 @@ describe('줄 글', () => {
     expect(cardTime('2026-09-30T04:59:29.871000+00:00')).toBe('09-30 13:59:29')
     expect(cardTime('2026-09-30T15:00:01.000000+00:00')).toBe('10-01 00:00:01')
     expect(cardTime('틀림')).toBe('—')
+    // 대시보드 카드 로그 칸(#83): 기준 시각과 같은 KST 날짜면 시:분:초, 아니면 월-일 시:분
+    const asOf = '2026-09-30T05:00:05.123456+00:00'
+    expect(logTime('2026-09-30T04:59:29.871000+00:00', asOf)).toBe('13:59:29')
+    expect(logTime('2026-09-29T14:59:59.000000+00:00', asOf)).toBe('09-29 23:59')
+    expect(logTime('2026-09-29T15:00:00.000000+00:00', asOf)).toBe('00:00:00')
+    expect(logTime('틀림', asOf)).toBe('—')
+    expect([kindShort('web'), kindShort('ssh'), kindShort('ftp')]).toEqual(['웹', 'SSH', 'ftp'])
   })
 })
 

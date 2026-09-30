@@ -1,10 +1,13 @@
-import { QueryClientProvider } from '@tanstack/react-query'
-import { renderHook, waitFor } from '@testing-library/react'
+import { QueryClientProvider, useQuery } from '@tanstack/react-query'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { createElement, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { logsResult, webLine } from '@/test/device-logs-fixtures'
 import { noRetryClient } from '@/test/render'
 import {
+  CARD_LOGS_INTERVAL,
+  CARD_LOGS_LIMIT,
+  cardLogsFailed,
   DEVICE_LOGS_INTERVAL,
   DEVICE_LOGS_LIMIT,
   DEVICE_NOT_FOUND,
@@ -18,6 +21,8 @@ import {
   isHttpStatus,
   isLogsNotDeployed,
   LOGS_NOT_DEPLOYED,
+  useCardLogs,
+  useCardLogsFailed,
   useDeviceLogs,
 } from './device-logs'
 import { ApiError, isApiError } from './errors'
@@ -112,7 +117,7 @@ describe('장비 최근 로그 API(#73)', () => {
   it('조회 설정: 5초 주기 · 숨은 탭에서 멈춤 · 초점 조회 · 4초 신선 · 재시도 규칙. placeholderData 는 쓰지 않는다', () => {
     const q = (error: unknown = null) => ({ state: { error } })
     const on = deviceLogsQueryOptions('web-01', { kind: 'web' }, false)
-    expect(on.queryKey).toEqual(['device-logs', 'web-01', { kind: 'web', src_ip: null, status: null }])
+    expect(on.queryKey).toEqual(['device-logs', 'web-01', { kind: 'web', src_ip: null, status: null }, 100])
     expect(on.queryKey).toEqual(deviceLogsKey('web-01', { kind: 'web' }))
     expect(on.refetchInterval(q())).toBe(5_000)
     expect(DEVICE_LOGS_INTERVAL).toBe(5_000)
@@ -148,6 +153,61 @@ describe('장비 최근 로그 API(#73)', () => {
       expect(on.refetchInterval(q(error))).toBe(5_000)
       expect(on.refetchOnReconnect(q(error))).toBe(true)
     }
+  })
+
+  it('대시보드 카드(#83): 10줄 · 10초, 조회 키가 로그 화면과 다르고 보이지 않거나 정지면 주기 · 초점 조회를 끈다', async () => {
+    const q = (error: unknown = null) => ({ state: { error } })
+    const card = deviceLogsQueryOptions('web-01', {}, false, { limit: CARD_LOGS_LIMIT, interval: CARD_LOGS_INTERVAL })
+    expect(CARD_LOGS_LIMIT).toBe(10)
+    expect(card.queryKey).toEqual(['device-logs', 'web-01', { kind: null, src_ip: null, status: null }, 10])
+    expect(card.queryKey).not.toEqual(deviceLogsQueryOptions('web-01', {}, false).queryKey)
+    expect(card.refetchInterval(q())).toBe(10_000)
+    expect(card.refetchOnWindowFocus(q())).toBe(true)
+    for (const off of [
+      deviceLogsQueryOptions('web-01', {}, false, { limit: 10, interval: 10_000, visible: false }),
+      deviceLogsQueryOptions('web-01', {}, true, { limit: 10, interval: 10_000 }),
+    ]) {
+      expect(off.refetchInterval(q())).toBe(false)
+      expect(off.refetchOnWindowFocus(q())).toBe(false)
+      expect(off.refetchOnReconnect(q())).toBe(false)
+      // 켜짐(enabled)은 두지 않는다: 새로고침(invalidate)이 정지 중에도 한 번 받게
+      expect(off).not.toHaveProperty('enabled')
+    }
+    expect(card.refetchInterval(q(new ApiError({ status: 404, detail: 'x' })))).toBe(false)
+    const fetch = stubFetch((url) => (url.startsWith('/api/devices/web-01/logs?') ? json(logsResult()) : undefined))
+    await fetchDeviceLogs('web-01', {}, undefined, CARD_LOGS_LIMIT)
+    expect(urls(fetch)).toEqual(['/api/devices/web-01/logs?limit=10'])
+    expect(deviceLogsQuery({ kind: 'web' }, 10)).toEqual({ kind: 'web', limit: 10 })
+  })
+
+  it('카드 로그 실패는 활성 조회 · 4xx 가 아닌 것만 센다(떠난 화면 · 없는 장비 · 배포 전은 상단 경고에 넣지 않는다)', async () => {
+    let status = 200
+    stubFetch((url) => (url.startsWith('/api/devices/') ? (status === 200 ? json(logsResult()) : json({ detail: status === 404 ? 'Not Found' : 'DB unavailable' }, status)) : undefined))
+    const client = noRetryClient()
+    const wrapper = ({ children }: { children: ReactNode }) => createElement(QueryClientProvider, { client }, children)
+    const failed = renderHook(() => useCardLogsFailed(), { wrapper })
+    const card = renderHook(({ id }: { id: string }) => useCardLogs(id, true, true), { wrapper, initialProps: { id: 'web-01' } })
+    await waitFor(() => expect(card.result.current.isSuccess).toBe(true))
+    expect(failed.result.current).toBe(false)
+    status = 503
+    await act(async () => { await client.invalidateQueries() })
+    await waitFor(() => expect(failed.result.current).toBe(true))
+    expect(cardLogsFailed(client)).toBe(true)
+    // 카드가 사라지면(비활성) 실패가 남아 있어도 세지 않는다
+    card.unmount()
+    await waitFor(() => expect(failed.result.current).toBe(false))
+    // 로그 화면(100줄)의 실패도 세지 않는다
+    const page = renderHook(() => useQuery({ ...deviceLogsQueryOptions('web-01', {}, true), retry: false }), { wrapper })
+    await waitFor(() => expect(page.result.current.isError).toBe(true))
+    expect(cardLogsFailed(client)).toBe(false)
+    page.unmount()
+    // 배포 전(404) 은 카드 안 글로만 보인다
+    status = 404
+    const gone = renderHook(() => useCardLogs('web-02', true, true), { wrapper })
+    await waitFor(() => expect(gone.result.current.isError).toBe(true))
+    expect(isLogsNotDeployed(gone.result.current.error)).toBe(true)
+    expect(cardLogsFailed(client)).toBe(false)
+    expect(failed.result.current).toBe(false)
   })
 
   it('useDeviceLogs 는 조건마다 따로 받는다', async () => {

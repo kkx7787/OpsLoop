@@ -1,5 +1,5 @@
-import { isHttpStatus, isLogKind, LOG_KIND_LABEL, type DeviceLogFilters, type DeviceLogLine, type DeviceLogTimeLine, type DeviceLogTimesState } from '@/api/device-logs'
-import { formatKst } from '@/lib/time'
+import { isHttpStatus, isLogKind, LOG_KIND_LABEL, LOG_KIND_SHORT, type DeviceLogFilters, type DeviceLogLine, type DeviceLogTimeLine, type DeviceLogTimesState } from '@/api/device-logs'
+import { formatKst, type TimeInput } from '@/lib/time'
 
 /**
  * 장비 최근 로그(#73)의 값을 글로 바꾸고 줄을 합치는 규칙. 화면 부품은 여기 함수만 부르고 판단을 품지 않는다.
@@ -131,6 +131,21 @@ export function lineCode(line: Pick<DeviceLogLine, 'kind' | 'http_status' | 'eve
 export function requestText(line: Pick<DeviceLogLine, 'kind' | 'http_method' | 'url' | 'http_status' | 'eventid' | 'username'>): string {
   if (line.kind === 'web') return `${line.http_method ?? '—'} ${line.url ?? ''} → ${lineCode(line)}`
   return `${sshResult(line.eventid)} ${line.username ?? ''}`.trim()
+}
+
+/** 좁은 카드 로그 칸(#83)의 짧은 종류: '웹' · 'SSH'. 모르는 종류는 이름 그대로 */
+export function kindShort(kind: string): string {
+  return isLogKind(kind) ? LOG_KIND_SHORT[kind] : kind
+}
+
+/**
+ * 대시보드 카드 로그 칸(#83)의 시각: 기준 시각(as_of)과 같은 KST 날짜면 '시:분:초', 아니면 '월-일 시:분'(칸 폭 100px 에 맞춘다).
+ * 전체 시각은 말풍선(Time 의 title)으로 본다
+ */
+export function logTime(ts: TimeInput, asOf: TimeInput): string {
+  const date = formatKst(ts, 'date')
+  if (date === '—') return date
+  return date === formatKst(asOf, 'date') ? formatKst(ts, 'time') : formatKst(ts, 'short')
 }
 
 /** 좁은 폭 카드 머리의 시각(KST 월-일 시:분:초). 7일 창이라 시각만으로는 날이 모호하다 */
