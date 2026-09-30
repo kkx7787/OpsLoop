@@ -383,6 +383,7 @@ infra/vmware/scripts/verify-db-roles.sh
 - `detector/triage.py` 는 `set -a; . /etc/opsloop/triage.env; set +a` 뒤에 돌린다 (콘솔 역할).
 - 흡수 기록(`incident_absorbed`, 규칙 v3)을 읽는 콘솔 · triage 를 올리기 전에 `infra/migrations/20260925_round2.sql` 다음 `20260925_v3_absorbed.sql` 을 먼저 적용한다(흡수 기록 · 후속 차단 약속 `absorbed_blocks` 표). 표가 없으면 사건 상세와 triage 가 오류로 멈춘다. 알림 트리거 `infra/notify.sql` 도 다시 적용한다(`psql -1`).
 - 적재기는 규칙 파일을 `OPSLOOP_RULES`(기본 `rules_v3.json`, `/etc/default/opsloop-ingest` 로 바꾼다)로 탐지에 넘긴다. `puller/install-ingest.sh` 는 흡수 기록 표 · 탐지 역할 쓰기 권한이 없으면 코드를 바꾸지 않고 멈춘다. 전환은 다음 회차 뒤 `detector_runs` 의 최근 버전으로 확인한다.
+- 1분 다리 규칙(`collector/pull_loki.py` RULESETS 의 파일 · rule_version)을 바꾸면 콘솔도 같은 커밋으로 배포한다. 관제 이상 띠 · 데이터 노드 카드 · 장비 로그의 탐지 판정이 콘솔의 기대 버전 목록(`app/targets.py` BRIDGE_VERSIONS)과 대조하므로, 콘솔이 옛 판이면 뺀 버전을 멈춤으로 띄우고 더한 버전은 보지 않는다(이슈 #82).
 - 소유자로 붙는 서비스가 남아 있는지는 `verify-db-roles.sh` 의 pg_stat_activity 항목이 알려 준다.
 - 콘솔 역할의 접속 한도는 30 이다(이슈 #43. 콘솔 한 대 = 풀 10 + LISTEN 1, 두 대 22 + triage.py 가 같은 역할).
   `db-console-role.sh` · `install-collector.sh` 는 30 으로 만들고, 이미 있는 역할은 마이그레이션으로 올린다(역할이 있을 때만 바꾸고
@@ -1021,7 +1022,8 @@ infra/vmware/scripts/verify-db-roles.sh      # '관제 대상 상태판' 절
   읽기가 빠진다. 그 뒤 1번을 다시 한다. 역할 블록을 다시 적용했다면 `20260925_cti.sql` 도 다시 적용한다(아래 CTI 절). 그러지 않아도
   대시보드는 멈추지 않고 취약점 줄만 '취약점 정보 없음' 이 된다. `install-collector.sh` 가 `schema.sql` 전체를 적용할 때는 이 블록이 끝에 있어 권한이 남는다.
 - 센서 호스트를 `OPSLOOP_HOSTS` 에서 빼면 풀러 상태에서는 사라지지만 표의 줄은 남는다(적재 역할은 지우지 못한다). 콘솔은 적재기가
-  15분 넘게 확인하지 않은 업로더 줄을 떼어 둔 호스트로 보고 건너뛰지만, 뺀 직후 15분 동안은 그 줄이 섞이고 줄 자체도 쌓이므로 소유자로 지운다.
+  30분(`app/targets.py` CHECKER_STALE, 적재기 확인 중단과 같은 기준) 넘게 확인하지 않은 업로더 줄을 떼어 둔 호스트로 보고 건너뛰지만, 뺀 직후
+  30분 동안은 그 줄이 섞이고(관제 이상 띠에 센서 · 관문 기록 수신 없음이 뜰 수 있다) 줄 자체도 쌓이므로 소유자로 지운다.
 
   ```bash
   echo "DELETE FROM sensor_heartbeats WHERE source = 'uploader:<옛 인스턴스 ID>';" \
