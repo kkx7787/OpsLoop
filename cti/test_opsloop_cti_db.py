@@ -468,7 +468,7 @@ class CtiDatabaseTest(unittest.TestCase):
                 self.assertEqual(cti.main(["status"]), 0)
         text = out.getvalue()
         self.assertIn("== 출처 (마지막 성공)", text)
-        self.assertRegex(text, r"kev +2026-09-\d\d \d\d:\d\d KST  기준 2026-09-24 02:03 KST  판 2026.09.23  3건")
+        self.assertRegex(text, r"kev +\d{4}-\d\d-\d\d \d\d:\d\d KST  기준 2026-09-24 02:03 KST  판 2026.09.23  3건")   # 앞 시각은 마지막 성공(지금)
         self.assertIn("osv     성공 기록 없음", text)             # 자산도 주목 CVE 도 없어 할 일이 없었다
         self.assertIn("== 주목 CVE (배포판 기록 조회)\n  없음", text)
         self.assertIn("nvd     성공 기록 없음", text)
