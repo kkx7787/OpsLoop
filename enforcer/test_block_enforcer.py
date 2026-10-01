@@ -7,7 +7,7 @@
 실제 PostgreSQL 시험은 시험마다 새 DB 를 만들어 infra/schema.sql 과 infra/migrations/20260927_block_enforce.sql 을
 그대로 적용하고, opsloop_enforcer 역할로 붙어 한 회차를 돌린다(권한 · 트리거 · 감사 · 만료 기록). 끝나면 DB 를 지운다.
 다시 걸기(RearmPgTest, 관문 없이 · 관문 포함)는 콘솔 · triage · 흡수 후속 차단의 실제 문장으로 다시 걸고 집행기를 돌린다(관문 포함은
-보고서 ENFORCE_SQL 의 기존 차단 유지 분류까지 본다).
+보고서 ENFORCE_SQL 의 기존 차단 유지 · 연속성 확인 불가 분류까지 본다).
 역할 opsloop_enforcer 는 클러스터 전체라 시험 전용 PostgreSQL 에서만 돌린다.
 """
 import ast
@@ -59,12 +59,15 @@ class S3Err(Exception):
 class FakeS3:
     def __init__(self):
         self.objects, self.puts, self.fail_put = {}, [], None
+        self.after_put = None            # 올린 직후 부를 함수(키). 집행기가 읽기 전에 관문 회차가 도는 경우를 흉내 낸다
 
     def put_object(self, Bucket, Key, Body, **kw):
         if self.fail_put:
             raise S3Err(self.fail_put)
         self.objects[Key] = Body
         self.puts.append((Bucket, Key, kw))
+        if self.after_put:
+            self.after_put(Key)
 
     def get_object(self, Bucket, Key):
         if Key not in self.objects:
@@ -182,6 +185,23 @@ class Gateway:
 FW_STATUS = be.STATUS_KEY.format(gw=FW)
 
 
+class PStore:
+    """P 판 집행기(되돌린 옛 집행기)가 쓰는 가짜 DB. P 판의 읽은 값 대조에는 지점 열(points)이 없다 (실제 DB 의 P 판 UPDATE 와 같다)."""
+
+    def __init__(self, store):
+        self.store = store
+
+    def __getattr__(self, name):
+        return getattr(self.store, name)
+
+    def apply(self, updates):
+        for u in updates:
+            r = self.store.rows.get(u["key"])
+            if r is not None:
+                u["guard"].setdefault("points", r["points"])
+        return self.store.apply(updates)
+
+
 class Base(unittest.TestCase):
     def setUp(self):
         self.store, self.s3 = FakeStore(), FakeS3()
@@ -202,12 +222,14 @@ class Base(unittest.TestCase):
     def row(self, ip):
         return self.store.rows[ip]
 
-    def confirmed(self, ip, at, mode="nft", kept=False):
-        """관문 확인 세 열. kept 는 앞 확인을 비운 적 없이 다시 확인한 것(쪽지 끝 ' · 기존 차단 유지', 이슈 #77 결정 2)이다."""
+    def confirmed(self, ip, at, mode="nft", kept=False, uncertain=False):
+        """관문 확인 세 열. 앞 확인을 비운 적 없이 다시 확인했으면 쪽지 끝에 표지가 붙는다(이슈 #77 결정 2 · 3): kept 는 관문 차단이
+        이어진 것을 보고로 확인한 것(' · 기존 차단 유지'), uncertain 은 확인하지 못한 것(' · 연속성 확인 불가')이다."""
         r = self.row(ip)
         self.assertEqual(r["enforced_at"], at.replace(microsecond=0))
         self.assertEqual(r["method"], mode)
-        self.assertRegex(r["note"], r"^관문 반영 · [0-9a-f]{8} · " + be.iso(at) + (be.NOTE_KEPT if kept else "") + "$")
+        tail = be.NOTE_KEPT if kept else be.NOTE_UNCERTAIN if uncertain else ""
+        self.assertRegex(r["note"], r"^관문 반영 · [0-9a-f]{8} · " + be.iso(at) + tail + "$")
 
     def settle(self, ip="198.51.100.7"):
         """행 하나를 올리고 관문이 적용한 뒤 확인까지 (T0 + 1분)."""
@@ -560,7 +582,8 @@ class MismatchTest(Base):
         self.gw.sync(at)
         self.tick()
         self.run_once()
-        self.confirmed("198.51.100.7", at, kept=True)
+        # 관문이 늘어난 만료를 적용하기 전(08:03:30)에 옛 만료(08:03)가 지나 원소가 빠졌을 수 있다: 연속성 확인 불가 (이슈 #77 결정 3)
+        self.confirmed("198.51.100.7", at, uncertain=True)
         # 관문 열 2(확인 · 재확인) + 지점별 결과 2(첫 대기 · 연장 뒤 새 만료의 대기). 확인은 관문 열과 같은 쓰기에 실린다
         self.assertEqual(self.store.writes, 4)
         self.assertEqual(self.store.audit, [("enforced", "198.51.100.7")] * 2)
@@ -1528,7 +1551,7 @@ class PointsTest(Base):
 
 # ── 차단 적용 지점 선택 (이슈 #77) ─────────────────────────────────────────────
 
-# P 판(#77 직전 main) 집행기의 validate_status · list_doc 사본. 되돌린 옛 집행기와 주고받는 두 객체를 대조한다
+# P 판(#77 직전 main, 운영 판) 집행기 사본. 되돌린 옛 집행기와 주고받는 두 객체를 대조하고 옛 집행기 회차를 그대로 돌린다
 _pspec = importlib.util.spec_from_file_location("block_enforcer_p", os.path.join(HERE, "testdata", "block_enforcer_p.py"))
 be_p = importlib.util.module_from_spec(_pspec)
 _pspec.loader.exec_module(be_p)
@@ -2266,10 +2289,14 @@ class RearmTest(ChoiceBase):
 
 
 class RearmGatewayTest(ChoiceBase):
-    """해제 · 만료된 두 지점 행을 관문을 포함해({gateway,fw}) 다시 걸기 (이슈 #77, 2026-10-01 결정 2). 콘솔 · triage · 흡수는 관문 세 열 ·
-    지점 결과를 요청 시각에 비우지 않는다. 집행기가 판단한다: 관문이 이 주소가 빠진 목록을 오류 없이 적용했다고 확인했으면 unenforced 를
-    한 번 남기고 새로 확인하고, 아니면(관문 차단이 이어짐) unenforced 없이 다시 든 목록을 올린 뒤의 보고로만 확인해 쪽지 끝에
-    '기존 차단 유지' 를 붙인다. 그 전에는 관문 결과가 대기라 종합 상태도 대기다. 세 경로의 실제 문장 · DB 는 RearmPgTest."""
+    """해제 · 만료된 두 지점 행을 관문을 포함해({gateway,fw}) 다시 걸기 (이슈 #77, 2026-10-01 결정 2 · 3). 콘솔 · triage · 흡수는 관문 세 열 ·
+    지점 결과를 요청 시각에 비우지 않는다. 집행기가 관문 장부(빠진 회차 · 다시 든 회차)와 관문 보고 이력으로 관문 쪽을 셋으로 가른다:
+      새 적용           관문이 이 주소가 빠진 목록을 오류 없이 적용했다고 보고했다 → unenforced 한 번 뒤 새로 확인(표지 없음)
+      기존 차단 유지    빠진 회차부터 보고가 모두 깨끗하게 이어지고(빠지기 전 목록의 마지막 보고와 다시 든 목록의 첫 보고가 이어진 관문
+                        회차) 빠지기 전 만료가 그 전에 지나지 않았다 → unenforced 없이 새 보고로 확인, 쪽지 끝 '기존 차단 유지'
+      연속성 확인 불가  보고 누락 · 덮임 · 오류 · 다시 걸기 전 만료 · 이력 없음 → unenforced 없이 새 보고로 확인, 쪽지 끝 '연속성 확인 불가'
+    확인 전에는 관문 결과가 대기라 종합 상태도 대기이고, 셋 모두 다시 든 목록의 최신 보고로 현재 적용을 확인한다(다시 걸기 전 보고로는
+    확인하지 않는다). 관문 흉내는 1분 타이머처럼 회차 사이를 1분 넘게 둔다. 세 경로의 실제 문장 · DB 는 RearmPgTest."""
 
     IP = "203.0.113.10"
 
@@ -2280,7 +2307,7 @@ class RearmGatewayTest(ChoiceBase):
         self.per_point()
         self.step()
         self.at = self.row(self.IP)["enforced_at"]
-        self.old = self.s3.objects[STATUS]                         # 이 주소가 든 목록의 관문 보고 (해제 전 회차)
+        self.old = self.s3.objects[STATUS]                         # 이 주소가 든 목록의 관문 보고 (해제 전 회차, 08:01:20)
 
     def kill(self):
         self.row(self.IP)["released_at"] = self.store.now          # 사람이 풀었다 (만료도 목록에서 빠지는 것은 같다)
@@ -2313,17 +2340,33 @@ class RearmGatewayTest(ChoiceBase):
         with self.subTest(why=why):
             self.assertEqual((self.cols(), self.states(self.IP)["gateway"]), (kept, state))
             self.assertTrue(self.waiting())
-            self.assertEqual(self.audit(), ["enforced"])
+            self.assertEqual([a for a in self.audit() if a != "expired"], ["enforced"])
 
-    def kept_confirmed(self, at):
-        """다시 든 목록의 새 보고로 기존 차단 유지를 확인했다. 감사는 처음 확인 뒤 한 줄뿐이고 이어져도 늘지 않는다."""
-        self.confirmed(self.IP, at, kept=True)
+    def before(self):
+        """관문이 해제 직전 회차에(…:58) 이 주소가 든 목록을 적용했다. 다음 관문 회차는 1분 뒤라 빠진 목록이 S3 에 있는 동안 오지 않는다."""
+        self.gw.sync(self.store.now + timedelta(seconds=58))
+
+    def after(self, **kw):
+        """관문이 다시 든 목록을 올린 직후(…:02) 적용하고 한 회차. 앞 보고(…:58)와 64초라 이어진 관문 회차다. 보고 시각을 돌려준다."""
+        at = self.store.now + timedelta(seconds=2)
+        self.gw.sync(at, **kw)
+        self.fw.sync(at + timedelta(seconds=20))
+        self.tick()
+        self.run_once()
+        return at
+
+    def reconfirmed(self, at, tail):
+        """다시 든 목록의 새 보고(at)로 현재 적용을 확인했다. tail 은 쪽지 표지('kept' 기존 차단 유지 · 'uncertain' 연속성 확인 불가)다.
+        unenforced 는 없고 감사는 처음 확인 뒤 한 줄이며, 확인이 이어져도 늘지 않는다. 종합 상태는 적용이다."""
+        self.confirmed(self.IP, at, kept=tail == "kept", uncertain=tail == "uncertain")
         self.assertEqual(self.states(self.IP), {"gateway": "confirmed", "fw": "confirmed"})
         self.assertFalse(self.waiting())
-        self.assertEqual(self.audit(), ["enforced", "enforced"])
+        audit = self.audit()
+        self.assertEqual([a for a in audit if a != "expired"], ["enforced", "enforced"])
         for _ in range(3):
             self.step()
-        self.assertEqual(self.audit(), ["enforced", "enforced"])
+        self.assertEqual(self.audit(), audit)
+        self.confirmed(self.IP, at, kept=tail == "kept", uncertain=tail == "uncertain")
 
     def test_관문_유지_재차단은_unenforced_없이_새_보고로만_확인한다(self):
         self.removing()                                            # removing 진행 중
@@ -2353,34 +2396,58 @@ class RearmGatewayTest(ChoiceBase):
         self.assertTrue(self.row(self.IP)["note"].startswith("관문 불일치 · 관문 거부"))
         self.assertEqual(self.audit(), ["enforced"])
         at = self.store.now + timedelta(seconds=20)
-        self.step()                                                # 거부를 거쳤으니 기존 차단 유지가 아니라 새로 확인한다
+        self.step()                                                # 거부를 거쳤으니 표지 없이 새로 확인한다
         self.confirmed(self.IP, at)
         self.assertEqual(self.audit(), ["enforced", "enforced"])
 
-    def test_관문_유지_재차단은_새_보고로_기존_차단_유지를_적는다(self):
-        self.removing()
+    def test_관문_보고가_이어진_재차단은_새_보고로_기존_차단_유지를_적는다(self):
+        self.before()
+        self.removing()                                            # 빠진 목록을 올린다. 관문 보고는 해제 직전 회차(08:02:58)
+        kept = self.cols()
         self.rearm()
         self.tick()
-        self.run_once()                                            # 관문 보고는 해제 직전 목록(빠진 목록을 적용한 적 없다)
-        self.held("다시 든 목록을 올린 회차", (self.at, "nft", self.row(self.IP)["note"]))
-        at = self.store.now + timedelta(seconds=20)
-        self.step()
-        self.kept_confirmed(at)
+        self.run_once()                                            # 다시 든 목록을 올린다. 관문은 빠진 목록을 적용한 적 없다
+        self.held("다시 든 목록을 올린 회차", kept)
+        self.reconfirmed(self.after(), "kept")                     # 08:04:02 (앞 보고와 64초)
 
-    def test_관문이_빼기_직전_회차의_목록을_적용_중에_다시_걸어도_유지다(self):
-        self.gw.sync(self.store.now + timedelta(seconds=10))       # 관문이 해제 직전 회차 목록(이 주소 있음)을 막 적용했다
+    def test_관문_보고_사이에_관문_회차가_빠졌으면_연속성_확인_불가다(self):
+        # 관문이 해제 직전 회차 목록을 08:02:10 에 적용했고 다음에 읽은 보고는 다시 든 목록의 08:04:20 이다(130초). 1분 타이머라 그 사이
+        # (빠진 목록이 S3 에 있던 08:03 ~ 08:04) 회차가 있었고 그 보고는 덮였다. 관문이 뺐다 다시 넣었는지 모른다
+        self.gw.sync(self.store.now + timedelta(seconds=10))
         self.removing()
+        kept = self.cols()
         self.rearm()
         self.tick()
         self.run_once()
-        self.held("빠지기 직전 회차의 보고", (self.at, "nft", self.row(self.IP)["note"]))
+        self.held("빠지기 직전 회차의 보고", kept)
         at = self.store.now + timedelta(seconds=20)
         self.step()
-        self.kept_confirmed(at)
+        self.reconfirmed(at, "uncertain")
+
+    def test_빠진_목록_보고가_다시_든_목록_보고에_덮였으면_연속성_확인_불가다(self):
+        self.before()                                              # 08:02:58 이 주소가 든 목록
+        self.removing()                                            # 08:03 빠진 목록
+        kept = self.cols()
+        self.gw.sync(self.store.now + timedelta(seconds=58))       # 08:03:58 관문이 빠진 목록을 적용했다 (집행기가 읽기 전)
+        self.rearm()
+        at = self.store.now + timedelta(seconds=119)
+
+        def late(key):                                             # 집행기 회차가 늦어(08:04:58) 다시 든 목록을 올린 직후 관문 회차(08:04:59)
+            if key == be.LIST_KEY:
+                self.gw.sync(at)
+        self.s3.after_put = late
+        self.tick(timedelta(seconds=118))
+        self.run_once()                                            # 빠진 목록 보고는 읽지 못하고 다시 든 목록 보고로 확인한다
+        self.s3.after_put = None
+        self.assertEqual(self.audit(), ["enforced", "enforced"])   # 관문이 뺀 것을 모르므로 unenforced 는 없다
+        self.assertNotEqual(self.cols(), kept)
+        self.step()                                                # 내부 방화벽도 다시 든 목록을 적용한다
+        self.reconfirmed(at, "uncertain")
 
     def test_같은_만료로_다시_걸어도_다시_걸기_전의_보고로는_확인하지_않는다(self):
         # 흡수 후속 차단이 같은 약속 만료로 다시 걸면 다시 든 목록이 해제 전과 같은 내용 · digest 다. 옛 보고도 그 목록 회차를
-        # 적용한 것으로 보이지만 다시 든 목록을 올리기 전의 보고라 확인하지 않는다
+        # 적용한 것으로 보이지만 다시 든 목록을 올리기 전의 보고라 확인하지 않고, 이어진 관문 회차를 가를 때도 빠지기 전 목록의 보고다
+        self.before()
         self.removing()
         kept = self.cols()
         self.row(self.IP).update(released_at=None)
@@ -2389,9 +2456,7 @@ class RearmGatewayTest(ChoiceBase):
         self.run_once()
         self.assertEqual(self.s3.listed()["digest"], json.loads(self.old)["list_digest"])
         self.held("같은 digest 의 옛 보고", kept)
-        at = self.store.now + timedelta(seconds=20)
-        self.step()
-        self.kept_confirmed(at)
+        self.reconfirmed(self.after(), "kept")
 
     def test_관문이_빠진_목록을_적용한_직후_다시_걸면_unenforced_한_번_뒤_새로_확인한다(self):
         self.removing()
@@ -2405,38 +2470,118 @@ class RearmGatewayTest(ChoiceBase):
         self.assertEqual(self.audit(), ["enforced", "unenforced"])
         at = self.store.now + timedelta(seconds=20)
         self.step()
-        self.confirmed(self.IP, at)                                # 새 적용 (기존 차단 유지가 아니다)
+        self.confirmed(self.IP, at)                                # 새 적용 (표지 없음)
         self.assertEqual(self.audit(), ["enforced", "unenforced", "enforced"])
         for _ in range(3):
             self.step()
         self.assertEqual(self.audit(), ["enforced", "unenforced", "enforced"])
 
-    def test_관문이_빠진_목록을_오류와_함께_적용했으면_뺐다고_보지_않는다(self):
+    def renew(self):
+        """관문이 빠진 목록을 적용한 뒤 다시 걸어 unenforced 한 번 뒤 새로 확인했다(새 적용)."""
         self.removing()
-        self.gw.sync(self.store.now + timedelta(seconds=20), errors=["목록 밖 원소 1개를 빼지 못함"])
+        self.gw.sync(self.store.now + timedelta(seconds=20))
         self.rearm()
         self.tick()
         self.run_once()
-        self.held("오류가 있는 빠진 목록 보고", (self.at, "nft", self.row(self.IP)["note"]))
-        at = self.store.now + timedelta(seconds=20)
-        self.step()
-        self.kept_confirmed(at)
-
-    def test_관문이_뺐다고_확인한_뒤_다시_걸면_남은_방식_쪽지만_감사_없이_비우고_새로_확인한다(self):
-        self.removing()
-        self.step()                                                # 관문이 뺐다 → unenforced(why=released), 방식 · 쪽지는 남는다
-        r = self.row(self.IP)
-        self.assertEqual((r["enforced_at"], r["method"], self.pts(self.IP)), (None, "nft", None))
-        self.rearm()
-        self.tick()
-        self.run_once()
-        self.assertEqual(self.cols(), (None, None, None))
-        self.assertTrue(self.waiting())
-        self.assertEqual(self.audit(), ["enforced", "unenforced"])
         at = self.store.now + timedelta(seconds=20)
         self.step()
         self.confirmed(self.IP, at)
         self.assertEqual(self.audit(), ["enforced", "unenforced", "enforced"])
+
+    def recovered(self):
+        """회복한 관문 보고로 표지 없이 새로 확인하고, 보고 이력(6시간)에 남은 옛 빠진 목록 보고로 세 열을 다시 비우지 않는다."""
+        at = self.store.now + timedelta(seconds=20)
+        self.step()
+        self.confirmed(self.IP, at)
+        for _ in range(3):
+            self.step()
+        self.confirmed(self.IP, at)
+        self.assertEqual(self.audit(), ["enforced", "unenforced", "enforced", "enforced"])
+
+    def test_새_적용_뒤_관문_거부를_겪고_회복해도_unenforced_는_한_번이다(self):
+        self.renew()
+        self.gw.sync(self.store.now + timedelta(seconds=20), rejected=[(self.IP, "집합에 넣지 못함")])
+        self.tick()
+        self.run_once()
+        self.assertTrue(self.row(self.IP)["note"].startswith("관문 불일치 · 관문 거부"))
+        self.recovered()
+
+    def test_새_적용_뒤_관문_보고가_5분_멈췄다_회복해도_unenforced_는_한_번이다(self):
+        self.renew()
+        del self.s3.objects[STATUS]
+        for _ in range(6):
+            self.step(gw=False)
+        self.assertTrue(self.row(self.IP)["note"].startswith("관문 불일치 · 관문 상태를 읽지 못함"))
+        self.recovered()
+
+    def test_관문이_뺀_보고를_쓰지_못했어도_다음_회차에_보고_이력으로_새_적용한다(self):
+        self.removing()
+        self.gw.sync(self.store.now + timedelta(seconds=20))       # 관문이 뺐다 (깨끗한 보고)
+        self.rearm()
+        self.store.fail_apply = True
+        self.tick()
+        self.run_once()                                            # 뺀 것을 보았지만 DB 를 쓰지 못했다
+        self.store.fail_apply = False
+        self.assertEqual(self.cols()[0], self.at)
+        at = self.store.now + timedelta(seconds=20)
+        self.gw.sync(at)                                           # 관문이 다시 든 목록을 적용했다 (이번 보고로는 뺀 것을 모른다)
+        self.fw.sync(at + timedelta(seconds=20))
+        self.tick()
+        self.run_once()                                            # 보고 이력으로 뺀 것을 보고 비운다(새 적용, 확인은 다음 회차)
+        self.assertEqual(self.cols(), (None, None, None))
+        self.assertEqual(self.audit(), ["enforced", "unenforced"])
+        self.tick()
+        self.run_once()
+        self.confirmed(self.IP, at)                                # 같은 보고로 새로 확인한다 (표지 없음)
+        self.assertEqual(self.audit(), ["enforced", "unenforced", "enforced"])
+        for _ in range(3):
+            self.step()
+        self.assertEqual(self.audit(), ["enforced", "unenforced", "enforced"])
+
+    def test_관문이_빠진_목록을_오류와_함께_적용했으면_연속성_확인_불가다(self):
+        self.removing()
+        self.gw.sync(self.store.now + timedelta(seconds=20), errors=["목록 밖 원소 1개를 빼지 못함"])
+        kept = self.cols()
+        self.rearm()
+        self.tick()
+        self.run_once()
+        self.held("오류가 있는 빠진 목록 보고", kept)              # 뺐다고 보지 않는다 (unenforced 없음)
+        at = self.store.now + timedelta(seconds=20)
+        self.step()
+        self.reconfirmed(at, "uncertain")
+
+    def test_다시_든_목록을_오류와_함께_적용한_보고로_확인하면_연속성_확인_불가다(self):
+        self.before()
+        self.removing()
+        self.rearm()
+        self.tick()
+        self.run_once()
+        self.reconfirmed(self.after(errors=["목록 밖 원소 1개를 빼지 못함"]), "uncertain")   # 현재 적용은 그 보고로 확인한다
+
+    def test_관문_보고를_못_읽은_회차가_있으면_연속성_확인_불가다(self):
+        self.before()
+        self.removing()
+        kept = self.cols()
+        self.rearm()
+        del self.s3.objects[STATUS]
+        self.tick()
+        self.run_once()
+        self.held("보고 없음", kept)
+        self.reconfirmed(self.after(), "uncertain")
+
+    def test_만료_뒤_다시_걸면_관문_보고가_이어져도_연속성_확인_불가다(self):
+        self.row(self.IP)["expires_at"] = self.store.now + timedelta(seconds=30)    # 08:02:30 만료 (줄인 만료를 올리기 전)
+        self.gw.sync(self.store.now + timedelta(seconds=58), rejected=[(self.IP, "만료 지남")])
+        self.tick()
+        self.run_once()                                            # 만료: 목록에서 빠지고 만료 기록만 남는다
+        self.assertEqual(self.states(self.IP), {"gateway": "removing", "fw": "removing"})
+        kept = self.cols()
+        self.rearm()
+        self.tick()
+        self.run_once()
+        self.held("다시 든 목록을 올린 회차", kept)
+        self.reconfirmed(self.after(), "uncertain")                # 만료로 관문이 뺐다고 확정하지 않는다
+        self.assertEqual(self.audit(), ["enforced", "expired", "enforced"])
 
     def test_집행기_회차_없이_풀고_다시_걸면_옛_확인을_새_만료로_옮기지_않는다(self):
         kept = self.cols()
@@ -2448,16 +2593,61 @@ class RearmGatewayTest(ChoiceBase):
         self.held("판정할 수 없는 회차", kept)
         at = self.store.now + timedelta(seconds=20)
         self.step()
-        self.kept_confirmed(at)
+        self.reconfirmed(at, "uncertain")                          # 다시 든 목록을 올린 회차의 관문 보고가 없어 중간 상태를 모른다
 
-    def test_관문_없이_다시_건_행을_빠짐_확인_전에_풀고_관문을_포함해_다시_걸면_유지다(self):
+    def same_cycle(self):
+        """같은 회차 안에 풀고 다른 만료로 다시 건다(집행기는 해제를 보지 못해 관문 목록에서 빠진 적 없다). 다시 든 목록을 올린 회차
+        직전부터 확인까지 관문 보고가 빠짐없이 깨끗해야 기존 차단 유지다(결정 3). 다시 든 목록의 보고 시각을 돌려준다."""
+        kept = self.cols()
+        self.kill()
+        self.rearm()
+        self.tick()
+        self.run_once()
+        self.held("다시 든 목록을 올린 회차", kept)
+        at = self.store.now + timedelta(seconds=20)
+        self.step()
+        return at
+
+    def test_같은_회차_안에_풀고_다시_걸어도_관문_보고가_깨끗하게_이어졌으면_기존_차단_유지다(self):
+        self.reconfirmed(self.same_cycle(), "kept")                # 관문 목록에서 빠진 적 없고 앞 만료도 지나지 않았다
+
+    def test_같은_회차_안에_풀고_다시_걸기_직전_회차의_관문_보고가_없으면_연속성_확인_불가다(self):
+        saved = self.s3.objects.pop(STATUS)
+        self.tick()
+        self.run_once()                                            # 관문 보고가 한 회차 끊겼다 (5분 전이라 불일치는 아니다)
+        self.s3.objects[STATUS] = saved
+        self.reconfirmed(self.same_cycle(), "uncertain")
+
+    def test_같은_회차_안에_풀고_다시_걸_때_관문_오류_보고가_이어지면_연속성_확인_불가다(self):
+        self.gw.sync(self.store.now + timedelta(seconds=20), errors=["목록 밖 원소 1개를 빼지 못함"])
+        self.tick()
+        self.run_once()
+        self.reconfirmed(self.same_cycle(), "uncertain")
+
+    def test_집행기_회차_없이_만료되고_다시_걸면_연속성_확인_불가다(self):
+        ip = "203.0.113.20"
+        self.store.add(ip, expires=timedelta(minutes=2, seconds=30))   # 08:04:30 만료
+        self.step()
+        self.step()                                                # 08:04 확인 (관문 08:03:20)
+        self.confirmed(ip, self.store.now - timedelta(seconds=40))
+        self.gw.sync(self.store.now + timedelta(seconds=20))       # 08:04:20 관문은 08:04:30 까지인 목록이다
+        self.tick(timedelta(seconds=50))                           # 08:04:50 만료가 지난 뒤 다시 건다 (집행기는 만료를 보지 못했다)
+        self.store.rows[ip].update(expires_at=self.store.now + DAY, created_at=self.store.now)
+        self.tick(timedelta(seconds=10))
+        self.run_once()                                            # 08:05 새 만료를 올린다
+        at = self.store.now + timedelta(seconds=20)
+        self.step()
+        self.confirmed(ip, at, uncertain=True)                     # 관문 원소는 08:04:30 에 빠졌을 수 있다 (unenforced 는 없다)
+        self.assertEqual([a for a, x in self.store.audit if x == ip], ["enforced", "enforced"])
+
+    def test_관문_없이_다시_건_행을_빠짐_확인_전에_풀고_관문을_포함해_다시_걸면_관문_보고가_끊겨_연속성_확인_불가다(self):
         self.removing()
         self.rearm(points=["fw"])
         self.tick()
         self.run_once()                                            # 지점별: 관문 목록 밖, 관문 빠짐 확인 전
         self.assertNotIn(self.IP, self.gw_ips())
         self.assertEqual(self.states(self.IP)["gateway"], "removing")
-        self.removing()                                            # 관문은 그동안 빠진 목록을 적용하지 않았다
+        self.removing()                                            # 관문은 그동안 보고하지 않았다(08:01:20 뒤 5분)
         kept = self.cols()
         self.rearm()
         self.tick()
@@ -2465,7 +2655,7 @@ class RearmGatewayTest(ChoiceBase):
         self.held("관문을 포함해 다시 건 회차", kept)
         at = self.store.now + timedelta(seconds=20)
         self.step()
-        self.kept_confirmed(at)
+        self.reconfirmed(at, "uncertain")
 
     def test_전체_모드에서_관문_없이_다시_건_행을_풀고_관문을_포함해_다시_걸면_유지다(self):
         self.removing()
@@ -2479,6 +2669,7 @@ class RearmGatewayTest(ChoiceBase):
             self.step()                                            # 관문이 이 주소가 든 목록을 적용한다
         self.assertEqual(self.states(self.IP)["gateway"], "removing")
         self.assertEqual(self.audit(), ["enforced"])
+        self.before()
         self.removing_full()
         kept = self.cols()
         self.rearm()
@@ -2486,30 +2677,41 @@ class RearmGatewayTest(ChoiceBase):
         self.run_once()
         self.assertFalse(self.st["fw_list_ok"])
         self.held("전체 모드에서 관문을 포함해 다시 건 회차", kept)
-        at = self.store.now + timedelta(seconds=20)
-        self.step()
-        self.kept_confirmed(at)
+        self.reconfirmed(self.after(), "kept")
 
-    def test_상태_파일을_잃어도_기존_차단_유지_쪽지를_이어받는다(self):
+    def adopt_tail(self, tail):
+        """표지가 붙은 확인 뒤 상태 파일을 잃어도 DB 의 확인(표지 포함)을 그대로 이어받는다(감사 · 쓰기 없음)."""
+        if tail == "kept":
+            self.before()
         self.removing()
         self.rearm()
         self.tick()
         self.run_once()
-        at = self.store.now + timedelta(seconds=20)
-        self.step()
-        self.confirmed(self.IP, at, kept=True)
+        if tail == "kept":
+            at = self.after()
+        else:
+            at = self.store.now + timedelta(seconds=20)
+            self.step()                                            # 관문 보고가 3분 끊겼다
+        self.confirmed(self.IP, at, kept=tail == "kept", uncertain=tail == "uncertain")
         writes, audit = self.store.writes, list(self.store.audit)
-        self.st = be.new_state()                                   # 상태 파일을 잃었다: DB 의 확인(표지 포함)을 그대로 이어받는다
+        self.st = be.new_state()
         self.run_once()
         self.step()
         self.step()
-        self.confirmed(self.IP, at, kept=True)
+        self.confirmed(self.IP, at, kept=tail == "kept", uncertain=tail == "uncertain")
         self.assertEqual(self.store.audit, audit)
         self.assertEqual(self.store.writes - writes, 0)
 
-    def regain(self, why):
+    def test_상태_파일을_잃어도_기존_차단_유지_쪽지를_이어받는다(self):
+        self.adopt_tail("kept")
+
+    def test_상태_파일을_잃어도_연속성_확인_불가_쪽지를_이어받는다(self):
+        self.adopt_tail("uncertain")
+
+    def regain(self, why, tail):
         """같은 회차 안에 풀고 관문을 포함해 다시 건다. 내부 방화벽 목록에서는 빠진 적이 없어 두 목록에 같은 회차에 다시 든 행(rearmed)이
-        아니지만, 다시 걸기 전의 확인을 이어받지 않고(outdated) 다시 든 목록의 새 보고로 기존 차단 유지를 적는다(검토 3차 V9)."""
+        아니지만, 다시 걸기 전의 확인을 이어받지 않고(outdated) 다시 든 목록의 새 보고로 확인해 표지를 붙인다(검토 3차 V9).
+        tail 이 'kept' 면 관문 보고가 이어진 채(…:58 · …:02), 아니면 관문 보고가 끊긴 채 다시 든 목록을 적용한다."""
         self.assertEqual(self.states(self.IP)["gateway"], "removing")
         kept = self.cols()
         self.kill()
@@ -2518,33 +2720,39 @@ class RearmGatewayTest(ChoiceBase):
         self.run_once()
         self.assertFalse(be.rearmed(self.IP, self.st))
         self.held(why, kept)
-        at = self.store.now + timedelta(seconds=20)
-        self.step()
-        self.kept_confirmed(at)
+        if tail == "kept":
+            at = self.after()
+        else:
+            at = self.store.now + timedelta(seconds=20)
+            self.step()
+        self.reconfirmed(at, tail)
 
-    def test_관문_없이_다시_건_행을_같은_회차에_풀고_관문을_포함해_다시_걸어도_새_보고로_유지다(self):
+    def test_관문_없이_다시_건_행을_같은_회차에_풀고_관문을_포함해_다시_걸어도_새_보고로_확인한다(self):
         self.removing()
         self.rearm(points=["fw"])
         self.tick()
         self.run_once()                                            # 관문 빠짐 확인 전 (관문은 빠진 목록을 적용하지 않았다)
-        self.regain("관문 없이 다시 건 행을 관문을 포함해 다시 건 회차")
+        self.regain("관문 없이 다시 건 행을 관문을 포함해 다시 건 회차", "uncertain")   # 관문 보고가 4분 끊겼다
 
     def test_관리자_관문_빼기_뒤_같은_회차에_풀고_관문을_포함해_다시_걸어도_새_보고로_유지다(self):
+        self.before()                                              # 관문이 관문 빼기 직전 회차에 이 주소가 든 목록을 적용했다
         self.row(self.IP).update(points=["fw"], created_at=self.store.now)   # 관리자 관문 빼기 (풀고 {fw} 로 다시 건다 · 만료 그대로)
         self.tick()
         self.run_once()
-        self.regain("관문 빼기 뒤 관문을 포함해 다시 건 회차")
+        self.regain("관문 빼기 뒤 관문을 포함해 다시 건 회차", "kept")
 
     def lost(self, applied):
-        """관문 유지 다시 걸기가 확인되기 전에 상태 파일을 잃었다(장부가 그 회차부터다). applied 면 관문이 다시 든 목록을 이미 적용했다.
-        DB 에 남은 확인(다시 걸기 전)을 이어받지 않고 다시 든 목록의 보고로 기존 차단 유지를 적는다."""
+        """관문 유지 다시 걸기가 확인되기 전에 상태 파일을 잃었다(장부 · 관문 보고 이력이 그 회차부터다). applied 면 관문이 다시 든 목록을
+        이미 적용했다. DB 에 남은 확인(다시 걸기 전)을 이어받지 않고 다시 든 목록의 보고로 확인하며, 관문 차단이 이어졌는지 모르므로
+        연속성 확인 불가다."""
+        self.before()
         self.removing()
         kept = self.cols()
         self.rearm()
         self.tick()
         self.run_once()
         self.held("다시 든 목록을 올린 회차", kept)
-        at = self.store.now + timedelta(seconds=20)
+        at = self.store.now + timedelta(seconds=2)
         if applied:
             self.gw.sync(at)
             self.fw.sync(at + timedelta(seconds=20))
@@ -2555,7 +2763,7 @@ class RearmGatewayTest(ChoiceBase):
             self.held("잃은 뒤 다시 걸기 전의 보고", kept)
             at = self.store.now + timedelta(seconds=20)
             self.step()
-        self.kept_confirmed(at)
+        self.reconfirmed(at, "uncertain")
 
     def test_확인_전에_상태_파일을_잃어도_다시_걸기_전의_확인을_이어받지_않는다(self):
         self.lost(applied=False)
@@ -2563,19 +2771,46 @@ class RearmGatewayTest(ChoiceBase):
     def test_관문이_다시_든_목록을_적용한_뒤_상태_파일을_잃어도_다시_걸기_전의_확인을_이어받지_않는다(self):
         self.lost(applied=True)
 
-    def test_옛_집행기가_이어받은_확인은_새_보고로_기존_차단_유지를_적는다(self):
-        # 되돌린 동안 옛 집행기는 다시 건 행에 남은 확인을 새 만료로 이어받는다(요청 시각 기록 없음). 새 판으로 돌아오면 낡은 확인이다
-        self.removing()
-        kept = self.cols()
-        self.rearm()
+    def p_run(self, gw=True, fw=True):
+        """옛 집행기(P 판 = 운영 판)로 되돌린 회차. 두 동기화가 지금 S3 목록을 적용하고(관문 +20초 · 내부 방화벽 +40초) 1분 뒤 돈다.
+        옛 집행기는 다시 든 행을 빠진 회차 없이 장부에 다시 적고 남은 확인을 새 만료로 이어받으며 관문 보고 이력을 남기지 않는다."""
+        if gw:
+            self.gw.sync(self.store.now + timedelta(seconds=20))
+        if fw:
+            self.fw.sync(self.store.now + timedelta(seconds=40))
         self.tick()
-        self.run_once()
-        self.held("다시 든 목록을 올린 회차", kept)
-        self.st["confirmed"][self.IP] = {"until": be.iso(self.row(self.IP)["expires_at"]), "at": be.iso(self.at),
-                                         "d8": be.APPLIED_RE.fullmatch(kept[2]).group(1), "mode": "nft"}
+        with mock.patch.object(be_p, "log", lambda m, level=6: self.logs.append((level, "P " + m))):
+            return be_p.cycle(self.cfg, PStore(self.store), self.s3, self.s3, self.st)
+
+    def back_from_p(self):
+        """새 판으로 돌아오면 이어받은 확인을 쓰지 않고 첫 새 보고로 다시 확인한다. 옛 집행기가 돈 회차의 관문 보고 이력이 없어
+        관문이 그 사이 뺐는지도 이어졌는지도 모르므로 연속성 확인 불가다(unenforced 는 없다)."""
+        self.assertEqual(self.cols()[0], self.at)                  # 옛 집행기가 남은 확인을 이어받았다
+        self.assertEqual(self.audit(), ["enforced"])
         at = self.store.now + timedelta(seconds=20)
         self.step()
-        self.kept_confirmed(at)
+        self.reconfirmed(at, "uncertain")
+
+    def test_옛_집행기로_되돌린_동안_관문이_뺀_뒤_다시_건_행은_돌아오면_연속성_확인_불가다(self):
+        self.p_run()
+        self.kill()
+        self.p_run(gw=False, fw=False)                             # 옛 집행기가 빠진 목록을 올린다
+        removed = self.gw.sync(self.store.now + timedelta(seconds=20))
+        self.assertNotIn(self.IP, removed)                         # 관문이 빠진 목록을 오류 없이 적용했다(관문 집합에서 빠짐)
+        self.tick(timedelta(seconds=30))
+        self.rearm()                                               # 옛 집행기가 그 보고를 읽기 전에 다시 건다
+        self.p_run(gw=False, fw=False)                             # 다시 든 목록 (관문 보고는 빠진 목록)
+        self.p_run()                                               # 관문이 다시 든 목록을 적용한다
+        self.back_from_p()
+
+    def test_옛_집행기로_되돌린_동안_다시_건_행은_관문이_빼지_않았어도_돌아오면_연속성_확인_불가다(self):
+        self.before()
+        self.removing()                                            # 새 판이 빠진 목록을 올렸다 (관문은 빠지기 전 목록)
+        self.rearm()
+        self.p_run(gw=False, fw=False)                             # 되돌린 옛 집행기가 다시 든 목록을 올린다
+        for _ in range(2):
+            self.p_run()
+        self.back_from_p()
 
     def test_관문_목록이_그대로인_재요청은_남은_확인을_잇는다(self):
         # 살아 있는 차단을 같은 만료로 다시 요청했다(요청 시각만 바뀜). 관문이 새로 적용할 것이 없어 다시 확인하지 않는다
@@ -2584,6 +2819,19 @@ class RearmGatewayTest(ChoiceBase):
             self.step()
         self.confirmed(self.IP, self.at)
         self.assertEqual(self.audit(), ["enforced"])
+
+    def test_보고_이력은_최근_회차만_둔다(self):
+        for _ in range(3):
+            self.step()
+        log = self.st["gw_log"]
+        self.assertEqual([r["seq"] for r in log], list(range(1, self.st["seq"] + 1)))
+        self.assertEqual(log[0], {"seq": 1, "at": None, "g": None, "ok": False})      # 첫 회차는 관문 보고가 없다
+        self.assertEqual(log[-1]["at"], be.iso(self.store.now - timedelta(seconds=40)))
+        self.assertTrue(log[-1]["ok"])
+        self.st["gw_log"] = [{"seq": s, "at": None, "g": None, "ok": False} for s in range(1, self.st["seq"] + 1)]
+        self.st["seq"] += be.SEEN_KEEP
+        be.log_report(self.st, {"at": None, "gseq": None, "ok": False})
+        self.assertEqual([r["seq"] for r in self.st["gw_log"]], [self.st["seq"]])
 
     def removing_full(self):
         """전체 모드에서 해제하고 한 회차 (내부 방화벽 결과 기록은 옛 판 보고라 그대로일 수 있다)."""
@@ -2594,15 +2842,16 @@ class RearmGatewayTest(ChoiceBase):
 
 
 class RearmPgTest(PgBase):
-    """해제 · 만료된 두 지점 행 다시 걸기 (이슈 #77, 2026-10-01 결정 · 결정 2). 실제 schema.sql · 20261003 · 집행 역할에서 세 경로(콘솔
+    """해제 · 만료된 두 지점 행 다시 걸기 (이슈 #77, 2026-10-01 결정 · 결정 2 · 3). 실제 schema.sql · 20261003 · 집행 역할에서 세 경로(콘솔
     main.BLOCK_SQL · triage record(OWN_BLOCK_SQL) · 흡수 후속 차단 AbsorbedFollower(BLOCK_ABSORBED_SQL))가 요청 시각에는 다시 걸기 기록만
     남기고 관문 세 열 · 지점 결과를 둔다.
       관문 없이({fw}): 집행기가 관문이 이 주소가 빠진 목록을 오류 없이 적용했다고 확인한 뒤에만 세 열을 비우고 unenforced 를 한 번
         남긴다(① 다시 걸기 전 회차의 보고 · ③ 오류 있는 보고 · 보고 없음 · 전체 모드로는 끝내지 않는다).
-      관문을 포함해({gateway,fw}, 결정 2): 관문이 그 전에 뺐으면 unenforced 한 번 뒤 새로 확인하고, 관문 차단이 이어졌으면 unenforced
-        없이 다시 든 목록의 새 보고로만 확인해 기존 차단 유지로 적는다. 기간 보고서(app/reports.py ENFORCE_SQL)는 기존 차단 유지를
-        따로 세고 관문 반영 지연에서 뺀다. 관문 빠짐 확인 전 행(관문 없이 다시 건 행 · 관리자 관문 빼기 뒤)을 같은 회차 안에 풀고
-        다시 걸거나 확인 전에 상태 파일을 잃어도 다시 걸기 전의 확인을 이어받지 않는다(regain)."""
+      관문을 포함해({gateway,fw}, 결정 2 · 3): 관문이 그 전에 뺐으면 unenforced 한 번 뒤 새로 확인하고(새 적용), 아니면 unenforced 없이
+        다시 든 목록의 새 보고로만 확인해 관문 보고가 이어졌으면 기존 차단 유지, 보고 누락 · 덮임 · 오류 · 다시 걸기 전 만료면 연속성
+        확인 불가로 적는다(gw_scenario). 기간 보고서(app/reports.py ENFORCE_SQL)는 둘을 따로 세고 관문 반영 지연에서 뺀다. 관문 빠짐 확인
+        전 행(관문 없이 다시 건 행 · 관리자 관문 빼기 뒤)을 같은 회차 안에 풀고 다시 걸거나 확인 전에 상태 파일을 잃어도 다시 걸기 전의
+        확인을 이어받지 않는다(regain)."""
 
     IP = "203.0.113.40"
 
@@ -2750,7 +2999,7 @@ class RearmPgTest(PgBase):
             self.assertEqual(asyncio.run(follow()), [(first, 1)])
         self.scenario(self.expire, rearm, "console.block.extended")
 
-    # ── 관문을 포함해 다시 걸기 (결정 2) ────────────────────────────────────────────────────────────────────
+    # ── 관문을 포함해 다시 걸기 (결정 2 · 3) ────────────────────────────────────────────────────────────────
     def state(self):
         """종합 상태(콘솔 block_points.STATE_CASE 그대로)."""
         bp = load_file("block_points_for_enforcer_state", os.path.join(APP_DIR, "block_points.py"))
@@ -2758,26 +3007,32 @@ class RearmPgTest(PgBase):
         return s
 
     def enforce_report(self, since):
-        """기간 보고서의 관문 반영 지연 (created, enforced, maintained)(app/reports.py ENFORCE_SQL 그대로). 앱 의존(FastAPI)이 없으면 None."""
+        """기간 보고서의 관문 반영 지연 (created, enforced, maintained, uncertain)(app/reports.py ENFORCE_SQL 그대로).
+        앱 의존(FastAPI)이 없으면 None."""
         if importlib.util.find_spec("fastapi") is None:
             return None
         rp = load_file("reports_for_enforcer_test", os.path.join(APP_DIR, "reports.py"), near=APP_DIR)
         q, args = positional(rp.ENFORCE_SQL, since, datetime.now(timezone.utc) + timedelta(minutes=1))
         [row] = self.sql(q, args)
-        return row[:3]
+        return row[:4]
 
-    CASES = ("유지", "빼기 직전", "전체 모드", "뺀 뒤")
+    # 경우 → 기대 표지(None 은 새 적용)
+    CASES = {"유지": "kept", "전체 모드": "kept", "만료": "uncertain", "오류": "uncertain", "누락": "uncertain",
+             "덮임": "uncertain", "뺀 뒤": None}
 
-    def gw_scenario(self, dead, rearm, event, case):
-        """case 가 '뺀 뒤' 면 관문이 이 주소가 빠진 목록을 오류 없이 적용한 뒤(집행기 확인 전) 다시 건다: 집행기가 다시 든 목록을 올리는
-        회차에 unenforced 를 한 번 남기고 새로 확인한다(관문 반영 지연에 든다). 그 밖은 관문 차단이 이어진 채 다시 건다(unenforced 없음):
-          유지      removing 진행 중(관문은 빠지기 전 목록). 다시 걸기 전 회차의 보고 · 보고 없음 · 셈이 맞지 않는 보고로는 확인하지 않는다
-          빼기 직전 관문이 해제 직전 회차의 목록을 막 적용했다
-          전체 모드 옛 판 내부 방화벽 보고(list 없음)라 관문 목록이 모든 행이다
-        그때까지 관문 결과 · 종합 상태는 대기이고, 다시 든 목록의 새 보고로만 확인해 기존 차단 유지로 적는다(지연에서 뺀다). 확인이
-        이어져도 감사는 늘지 않는다."""
-        self.assertIn(case, self.CASES)
-        removed = case == "뺀 뒤"
+    def gw_scenario(self, release, rearm, case):
+        """두 지점 행을 목록에서 뺀 뒤 관문을 포함해 다시 건다(결정 2 · 3). release 는 해제(콘솔은 사람, triage · 흡수는 시스템(released_by
+        없음)이라 되살릴 수 있다)이고 case 가 '만료' 면 만료로 뺀다. 요청 시각에는 다시 걸기 기록만 남고 관문 세 열 · 지점 결과는 그대로다
+        (종합 상태 대기). 집행기가 관문 쪽을 가른다:
+          유지 · 전체 모드  관문이 해제 직전 회차에 이 주소가 든 목록을 적용했고 다음 보고가 다시 든 목록의 것이다 → 기존 차단 유지
+          만료              보고는 이어졌지만 다시 걸기 전에 만료가 지났다 → 연속성 확인 불가(expired 감사만, unenforced 없음)
+          오류              관문이 빠진 목록을 오류와 함께 적용했다(뺐다고 보지 않는다) · 셈이 맞지 않는 보고 → 연속성 확인 불가
+          누락              다시 걸기 전 회차의 보고 · 보고 없음 회차가 있다 → 연속성 확인 불가
+          덮임              빠진 목록 보고가 집행기가 읽기 전에 다시 든 목록 보고로 덮였다(두 보고 사이 2분) → 연속성 확인 불가
+          뺀 뒤             관문이 빠진 목록을 오류 없이 적용한 보고를 읽었다 → unenforced(why=reset) 한 번 뒤 새로 확인(표지 없음)
+        어느 경우든 다시 걸기 전 보고로는 확인하지 않고(대기) 다시 든 목록의 최신 보고로 현재 적용을 확인한다(종합 상태 적용). 확인이
+        이어져도 감사는 늘지 않고, 기간 보고서는 기존 차단 유지 · 연속성 확인 불가를 따로 세어 지연에서 뺀다."""
+        tail = self.CASES[case]
         start = self.sql("SELECT now()")[0][0]
         self.sql("INSERT INTO blocklist (actor_ip, reason, requested_by, expires_at)"
                  " VALUES (%s, '시험', 'han', now() + interval '2 days')", (self.IP,))          # 두 지점(기본값) · 다시 걸기와 다른 만료
@@ -2791,60 +3046,86 @@ class RearmPgTest(PgBase):
         self.assertEqual((self.states(), self.state()), ({"gateway": "confirmed", "fw": "confirmed"}, "enforced"))
         kept = self.cols()
         old = self.s3.objects[STATUS]                               # 이 주소가 든 목록의 관문 보고 (다시 걸기 전 회차)
-        if case == "빼기 직전":
-            self.gw.sync(self.now())                                # 관문이 해제 직전 회차 목록(이 주소 있음)을 막 적용했다
-        dead()
-        self.cycle()                                                # 목록에서 빠진다. 관문은 아직 옛 목록이다
+        # 관문이 해제 직전 회차에 이 주소가 든 목록을 적용했다(덮임은 2분 전 회차)
+        pre = self.sql("SELECT now()")[0][0] - timedelta(seconds=100) if case == "덮임" else self.now()
+        self.gw.sync(pre)
+        (self.expire if case == "만료" else release)()
+        self.fw.sync(self.now())
+        self.cycle()                                                # 목록에서 빠진다. 관문 보고는 빠지기 전 목록이다
         self.assertEqual((self.cols(), self.states()), (kept, {"gateway": "removing", "fw": "removing"}))
-        if removed:
+        self.assertEqual("console.block.expired" in self.audit(), case == "만료")
+        if case == "뺀 뒤":
             self.gw.sync(self.now())                                # 관문이 뺐다 (집행기는 아직 모른다)
+        elif case == "오류":
+            self.gw.sync(self.now(), errors=["목록 밖 원소 1개를 빼지 못함"])
+        elif case == "덮임":
+            self.gw.sync(pre + timedelta(seconds=60))               # 관문이 뺐다 (집행기가 읽기 전에 덮인다)
         mark = len(self.audit())
         rearm()
         self.assertEqual(self.sql("SELECT points, released_at FROM blocklist WHERE actor_ip = %s", (self.IP,)),
                          [(["gateway", "fw"], None)])
         # 요청 시각: 다시 걸기 기록만 남고 관문 세 열 · 지점 결과는 그대로다. 남은 빠짐 확인 전이라 종합 상태는 대기다
         self.assertEqual((self.cols(), self.states(), self.state()), (kept, {"gateway": "removing", "fw": "removing"}, "pending"))
-        self.assertIn(event, self.audit()[mark:])
+        self.assertIn("console.block.extended" if case == "만료" else "console.block.rearmed", self.audit()[mark:])
         self.assertEqual(self.unenforced(), [])
-        if removed:
+
+        def held(why):
+            with self.subTest(why=why):
+                self.assertEqual((self.cols(), self.states()["gateway"], self.state()), (kept, "pending", "pending"))
+                self.assertEqual(self.unenforced(), [])
+        if case == "뺀 뒤":
             self.fw.sync(self.now())
             self.cycle()                                            # 다시 든 목록을 올리고 관문이 그 전에 뺀 것을 본다
             self.assertEqual((self.cols(), self.states()["gateway"], self.state()), ((None, None, None), "pending", "pending"))
             [detail] = self.unenforced()
             self.assertTrue(detail.startswith("by=db:opsloop_enforcer ") and detail.endswith(" why=reset"), detail)
+            self.step()
+        elif case == "덮임":
+            post = pre + timedelta(seconds=120)
+
+            def late(key):                                          # 다시 든 목록을 올린 직후 관문 회차 (빠진 목록 보고를 덮는다)
+                if key == be.LIST_KEY:
+                    self.gw.sync(post)
+            self.s3.after_put = late
+            self.fw.sync(self.now())
+            self.cycle()
+            self.s3.after_put = None
+            self.clock = max(self.clock, post)
+            self.step()                                             # 내부 방화벽도 다시 든 목록을 적용한다
         else:
-            def held(why):
-                with self.subTest(why=why):
-                    self.assertEqual((self.cols(), self.states()["gateway"], self.state()), (kept, "pending", "pending"))
-                    self.assertEqual(self.unenforced(), [])
-            if case == "유지":
+            if case == "누락":
                 self.s3.objects[STATUS] = old
                 self.step(gw=False)
                 held("다시 걸기 전 회차의 보고")
                 del self.s3.objects[STATUS]
                 self.step(gw=False)
                 held("보고 없음")
+            elif case == "오류":
+                self.step(gw=False)
+                held("오류가 있는 빠진 목록 보고")
                 self.gw.sync(self.now(), applied=0)
                 self.step(gw=False)
                 held("셈이 맞지 않는 보고")
             else:
                 self.step(gw=False)
                 held("다시 든 목록을 올린 회차 · 관문은 빠지기 전 목록")
-        self.step()                                                 # 관문이 다시 든 목록을 오류 없이 적용했다
+            self.step()                                             # 관문이 다시 든 목록을 오류 없이 적용했다
         enforced_at, method, note = self.cols()
         self.assertEqual(method, "nft")
         self.assertGreater(enforced_at, kept[0])
-        self.assertEqual(note.endswith(be.NOTE_KEPT), not removed, note)
+        mark_ = {"kept": be.NOTE_KEPT, "uncertain": be.NOTE_UNCERTAIN}
+        self.assertRegex(note, r"^관문 반영 · [0-9a-f]{8} · [0-9TZ:-]+" + mark_.get(tail, "") + "$")
         self.assertEqual((self.states(), self.state()), ({"gateway": "confirmed", "fw": "confirmed"}, "enforced"))
         marks = ("console.block.enforced", "console.block.unenforced")
-        want = [marks[0]] + ([marks[1]] if removed else []) + [marks[0]]
+        want = [marks[0]] + ([marks[1]] if tail is None else []) + [marks[0]]
         self.assertEqual([e for e in self.audit() if e in marks], want)
         for _ in range(3):
             self.step()                                             # 같은 확인이 이어져도 감사는 늘지 않는다
         self.assertEqual([e for e in self.audit() if e in marks], want)
+        self.assertEqual(self.cols(), (enforced_at, method, note))
         report = self.enforce_report(start)
-        if report is not None:                                      # 새 요청 2(처음 · 다시 걸기), 기존 차단 유지는 지연에서 뺀다
-            self.assertEqual(tuple(report), (2, 2, 0) if removed else (2, 1, 1))
+        if report is not None:                                      # 새 요청 2(처음 · 다시 걸기). 유지 · 확인 불가는 지연에서 뺀다
+            self.assertEqual(tuple(report), {"kept": (2, 1, 1, 0), "uncertain": (2, 1, 0, 1), None: (2, 2, 0, 0)}[tail])
 
     def console_rearm(self, points):
         def rearm():
@@ -2857,17 +3138,30 @@ class RearmPgTest(PgBase):
     def release(self):
         self.sql("UPDATE blocklist SET released_at = now(), released_by = 'boss' WHERE actor_ip = %s", (self.IP,))
 
+    def system_release(self):
+        """시스템 해제(released_by 없음). triage · 흡수 후속 차단은 사람이 푼 행은 되살리지 않고 이 행은 다시 건다."""
+        self.sql("UPDATE blocklist SET released_at = now() WHERE actor_ip = %s", (self.IP,))
+
     def console_gw(self, case):
-        self.gw_scenario(self.release, self.console_rearm(["gateway", "fw"]), "console.block.rearmed", case)
+        self.gw_scenario(self.release, self.console_rearm(["gateway", "fw"]), case)
 
     def test_콘솔_차단_관문_포함_유지(self):
         self.console_gw("유지")
 
-    def test_콘솔_차단_관문_포함_빼기_직전(self):
-        self.console_gw("빼기 직전")
-
     def test_콘솔_차단_관문_포함_전체_모드(self):
         self.console_gw("전체 모드")
+
+    def test_콘솔_차단_관문_포함_만료_뒤(self):
+        self.console_gw("만료")
+
+    def test_콘솔_차단_관문_포함_오류_보고(self):
+        self.console_gw("오류")
+
+    def test_콘솔_차단_관문_포함_보고_누락(self):
+        self.console_gw("누락")
+
+    def test_콘솔_차단_관문_포함_덮인_보고(self):
+        self.console_gw("덮임")
 
     def test_콘솔_차단_관문_포함_관문이_뺀_뒤(self):
         self.console_gw("뺀 뒤")
@@ -2883,16 +3177,25 @@ class RearmPgTest(PgBase):
         return rearm
 
     def triage_gw(self, case):
-        self.gw_scenario(self.expire, self.triage_rearm(), "console.block.extended", case)
+        self.gw_scenario(self.system_release, self.triage_rearm(), case)
 
     def test_triage_판정_관문_포함_유지(self):
         self.triage_gw("유지")
 
-    def test_triage_판정_관문_포함_빼기_직전(self):
-        self.triage_gw("빼기 직전")
-
     def test_triage_판정_관문_포함_전체_모드(self):
         self.triage_gw("전체 모드")
+
+    def test_triage_판정_관문_포함_만료_뒤(self):
+        self.triage_gw("만료")
+
+    def test_triage_판정_관문_포함_오류_보고(self):
+        self.triage_gw("오류")
+
+    def test_triage_판정_관문_포함_보고_누락(self):
+        self.triage_gw("누락")
+
+    def test_triage_판정_관문_포함_덮인_보고(self):
+        self.triage_gw("덮임")
 
     def test_triage_판정_관문_포함_관문이_뺀_뒤(self):
         self.triage_gw("뺀 뒤")
@@ -2917,23 +3220,32 @@ class RearmPgTest(PgBase):
             finally:
                 await c.close()
 
-        def rearm():                                                # 관문을 포함한 약속이 만료된 흡수 출발지를 다시 건다
+        def rearm():                                                # 관문을 포함한 약속이 해제 · 만료된 흡수 출발지를 다시 건다
             self.sql("INSERT INTO absorbed_blocks (first_key, expires_at, requested_by, points)"
                      " VALUES (%s, now() + interval '1 day', 'han', '{gateway,fw}')", (first,))
             self.assertEqual(asyncio.run(follow()), [(first, 1)])
         return rearm
 
     def follow_gw(self, case):
-        self.gw_scenario(self.expire, self.follow_rearm(), "console.block.extended", case)
+        self.gw_scenario(self.system_release, self.follow_rearm(), case)
 
     def test_흡수_후속_차단_관문_포함_유지(self):
         self.follow_gw("유지")
 
-    def test_흡수_후속_차단_관문_포함_빼기_직전(self):
-        self.follow_gw("빼기 직전")
-
     def test_흡수_후속_차단_관문_포함_전체_모드(self):
         self.follow_gw("전체 모드")
+
+    def test_흡수_후속_차단_관문_포함_만료_뒤(self):
+        self.follow_gw("만료")
+
+    def test_흡수_후속_차단_관문_포함_오류_보고(self):
+        self.follow_gw("오류")
+
+    def test_흡수_후속_차단_관문_포함_보고_누락(self):
+        self.follow_gw("누락")
+
+    def test_흡수_후속_차단_관문_포함_덮인_보고(self):
+        self.follow_gw("덮임")
 
     def test_흡수_후속_차단_관문_포함_관문이_뺀_뒤(self):
         self.follow_gw("뺀 뒤")
@@ -2953,7 +3265,8 @@ class RearmPgTest(PgBase):
           narrow   관리자 관문 빼기 뒤(관문 빠짐 확인 전) 같은 회차 안에 풀고 다시 건다
           released 풀고 한 회차 뒤(두 지점 빠짐 확인 전) 다시 건다
         lost 가 있으면 확인 전에 상태 파일을 잃는다('before' 관문이 다시 든 목록을 적용하기 전 · 'after' 적용한 뒤). 어느 경우든 다시 걸기
-        전의 확인(T1)을 이어받지 않고 다시 든 목록의 새 보고로 기존 차단 유지를 적는다(감사 enforced 한 줄 · 보고서 maintained)."""
+        전의 확인(T1)을 이어받지 않고 다시 든 목록의 새 보고로 확인한다(감사 enforced 한 줄). 관문 보고가 이어졌으면 기존 차단 유지(보고서
+        maintained)이고, 상태 파일을 잃었으면 장부 · 보고 이력이 없어 연속성 확인 불가(보고서 uncertain)다(결정 3)."""
         start = self.sql("SELECT now()")[0][0]
         self.sql("INSERT INTO blocklist (actor_ip, reason, requested_by, expires_at)"
                  " VALUES (%s, '시험', 'han', now() + interval '2 days')", (self.IP,))          # 두 지점(기본값) · 다시 걸기와 다른 만료
@@ -3002,7 +3315,7 @@ class RearmPgTest(PgBase):
         enforced_at, method, note = self.cols()
         self.assertEqual(method, "nft")
         self.assertGreater(enforced_at, kept[0])
-        self.assertTrue(note.endswith(be.NOTE_KEPT), note)
+        self.assertTrue(note.endswith(be.NOTE_UNCERTAIN if lost else be.NOTE_KEPT), note)
         self.assertEqual((self.states(), self.state()), ({"gateway": "confirmed", "fw": "confirmed"}, "enforced"))
         marks = ("console.block.enforced", "console.block.unenforced")
         self.assertEqual([e for e in self.audit() if e in marks], [marks[0]] * 2)
@@ -3010,8 +3323,8 @@ class RearmPgTest(PgBase):
             self.step()                                             # 같은 확인이 이어져도 감사는 늘지 않는다
         self.assertEqual([e for e in self.audit() if e in marks], [marks[0]] * 2)
         report = self.enforce_report(start)
-        if report is not None:                                      # 관문 요청 2(처음 · 관문 포함 다시 걸기), 다시 걸기는 기존 차단 유지
-            self.assertEqual(tuple(report), (2, 1, 1))
+        if report is not None:                                      # 관문 요청 2(처음 · 관문 포함 다시 걸기), 다시 걸기는 지연에서 뺀다
+            self.assertEqual(tuple(report), (2, 1, 0, 1) if lost else (2, 1, 1, 0))
 
     def test_콘솔_관문_없이_다시_건_행을_같은_회차에_풀고_관문_포함_다시_걸기(self):
         self.regain("fw")
@@ -3164,9 +3477,9 @@ class CrossVersionTest(ChoiceBase):
             self.skipTest(f"P 판을 읽지 못함: {p.stderr.strip()[:80]}")
         with open(os.path.join(HERE, "testdata", "block_enforcer_p.py"), encoding="utf-8") as f:
             src = f.read()
-        nodes = [n for n in ast.parse(src).body if isinstance(n, (ast.Assign, ast.FunctionDef))
+        nodes = [n for n in ast.parse(src).body if isinstance(n, (ast.Assign, ast.FunctionDef, ast.ClassDef))
                  and not (isinstance(n, ast.Assign) and n.targets[0].id == "P_COMMIT")]
-        self.assertEqual(len(nodes), 17)
+        self.assertEqual(len(nodes), 98)
         for n in nodes:
             self.assertIn(ast.get_source_segment(src, n), p.stdout, getattr(n, "name", None))
 
