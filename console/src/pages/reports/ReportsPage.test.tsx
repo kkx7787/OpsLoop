@@ -220,8 +220,11 @@ describe('구역', () => {
     expect(rowOf(states)).toEqual(['5', '2', '1', '1', '0', '1'])
 
     const targets = screen.getByRole('region', { name: '관제 대상 · 수집' })
-    expect(within(targets).getByText('AWS 센서').closest('tr')).toHaveTextContent('차단 적용 3 (수집 관문) · 차단 적용 여부 미확인 1')
-    expect(within(targets).getByText('관제 콘솔').closest('tr')).toHaveTextContent('생존 상태 미확인')
+    expect(within(targets).getByText('허니팟 센서').closest('tr')).toHaveTextContent('차단 적용 3 (수집 관문) · 차단 적용 여부 미확인 1')
+    // 콘솔(#76): 수집 칸은 '응답 중' 과 출력 시각의 DB 연결이다. 대기 · 미확인 · 생존 확정 글이 없다(대응 칸의 지점 없음 문구는 다른 뜻이라 그대로)
+    const consoleCollect = within(targets).getByText('관제 콘솔').closest('tr')!.querySelector('td[data-label="수집"]') as HTMLElement
+    expect(consoleCollect).toHaveTextContent(/^응답 중출력 시각의 DB 연결: 콘솔 A 있음 · 콘솔 B 없음\(평소 꺼 두는 예비\)$/)
+    expect(consoleCollect.textContent).not.toMatch(/대기|미확인|생존|정상/)
     expect(within(targets).getByText('관제 콘솔').closest('tr')!.lastElementChild).toHaveTextContent(/^차단 적용 여부 미확인$/)
     expect(rowOf(within(targets).getByRole('table', { name: 'web-01 자원 (기간 최대)' }))).toEqual(['88%', '61%', '—', '10,000', '2분'])
 

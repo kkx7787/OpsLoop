@@ -11,7 +11,9 @@ import { monitoringKeys } from './monitoring-keys'
  *  GET /api/dashboard/targets → TargetsResult (고정 대상 네 곳 · 등록 노드(#64)의 수집 · 보안 · 시스템 · 대응 · 취약점 요약)
  * 수치는 대상별이다. 한 사건이 여러 대상에 붙을 수 있어 카드 합은 전체 사건 수가 아니다.
  * 생존 신호가 없는 대상은 서버가 '미확인'(unknown)으로 답한다. 화면은 로그 시각만으로 정상 · 장애 색을 입히지 않는다.
- * 화면은 대상을 세 무리로 나눠 그린다(#72): 보호 대상(web-01 · 등록 노드) · 관측 센서(aws-sensor) · 관제 시스템(console · data-node).
+ * 콘솔은 '응답 중'(responding)과 DB 연결 확인(db_links)이다(#76). 생존을 확정하지 않는다.
+ * 화면은 대상을 세 무리로 나눠 그린다(#72): 보호 대상(web-01 · 등록 노드) · 관측 센서(aws-sensor, 허니팟 센서) · 관제 시스템(console · data-node).
+ * 보호 대상은 대시보드, 관측 센서 · 관제 시스템은 수집 · 관제 상태 화면(#84)이 그린다.
  * 판정 대기 사건(queue, 옛 이름 '먼저 처리할 사건')은 이 경로에만 있다(보고서의 같은 계산에는 없다).
  */
 
@@ -21,7 +23,7 @@ export type FixedTargetId = (typeof TARGET_IDS)[number]
 /** 대상 id. 고정 네 값이거나 등록 노드의 node_id(#64, 고정 값과 겹치지 않는다) */
 export type TargetId = string
 
-/** fixed 고정 대상 · node 수집 노드 표(nodes)에 등록한 노드(#64). 이전 서버는 싣지 않는다 */
+/** fixed 고정 대상 · node 노드 표(nodes)에 등록한 노드(#64). 이전 서버는 싣지 않는다 */
 export const TARGET_KINDS = ['fixed', 'node'] as const
 export type TargetKind = (typeof TARGET_KINDS)[number]
 
@@ -41,9 +43,20 @@ export function targetKind(target: Pick<Target, 'id' | 'kind'>): TargetKind {
   return isFixedTargetId(target.id) ? 'fixed' : 'node'
 }
 
-/** 수집 상태. ok 정상 · quiet 요청 없음(신호는 있고 로그만 없다) · no_signal 수신 없음 · unknown 생존 상태 미확인 */
-export const COLLECTION_STATES = ['ok', 'quiet', 'no_signal', 'unknown'] as const
+/**
+ * 수집 상태. ok 정상 · quiet 요청 없음(신호는 있고 로그만 없다) · no_signal 수신 없음 · unknown 생존 상태 미확인 ·
+ * responding 응답 중(콘솔만, #76: 이 조회에 응답했다는 사실. 생존을 확정하지 않는다)
+ */
+export const COLLECTION_STATES = ['ok', 'quiet', 'no_signal', 'unknown', 'responding'] as const
 export type CollectionState = (typeof COLLECTION_STATES)[number]
+
+/** 콘솔 DB 연결 하나(#76): 콘솔 역할 세션 가운데 그 콘솔 이름(application_name)인 연결이 있는가. note 는 없을 때 붙일 말 */
+export interface ConsoleDbLink {
+  name: string
+  label: string
+  present: boolean
+  note: string | null
+}
 
 /** 자원 지표 상태. 지표를 보내는 노드(web-01 · 등록 노드 가운데 node_metrics 에 있는 것)만 수집한다 */
 export const SYSTEM_STATES = ['ok', 'stale', 'not_collected', 'no_privilege', 'no_data'] as const
@@ -95,9 +108,11 @@ export interface TargetCollection {
   stopped?: Array<'loader' | 'enforcer' | 'detect'>
   /** web-01 · 등록 노드만: 경고 표지(#82). state 는 그대로다. 이전 서버에는 없다 */
   warnings?: TargetWarning[]
+  /** 콘솔만: DB 연결 확인(#76). 읽지 못하면 null('확인 불가'), 콘솔이 아니거나 이전 서버면 없다. 글은 reason 이 이미 말한다 */
+  db_links?: ConsoleDbLink[] | null
 }
 
-/** 발생원(Cowrie · 웹 디코이 · AWS 관문) 하나의 수치. AWS 센서만 있다 */
+/** 발생원(SSH 허니팟(Cowrie) · 웹 디코이 · 허니팟 관문) 하나의 수치. 허니팟 센서만 있다 */
 export interface TargetPart {
   key: string
   label: string
@@ -162,6 +177,15 @@ export interface TargetResponse {
   failed?: number | null
   /** 그 지점에서 적용을 확인하지 못한 살아 있는 차단 수(대기 · 확인 지연 · 기록 없음) */
   unverified: number | null
+  /** 미확인 가운데 지점 불일치(5분 넘게 미반영 · 적용 수 부족) 수. 지점이 없으면 null. 이전 서버에는 없다 */
+  stale?: number | null
+  /**
+   * 미확인 가운데 확인 전(pending)이고 정상 반영 시간(5분) 안인 수(#84 결정 6, enforcement.<지점>.since 기준). 지점이 없으면 null.
+   * 이전 서버에는 없다
+   */
+  checking?: number | null
+  /** 미확인 가운데 5분 넘게 확인 전이거나 지점 불일치(stale)인 수(#84 결정 6). 지점이 없으면 null. 이전 서버에는 없다 */
+  delayed?: number | null
   /** 그 지점을 요청하지 않은 살아 있는 차단 수(이슈 #77). 적용 · 실패 · 미확인은 요청한 행만 센다. 지점이 없으면 null. 이전 서버에는 없다 */
   unrequested?: number | null
   /** 그 지점을 요청했다가 빼서 그 지점이 뺐다고 확인하기 전인 차단 수(이슈 #77 결정 14). 지점이 없으면 null. 이전 서버에는 없다 */
@@ -173,6 +197,11 @@ export interface TargetResponse {
   stalled?: string | null
   /** stalled 가 집행기 멈춤이 아니라 생존 신호 표를 읽을 수 없어서다(확인 불가, #82). 지점이 없으면 null. 이전 서버에는 없다 */
   unreadable?: boolean | null
+  /**
+   * 지점 보고 문제(#84 결정 1): 관제 이상 띠 report:<지점> 과 같은 판정(15분 오래됨 · 읽기 문제 5분 이어짐)의 글. 없으면 null.
+   * 집행기가 멈췄으면(stalled) null 이다. 이전 서버에는 없다
+   */
+  report_issue?: string | null
 }
 
 export interface TargetAssetVulns {
@@ -233,7 +262,7 @@ export interface TargetsResult {
 
 /**
  * 판정 대기 사건 한 줄. 요약 oldest_pending 과 같은 칸에 묶음 · 관련 장비를 더했다(rule_version 은 없다).
- * lane front: 보호 대상 · 관제 시스템 · 장비 미확인, back: AWS 센서(허니팟 · 디코이)뿐
+ * lane front: 보호 대상 · 관제 시스템 · 장비 미확인, back: 허니팟 센서(허니팟 · 디코이)뿐
  */
 export type QueueItem = PendingIncident & Pick<IncidentBase, 'devices' | 'device_state' | 'device_fallback'> & { lane: 'front' | 'back' }
 

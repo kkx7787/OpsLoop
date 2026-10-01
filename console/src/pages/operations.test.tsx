@@ -7,6 +7,7 @@ import { AuditPage } from './audit/AuditPage'
 import { noRetryClient, renderRoutes } from '@/test/render'
 import { json } from '@/test/monitoring-fixtures'
 import { RULES, nodeEntry, auditEntry } from '@/test/operations-fixtures'
+import { targetsResult } from '@/test/targets-fixtures'
 import { applyLiveMessage } from '@/api/live'
 import { expectInertDom, expectLongFolds, expectMixedRevealed, HOSTILE, LONG, MIXED } from '@/test/hostile-fixtures'
 
@@ -19,6 +20,7 @@ function setup(path: string, role='admin', failure=false) {
     if(failure) return json({detail:'일시 오류'},503)
     if(url.pathname==='/api/rules/quality') return json(RULES)
     if(url.pathname==='/api/nodes') return json({as_of:rows[0].checked_at,rows})
+    if(url.pathname==='/api/dashboard/targets') return json(targetsResult())
     if(url.pathname==='/api/audit') return json({rows: [auditEntry(Number(url.searchParams.get('offset') || 0))],total:26,limit:25,offset:Number(url.searchParams.get('offset') || 0)})
     if(url.pathname==='/api/nodes/enrollments' && init?.method==='POST') return json({id:1,node_id:'web-01',token:TOKEN,issued_at:new Date().toISOString(),expires_at:new Date(Date.now()+3600000).toISOString()},201)
     if(url.pathname.endsWith('/cancel')) return json({canceled:true})
@@ -101,12 +103,13 @@ describe('규칙 결과',()=>{
 describe('노드와 토큰',()=>{
   it('침묵·대기 상태를 구분하고 검색한다',async()=>{
     setup('/nodes');await screen.findByText('quiet-01')
-    const region=screen.getByRole('region',{name:'수집 노드 표'})
+    const region=screen.getByRole('region',{name:'등록 노드 표'})
     expect(within(region).getByText('침묵')).toBeInTheDocument()
     expect(within(region).getByText('대기')).toBeInTheDocument()
-    // 상태 기준 · 해석은 '상태' 열 머리 ⓘ (이 표는 좁은 화면에서도 머리를 보인다). 조회 시각은 카드 머리
+    // 상태 기준 · 해석은 '상태' 열 머리 ⓘ (이 표는 좁은 화면에서도 머리를 보인다). 조회 시각은 제목 줄 기준 시각 하나(#84)
     expect(within(region).getByRole('columnheader',{name:/^상태/})).toHaveAccessibleDescription(/침묵: 등록 또는 마지막 수신 뒤 10분 넘게 없음.*서버 장애를 확정하지 않습니다/)
-    expect(screen.getByRole('heading',{name:'등록 노드 3개'}).parentElement).toHaveTextContent(/KST 기준/)
+    expect(screen.getByRole('heading',{name:'등록 노드 3개'}).parentElement).not.toHaveTextContent(/KST 기준/)
+    await waitFor(()=>expect(document.querySelector('[data-page-status]')).toHaveTextContent(/^기준 \d\d:\d\d:\d\d$/))
     expect(screen.queryByText(/기준 · 30초마다 재조회/)).toBeNull()
     fireEvent.change(screen.getByRole('textbox'),{target:{value:'quiet'}})
     expect(screen.queryByText('web-01')).toBeNull()
@@ -218,7 +221,9 @@ describe('감사 기록',()=>{
 
   it.each(['/rules','/nodes','/audit'])('%s 조회 실패를 빈 목록으로 숨기지 않는다',async path=>{
     setup(path,'admin',true)
-    expect(await screen.findByText('일시 오류 (HTTP 503)')).toBeInTheDocument()
+    // 수집 · 관제 상태(/nodes)는 노드 표와 상태판이 따로 실패를 보인다
+    expect((await screen.findAllByText('일시 오류 (HTTP 503)'))[0]).toBeInTheDocument()
+    expect(screen.queryByText('등록된 노드가 없습니다.')).toBeNull()
     expect(screen.queryByText('조건에 맞는 감사 기록이 없습니다.')).toBeNull()
   })
 })

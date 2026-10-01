@@ -284,7 +284,7 @@ export function blockStateHint(block: BlockFields, state: BlockState): string {
  * 집행 지점(이슈 #51). 관문은 허니팟 유입(22 · 23 · 8080)을, 내부 방화벽은 실서비스(web-01) 앞에서 외부 역할 세그먼트의 출발지를 막는다.
  * 종합 상태(blockState)는 요청한 지점 모두로 가른 것이고, 지점별 결과는 enforcement 로 따로 보인다
  */
-export const ENFORCE_POINTS: ReadonlyArray<readonly [BlockPoint, string]> = [['gateway', 'AWS 관문'], ['fw', '내부 방화벽']]
+export const ENFORCE_POINTS: ReadonlyArray<readonly [BlockPoint, string]> = [['gateway', '허니팟 관문'], ['fw', '내부 방화벽']]
 
 /**
  * 지점 칸의 상태. 결과 상태에 더해 미요청(그 지점을 요청하지 않았고 남은 기록도 없음) · 빠짐(목록에서 빠진 행을 그 지점이 뺐음)을

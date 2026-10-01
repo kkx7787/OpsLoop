@@ -40,7 +40,7 @@ export interface ButtonClassOptions {
 
 /**
  * 버튼 모양 클래스. <a> · 라우터 Link 를 버튼처럼 보일 때도 쓴다.
- *   <Link to="/nodes" className={buttonClasses({ variant: 'secondary' })}>수집 노드 보기</Link>
+ *   <Link to="/nodes" className={buttonClasses({ variant: 'secondary' })}>수집 · 관제 상태 보기</Link>
  */
 export function buttonClasses({
   variant = 'secondary',

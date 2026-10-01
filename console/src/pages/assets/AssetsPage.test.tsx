@@ -85,7 +85,7 @@ describe('자산 · 취약점', () => {
     // 오래됨 기준 · 대조 범위는 신선도 접힘 안에 둔다
     expect(screen.getByText('48시간 넘게 새로 받지 못하면 오래됨입니다.').closest('details')).toHaveTextContent('공개 정보 신선도')
     expect(screen.queryByText(/공개 정보가 오래됐습니다/)).toBeNull()
-    expect(screen.getByRole('link', { name: '수집 노드' })).toHaveAttribute('href', '/nodes')
+    expect(screen.getByRole('link', { name: '수집 · 관제 상태' })).toHaveAttribute('href', '/nodes')
     expect(screen.queryByRole('region', { name: /자산 상세$/ })).toBeNull()
   })
 

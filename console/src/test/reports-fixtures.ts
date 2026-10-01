@@ -38,8 +38,8 @@ export const BLOCKS_SECTION: BlocksSection = {
 export const TARGETS_SECTION: TargetsSection = {
   available: true, basis: 'mixed', notes: ['대상별 수집 · 대응: 출력 시각의 상태판 값'],
   targets: [
-    { id: 'aws-sensor', label: 'AWS 센서', collection: { state: 'ok', reason: '생존 신호 2분 전' }, response: { point_label: '수집 관문', applied: 3, failed: 0, unverified: 1, exempt: 0, stalled: null } },
-    { id: 'console', label: '관제 콘솔', collection: { state: 'unknown', reason: '생존 신호 없음' }, response: { point_label: null, applied: null, failed: null, unverified: null, exempt: 0, stalled: null } },
+    { id: 'aws-sensor', label: '허니팟 센서', collection: { state: 'ok', reason: '생존 신호 2분 전' }, response: { point_label: '수집 관문', applied: 3, failed: 0, unverified: 1, exempt: 0, stalled: null } },
+    { id: 'console', label: '관제 콘솔', collection: { state: 'responding', reason: '출력 시각의 DB 연결: 콘솔 A 있음 · 콘솔 B 없음(평소 꺼 두는 예비)' }, response: { point_label: null, applied: null, failed: null, unverified: null, exempt: 0, stalled: null } },
   ],
   sensors: [{ sensor: 'cowrie', events: 91_000 }, { sensor: 'decoy', events: 1_200 }],
   detector: { runs: 2_016, max_gap_seconds: 900 },

@@ -8,7 +8,7 @@ function device(id: string, extra: Partial<IncidentDevice> = {}): IncidentDevice
 
 const WEB = device('web-01', { logs: ['웹 접근'] })
 const DECOY = device('aws-sensor', { part: 'decoy', label: '웹 디코이', group: 'sensor', logs: ['웹 요청'] })
-const COWRIE_GUESS = device('aws-sensor', { part: 'cowrie', label: 'Cowrie', group: 'sensor', logs: ['SSH 세션'], basis: 'fallback' })
+const COWRIE_GUESS = device('aws-sensor', { part: 'cowrie', label: 'SSH 허니팟(Cowrie)', group: 'sensor', logs: ['SSH 세션'], basis: 'fallback' })
 const DATA_NODE = device('data-node', { label: '데이터 노드', group: 'monitor', logs: ['수집 관문', '원장 가져오기'], basis: 'rule_scope' })
 
 const ids = (list: IncidentDevice[]) => list.map(deviceKey)
@@ -59,7 +59,7 @@ describe('deviceView', () => {
   })
 
   it('규칙 범위와 대체 추정이 함께 오면(세션을 못 고른 R002) 규칙 범위만 known', () => {
-    const aws = device('aws-sensor', { label: 'AWS 센서', group: 'sensor', logs: ['세션 기록'], basis: 'rule_scope' })
+    const aws = device('aws-sensor', { label: '허니팟 센서', group: 'sensor', logs: ['세션 기록'], basis: 'rule_scope' })
     const view = deviceView({ devices: [aws], device_state: 'rule_scope', device_fallback: [COWRIE_GUESS] })
     expect(view.known).toEqual([aws])
     expect(view.unknown).toBe(false)

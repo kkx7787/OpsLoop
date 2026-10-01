@@ -49,7 +49,7 @@ describe('출발지 상세', () => {
     const summary = screen.getByRole('region', { name: '요약' })
     expect(within(summary).getByText('4건 · 미판정 1')).toBeInTheDocument()
     expect(within(summary).getByText('R001 · R003')).toBeInTheDocument()
-    expect(within(summary).getByText('AWS 센서')).toBeInTheDocument()
+    expect(within(summary).getByText('허니팟 센서')).toBeInTheDocument()
     // 흡수 기록은 요약 항목 하나, 계산 기준(사건 수에 들지 않음)은 이름 옆 ⓘ
     expect(fact(summary, '흡수 기록')).toHaveTextContent('3건')
     expect(within(summary).getByRole('button', { name: '흡수 기록 설명' })).toHaveAccessibleDescription(/흡수된 사건은 사건 수에 들지 않습니다/)
@@ -161,7 +161,7 @@ describe('출발지 상세', () => {
     expect(block.querySelector('[data-enforce-point="gateway"]')).toHaveAttribute('data-point-state', 'stale')
     expect(screen.getByText('집행기 확인이 멈췄습니다')).toBeInTheDocument()
     // 멈춤 띠 · 금지 대역 줄은 경고라 도움말 안이 아니라 본문에 있다
-    expect(screen.getByText(/AWS 관문 · 10분 넘게 확인 없음$/).closest('[data-infotip]')).toBeNull()
+    expect(screen.getByText(/허니팟 관문 · 10분 넘게 확인 없음$/).closest('[data-infotip]')).toBeNull()
     expect(block.querySelector('[data-block-exempt]')!.closest('[data-infotip]')).toBeNull()
     expect(within(block.querySelector<HTMLElement>('[data-enforce-point="gateway"]')!).getByRole('button', { name: /설명$/ })).toHaveAccessibleDescription(/마지막 적용 확인을 믿지 않습니다/)
   })
@@ -175,7 +175,7 @@ describe('출발지 상세', () => {
     expect(within(block).getByText('내부 방화벽 반영 확인')).toBeInTheDocument()
     // 관문 집행기가 멈췄어도 미요청은 요청 사실이라 확인 지연으로 바꾸지 않는다
     expect(states()).toEqual([['gateway', 'unrequested'], ['fw', 'confirmed']])
-    expect(block.querySelector('[data-enforce-point="gateway"]')).toHaveTextContent(/^AWS 관문미요청$/)
+    expect(block.querySelector('[data-enforce-point="gateway"]')).toHaveTextContent(/^허니팟 관문미요청$/)
     unmount()
 
     const released = { ...LIVE_BLOCK, released_at: '2026-09-29T02:30:00Z', enforced_at: null, enforcement: { fw: { state: 'removing' as const, since: '2026-09-29T02:31:00Z', mode: 'nft', note: null } } }

@@ -66,7 +66,7 @@ describe('출발지 목록', () => {
     expect(within(row).getByText('미판정 1')).toBeInTheDocument()
     expect(within(row).getByText('critical')).toHaveAttribute('data-severity', 'critical')
     expect(row.textContent).toContain('R001 · R003')
-    expect(within(row).getByText('AWS 센서')).toBeInTheDocument()
+    expect(within(row).getByText('허니팟 센서')).toBeInTheDocument()
     const mix = within(row).getByRole('list', { name: '판정 분포' })
     expect([...mix.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['실제 위협2', '무시 가능1'])
     // 차단 상태는 사건 상세 · 차단 목록과 같은 나눔 · 같은 지점별 결과. 요청한 두 지점 가운데 내부 방화벽이 대기라 집행 대기다(#77)
@@ -215,7 +215,7 @@ describe('출발지 목록', () => {
     // '사건 있는 출발지만'은 제목과 표 캡션이 말한다. 수집 상태를 의심하게 하지 않는다
     expect(screen.getByText(/주소가 있는 사건의 출발지만 보입니다/)).toBeInTheDocument()
     expect(screen.queryByText(/수집 상태부터 확인/)).toBeNull()
-    expect(screen.queryByRole('link', { name: '수집 노드 보기' })).toBeNull()
+    expect(screen.queryByRole('link', { name: '수집 · 관제 상태 보기' })).toBeNull()
     // 지문 조건 띠: '같은 지문 ≠ 같은 행위자'는 본문 한 줄, 근거는 ⓘ
     expect(container.querySelector('[data-same-tool]')).toHaveTextContent(/^같은 지문이 같은 행위자라는 뜻은 아닙니다/)
     expect(screen.getByRole('button', { name: '도구 지문 조건 설명' })).toHaveAccessibleDescription(/흔한 라이브러리 · 도구.*판정은 사건마다 합니다/)
@@ -234,7 +234,7 @@ describe('출발지 목록', () => {
     const row = (await screen.findByRole('link', { name: '198.51.100.23' })).closest('tr')!
     expect(screen.getByText('집행기 확인이 멈췄습니다')).toBeInTheDocument()
     // 띠는 멈춘 지점과 사실 한 줄(집행 미확인 경고라 본문. 도움말 안이 아니다)
-    expect(screen.getByText(/AWS 관문 · 10분 넘게 확인 없음$/).closest('[data-infotip]')).toBeNull()
+    expect(screen.getByText(/허니팟 관문 · 10분 넘게 확인 없음$/).closest('[data-infotip]')).toBeNull()
     const gateway = row.querySelector<HTMLElement>('[data-enforce-point="gateway"]')!
     expect(gateway).toHaveAttribute('data-point-state', 'stale')
     expect(gateway.textContent).toContain('확인 지연')

@@ -79,7 +79,7 @@ export function IncidentsPage() {
         description={active > 0 ? `${active}개 조건 적용 중 · 0건이 정상인지 수집 상태부터 확인해 주세요` : '0건이 정상인지 수집 상태부터 확인해 주세요'}
         actions={<>
           {active > 0 && <Button variant="primary" size="sm" onClick={() => setFilters(clearFilters(filters))}>조건 초기화</Button>}
-          <Link to="/nodes" className={buttonClasses({ size: 'sm' })}>수집 노드 보기</Link>
+          <Link to="/nodes" className={buttonClasses({ size: 'sm' })}>수집 · 관제 상태 보기</Link>
         </>}
       />
     )

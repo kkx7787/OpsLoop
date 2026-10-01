@@ -35,7 +35,7 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   {
     label: '수집',
     items: [
-      { to: '/nodes', label: '수집 노드', icon: IconNodes },
+      { to: '/nodes', label: '수집 · 관제 상태', icon: IconNodes },
       { to: '/inventory', label: '자산 · 취약점', icon: IconAssets },
     ],
   },

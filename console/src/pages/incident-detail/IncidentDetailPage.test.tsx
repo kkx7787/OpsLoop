@@ -844,17 +844,17 @@ describe('IncidentDetailPage · 차단 집행(#47)', () => {
   })
 
   it('차단 금지 대역 출발지는 차단 단추를 흐리고 까닭을 보인다', async () => {
-    const fetch = stubApi({ body: detail({ actor: { ...detail().actor, blocked: null, exempt: { cidr: '15.164.37.49/32', note: 'AWS 관문 EIP' } } }) })
+    const fetch = stubApi({ body: detail({ actor: { ...detail().actor, blocked: null, exempt: { cidr: '15.164.37.49/32', note: '허니팟 관문 EIP' } } }) })
     renderRoutes(routes(), PATH)
     const { panel } = await readyPanel()
     const button = panel.getByRole('button', { name: '차단' })
     expect(button).toHaveAttribute('aria-disabled', 'true')
     fireEvent.click(button)
     expect(panel.queryByRole('form', { name: '차단 확인' })).toBeNull()
-    expect(panel.getByText(/^차단 금지 대역 15\.164\.37\.49\/32\(AWS 관문 EIP\)에 들어 차단할 수 없습니다/, { selector: 'p' })).toHaveTextContent(/^차단 금지 대역 15\.164\.37\.49\/32\(AWS 관문 EIP\)에 들어 차단할 수 없습니다\. /)
+    expect(panel.getByText(/^차단 금지 대역 15\.164\.37\.49\/32\(허니팟 관문 EIP\)에 들어 차단할 수 없습니다/, { selector: 'p' })).toHaveTextContent(/^차단 금지 대역 15\.164\.37\.49\/32\(허니팟 관문 EIP\)에 들어 차단할 수 없습니다\. /)
     expect(panel.getByRole('button', { name: '차단 금지 대역 설명' })).toHaveAccessibleDescription('인프라 · 사설 · 예약 주소는 막지 않습니다.')
     const actor = screen.getByRole('region', { name: '행위자 이력' })
-    expect(actor.querySelector('[data-block-exempt]')).toHaveTextContent('차단 금지 대역 15.164.37.49/32(AWS 관문 EIP) · 이 출발지는 차단하지 않습니다')
+    expect(actor.querySelector('[data-block-exempt]')).toHaveTextContent('차단 금지 대역 15.164.37.49/32(허니팟 관문 EIP) · 이 출발지는 차단하지 않습니다')
     expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toBeUndefined()
   })
 
@@ -877,7 +877,7 @@ describe('IncidentDetailPage · 차단 집행(#47)', () => {
     const box = panel.getByRole('form', { name: '차단 확인' })
     const form = within(box)
     const sentence = box.querySelector('p') as HTMLElement
-    // 집행 제외는 두 지점(AWS 관문 · 내부 방화벽) 모두에서 빠진다(#72)
+    // 집행 제외는 두 지점(허니팟 관문 · 내부 방화벽) 모두에서 빠진다(#72)
     expect(sentence).toHaveTextContent(/^출발지 4\.4\.66\.84 에는 만료 없는 옛 차단이 살아 있어 두 지점 집행에서 빠집니다\(집행 제외\)\. 이 요청은 사유 · 요청자만 바꿉니다\. 지점에서 막으려면 admin 이 해제한 뒤 다시 차단합니다\./)
     // 만료 칸이 보여도 이 요청이 무엇을 바꾸는지(요청의 효과)는 ⓘ 가 아니라 본문에 있다
     expect(form.getByText(/이 요청은 사유 · 요청자만 바꿉니다/).closest('[data-infotip]')).toBeNull()
@@ -897,7 +897,7 @@ describe('IncidentDetailPage · 차단 집행(#47)', () => {
     expect(sentence).toHaveTextContent(/^출발지 4\.4\.66\.84 를 1일 \(24시간\) 동안 차단합니다\./)
     expect(sentence).not.toHaveTextContent('만료되면 저절로 풀립니다')
     // 처리 과정 · 예외는 문장 끝 도움말. 살아 있는 차단이 있으면 만료를 앞당기지 않는다는 예외도 거기 있다
-    expect(form.getByRole('button', { name: '차단 설명' })).toHaveAccessibleDescription('이미 살아 있는 차단이 있으면 만료를 앞당기지 않습니다. 적용 대상: AWS 관문 · web-01 앞 내부 방화벽. 실제 적용 결과는 지점별로 확인합니다.')
+    expect(form.getByRole('button', { name: '차단 설명' })).toHaveAccessibleDescription('이미 살아 있는 차단이 있으면 만료를 앞당기지 않습니다. 적용 대상: 허니팟 관문 · web-01 앞 내부 방화벽. 실제 적용 결과는 지점별로 확인합니다.')
   })
 
   it('후속 차단은 첫 사건 판정이 위협이 아니면 멈춤 · 판정 전이면 대기로 보인다', async () => {
@@ -919,7 +919,7 @@ describe('IncidentDetailPage · 차단 적용 지점(#77)', () => {
     vi.unstubAllGlobals()
   })
 
-  const COWRIE: IncidentDevice = { id: 'aws-sensor', part: 'cowrie', label: 'Cowrie', group: 'sensor', logs: ['SSH 세션'], basis: 'confirmed' }
+  const COWRIE: IncidentDevice = { id: 'aws-sensor', part: 'cowrie', label: 'SSH 허니팟(Cowrie)', group: 'sensor', logs: ['SSH 세션'], basis: 'confirmed' }
   const WEB: IncidentDevice = { id: 'web-01', part: null, label: 'web-01', group: 'protected', logs: ['웹 접근'], basis: 'confirmed' }
   const CONSOLE: IncidentDevice = { id: 'console', part: null, label: '관제 콘솔', group: 'monitor', logs: ['콘솔 감사'], basis: 'confirmed' }
   const DATA: IncidentDevice = { id: 'data-node', part: null, label: '데이터 노드', group: 'monitor', logs: ['감사'], basis: 'rule_scope' }
@@ -949,11 +949,11 @@ describe('IncidentDetailPage · 차단 적용 지점(#77)', () => {
     const fw = group.getByRole('checkbox', { name: '내부 방화벽 · 늘 적용' })
     expect(fw).toBeChecked()
     expect(fw).toBeDisabled()
-    const check = group.getByRole('checkbox', { name: 'AWS 관문에서도 막기' })
+    const check = group.getByRole('checkbox', { name: '허니팟 관문에서도 막기' })
     expect((check as HTMLInputElement).checked).toBe(gateway)
     expect(check).toBeEnabled()
     // 기본값의 까닭은 확인란 옆 ⓘ 한 줄
-    expect(group.getByRole('button', { name: 'AWS 관문에서도 막기 설명' })).toHaveAccessibleDescription(tip)
+    expect(group.getByRole('button', { name: '허니팟 관문에서도 막기 설명' })).toHaveAccessibleDescription(tip)
     // 관문에서도 막으면 경고 한 줄(허니팟 관측이 끊긴다, 주의색). 내부 방화벽만이면 없다
     expect(group.queryByText('허니팟 관측이 끊깁니다.')?.classList.contains('text-warning') ?? false).toBe(gateway)
     // 적용 대상 두 지점을 늘어놓던 문장은 묶음이 대신한다
@@ -970,7 +970,7 @@ describe('IncidentDetailPage · 차단 적용 지점(#77)', () => {
 
     fetch.mockClear()
     const { panel, form, group } = await openBlock()
-    const check = group.getByRole('checkbox', { name: 'AWS 관문에서도 막기' })
+    const check = group.getByRole('checkbox', { name: '허니팟 관문에서도 막기' })
     expect(check).not.toBeChecked()
     fireEvent.click(check)
     expect(check).toBeChecked()
@@ -980,7 +980,7 @@ describe('IncidentDetailPage · 차단 적용 지점(#77)', () => {
     expect(await panel.findByText('차단 조치를 기록했습니다')).toBeInTheDocument()
     // 다시 열면 고른 것은 사라지고 기본값(내부 방화벽만)이다
     fireEvent.click(panel.getByRole('button', { name: '차단' }))
-    expect(within(panel.getByRole('group', { name: '적용 지점' })).getByRole('checkbox', { name: 'AWS 관문에서도 막기' })).not.toBeChecked()
+    expect(within(panel.getByRole('group', { name: '적용 지점' })).getByRole('checkbox', { name: '허니팟 관문에서도 막기' })).not.toBeChecked()
   })
 
   it('살아 있는 차단이 관문을 요청했으면 체크한 채 잠그고, admin 은 풀 수 있으며 풀면 해제 뒤 다시 걸기로 기록된다고 알린다', async () => {
@@ -988,7 +988,7 @@ describe('IncidentDetailPage · 차단 적용 지점(#77)', () => {
     stubApi({ body: detail({ block_points: live }) })
     const view = renderRoutes(routes(), PATH)
     const operator = await openBlock()
-    const locked = operator.group.getByRole('checkbox', { name: 'AWS 관문에서도 막기' })
+    const locked = operator.group.getByRole('checkbox', { name: '허니팟 관문에서도 막기' })
     expect(locked).toBeChecked()
     expect(locked).toBeDisabled()
     expect(locked).toHaveAccessibleDescription(/^살아 있는 차단이 관문도 막고 있어 admin 만 뺄 수 있습니다\./)
@@ -1000,7 +1000,7 @@ describe('IncidentDetailPage · 차단 적용 지점(#77)', () => {
     const fetch = stubApi({ role: 'admin', body: detail({ block_points: live }) })
     renderRoutes(routes(), PATH)
     const { form, group } = await openBlock()
-    const check = group.getByRole('checkbox', { name: 'AWS 관문에서도 막기' })
+    const check = group.getByRole('checkbox', { name: '허니팟 관문에서도 막기' })
     expect(check).toBeChecked()
     expect(check).toBeEnabled()
     expect(group.queryByText('해제 뒤 다시 걸기로 기록됩니다.')).toBeNull()
@@ -1016,7 +1016,7 @@ describe('IncidentDetailPage · 차단 적용 지점(#77)', () => {
     renderRoutes(routes(), PATH)
     const { form, group } = await openBlock()
     expect(form.getByText(/이 요청은 사유 · 요청자만 바꿉니다/)).toBeInTheDocument()
-    fireEvent.click(group.getByRole('checkbox', { name: 'AWS 관문에서도 막기' }))
+    fireEvent.click(group.getByRole('checkbox', { name: '허니팟 관문에서도 막기' }))
     expect(form.getByText(/이 요청은 사유 · 요청자 · 적용 지점만 바꿉니다/)).toBeInTheDocument()
   })
 
@@ -1030,10 +1030,10 @@ describe('IncidentDetailPage · 차단 적용 지점(#77)', () => {
     expect(actor.getByText('내부 방화벽 반영 확인')).toBeInTheDocument()
     const list = actor.getByRole('list', { name: '집행 지점별 결과' })
     expect([...list.querySelectorAll('[data-enforce-point]')].map((el) => [el.getAttribute('data-enforce-point'), el.getAttribute('data-point-state')])).toEqual([['gateway', 'unrequested'], ['fw', 'confirmed']])
-    expect(list.querySelector('[data-enforce-point="gateway"]')).toHaveTextContent(/^AWS 관문미요청$/)
+    expect(list.querySelector('[data-enforce-point="gateway"]')).toHaveTextContent(/^허니팟 관문미요청$/)
 
     const { form, group } = await openBlock()
-    const check = group.getByRole('checkbox', { name: 'AWS 관문에서도 막기' })
+    const check = group.getByRole('checkbox', { name: '허니팟 관문에서도 막기' })
     expect(check).not.toBeChecked()
     expect(check).toBeEnabled()
     fireEvent.click(check)
@@ -1054,7 +1054,7 @@ describe('IncidentDetailPage · 차단 적용 지점(#77)', () => {
     expect(actor.getByText('내부 방화벽 반영 확인 · 관문에서 빠졌는지 확인 전')).toBeInTheDocument()
     const list = actor.getByRole('list', { name: '집행 지점별 결과' })
     expect([...list.querySelectorAll('[data-enforce-point]')].map((el) => [el.getAttribute('data-enforce-point'), el.getAttribute('data-point-state')])).toEqual([['gateway', 'removing'], ['fw', 'confirmed']])
-    expect(list.querySelector('[data-enforce-point="gateway"]')).toHaveTextContent(/^AWS 관문빠짐 확인 전/)
+    expect(list.querySelector('[data-enforce-point="gateway"]')).toHaveTextContent(/^허니팟 관문빠짐 확인 전/)
   })
 
   it('흡수된 출발지를 함께 차단하면 같은 지점이 간다(흡수 차단 · 후속 차단 약속도 같은 지점)', async () => {
@@ -1063,7 +1063,7 @@ describe('IncidentDetailPage · 차단 적용 지점(#77)', () => {
     const { form, group } = await openBlock()
     expect(form.getByRole('button', { name: '흡수된 출발지 2곳도 함께 차단 설명' })).toHaveAccessibleDescription(/적용 지점은 이 출발지와 같고, 살아 있는 차단은 넓히기만 합니다\.$/)
     fireEvent.click(form.getByRole('checkbox', { name: '흡수된 출발지 2곳도 함께 차단' }))
-    fireEvent.click(group.getByRole('checkbox', { name: 'AWS 관문에서도 막기' }))
+    fireEvent.click(group.getByRole('checkbox', { name: '허니팟 관문에서도 막기' }))
     fireEvent.click(form.getByRole('button', { name: '차단 확정' }))
     await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'block_ip', expires_hours: 24, include_absorbed: true, points: ['gateway', 'fw'] }))
   })
@@ -1170,8 +1170,8 @@ describe('IncidentDetailPage · 관련 장비(#72)', () => {
   })
 
   const WEB: IncidentDevice = { id: 'web-01', part: null, label: 'web-01', group: 'protected', logs: ['웹 접근'], basis: 'confirmed' }
-  const SENSOR: IncidentDevice = { id: 'aws-sensor', part: null, label: 'AWS 센서', group: 'sensor', logs: ['세션 기록'], basis: 'rule_scope' }
-  const COWRIE: IncidentDevice = { id: 'aws-sensor', part: 'cowrie', label: 'Cowrie', group: 'sensor', logs: ['SSH 세션'], basis: 'fallback' }
+  const SENSOR: IncidentDevice = { id: 'aws-sensor', part: null, label: '허니팟 센서', group: 'sensor', logs: ['세션 기록'], basis: 'rule_scope' }
+  const COWRIE: IncidentDevice = { id: 'aws-sensor', part: 'cowrie', label: 'SSH 허니팟(Cowrie)', group: 'sensor', logs: ['SSH 세션'], basis: 'fallback' }
   const NOTE = '기존 근거(대상 열 · 근거 발생원 · 탐지와 같은 범위의 이벤트)로 조회 때 계산합니다. 로그 삭제나 매핑 기준이 바뀌면 달라질 수 있습니다.'
 
   /** 머리의 '장비' 항목 값(dt 다음 dd) */
@@ -1213,14 +1213,14 @@ describe('IncidentDetailPage · 관련 장비(#72)', () => {
     expect(badge.parentElement).not.toHaveTextContent('Cowrie')
     expect(dd.querySelector('[data-device]')).toBeNull()
     const tip = screen.getByRole('button', { name: '장비 설명' })
-    expect(tip).toHaveAccessibleDescription(`${NOTE} 이벤트로 장비를 고르지 못했습니다. 규칙상 Cowrie 일 수 있으나 확인하지 않았습니다.`)
+    expect(tip).toHaveAccessibleDescription(`${NOTE} 이벤트로 장비를 고르지 못했습니다. 규칙상 SSH 허니팟(Cowrie) 일 수 있으나 확인하지 않았습니다.`)
   })
 
   it('규칙 범위 장비가 있으면 대체 추정은 문장으로도 적지 않는다(세션을 고르지 못한 R002)', async () => {
     stubApi({ body: detail({ rule_id: 'R002', rule_name: '세션', devices: [SENSOR], device_state: 'rule_scope', device_fallback: [COWRIE] }) })
     renderRoutes(routes(), PATH)
     const dd = await deviceItem()
-    expect(dd.querySelector('[data-device="aws-sensor"]')).toHaveTextContent('AWS 센서 · 세션 기록')
+    expect(dd.querySelector('[data-device="aws-sensor"]')).toHaveTextContent('허니팟 센서 · 세션 기록')
     expect(dd.querySelector('[data-device-unknown]')).toBeNull()
     expect(screen.getByRole('button', { name: '장비 설명' })).toHaveAccessibleDescription(NOTE)
   })

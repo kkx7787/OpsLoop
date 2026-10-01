@@ -125,12 +125,15 @@ describe('관제 이상 판정(#72)', () => {
     // 차단 집행 쪽 → 차단 목록
     ['enforcer:gateway', '/blocklist'], ['enforcer:fw', '/blocklist'], ['block_failed:fw', '/blocklist'], ['gateway_mismatch', '/blocklist'],
     ['point_stale:fw', '/blocklist'], ['point_stale:gateway', '/blocklist'], ['report:fw', '/blocklist'], ['report:gateway', '/blocklist'],
-    // 노드 수신 · 자원 지표 → 수집 노드
+    ['point_delayed:gateway', '/blocklist'], ['point_delayed:fw', '/blocklist'],
+    // 노드 수신 · 자원 지표 → 수집 · 관제 상태의 등록 노드 표
     ['nodes_silent', '/nodes'], ['nodes', '/nodes'], ['metrics:web-01', '/nodes'], ['metrics:node-e', '/nodes'],
+    // 센서 · 관문 기록 수신 → 그 화면의 허니팟 센서 줄, 탐지 경로 · 적재기 · 생존 신호 → 데이터 노드 줄(펼침, #84)
+    ['sensor', '/nodes?open=aws-sensor'], ['gateway_uploader', '/nodes?open=aws-sensor'],
+    ['detect:honeypot', '/nodes?open=data-node'], ['detect:bridge', '/nodes?open=data-node'], ['loader', '/nodes?open=data-node'], ['heartbeats', '/nodes?open=data-node'],
     // 웹 로그 적재 → 그 장비의 최근 로그(id 는 주소 조각으로 감싼다)
     ['parse:web-01', '/devices/web-01/logs'], ['parse:node a/1', '/devices/node%20a%2F1/logs'], ['parse:', null],
-    // 볼 화면이 없는 것 · 모르는 키
-    ['loader', null], ['heartbeats', null], ['sensor', null], ['gateway_uploader', null], ['detect:honeypot', null], ['detect:bridge', null],
+    // 모르는 키
     ['other', null], ['nodes_silent_x', null], ['reports', null],
   ])('링크: %s → %s', (key, href) => {
     expect(monitorItemHref(key)).toBe(href)

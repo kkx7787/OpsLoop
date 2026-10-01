@@ -51,8 +51,8 @@ export const SCREENS = {
   },
   nodes: {
     code: 'S-08 · S-13',
-    title: '수집 노드',
-    description: '수집이 멈추면 화면이 조용해져 평온으로 오인한다. 노드 상태와 추가.',
+    title: '수집 · 관제 상태',
+    description: '수집 · 탐지 · 집행 가운데 어디가 멈췄는지 본다. 등록 노드 · 관측 센서 · 관제 시스템 상태와 노드 추가.',
     wbs: '3.6.x (Ansible 배포와 함께)',
   },
   alerts: {

@@ -14,13 +14,15 @@ import {
   protectedHeadBadge,
   responseParts,
   summaryFlags,
+  summaryHeadBadge,
+  summaryLineFlags,
   systemText,
   undeterminedHref,
   vulnSummary,
   vulnText,
 } from './target-format'
 
-const response = (extra: Partial<TargetResponse>): TargetResponse => ({ point: 'gateway', point_label: 'AWS 관문', applied: 0, unverified: 0, exempt: 0, report: null, ...extra })
+const response = (extra: Partial<TargetResponse>): TargetResponse => ({ point: 'gateway', point_label: '허니팟 관문', applied: 0, unverified: 0, exempt: 0, report: null, ...extra })
 const texts = (r: TargetResponse) => responseParts(r).map((p) => p.text)
 
 /** 글 안의 홀로 선 숫자 0(‘0’ · ‘0건’ 등). '10' · '2026' 의 0 은 아니다 */
@@ -28,14 +30,14 @@ const ZERO = /(^|[^\d.,])0(?![\d.,])/
 
 describe('대응 문구(#52): 숫자 0 을 그리지 않는다', () => {
   it('집행 지점이 있으면 적용 확인 · 미확인 · 정책상 제외 중 0 이 아닌 것만', () => {
-    expect(texts(response({ applied: 2, unverified: 1, exempt: 3 }))).toEqual(['차단 적용 2 (AWS 관문)', '차단 적용 여부 미확인 1', '정책상 차단 제외 3'])
+    expect(texts(response({ applied: 2, unverified: 1, exempt: 3 }))).toEqual(['차단 적용 2 (허니팟 관문)', '차단 적용 여부 미확인 1', '정책상 차단 제외 3'])
     expect(texts(response({ applied: 0, unverified: 4, exempt: 0 }))).toEqual(['차단 적용 여부 미확인 4'])
     expect(texts(response({ applied: 5, point: 'fw', point_label: '내부 방화벽' }))).toEqual(['차단 적용 5 (내부 방화벽)'])
   })
 
   it('모두 0 이면 그 지점의 집행 대상 차단 없음(집행 제외 차단만 있어도 거짓이 아닌 문구)', () => {
-    expect(texts(response({}))).toEqual(['AWS 관문 집행 대상 차단 없음'])
-    expect(texts(response({ applied: null, unverified: null }))).toEqual(['AWS 관문 집행 대상 차단 없음'])
+    expect(texts(response({}))).toEqual(['허니팟 관문 집행 대상 차단 없음'])
+    expect(texts(response({ applied: null, unverified: null }))).toEqual(['허니팟 관문 집행 대상 차단 없음'])
     expect(texts(response({ point: 'fw', point_label: '내부 방화벽', failed: 0 }))).toEqual(['내부 방화벽 집행 대상 차단 없음'])
   })
 
@@ -50,22 +52,22 @@ describe('대응 문구(#52): 숫자 0 을 그리지 않는다', () => {
     expect(parts.map((p) => [p.key, p.text, p.tone])).toEqual([
       ['unverified', '차단 적용 여부 미확인 5', 'warning'], ['stalled', '집행기 확인 중단 · 마지막 확인 12분 전', undefined]])
     // 요청이 없어도 멈춤은 알린다
-    expect(texts(response({ stalled: '집행기 확인 기록 없음' }))).toEqual(['AWS 관문 집행 대상 차단 없음', '집행기 확인 기록 없음'])
+    expect(texts(response({ stalled: '집행기 확인 기록 없음' }))).toEqual(['허니팟 관문 집행 대상 차단 없음', '집행기 확인 기록 없음'])
   })
 
   it('미요청 · 빠짐 확인 전(#77)은 적용 · 실패 · 미확인과 따로 보이고, 그것만 있으면 집행 대상 차단 없음이 아니다', () => {
     const parts = responseParts(response({ applied: 1, unrequested: 3, removing: 1, exempt: 2 }))
     expect(parts.map((p) => [p.key, p.text, p.tone])).toEqual([
-      ['applied', '차단 적용 1 (AWS 관문)', 'success'], ['unrequested', '차단 미요청 3 (AWS 관문)', 'neutral'],
-      ['removing', '차단 빠짐 확인 전 1 (AWS 관문)', 'warning'], ['exempt', '정책상 차단 제외 2', 'neutral']])
-    expect(texts(response({ removing: 1 }))).toEqual(['차단 빠짐 확인 전 1 (AWS 관문)'])
-    expect(texts(response({ unrequested: 2 }))).toEqual(['차단 미요청 2 (AWS 관문)'])
-    expect(texts(response({ unrequested: 0, removing: 0 }))).toEqual(['AWS 관문 집행 대상 차단 없음'])
-    expect(texts(response({ unrequested: null, removing: null }))).toEqual(['AWS 관문 집행 대상 차단 없음'])
+      ['applied', '차단 적용 1 (허니팟 관문)', 'success'], ['unrequested', '차단 미요청 3 (허니팟 관문)', 'neutral'],
+      ['removing', '차단 빠짐 확인 전 1 (허니팟 관문)', 'warning'], ['exempt', '정책상 차단 제외 2', 'neutral']])
+    expect(texts(response({ removing: 1 }))).toEqual(['차단 빠짐 확인 전 1 (허니팟 관문)'])
+    expect(texts(response({ unrequested: 2 }))).toEqual(['차단 미요청 2 (허니팟 관문)'])
+    expect(texts(response({ unrequested: 0, removing: 0 }))).toEqual(['허니팟 관문 집행 대상 차단 없음'])
+    expect(texts(response({ unrequested: null, removing: null }))).toEqual(['허니팟 관문 집행 대상 차단 없음'])
   })
 
   it('이전 서버(failed · stalled 없음)도 그린다', () => {
-    expect(texts({ point: 'gateway', point_label: 'AWS 관문', applied: 2, unverified: 0, exempt: 0, report: null })).toEqual(['차단 적용 2 (AWS 관문)'])
+    expect(texts({ point: 'gateway', point_label: '허니팟 관문', applied: 2, unverified: 0, exempt: 0, report: null })).toEqual(['차단 적용 2 (허니팟 관문)'])
   })
 
   it('집행 지점이 없는 대상은 숫자 없이 미확인, 정책상 제외만 수를 붙인다', () => {
@@ -94,10 +96,11 @@ describe('대응 문구(#52): 숫자 0 을 그리지 않는다', () => {
 })
 
 describe('수집 · 시스템 · 취약점 표기', () => {
-  it('모르는 수집 상태는 미확인으로 읽는다', () => {
+  it('모르는 수집 상태는 미확인으로 읽는다(콘솔 응답 중은 아는 값, #76)', () => {
     expect(collectionState('ok')).toBe('ok')
     expect(collectionState('quiet')).toBe('quiet')
     expect(collectionState('no_signal')).toBe('no_signal')
+    expect(collectionState('responding')).toBe('responding')
     expect(collectionState('down')).toBe('unknown')
     expect(collectionState(undefined)).toBe('unknown')
   })
@@ -167,8 +170,17 @@ describe('무리 · 머리 배지 · 경고 배지 · 미판정 주소(#72)', ()
     // 서버가 이미 수신 없음이면 그대로(멈춤은 경고 배지가 말한다)
     expect(headBadge(dataNode({ collection: { ...dataNode().collection, stopped: ['loader'] } }))).toEqual({ label: '수신 없음', tone: 'warning' })
     expect(headBadge(awsSensor())).toEqual({ label: '정상', tone: 'success' })
-    expect(headBadge(consoleTarget())).toEqual({ label: '생존 상태 미확인', tone: 'neutral' })
+    // 콘솔은 응답 중(#76): 생존 확정이 아니라 정상 초록으로 꾸미지 않는다
+    expect(headBadge(consoleTarget())).toEqual({ label: '응답 중', tone: 'neutral' })
     expect(headBadge({ collection: { state: 'down' as never } })).toEqual({ label: '생존 상태 미확인', tone: 'neutral' })
+  })
+
+  it('접힌 줄 머리 배지: 상태판 갱신 실패(이전 결과) 동안 콘솔 응답 중은 두지 않고, 다른 대상은 그대로다(#84 결정 5)', () => {
+    expect(summaryHeadBadge(consoleTarget(), 'full', false)).toEqual({ label: '응답 중', tone: 'neutral' })
+    expect(summaryHeadBadge(consoleTarget(), 'full', true)).toBeNull()
+    expect(summaryHeadBadge(awsSensor(), 'full', true)).toEqual({ label: '정상', tone: 'success' })
+    expect(summaryHeadBadge(nodeTarget(), 'protected', true)).toEqual({ label: '수집 정상', tone: 'success' })
+    expect(summaryHeadBadge(dataNodeStopped(), 'full', true)).toEqual({ label: '주의', tone: 'warning' })
   })
 
   it('경고 배지: 적용 실패 n(빨강) · 집행기 멈춤 · 적재기 멈춤, 0 과 해당 없음은 만들지 않고 집행기 멈춤은 한 번만', () => {
@@ -197,6 +209,55 @@ describe('무리 · 머리 배지 · 경고 배지 · 미판정 주소(#72)', ()
     expect(flags({ response: { ...unread, unreadable: false }, collection: {} })).toEqual([['enforcer', '집행기 멈춤', 'warning']])
     // 이전 서버(unreadable 없음)는 지금처럼 멈춤이다
     expect(flags({ response: { stalled: '집행기 확인 기록 없음' }, collection: {} })).toEqual([['enforcer', '집행기 멈춤', 'warning']])
+  })
+
+  describe('접힌 요약 줄 배지(#84 결정 1 · 3 · 6)', () => {
+    const line = (t: Parameters<typeof summaryLineFlags>[0]) => summaryLineFlags(t).map((f) => [f.key, f.text, f.tone])
+    const sensor = (extra: Partial<TargetResponse>) => awsSensor({ response: { ...awsSensor().response, checking: 0, delayed: 0, ...extra } })
+
+    it('지점 적용은 지점마다 하나: 실패(빨강) > 확인 지연(주의) > 확인 중(중립)이고 수는 차단 건수, 해제 확인 중(중립)은 따로다', () => {
+      expect(line(awsSensor())).toEqual([['checking', '적용 확인 중 1건', 'neutral']])
+      expect(line(sensor({ delayed: 2, checking: 3 }))).toEqual([['delayed', '적용 확인 지연 2건', 'warning']])
+      expect(line(sensor({ failed: 1, delayed: 2, checking: 3 }))).toEqual([['failed', '적용 실패 1건', 'danger']])
+      expect(line(sensor({ removing: 1 }))).toEqual([['removing', '해제 확인 중 1건', 'neutral']])
+      expect(line(sensor({ checking: 1, removing: 2 }))).toEqual([['checking', '적용 확인 중 1건', 'neutral'], ['removing', '해제 확인 중 2건', 'neutral']])
+      // 미확인 수만으로는 만들지 않는다(이전 서버 · 확인 중 · 지연이 0)
+      expect(line(sensor({ unverified: 4 }))).toEqual([])
+      expect(line(awsSensor({ response: { ...awsSensor().response, checking: undefined, delayed: undefined } }))).toEqual([])
+    })
+
+    it('같은 지점의 집행기 멈춤 · 집행 확인 불가와 겹치면 그 경고 하나로 합친다(보고 문제 · 해제 확인 중도 뺀다)', () => {
+      expect(line(sensor({ failed: 1, delayed: 2, removing: 1, report_issue: '마지막 보고 20분 전', stalled: '집행기 확인 중단 · 마지막 확인 12분 전' }))).toEqual([
+        ['enforcer', '집행기 멈춤', 'warning']])
+      expect(line(sensor({ checking: 1, stalled: '집행 보고를 읽을 수 없음 · 적용 여부 확인 불가', unreadable: true }))).toEqual([['unreadable', '집행 확인 불가', 'neutral']])
+    })
+
+    it('보고 문제는 서버 report_issue(띠 report:<지점> 과 같은 판정)가 있을 때만 주의색이다', () => {
+      expect(line(web01())).toEqual([['report', '보고 문제', 'warning']])
+      expect(line(web01({ response: { ...web01().response, report_issue: null } }))).toEqual([])
+      // 이전 서버(report_issue 없음)는 보고 원자료만으로 판정하지 않는다
+      expect(line(web01({ response: { ...web01().response, report_issue: undefined } }))).toEqual([])
+    })
+
+    it('지표 오래됨(주의)은 자원 지표가 오래된 대상만, 지점 없는 대상(콘솔 · 데이터 노드 · 등록 노드)에는 지점 배지가 없다', () => {
+      const stale = { state: 'stale' as const, metrics: web01().system.metrics }
+      expect(line(nodeTarget('web-02', { system: stale }))).toEqual([['metrics', '지표 오래됨', 'warning']])
+      expect(line(web01({ system: stale }))).toEqual([['report', '보고 문제', 'warning'], ['metrics', '지표 오래됨', 'warning']])
+      expect(line(consoleTarget())).toEqual([])
+      expect(line(nodeTarget())).toEqual([])
+      expect(line(dataNode({ response: { ...dataNode().response, checking: 3 } }))).toEqual([])
+    })
+
+    it('적재기 · 탐지 멈춤 · 웹 로그 적재 없음은 경고 배지와 같고 지점 배지 · 보고 뒤, 지표 오래됨 앞이다', () => {
+      expect(line(dataNodeStopped(['loader', 'detect']))).toEqual([['loader', '적재기 멈춤', 'warning'], ['detect', '탐지 멈춤', 'warning']])
+      const parse = { key: 'parse' as const, label: '웹 로그 도착 · 적재 없음(형식 밖 · 선언 밖)', at: null }
+      const busy = web01({
+        collection: { ...web01().collection, warnings: [parse] },
+        system: { state: 'stale', metrics: null },
+        response: { ...web01().response, delayed: 1 },
+      })
+      expect(line(busy).map(([key]) => key)).toEqual(['delayed', 'report', 'parse', 'metrics'])
+    })
   })
 
   it('미판정 주소는 판정 전 · 장비 조건만(기간 없음)이고 값을 인코딩한다', () => {

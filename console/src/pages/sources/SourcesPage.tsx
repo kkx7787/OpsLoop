@@ -198,7 +198,7 @@ function SourceList({ tabs }: { tabs: ReactNode }) {
         description={conditions.include_test ? '0건이 정상인지 수집 상태부터 확인해 주세요' : '시험 대역 출발지는 빠져 있습니다 · 0건이 정상인지 수집 상태부터 확인해 주세요'}
         actions={<>
           {active > 0 && <Button variant="primary" size="sm" onClick={() => setConditions({ sort: conditions.sort, include_test: conditions.include_test })}>조건 초기화</Button>}
-          <Link to="/nodes" className={buttonClasses({ size: 'sm' })}>수집 노드 보기</Link>
+          <Link to="/nodes" className={buttonClasses({ size: 'sm' })}>수집 · 관제 상태 보기</Link>
         </>}
       />
     )
@@ -320,7 +320,7 @@ function FingerprintList({ tabs }: { tabs: ReactNode }) {
     body = <ApiErrorState error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} />
   } else if (!data || data.items.length === 0) {
     body = <EmptyState eyebrow="결과 0건" title={`${FINGERPRINT_LABEL[kind]} 지문 기록이 없습니다`} description="0건이 정상인지 수집 상태부터 확인해 주세요"
-      actions={<Link to="/nodes" className={buttonClasses({ size: 'sm' })}>수집 노드 보기</Link>} />
+      actions={<Link to="/nodes" className={buttonClasses({ size: 'sm' })}>수집 · 관제 상태 보기</Link>} />
   } else {
     body = <FingerprintsTable kind={kind} items={data.items} />
   }

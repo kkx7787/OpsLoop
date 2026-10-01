@@ -47,7 +47,7 @@ describe('SideNav', () => {
     // 링크는 남아 있되 inert 안에 있다
     const accounts = screen.getByRole('link', { name: '계정' })
     expect(accounts.closest('[inert]')).not.toBeNull()
-    expect(screen.getByRole('link', { name: '수집 노드' }).closest('[inert]')).toBeNull()
+    expect(screen.getByRole('link', { name: '수집 · 관제 상태' }).closest('[inert]')).toBeNull()
   })
 
   it('역할을 모르는 동안(불러오는 중)에도 관리 묶음은 막혀 있다', () => {

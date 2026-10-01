@@ -188,7 +188,7 @@ describe('AppLayout · 실시간 통보(#43)', () => {
       actor_ip: null,
       devices: [],
       device_state: 'unconfirmed',
-      device_fallback: [device({ id: 'aws-sensor', part: 'cowrie', label: 'Cowrie', group: 'sensor', logs: ['SSH 세션'], basis: 'fallback' })],
+      device_fallback: [device({ id: 'aws-sensor', part: 'cowrie', label: 'SSH 허니팟(Cowrie)', group: 'sensor', logs: ['SSH 세션'], basis: 'fallback' })],
     })
     const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
       const url = new URL(String(input), 'http://localhost')

@@ -58,7 +58,7 @@ describe('경로', () => {
   })
 
   it('대상 이름은 정해 둔 것만, 원형의 값은 읽지 않는다', () => {
-    expect(targetLabel('aws-sensor')).toBe('AWS 센서')
+    expect(targetLabel('aws-sensor')).toBe('허니팟 센서')
     expect(targetLabel('toString')).toBeNull()
     // 등록 노드(#64)는 정해 둔 이름이 없어 원문(node_id)으로 그린다
     expect(targetLabel('web-02')).toBeNull()
@@ -78,7 +78,7 @@ describe('집행기 확인', () => {
     expect(checkedPoints(LIVE_BLOCK, { gateway_stale: true, fw_stale: true }, now).map((row) => row.noteTip ?? false)).toEqual([true, false])
     expect(checkedPoints(LIVE_BLOCK, { gateway_stale: null, fw_stale: null }, now).map((row) => row.point.state)).toEqual(['confirmed', 'pending'])
     expect(checkedPoints(null, undefined, now)).toEqual([])
-    expect(staleCheckers({ gateway_stale: true, fw_stale: null })).toEqual(['AWS 관문'])
+    expect(staleCheckers({ gateway_stale: true, fw_stale: null })).toEqual(['허니팟 관문'])
   })
 
   it('미요청 · 빠짐 줄은 요청 · 목록 사실이라 집행기 멈춤으로 덮지 않는다(이슈 #77)', () => {

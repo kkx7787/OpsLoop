@@ -88,14 +88,14 @@ describe('deviceOptionsOf (#72)', () => {
   const OPTIONS: DeviceOption[] = [
     { id: 'web-01', label: 'web-01', group: 'protected' },
     { id: 'web-02', label: 'web02.lab', group: 'protected' },
-    { id: 'aws-sensor', label: 'AWS 센서', group: 'sensor' },
+    { id: 'aws-sensor', label: '허니팟 센서', group: 'sensor' },
   ]
 
   it('서버 선택지(서버 순서) 뒤에 장비 미확인을 둔다', () => {
     expect(deviceOptionsOf(OPTIONS)).toEqual([
       { id: 'web-01', label: 'web-01' },
       { id: 'web-02', label: 'web02.lab' },
-      { id: 'aws-sensor', label: 'AWS 센서' },
+      { id: 'aws-sensor', label: '허니팟 센서' },
       { id: '_unconfirmed', label: '장비 미확인' },
     ])
     expect(deviceOptionsOf(OPTIONS, 'web-02')).toHaveLength(4)

@@ -54,7 +54,7 @@ export function AssetsPage() {
 
   return <div className="flex min-w-0 flex-col gap-4">
     <InfoTip label="자산 · 취약점" render={({ button, panel }) => (
-      <PageHeader title="자산 · 취약점" badges={button} description={<>자산별 취약점과 수정 상태를 확인합니다.{panel}</>} aside={<Link className={buttonClasses({})} to="/nodes">수집 노드</Link>} />
+      <PageHeader title="자산 · 취약점" badges={button} description={<>자산별 취약점과 수정 상태를 확인합니다.{panel}</>} aside={<Link className={buttonClasses({})} to="/nodes">수집 · 관제 상태</Link>} />
     )}>KEV · EPSS · 주목 CVE 는 조사 · 조치 우선순위 참고용이며 사건 판정의 근거가 아닙니다.</InfoTip>
     {data && assets.error ? <Banner tone="danger" title="데이터를 갱신하지 못했습니다" action={<Button onClick={() => void assets.refetch()} loading={assets.isFetching}>다시 조회</Button>}>
       {describeError(assets.error)} · 이전 결과 유지 · 마지막 조회 <Time value={assets.dataUpdatedAt} format="time" zone />
