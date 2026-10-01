@@ -8,12 +8,16 @@ DB 없이 도는 글자 시험: 마이그레이션(infra/migrations/20260930_sta
 
 OPSLOOP_TEST_DATABASE_URL 이 슈퍼유저 연결이면 infra/test_block_enforce_db.py 와 같은 방식(무작위 데이터베이스 · 역할)으로
 schema.sql 과 마이그레이션을 두 번씩 적용하고, 트리거가 역할별로 행 종류를 막는지, 콘솔이 읽기만 되는지, 역할 블록 · #47 을 다시
-적용하면 권한이 빠지고 이 마이그레이션으로 되살아나는지, 역할 검증 스크립트의 #52 줄이 같은 답을 내는지 본다. 역할은 시험 안에서
-만들고 지운다. 운영 DB · 운영 역할은 건드리지 않는다.
+적용하면 권한이 빠지고 이 마이그레이션으로 되살아나는지, 역할 검증 스크립트의 #52 줄이 같은 답을 내는지 본다. 콘솔 DB 연결(이슈 #76 ·
+#84)은 schema.sql 의 콘솔 역할로 실제 로그인해 상태판(app/targets.py targets_view)을 부른다(같은 역할의 콘솔 이름표 연결만 센다).
+역할은 시험 안에서 만들고 지운다. 운영 DB · 운영 역할은 건드리지 않는다.
 """
+import asyncio
 import importlib.util
 import os
 import re
+import secrets
+import sys
 import unittest
 from datetime import datetime, timedelta, timezone
 
@@ -24,6 +28,8 @@ ROLES_SQL = os.path.join(ROOT, "infra", "migrations", "20260924_db_roles.sql")
 M47 = os.path.join(ROOT, "infra", "migrations", "20260927_block_enforce.sql")
 VERIFY = os.path.join(ROOT, "infra", "vmware", "scripts", "verify-db-roles.sh")
 BLOCK47 = os.path.join(ROOT, "infra", "test_block_enforce_db.py")
+APP = os.path.join(ROOT, "app")
+A_ONLY = "DB 연결 확인: 콘솔 A 있음 · 콘솔 B 없음(평소 꺼 두는 예비)"
 
 HEADER = "-- 관제 대상 상태판 (이슈 #52)"
 HEADER51 = "-- 차단 집행 지점 · 시험 출발지 (이슈 #51)"
@@ -102,6 +108,18 @@ def verify_lines52():
 
 def flat(sql):
     return " ".join(sql.split())
+
+
+def app_targets():
+    """콘솔 상태판(app/targets.py). 같은 폴더 모듈(cti · absorbed · …)을 이름으로 부르므로 app 을 경로에 넣는다. asyncpg 가 없으면 None."""
+    try:
+        import asyncpg  # noqa: F401
+    except ImportError:
+        return None
+    if APP not in sys.path:
+        sys.path.insert(0, APP)
+    import targets
+    return targets
 
 
 class StatusBoardTextTest(unittest.TestCase):
@@ -316,6 +334,62 @@ class StatusBoardDatabaseTest(MOD.DbCase):
                     self.cur.execute("ROLLBACK TO SAVEPOINT v")
                     self.cur.execute("RESET SESSION AUTHORIZATION")
                 self.assertEqual(got, want)
+
+
+@unittest.skipUnless(MOD.SKIP is True, str(MOD.SKIP))
+class ConsoleLinksLoginTest(MOD.DbCase):
+    """콘솔 DB 연결(이슈 #76 · #84). app/test_targets_db 는 시험 연결(슈퍼유저)을 같은 역할로 쓰므로, 여기서는 schema.sql 의 콘솔 역할로
+    실제 로그인한다(usename = current_user 는 SET ROLE 로 흉내 낼 수 없다). 콘솔 A 처럼 이름표를 단 콘솔 역할 연결에서 상태판을 부른다.
+    역할에는 시험 비밀번호를 주고, 끝나면 데이터베이스와 함께 지운다."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.targets = app_targets()
+        if cls.targets is None:
+            raise unittest.SkipTest("asyncpg 없음(콘솔 의존)")
+        cls.create()
+        cls.scur.execute(cls.sub(read(SCHEMA)))
+        cls.pw = {key: secrets.token_urlsafe(18) for key in ("console", "ingest")}
+        for key, pw in cls.pw.items():
+            cls.admin.cursor().execute(f"ALTER ROLE {cls.roles[key]} LOGIN PASSWORD %s", (pw,))
+        cls.connect()
+
+    def test_콘솔_역할로_로그인하면_같은_역할의_콘솔_이름표_연결만_센다(self):
+        asyncio.run(self.links())
+
+    async def links(self):
+        import asyncpg
+        url = MOD.psycopg2.extensions.parse_dsn(MOD.URL)
+        opened = []
+
+        async def link(key, name=None):
+            try:
+                conn = await asyncpg.connect(host=url.get("host"), port=int(url.get("port") or 5432), user=self.roles[key],
+                                             password=self.pw[key], database=self.dbname,
+                                             server_settings={"application_name": name} if name else None)
+            except (asyncpg.InvalidAuthorizationSpecificationError, asyncpg.InvalidPasswordError, OSError) as e:
+                self.skipTest(f"시험 역할로 붙을 수 없다(pg_hba): {e}")
+            opened.append(conn)
+            return conn
+
+        async def console(conn):
+            async with conn.transaction(isolation="repeatable_read", readonly=True):
+                body = await self.targets.targets_view(conn, await conn.fetchval("SELECT now()"))
+            return next(x for x in body["targets"] if x["id"] == "console")["collection"]
+        try:
+            a = await link("console", "opsloop-console-a")                 # 콘솔 A(풀 · LISTEN 과 같은 이름표)
+            self.assertTrue(await a.fetchval("SELECT session_user = current_user AND current_user = $1", self.roles["console"]))
+            self.assertTrue(await a.fetchval(self.targets.CONSOLE_LINKS_READABLE_SQL))
+            got = await console(a)
+            self.assertEqual((got["state"], got["reason"]), ("responding", A_ONLY))
+            await link("ingest", "opsloop-console-b")                       # 다른 역할이 콘솔 B 이름표를 쓴 연결
+            await link("console")                                           # 같은 역할 · 이름표 없음(triage.py · 옛 이미지 콘솔)
+            self.assertEqual((await console(a))["reason"], A_ONLY)
+            await link("console", "opsloop-console-b")                      # 같은 역할 · 콘솔 B 이름표(B 를 켬)
+            self.assertEqual((await console(a))["reason"], "DB 연결 확인: 콘솔 A 있음 · 콘솔 B 있음")
+        finally:
+            for conn in opened:
+                await conn.close()
 
 
 if __name__ == "__main__":

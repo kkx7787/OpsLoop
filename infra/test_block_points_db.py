@@ -2,9 +2,9 @@
 """차단 집행 지점 · 시험 출발지(이슈 #51) DB 시험.  python3 infra/test_block_points_db.py
 
 DB 없이 도는 글자 시험: 마이그레이션(infra/migrations/20260929_block_points.sql)이 schema.sql 의 '차단 집행 지점 · 시험 출발지
-(이슈 #51)' 블록을 글자 그대로 담는지, 블록이 #47 블록 뒤(그 뒤에는 #52 블록만)에 있는지, 시험 출발지 초기값이 문서용 대역 셋인지(차단 금지 대역과
-겹치지 않는지), 규칙 품질 뷰의 두 정의(차단 목록 앞 · 블록 안)가 같고 시험 출발지를 빼는지, 권한 줄이 계약과 같은지, 대시보드 · 규칙
-화면의 규칙별 집계와 집행기 열 목록이 같은 조건을 쓰는지 본다.
+(이슈 #51)' 블록을 글자 그대로 담는지(머리 주석의 관문 이름 한 줄만 다르다, 이슈 #78), 블록이 #47 블록 뒤(그 뒤에는 #52 블록만)에 있는지,
+시험 출발지 초기값이 문서용 대역 셋인지(차단 금지 대역과 겹치지 않는지), 규칙 품질 뷰의 두 정의(차단 목록 앞 · 블록 안)가 같고 시험
+출발지를 빼는지, 권한 줄이 계약과 같은지, 대시보드 · 규칙 화면의 규칙별 집계와 집행기 열 목록이 같은 조건을 쓰는지 본다.
 
 OPSLOOP_TEST_DATABASE_URL 이 슈퍼유저 연결이면(infra/test_block_enforce_db.py 와 같은 방식) 무작위 데이터베이스에 schema.sql 과
 마이그레이션을 두 번 적용하고, 시험 출발지의 사건이 rule_quality 에서 빠지는지, 집행 역할이 enforcement 열만 더 쓰는지 본다.
@@ -35,6 +35,9 @@ SET search_path = public, pg_temp
 AS $$ SELECT EXISTS (SELECT 1 FROM test_ranges t WHERE ip <<= t.cidr) $$;"""
 GRANTS = ["GRANT UPDATE (enforcement) ON blocklist TO opsloop_enforcer;",
           "GRANT SELECT ON test_ranges TO opsloop_console;"]
+# 머리 주석 가운데 관문 이름만 바꾼 한 줄(이슈 #78). 적용된 마이그레이션은 옛 글자 그대로다
+NAME_OLD = "--   집행 지점이 관문 하나에서 둘(AWS 관문 · 온프레미스 내부 방화벽)이 된다."
+NAME_NEW = "--   집행 지점이 관문 하나에서 둘(허니팟 관문 · 온프레미스 내부 방화벽)이 된다."
 
 
 def read(path):
@@ -61,7 +64,8 @@ class BlockPointsTextTest(unittest.TestCase):
         schema, mig = read(SCHEMA), read(MIGRATION)
         head, body = mig.split("\nBEGIN;\n", 1)
         self.assertTrue(all(ln.startswith("--") for ln in head.splitlines()))
-        self.assertEqual(body.rstrip("\n"), block51(schema) + "\nCOMMIT;")
+        self.assertEqual((schema.count(NAME_NEW), schema.count(NAME_OLD), mig.count(NAME_OLD), mig.count(NAME_NEW)), (1, 0, 1, 0))
+        self.assertEqual(body.rstrip("\n"), block51(schema).replace(NAME_NEW, NAME_OLD) + "\nCOMMIT;")
 
     def test_블록은_47_블록_뒤에_있고_그_뒤에는_52_블록만_온다(self):
         schema = read(SCHEMA)

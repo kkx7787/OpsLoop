@@ -2,7 +2,7 @@
 """업로더 생존 신호 기록 (이슈 #52). 풀러가 pull-state.json 에 남긴 호스트별 hb 결과를 DB sensor_heartbeats 표로 옮긴다.
 
 opsloop-ingest 가 DB 접속 확인 뒤 · 적재 전에 적재 역할(opsloop_ingest) 접속 정보로 부른다. S3 키는 받지 않는다.
-콘솔 대시보드의 AWS 센서 카드가 이 표를 읽어 업로더 생존 신호 시각을 보인다.
+콘솔 수집 · 관제 상태 화면의 허니팟 센서 카드가 이 표를 읽어 업로더 생존 신호 시각을 보인다.
 
   읽기    $OPSLOOP_HOME/pull-state.json 의 heartbeats {호스트: {role, seen_at, checked_at, problem}} (puller/pull.py 가 회차마다 쓴다)
   쓰기    호스트마다 source='uploader:<호스트>' · kind='uploader' 한 줄을 넣거나 고친다 (한 트랜잭션).

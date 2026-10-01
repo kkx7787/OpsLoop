@@ -2,9 +2,9 @@
 """차단 적용 지점 선택(이슈 #77) DB 시험.  python3 infra/test_block_points_choice_db.py
 
 DB 없이 도는 글자 시험: 마이그레이션(infra/migrations/20261003_block_points_choice.sql)이 schema.sql 의 '차단 적용 지점 선택
-(이슈 #77)' 블록을 글자 그대로 담는지(lock_timeout 한 줄만 다르다), 블록이 #63 블록 뒤 파일 끝에 있는지, 값 제약이 두 값뿐인지,
-블록에 표 · 열 권한이 없는지(함수 PUBLIC 실행 회수 한 줄뿐), 감사 함수(audit_blocklist)가 한 벌 · 20260927 과 같은 글자이고
-points= 자리가 계약대로인지, verify-db-roles.sh 의 #77 절, 복원 훈련 기대값 · 지문을 본다.
+(이슈 #77)' 블록을 글자 그대로 담는지(lock_timeout 한 줄과 머리 주석의 관문 이름 한 줄(이슈 #78)만 다르다), 블록이 #63 블록 뒤 파일 끝에
+있는지, 값 제약이 두 값뿐인지, 블록에 표 · 열 권한이 없는지(함수 PUBLIC 실행 회수 한 줄뿐), 감사 함수(audit_blocklist)가 한 벌 ·
+20260927 과 같은 글자이고 points= 자리가 계약대로인지, verify-db-roles.sh 의 #77 절, 복원 훈련 기대값 · 지문을 본다.
 
 OPSLOOP_TEST_DATABASE_URL 이 슈퍼유저 연결이면 infra/test_block_enforce_db.py 와 같은 방식(무작위 데이터베이스 · 역할,
 SET SESSION AUTHORIZATION)으로 schema.sql 과 마이그레이션을 두 번씩 적용하고, 열을 모르는 옛 문장의 기본값, 값 제약, 살아 있는 행
@@ -34,6 +34,9 @@ HEADER = "-- 차단 적용 지점 선택 (이슈 #77)"
 HEADER63 = "-- 콘솔 계정 추가 · 삭제 · 비밀번호 (이슈 #63)"
 BLOCK_END = "FOR EACH ROW EXECUTE FUNCTION blocklist_points_change();"
 LOCK = "SET LOCAL lock_timeout = '5s';"
+# 머리 주석 가운데 관문 이름만 바꾼 한 줄(이슈 #78). 적용된 마이그레이션은 옛 글자 그대로다
+NAME_OLD = "--   차단 요청마다 적용 지점을 고른다. 내부 방화벽은 늘 막고 AWS 관문은 고른 요청만 막는다(관문 전용은 없다)."
+NAME_NEW = "--   차단 요청마다 적용 지점을 고른다. 내부 방화벽은 늘 막고 허니팟 관문은 고른 요청만 막는다(관문 전용은 없다)."
 CHECK = "CHECK (points IN ('{gateway,fw}'::text[], '{fw}'::text[]))"
 TWO, FW = ["gateway", "fw"], ["fw"]
 BAD = ["{}", "{gateway}", "{fw,gateway}", "{fw,fw}", "{x}"]
@@ -109,7 +112,8 @@ class PointsChoiceTextTest(unittest.TestCase):
         schema, mig = read(SCHEMA), read(MIGRATION)
         head, body = mig.split("\nBEGIN;\n", 1)
         self.assertTrue(all(ln.startswith("--") for ln in head.splitlines()))      # 머리는 주석뿐이다
-        self.assertEqual(body.rstrip("\n"), LOCK + "\n" + block77(schema) + "\nCOMMIT;")
+        self.assertEqual((schema.count(NAME_NEW), schema.count(NAME_OLD), mig.count(NAME_OLD), mig.count(NAME_NEW)), (1, 0, 1, 0))
+        self.assertEqual(body.rstrip("\n"), LOCK + "\n" + block77(schema).replace(NAME_NEW, NAME_OLD) + "\nCOMMIT;")
         self.assertNotIn(LOCK, block77(schema))                                     # 스키마 전체 적용에는 잠금 상한을 걸지 않는다
 
     def test_머리말은_적용_순서_잠금_되돌리기를_적는다(self):

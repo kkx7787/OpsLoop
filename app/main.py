@@ -74,8 +74,9 @@ async def lifespan(app: FastAPI):
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL 이 설정되지 않았습니다")
 
-    # 서버 쪽 TCP keepalive · 전송 한도(live.DB_KEEPALIVE, 이슈 #56). 이 콘솔이 꺼지거나 끊기면 DB 가 약 1분 안에 연결을 닫는다
-    app.state.pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10, server_settings=live.DB_KEEPALIVE)
+    # 서버 쪽 TCP keepalive · 전송 한도(live.DB_KEEPALIVE, 이슈 #56). 이 콘솔이 꺼지거나 끊기면 DB 가 약 1분 안에 연결을 닫는다.
+    #   이름표 application_name 은 콘솔 이름이다(live.db_settings, 이슈 #76. 상태판의 콘솔 DB 연결 확인)
+    app.state.pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10, server_settings=live.db_settings())
 
     # LISTEN 전용 연결(live.Listener). 사건 · 판정 · 조치 두 채널을 듣고, 끊기면 다시 붙어 화면에 resync 를 보낸다.
     # 첫 연결이 안 되면 풀과 같이 기동을 실패시킨다. 헬스체크가 빠져 HAProxy 가 다른 콘솔로 보낸다.
@@ -720,7 +721,8 @@ async def summary():
         "blocked_ips": blocks["total"],
         "blocks": {k: blocks[k] for k in block_points.STATES},
         # 지점별 합(applied + failed + unverified) = 살아 있는 요청 − 제외 − 그 지점 미요청(unrequested) − 그 지점 빠짐 확인 전
-        # (removing, 관문 빼기 뒤 관문이 뺐다고 확인하기 전). 만료 없음 · 집행 제외는 어느 지점도 집행하지 않는다
+        # (removing, 관문 빼기 뒤 관문이 뺐다고 확인하기 전). 만료 없음 · 집행 제외는 어느 지점도 집행하지 않는다.
+        # 미확인 = 확인 중(checking, 5분 안) + 확인 지연(delayed, 5분 넘은 확인 전 · 지점 불일치)이다(이슈 #84)
         "blocks_by_point": [targets.point_counts(p, by_point, reports.get(p), as_of, heartbeats_available)
                             for p in targets.POINT_LABELS],
         **({"absorbed_unblocked": dict(unblocked)} if unblocked else {}),

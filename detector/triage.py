@@ -101,13 +101,13 @@ NO_EXPIRY_TEXT = ("만료 없는 옛 차단이 살아 있어 다시 걸어도 �
                   "관문에서 막으려면 콘솔에서 admin 이 해제한 뒤 다시 차단하세요")
 NO_EXPIRY_TAG = "만료 없는 옛 차단 유지 · 관문 집행 제외"
 
-# 차단 적용 지점(이슈 #77). app/block_points.py 의 사본이다(test_triage.py 가 맞춰 본다). 지점은 AWS 관문(gateway, 허니팟 유입
+# 차단 적용 지점(이슈 #77). app/block_points.py 의 사본이다(test_triage.py 가 맞춰 본다). 지점은 허니팟 관문(gateway, 허니팟 유입
 # 앞 · 관측)과 내부 방화벽(fw, 보호 대상 앞 · 보호)이고 내부 방화벽은 늘 막는다. 기본값은 규칙만으로 정한다: 허니팟 남용 규칙이면
 # 관문 + 내부 방화벽, 아니면 내부 방화벽. triage 는 규칙 기본값만 쓰고(지점 인자는 없다) 관문을 더하는 것은 콘솔이다.
 # 살아 있는 차단 · 약속은 넓히기만 한다(합집합, 좁히기는 DB 트리거가 거부한다)
 POINTS = ("gateway", "fw")                  # 정규 순서(관문 먼저)
 HONEYPOT_ABUSE_RULES = frozenset({"R004"})  # 프록시 남용 시도만
-POINT_NAMES = {"gateway": "AWS 관문", "fw": "내부 방화벽"}
+POINT_NAMES = {"gateway": "허니팟 관문", "fw": "내부 방화벽"}     # 콘솔 지점 이름(app/targets.py POINTS, 이슈 #78)과 같다
 
 
 def default_points(rule_id):
@@ -116,7 +116,7 @@ def default_points(rule_id):
 
 
 def points_name(points):
-    """적용 지점 이름. 예: 'AWS 관문 + 내부 방화벽'."""
+    """적용 지점 이름. 예: '허니팟 관문 + 내부 방화벽'."""
     return " + ".join(POINT_NAMES[p] for p in POINTS if p in points)
 
 

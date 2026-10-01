@@ -6,11 +6,13 @@
      관리자가 아닌데 운영 기록을 달라면 403 · 세션 없으면 401. 둘 다 DB 에 닿기 전이다
   3. 라우터: 모르는 기간 · 구역 · 기간 없음은 DB 에 닿기 전에 422 · 한 트랜잭션(반복 읽기 · 읽기 전용) 첫 줄이 statement_timeout ·
      표가 없는 구역은 available=false 와 빠진 표 이름 · 출력자는 세션 사용자
-  4. 다른 모듈과 같은 글자: 차단 상태 분류(main.BLOCK_STATES_SQL, 같은 상수 block_points.BLOCK_STATES_SQL) · 규칙별 판정
+  4. 대상 구역(이슈 #76 · #78): 콘솔 행은 응답 중 그대로이고 까닭은 '출력 시각의 DB 연결: …'(읽지 못하면 확인 불가) · 허니팟 이름
+  5. 다른 모듈과 같은 글자: 차단 상태 분류(main.BLOCK_STATES_SQL, 같은 상수 block_points.BLOCK_STATES_SQL) · 규칙별 판정
      (operations.quality 의 질의) · 차단 감사 종류 순서(지점 넓힘은 만료 변경 뒤) · 관문 반영 지연은 관문 요청만(이슈 #77) ·
      기존 차단 유지 · 연속성 확인 불가 표지는 집행기 NOTE_KEPT · NOTE_UNCERTAIN 과 같은 글자(결정 2 · 3)
 SQL 이 맞는지는 test_reports_db.py 가 시험 DB 로 본다.
 """
+import asyncio
 import importlib.util
 import inspect
 import os
@@ -19,6 +21,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
@@ -75,6 +78,40 @@ class PureTests(unittest.TestCase):
         self.assertEqual(set(r.BUILDERS), set(ALL))
         # nodes 는 콘솔에 열 권한만 있어 표 권한 검사가 늘 거짓이다. 선검사에 넣으면 운영에서 대상 구역이 늘 빠진다
         self.assertFalse(any("nodes" in tables for tables in r.TABLES.values()))
+
+    def test_대상_구역의_콘솔_행은_출력_시각의_DB_연결이다(self):
+        # 카드와 같은 사실(콘솔 이름표 연결의 있음 · 없음)이고 머리만 '출력 시각의 DB 연결' 이다. state 는 응답 중 그대로다
+        t = r.targets
+        links = t.db_links_of([{"name": "opsloop-console-a", "present": True}, {"name": "opsloop-console-b", "present": False}])
+        view = {"metrics_available": False, "targets": [
+            {"id": tid, "label": label,
+             "collection": t.console_collection({}, links) if tid == "console" else {"state": "ok", "reason": "노드 수신 2분 전"},
+             "response": t.response_block(tid, None, 0, {}, NOW, True)} for tid, label, _ in t.TARGETS]}
+
+        class Conn:
+            async def fetchrow(self, sql, *args):
+                return {"runs": 0, "max_gap": None}
+
+            async def fetch(self, sql, *args):
+                return []
+
+        async def section(value):
+            with patch.object(t, "targets_view", lambda c, as_of: asyncio.sleep(0, value)):
+                return await r.targets_section(Conn(), NOW - timedelta(days=1), NOW, NOW)
+        rows = {x["id"]: x for x in asyncio.run(section(view))["targets"]}
+        self.assertEqual(rows["console"]["collection"],
+                         {"state": "responding", "reason": "출력 시각의 DB 연결: 콘솔 A 있음 · 콘솔 B 없음(평소 꺼 두는 예비)"})
+        self.assertEqual(rows["web-01"]["collection"], {"state": "ok", "reason": "노드 수신 2분 전"})
+        self.assertEqual((rows["aws-sensor"]["label"], rows["aws-sensor"]["response"]["point_label"]), ("허니팟 센서", "허니팟 관문"))
+        self.assertEqual(set(rows["console"]["response"]), {"point_label", "applied", "failed", "unverified", "unrequested",
+                                                             "removing", "exempt", "stalled"})
+        # 읽지 못하면 확인 불가다. 대기 · 미확인 · 생존으로 꾸미지 않는다
+        view["targets"][2]["collection"] = t.console_collection({}, None)
+        unread = {x["id"]: x for x in asyncio.run(section(view))["targets"]}["console"]["collection"]
+        self.assertEqual(unread, {"state": "responding", "reason": "출력 시각의 DB 연결: 확인 불가"})
+        for reason in (rows["console"]["collection"]["reason"], unread["reason"]):
+            for word in ("대기", "미확인", "생존", "정상"):
+                self.assertNotIn(word, reason)
 
 
 class SameTextTests(unittest.TestCase):

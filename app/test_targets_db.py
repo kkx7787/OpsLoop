@@ -29,9 +29,16 @@
   - 대시보드 개편(이슈 #83): 미결 = 최신 판정이 사람의 판단 유보(같은 사건 두 번 → 1건 · 재판정 → 제외 · 시스템 전환 기록 → 제외,
     기록은 남음) · 창 밖 미결도 세지만 최근 중요 탐지 · 대응 금지 대역 수는 그대로 · 카드 미결 수 = 장비 · 미결 필터 목록 수 = 요약 ·
     앞선 시각(기준 + 5분 넘게) 줄은 마지막 로그 · 웹 로그 적재 판정에서 빠짐 · 취약점 대조 실패 · 대조 오래됨
+  - 수집 · 관제 상태(이슈 #76 · #84): 콘솔 DB 연결은 실제 pg_stat_activity 에서 같은 역할의 이름표 연결만 셈(이름표 있는 연결 ·
+    다른 역할이 같은 이름을 쓴 연결 · 이름표 없는 연결 · 콘솔 B 없음 · 닫으면 다음 조회에 없음 · 읽기 실패는 확인 불가) ·
+    미확인은 확인 중(5분 안) · 확인 지연(5분 넘은 확인 전 · 지점 불일치)으로 나뉘고 시각 글자가 아니어도 오류가 아님(관문을 다시 요청한
+    행에 남은 removing 은 요청 시각으로 잼) · 요약과 같음 · 카드 보고 문제(report_issue)는 띠 report:<지점> 과 같은 글 · 확인 지연은
+    띠에도 있음(그 지점 보고가 이상이면 그 항목)
 """
+import asyncio
 import json
 import os
+import secrets
 import unittest
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -134,7 +141,10 @@ class Counted:
 
 def band_needs(body) -> list[tuple[str, set]]:
     """카드 ⇒ 띠 불변식(이슈 #82): 카드가 이상 · 확인 불가로 보이는 것마다 (까닭, 띠에 있어야 할 키 후보). 후보 하나라도 띠에 있어야
-    한다. 의도한 상태(등록 대기 · 폐기 노드와 그 옛 지표, 조용한 서버의 요청 없음, 생존 신호를 보내지 않는 콘솔)는 이상이 아니다."""
+    한다. 의도한 상태(등록 대기 · 폐기 노드와 그 옛 지표, 조용한 서버의 요청 없음, 생존 신호를 보내지 않는 콘솔)는 이상이 아니다.
+    콘솔 DB 연결 없음 · 확인 불가(이슈 #76)도 띠에 올리지 않는다(B 는 평소 꺼 두는 예비이고, 응답하는 콘솔은 자기 연결이 있으며,
+    A 없음은 B 가 응답 중인 상황이라 콘솔 장애 알림 몫이다). 카드 보고 문제(report_issue, #84)는 띠 report:<지점> 과 같은 판정이다.
+    카드 적용 확인 지연(delayed, #84) 가운데 지점 불일치를 뺀 5분 넘은 확인 전은 띠 point_delayed:<지점>, 그 지점 보고가 이상이면 그 항목이다."""
     as_of = datetime.fromisoformat(body["as_of"])
     detect = {"detect:honeypot", "detect:bridge"}
     needs = []
@@ -166,10 +176,14 @@ def band_needs(body) -> list[tuple[str, set]]:
             needs.append((f"{tid} 적용 실패", {f"block_failed:{point}"}))
         if r["stale"]:
             needs.append((f"{tid} 지점 불일치", {f"point_stale:{point}", "gateway_mismatch"}))
+        if r["delayed"] > r["stale"]:
+            needs.append((f"{tid} 적용 확인 지연", {f"point_delayed:{point}", f"report:{point}"}))
         age = as_of - datetime.fromisoformat(report["seen_at"]) if report and report["seen_at"] else None
         if report and (age is None or age > timedelta(seconds=t.HEARTBEAT_STALE)
                        or report["problem"] and age > timedelta(seconds=t.REPORT_PROBLEM_GRACE)):
             needs.append((f"{tid} 지점 보고", {f"report:{point}", f"enforcer:{point}"}))
+        if r["report_issue"]:
+            needs.append((f"{tid} 보고 문제 {r['report_issue']}", {f"report:{point}"}))
     return needs
 
 
@@ -421,9 +435,11 @@ class TargetsDatabaseTests(Base):
         web = self.target(body, "web-01")["collection"]
         self.assertEqual((web["state"], web["reason"]), ("ok", "노드 수신 2분 전 · 최근 1시간 로그 있음"))
         self.assertEqual(web["extra"], [{"label": "마지막 적재", "at": t.cti.iso(self.ago(120)), "note": None}])
+        # 콘솔은 응답 중이다. 시험 연결에는 콘솔 이름표가 없어 둘 다 없음이다(이슈 #76)
         console = self.target(body, "console")["collection"]
         self.assertEqual((console["state"], console["signal"], console["logs"][0]["last_at"]),
-                         ("unknown", None, t.cti.iso(self.ago(300))))
+                         ("responding", None, t.cti.iso(self.ago(300))))
+        self.assertEqual(console["reason"], "DB 연결 확인: 콘솔 A 없음 · 콘솔 B 없음(평소 꺼 두는 예비)")
         data = self.target(body, "data-node")["collection"]
         self.assertEqual((data["state"], data["reason"], data["signal"]["seen_at"]),
                          ("ok", "마지막 탐지 실행 4분 전", t.cti.iso(self.ago(240))))
@@ -491,10 +507,13 @@ class TargetsDatabaseTests(Base):
         body = await self.view()
         aws, web = self.target(body, "aws-sensor")["response"], self.target(body, "web-01")["response"]
         # 203.0.113.8 은 관문 stale(미확인 가운데 지점 불일치) · 내부 방화벽 failed(실패). 실패는 미확인에 섞지 않는다
+        #   미확인은 확인 중(기록 없음 · 방금 대기) · 확인 지연(지점 불일치)으로 나뉜다(이슈 #84)
         self.assertEqual((aws["point"], aws["point_label"], aws["applied"], aws["failed"], aws["unverified"], aws["stale"],
-                          aws["stalled"]), ("gateway", "AWS 관문", 2, 0, 2, 1, None))
+                          aws["checking"], aws["delayed"], aws["stalled"]), ("gateway", "허니팟 관문", 2, 0, 2, 1, 1, 1, None))
         self.assertEqual((web["point"], web["point_label"], web["applied"], web["failed"], web["unverified"], web["stale"],
-                          web["stalled"]), ("fw", "내부 방화벽", 1, 1, 2, 0, None))
+                          web["checking"], web["delayed"], web["stalled"]), ("fw", "내부 방화벽", 1, 1, 2, 0, 2, 0, None))
+        # 보고 문제: 관문 보고는 2분 전(없음), 내부 방화벽은 받은 보고가 없다(띠 report:fw 와 같은 글)
+        self.assertEqual((aws["report_issue"], web["report_issue"]), (None, "받은 보고 없음 · 보고 파일 없음"))
         self.assertEqual(aws["report"], {"seen_at": t.cti.iso(self.ago(120)), "checked_at": t.cti.iso(self.ago(30)),
                                          "problem": None})
         self.assertEqual(web["report"], {"seen_at": None, "checked_at": t.cti.iso(self.ago(30)),
@@ -1051,6 +1070,7 @@ class TargetsDatabaseTests(Base):
         self.assertEqual(items["sensor"]["reason"], self.target(body, "aws-sensor")["collection"]["reason"])
         self.assertEqual(items["nodes_silent"]["reason"], "web-02 수신 끊김 · 마지막 수신 20분 전")
         self.assertEqual(items["report:fw"]["reason"], "받은 보고 없음 · 보고 파일 없음")
+        self.assertEqual(self.target(body, "web-01")["response"]["report_issue"], items["report:fw"]["reason"])
         self.assertEqual(items["parse:web-01"]["reason"], "로그는 도착하는데 적재되지 않음 · 마지막 도착 1분 전")
         web = self.target(body, "web-01")
         self.assertEqual((web["collection"]["state"], [w["key"] for w in web["collection"]["warnings"]],
@@ -1110,8 +1130,8 @@ class TargetsDatabaseTests(Base):
         for point, tid in (("gateway", "aws-sensor"), ("fw", "web-01")):
             card = self.target(view, tid)["response"]
             got = next(x for x in summary["blocks_by_point"] if x["point"] == point)
-            self.assertEqual({k: got[k] for k in ("applied", "failed", "unverified", "stalled")},
-                             {k: card[k] for k in ("applied", "failed", "unverified", "stalled")})
+            keys = ("applied", "failed", "unverified", "stale", "checking", "delayed", "stalled")
+            self.assertEqual({k: got[k] for k in keys}, {k: card[k] for k in keys})
         # 먼저 처리할 사건: 미판정 전체(대시보드 판정 대기와 같은 수)를 앞 · 뒤로 가른다
         queue = view["queue"]
         self.assertEqual(queue["total"], metrics["pending"]["total"])
@@ -1121,6 +1141,81 @@ class TargetsDatabaseTests(Base):
                          [("node", "front"), ("w-mixed", "front"), ("w-none", "front"), ("nodef", "front"),
                           ("self", "front"), ("audit", "front"), ("old-pending", "back"), ("c-out", "back")])
         self.assertEqual(queue["overdue"], metrics["pending"]["overdue"])
+
+    async def test_미확인은_확인_중과_확인_지연으로_나뉜다(self):
+        # 이슈 #84 결정 6: 확인 전(pending · 기록 없음)이 그 상태가 된 시각(enforcement.<지점>.since, 없으면 요청 시각 created_at)부터
+        #   5분 안이면 확인 중, 넘었으면 지점 불일치(stale)와 함께 확인 지연이다. 합은 미확인이다. 시각 글자가 아니어도(캐스트 오류
+        #   대신) 요청 시각으로 잰다. 관문을 뺀 뒤 다시 요청한 행에 남은 removing(집행기가 다음 회차까지 이어받지 않는다)도 요청 시각으로
+        #   잰다(방금 다시 요청했으면 확인 중). 요청하지 않은 지점 · 확인 · 실패는 어느 쪽에도 들지 않는다
+        live, TWO = self.now + timedelta(hours=1), ["gateway", "fw"]
+
+        def since(seconds):
+            return t.cti.iso(self.ago(seconds))
+        await self.conn.execute("DELETE FROM blocklist")
+        for ip, created, enforcement, points in [
+                ("198.51.100.101", 60, {"gateway": {"state": "pending", "since": since(60)},
+                                        "fw": {"state": "pending", "since": since(290)}}, TWO),
+                ("198.51.100.102", 600, {"gateway": {"state": "pending", "since": since(310)},
+                                         "fw": {"state": "stale", "since": since(30)}}, TWO),
+                ("198.51.100.103", 400, None, TWO),                                  # 기록 없음 · 요청 6분 40초 전
+                ("198.51.100.104", 10, None, TWO),                                   # 기록 없음 · 방금 요청
+                ("198.51.100.105", 600, {"gateway": {"state": "pending", "since": "2026-13-45T00:00:00+00:00"},
+                                         "fw": {"state": "pending", "since": "어제"}}, TWO),
+                ("198.51.100.106", 600, {"gateway": {"state": "confirmed"}, "fw": {"state": "failed"}}, TWO),
+                ("198.51.100.107", 600, {"fw": {"state": "pending", "since": since(30)}}, ["fw"]),       # 관문 미요청
+                ("198.51.100.108", 10, {"gateway": {"state": "removing", "since": since(1200)},           # 관문 다시 요청 직후
+                                        "fw": {"state": "confirmed"}}, TWO)]:
+            await self.conn.execute("""INSERT INTO blocklist (actor_ip, created_at, expires_at, enforcement, points)
+                VALUES ($1, $2, $3, $4::jsonb, $5::text[])""", ip, self.ago(created), live,
+                json.dumps(enforcement) if enforcement is not None else None, points)
+        body = await self.view()
+        keys = ("applied", "failed", "unverified", "stale", "checking", "delayed", "unrequested")
+        aws, web = (self.target(body, tid)["response"] for tid in ("aws-sensor", "web-01"))
+        self.assertEqual({k: aws[k] for k in keys}, {"applied": 1, "failed": 0, "unverified": 6, "stale": 0,
+                                                     "checking": 3, "delayed": 3, "unrequested": 1})
+        self.assertEqual({k: web[k] for k in keys}, {"applied": 1, "failed": 1, "unverified": 6, "stale": 1,
+                                                     "checking": 3, "delayed": 3, "unrequested": 0})
+        for r in (aws, web):
+            self.assertEqual(r["checking"] + r["delayed"], r["unverified"])
+        # 집행기가 멈춘 지점은 나누지 않는다(미확인에 모두 합치고 화면은 그 지점 경고 하나다)
+        await self.conn.execute("DELETE FROM sensor_heartbeats WHERE source = 'block:fw'")
+        web = self.target(await self.view(), "web-01")["response"]
+        self.assertEqual((web["unverified"], web["checking"], web["delayed"], web["stalled"]), (8, 0, 0, "집행기 확인 기록 없음"))
+
+    async def test_확인_지연은_띠에도_있고_그_지점_보고가_이상이면_그_항목이다(self):
+        # 이슈 #84 결정 6 · 카드 ⇒ 띠: 관문 보고가 8분 전(15분 안 · 문제 없음)이면 집행기는 판정하지 못한 회차에 직전 대기와 그 시각을
+        #   둔다. 5분을 넘긴 대기는 카드 '적용 확인 지연' 이고 띠에는 지점 확인 지연 항목(불일치를 뺀 수)이 있다. 내부 방화벽처럼 그 지점
+        #   보고가 이상이면(받은 보고 없음) 같은 현상이라 보고 항목 하나다. 관문 보고가 15분을 넘기면 관문도 보고 항목 하나가 된다
+        def since(seconds):
+            return t.cti.iso(self.ago(seconds))
+        await self.conn.execute("DELETE FROM blocklist")
+        await self.conn.execute("UPDATE sensor_heartbeats SET seen_at = $1, checked_at = $2 WHERE source = 'block:gateway'",
+                                self.ago(480), self.ago(10))
+        live = self.now + timedelta(hours=1)
+        for ip, enforcement in [("198.51.100.111", {"gateway": {"state": "pending", "since": since(360)},
+                                                    "fw": {"state": "pending", "since": since(360)}}),
+                                ("198.51.100.112", {"gateway": {"state": "stale", "since": since(60)}, "fw": {"state": "confirmed"}})]:
+            await self.conn.execute("""INSERT INTO blocklist (actor_ip, created_at, expires_at, enforcement)
+                VALUES ($1, $2, $3, $4::jsonb)""", ip, self.ago(360), live, json.dumps(enforcement))
+
+        async def look():
+            async with self.conn.transaction(isolation="repeatable_read", readonly=True):
+                body = await self.view()
+                items = (await t.monitor_view(self.conn, self.now))["items"]
+            for why, need in band_needs(body):
+                self.assertTrue(need & {x["key"] for x in items}, f"{why}: 띠 {[x['key'] for x in items]} 에 {sorted(need)} 가 없다")
+            return body, {x["key"]: x for x in items if x["key"].endswith((":gateway", ":fw"))}
+        body, band = await look()
+        aws, web = (self.target(body, tid)["response"] for tid in ("aws-sensor", "web-01"))
+        self.assertEqual((aws["delayed"], aws["stale"], aws["report_issue"], web["delayed"], web["report_issue"]),
+                         (2, 1, None, 1, "받은 보고 없음 · 보고 파일 없음"))
+        self.assertEqual({k: x["count"] for k, x in band.items()}, {"point_stale:gateway": 1, "report:fw": None,
+                                                                    "point_delayed:gateway": 1})
+        self.assertEqual(band["point_delayed:gateway"]["label"], "허니팟 관문 적용 확인 지연")
+        await self.conn.execute("UPDATE sensor_heartbeats SET seen_at = $1 WHERE source = 'block:gateway'", self.ago(960))
+        body, band = await look()
+        self.assertEqual(list(band), ["point_stale:gateway", "report:gateway", "report:fw"])
+        self.assertEqual(self.target(body, "aws-sensor")["response"]["report_issue"], band["report:gateway"]["reason"])
 
     async def test_내부_방화벽만_요청한_행은_관문_수와_관문_항목에_들지_않는다(self):
         # 이슈 #77. 지점 수는 그 지점을 요청한 행만 세고 관문 미요청은 따로 센다. 관문 불일치 · 관문 띠 항목은 관문 요청 행만이다.
@@ -1147,6 +1242,91 @@ class TargetsDatabaseTests(Base):
         # 띠: 내부 방화벽 불일치만 새로 뜨고 관문 적용 실패 · 관문 불일치 · 관문 지점 불일치 수는 그대로다
         self.assertEqual({k: v for k, v in band_after.items() if band_before.get(k) != v}, {"point_stale:fw": 1})
         self.assertNotIn("gateway_mismatch", band_after)
+
+
+@unittest.skipUnless(os.environ.get("OPSLOOP_TEST_DATABASE_URL"), "PostgreSQL 시험 연결 미지정")
+class ConsoleLinksTests(Base):
+    """콘솔 DB 연결(이슈 #76). 실제 pg_stat_activity 에서 이 DB 의 같은 역할(current_user) 연결 가운데 콘솔 이름표인 것만 센다.
+    시험 연결(postgres)과 같은 역할로 이름표를 단 연결을 따로 열어 콘솔을 흉내 낸다. 상태판은 조회마다 새 트랜잭션이다."""
+    with_cti = False
+
+    async def link(self, name=None, **kw):
+        import asyncpg
+        conn = await asyncpg.connect(os.environ["OPSLOOP_TEST_DATABASE_URL"],
+                                     server_settings={"application_name": name} if name else None, **kw)
+        self.addAsyncCleanup(conn.close)
+        return conn
+
+    async def console(self):
+        async with self.conn.transaction(isolation="repeatable_read", readonly=True):
+            body = await self.view()
+        return next(x for x in body["targets"] if x["id"] == "console")["collection"]
+
+    async def test_이름표_있는_연결만_있음이고_닫으면_다음_조회에_없음이다(self):
+        none = "DB 연결 확인: 콘솔 A 없음 · 콘솔 B 없음(평소 꺼 두는 예비)"
+        self.assertEqual((await self.console())["reason"], none)
+        await self.link()                                           # 이름표 없는 연결은 세지 않는다
+        await self.link("opsloop-console-c")                        # 모르는 콘솔 이름도 세지 않는다
+        self.assertEqual((await self.console())["reason"], none)
+        a = await self.link("opsloop-console-a")
+        await self.link("opsloop-console-a")                        # 같은 이름 연결이 여럿이어도 있음 하나다(수는 보지 않는다)
+        got = await self.console()
+        self.assertEqual((got["state"], got["reason"]), ("responding", "DB 연결 확인: 콘솔 A 있음 · 콘솔 B 없음(평소 꺼 두는 예비)"))
+        self.assertEqual([(x["name"], x["present"]) for x in got["db_links"]],
+                         [("opsloop-console-a", True), ("opsloop-console-b", False)])
+        b = await self.link("opsloop-console-b")
+        self.assertEqual((await self.console())["reason"], "DB 연결 확인: 콘솔 A 있음 · 콘솔 B 있음")
+        # 콘솔 B 를 멈추면(연결을 닫으면) 다음 조회에 없음이다. 백엔드 종료는 비동기라 5초 안에서 다시 묻는다
+        await b.close()
+        reason = None
+        for _ in range(50):
+            reason = (await self.console())["reason"]
+            if reason.endswith("콘솔 B 없음(평소 꺼 두는 예비)"):
+                break
+            await asyncio.sleep(0.1)
+        self.assertEqual(reason, "DB 연결 확인: 콘솔 A 있음 · 콘솔 B 없음(평소 꺼 두는 예비)")
+        self.assertFalse(a.is_closed())
+
+    async def test_다른_역할이_같은_이름표를_써도_세지_않는다(self):
+        import asyncpg
+        role, password = f"t76_{secrets.token_hex(4)}", secrets.token_urlsafe(18)
+        await self.conn.execute(f"CREATE ROLE {role} LOGIN PASSWORD '{password}'")
+        try:
+            try:
+                other = await self.link("opsloop-console-b", user=role, password=password)
+            except (asyncpg.InvalidAuthorizationSpecificationError, asyncpg.InvalidPasswordError, OSError) as e:
+                self.skipTest(f"합성 역할로 붙을 수 없다(pg_hba): {e}")
+            self.assertEqual(await other.fetchval("SELECT current_setting('application_name')"), "opsloop-console-b")
+            self.assertEqual((await self.console())["reason"], "DB 연결 확인: 콘솔 A 없음 · 콘솔 B 없음(평소 꺼 두는 예비)")
+            await other.close()
+        finally:
+            for _ in range(50):                                     # 백엔드가 끝나야 역할을 지울 수 있다
+                if not await self.conn.fetchval("SELECT count(*) FROM pg_catalog.pg_stat_activity WHERE usename = $1", role):
+                    break
+                await asyncio.sleep(0.1)
+            await self.conn.execute(f"DROP ROLE IF EXISTS {role}")
+
+    async def test_연결_목록을_읽지_못하면_확인_불가다(self):
+        # 역할 블록과 무관하게 pg_stat_activity 읽기가 막힌 DB 를 흉내 낸다. 바꾼 권한은 트랜잭션을 되돌려 남기지 않는다
+        await self.link("opsloop-console-a")
+        role = f"t76_{secrets.token_hex(4)}"
+        tx = self.conn.transaction()
+        await tx.start()
+        try:
+            await self.conn.execute(f"CREATE ROLE {role} NOLOGIN")
+            for table in ("incidents", "verdicts", "rule_versions", "events", "nodes", "detector_runs", "blocklist",
+                          "block_exempt", "node_metrics", "sensor_heartbeats"):
+                await self.conn.execute(f"GRANT SELECT ON pg_temp.{table} TO {role}")
+            await self.conn.execute("REVOKE SELECT ON pg_catalog.pg_stat_activity FROM PUBLIC")
+            await self.conn.execute(f"SET LOCAL ROLE {role}")
+            self.assertFalse(await self.conn.fetchval(t.CONSOLE_LINKS_READABLE_SQL))
+            body = await self.view()
+        finally:
+            await tx.rollback()
+        console = next(x for x in body["targets"] if x["id"] == "console")["collection"]
+        self.assertEqual((console["state"], console["reason"], console["db_links"]), ("responding", "DB 연결 확인 불가", None))
+        self.assertTrue(await self.conn.fetchval("SELECT has_table_privilege('public', 'pg_catalog.pg_stat_activity', 'SELECT')"))
+        self.assertFalse(await self.conn.fetchval("SELECT count(*) > 0 FROM pg_roles WHERE rolname = $1", role))
 
 
 @unittest.skipUnless(os.environ.get("OPSLOOP_TEST_DATABASE_URL"), "PostgreSQL 시험 연결 미지정")
