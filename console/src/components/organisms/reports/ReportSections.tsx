@@ -144,6 +144,12 @@ function Rules({ s }: { s: RulesSection }) {
   </>
 }
 
+/** 관문 반영 지연 통계에서 뺀 요청 수(기존 차단 유지 + 연속성 확인 불가, #77 결정 2 · 3). 이전 서버면 싣지 않는다 */
+function excludedNote(e: BlocksSection['enforcement']): string | undefined {
+  if (e.maintained === undefined && e.uncertain === undefined) return undefined
+  return `평균 · 중앙값 · 최대에서 제외 ${num((e.maintained ?? 0) + (e.uncertain ?? 0))}건`
+}
+
 function Blocks({ s }: { s: BlocksSection }) {
   const { requests: r, enforcement: e, states } = s
   return <>
@@ -152,8 +158,8 @@ function Blocks({ s }: { s: BlocksSection }) {
     <SubTable title="기간 차단 감사 이벤트" aside="종류별 수" head={['종류', '건수']} empty={!s.audit.length && '기간에 차단 감사 기록이 없습니다.'}>
       {s.audit.map(a => <tr key={a.eventid}><td className={cell}>{AUDIT_EVENT_LABEL[a.eventid] ?? <UntrustedText value={a.eventid} clip />}</td><td data-label="건수" className={numCell}>{num(a.count)}</td></tr>)}
     </SubTable>
-    {/* 관문을 요청한 새 요청만 센다(#77). 내부 방화벽 반영은 감사가 없어 싣지 않는다. 관문이 빼기 전에 다시 건 요청은 기존 차단 유지로 따로 세고 지연에서 뺀다(결정 2) */}
-    <CountRow title="관문 반영 지연 (관문 요청 → 관문 반영)" cells={[['관문 요청', num(e.created)], ['관문 반영 확인', num(e.enforced)], ['기존 차단 유지', num(e.maintained)], ['중앙값', seconds(e.p50_seconds)], ['최대', seconds(e.max_seconds)]]} />
+    {/* 관문을 요청한 새 요청만 센다(#77). 내부 방화벽 반영은 감사가 없어 싣지 않는다. 관문이 뺐다는 보고 없이 다시 건 요청은 기존 차단 유지 · 연속성 확인 불가로 따로 세고 둘 다 지연에서 뺀다(결정 2 · 3) */}
+    <CountRow title="관문 반영 지연 (관문 요청 → 관문 반영)" aside={excludedNote(e)} cells={[['관문 요청', num(e.created)], ['관문 반영 확인', num(e.enforced)], ['기존 차단 유지', num(e.maintained)], ['연속성 확인 불가', num(e.uncertain)], ['평균', seconds(e.mean_seconds)], ['중앙값', seconds(e.p50_seconds)], ['최대', seconds(e.max_seconds)]]} />
     {/* 종합 상태: 요청한 지점이 모두 확인해야 집행 확인(#77). 실패는 이전 서버에 없어 '—' */}
     <CountRow title="차단 집행 상태 (출력 시점)" cells={[['살아 있는 요청', num(states.total)], ['집행 확인', num(states.enforced)], ['집행 대기', num(states.pending)], ['집행 실패', num(states.failed)], ['불일치', num(states.mismatch)], ['집행 제외', num(states.excluded)]]} />
   </>

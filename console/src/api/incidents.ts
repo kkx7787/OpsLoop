@@ -201,7 +201,8 @@ export interface ActorRuleHit {
  * 차단 목록의 행. 요청(created_at)과 집행(enforced_at)은 다르다. 집행기가 관문 반영을 확인하면 method · enforced_at ·
  * enforce_note('관문 반영 · …')를 쓰고, 불일치 · 제외는 enforce_note('관문 불일치 · …' · '집행 제외 · …')로 알린다(이슈 #47).
  * 관문 세 열(method · enforced_at · enforce_note 의 관문 쪽지)은 관문을 요청한 행에만 쓴다(이슈 #77). 다시 걸어도 요청 시각에 비지 않고,
- * 관문이 빼기 전에 다시 건 차단을 새 보고로 확인하면 쪽지 끝에 '· 기존 차단 유지' 가 붙는다(결정 2)
+ * 관문이 뺐다는 보고 없이 다시 건 차단을 새 보고로 확인하면 쪽지 끝에 관문 보고가 이어졌으면 '· 기존 차단 유지', 아니면
+ * '· 연속성 확인 불가' 가 붙는다(결정 2 · 3)
  */
 export interface ActorBlock {
   reason: string | null

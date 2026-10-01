@@ -87,10 +87,14 @@ export interface BlocksSection extends SectionBase {
   audit: Array<{ eventid: string; count: number }>
   /**
    * 기간 새 차단 요청의 관문 반영 지연(요청 → 관문 반영). created 는 관문을 요청한 새 요청 수(이슈 #77, 내부 방화벽만 요청한 것은 빼
-   * requests.total 보다 작을 수 있다), enforced 는 그중 관문 반영이 새로 확인된 수(지연 중앙값 · 최대의 표본), maintained 는 관문이
-   * 빼기 전에 다시 건 요청(기존 차단 유지, 결정 2. 지연에서 뺀다, 이전 서버에는 없다)
+   * requests.total 보다 작을 수 있다), enforced 는 그중 관문 반영이 새로 확인된 수(지연 평균 · 중앙값 · 최대의 표본). 관문이 뺐다는 오류
+   * 없는 보고 없이 다시 건 요청은 지연에서 빼고 따로 센다: maintained 는 관문 보고가 이어진 기존 차단 유지(결정 2 · 3), uncertain 은 보고
+   * 누락 · 덮임 · 오류 · 다시 걸기 전 만료로 연속성 확인 불가(결정 3). 이전 서버에는 maintained · uncertain · mean_seconds 가 없을 수 있다
    */
-  enforcement: { created: number; enforced: number; maintained?: number; p50_seconds: number | null; max_seconds: number | null }
+  enforcement: {
+    created: number; enforced: number; maintained?: number; uncertain?: number
+    mean_seconds?: number | null; p50_seconds: number | null; max_seconds: number | null
+  }
   /** 출력 시점 살아 있는 차단 요청의 종합 상태(대시보드와 같은 분류, 이슈 #77 부터 failed 가 있다) */
   states: BlockCounts & { total: number }
 }

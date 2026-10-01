@@ -208,10 +208,12 @@ describe('구역', () => {
     expect(within(within(blocks).getByRole('table', { name: '기간 차단 감사 이벤트' })).getByText('차단 연장')).toBeInTheDocument()
     // 살아 있는 차단의 지점 넓힘(#77)은 감사 화면과 같은 이름표
     expect(within(within(blocks).getByRole('table', { name: '기간 차단 감사 이벤트' })).getByText('차단 지점 넓힘')).toBeInTheDocument()
-    // 관문 반영 지연은 관문을 요청한 새 요청만 센다(#77, 새 요청 9 가운데 관문 요청 7). 기존 차단 유지(결정 2)는 따로 세고 지연에서 뺀다
+    // 관문 반영 지연은 관문을 요청한 새 요청만 센다(#77, 새 요청 9 가운데 관문 요청 7). 기존 차단 유지 · 연속성 확인 불가(결정 2 · 3)는
+    // 따로 세고 지연(평균 · 중앙값 · 최대)에서 뺀 건수를 표 머리에 적는다
     const enforceTable = within(blocks).getByRole('table', { name: '관문 반영 지연 (관문 요청 → 관문 반영)' })
-    expect([...enforceTable.querySelectorAll('th')].map((th) => th.textContent)).toEqual(['관문 요청', '관문 반영 확인', '기존 차단 유지', '중앙값', '최대'])
-    expect(rowOf(enforceTable)).toEqual(['7', '5', '1', '42초', '5분 10초'])
+    expect([...enforceTable.querySelectorAll('th')].map((th) => th.textContent)).toEqual(['관문 요청', '관문 반영 확인', '기존 차단 유지', '연속성 확인 불가', '평균', '중앙값', '최대'])
+    expect(rowOf(enforceTable)).toEqual(['7', '4', '1', '1', '1분 35초', '42초', '5분 10초'])
+    expect(within(blocks).getByText('평균 · 중앙값 · 최대에서 제외 2건')).toBeInTheDocument()
     // 종합 상태: 요청한 지점이 모두 확인해야 집행 확인. 실패를 따로 세고 불일치에는 지점 이름이 없다
     const states = within(blocks).getByRole('table', { name: '차단 집행 상태 (출력 시점)' })
     expect([...states.querySelectorAll('th')].map((th) => th.textContent)).toEqual(['살아 있는 요청', '집행 확인', '집행 대기', '집행 실패', '불일치', '집행 제외'])
@@ -232,11 +234,20 @@ describe('구역', () => {
     expect(cells(within(ops).getByRole('table', { name: '알림 발송 (기간 · 시험 발송 제외)' }), '판정 지연')).toEqual(['판정 지연', '실패', '2'])
   })
 
-  it('이전 서버의 관문 반영 지연에는 기존 차단 유지 수가 없어 — 로 적는다', async () => {
-    const { maintained: _, ...enforcement } = BLOCKS_SECTION.enforcement
+  it('이전 서버의 관문 반영 지연에는 기존 차단 유지 · 연속성 확인 불가 · 평균이 없어 — 로 적고 제외 건수를 적지 않는다', async () => {
+    const { maintained: _m, uncertain: _u, mean_seconds: _a, ...enforcement } = BLOCKS_SECTION.enforcement
     setup('/reports?period=7d&s=blocks', { report: periodReport({ sections: { blocks: { ...BLOCKS_SECTION, enforcement } } }) })
     const blocks = await screen.findByRole('region', { name: '차단 · 집행' })
-    expect(rowOf(within(blocks).getByRole('table', { name: '관문 반영 지연 (관문 요청 → 관문 반영)' }))).toEqual(['7', '5', '—', '42초', '5분 10초'])
+    expect(rowOf(within(blocks).getByRole('table', { name: '관문 반영 지연 (관문 요청 → 관문 반영)' }))).toEqual(['7', '4', '—', '—', '—', '42초', '5분 10초'])
+    expect(within(blocks).queryByText(/에서 제외/)).toBeNull()
+  })
+
+  it('결정 2 판 서버는 기존 차단 유지만 있어 그 수를 제외 건수로 적는다', async () => {
+    const { uncertain: _u, mean_seconds: _a, ...enforcement } = BLOCKS_SECTION.enforcement
+    setup('/reports?period=7d&s=blocks', { report: periodReport({ sections: { blocks: { ...BLOCKS_SECTION, enforcement } } }) })
+    const blocks = await screen.findByRole('region', { name: '차단 · 집행' })
+    expect(rowOf(within(blocks).getByRole('table', { name: '관문 반영 지연 (관문 요청 → 관문 반영)' }))).toEqual(['7', '4', '1', '—', '—', '42초', '5분 10초'])
+    expect(within(blocks).getByText('평균 · 중앙값 · 최대에서 제외 1건')).toBeInTheDocument()
   })
 
   it('표를 읽을 수 없어 빠진 부분은 0 이 아니라 빠졌다고 적는다', async () => {

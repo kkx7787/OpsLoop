@@ -112,7 +112,8 @@ describe('blockState · isActiveBlock', () => {
     expect(gatewayCheckedAt(rewidened, 'pending')).toBeNull()
     expect(pointRows(rewidened, now).map((r) => [r.key, r.point.state])).toEqual([['gateway', 'pending'], ['fw', 'confirmed']])
     // 해제 · 만료 행을 관문을 포함해 다시 건 뒤(결정 2): 세 열은 요청 시각에 비지 않는다. 새 목록을 확인하기 전(관문 결과 대기)은 남은
-    // 확인 시각이 있어도 집행 대기이고(관문 시각은 보이지 않는다), 확인되면 쪽지 끝에 '기존 차단 유지' 가 붙은 채 집행 확인이다
+    // 확인 시각이 있어도 집행 대기이고(관문 시각은 보이지 않는다), 확인되면 쪽지 끝에 '기존 차단 유지' · '연속성 확인 불가'(결정 3)가
+    // 붙은 채 집행 확인이다
     const rearmed = block({ points: ['gateway', 'fw'], enforce_note: '관문 반영 · abcd1234 · x', enforcement: { gateway: point('pending'), fw: point('confirmed') } })
     expect(blockState(rearmed, now)).toBe('pending')
     expect(blockStateHint(rearmed, 'pending')).toBe('관문 반영 확인 전')
@@ -122,6 +123,10 @@ describe('blockState · isActiveBlock', () => {
     expect(blockState(kept, now)).toBe('enforced')
     expect(gatewayCheckedAt(kept, 'enforced')).toBe(kept.enforced_at)
     expect(enforceRecord(kept)).toEqual({ method: 'nft', note: '관문 반영 · abcd1234 · x · 기존 차단 유지' })
+    const uncertain = block({ points: ['gateway', 'fw'], enforce_note: '관문 반영 · abcd1234 · x · 연속성 확인 불가', enforcement: { gateway: point('confirmed'), fw: point('confirmed') } })
+    expect(blockState(uncertain, now)).toBe('enforced')
+    expect(gatewayCheckedAt(uncertain, 'enforced')).toBe(uncertain.enforced_at)
+    expect(enforceRecord(uncertain)).toEqual({ method: 'nft', note: '관문 반영 · abcd1234 · x · 연속성 확인 불가' })
   })
 
   it('방식 · 집행 메모는 관문을 요청한 행만 보이고, 관문을 뺀 행에 남은 관문 기록은 보이지 않는다(집행 제외 쪽지는 보인다)', () => {
@@ -226,6 +231,7 @@ const F: BlockPoint[] = ['fw']
 const [C, P, S, X, R] = (['confirmed', 'pending', 'stale', 'failed', 'removing'] as const).map((state) => point(state))
 const APPLIED = '관문 반영 · abcd1234 · x'
 const KEPT = `${APPLIED} · 기존 차단 유지`
+const UNCERTAIN = `${APPLIED} · 연속성 확인 불가`
 const MISMATCH = '관문 불일치 · 5분 넘게 반영되지 않음'
 const EXCLUDED = '집행 제외 · 금지 대역'
 const STATE_CASES: Array<[string, BlockPoint[], boolean, boolean, string | null, BlockEnforcement | null, BlockState]> = [
@@ -238,6 +244,7 @@ const STATE_CASES: Array<[string, BlockPoint[], boolean, boolean, string | null,
   ['두 지점 · 다시 건 뒤 관문 새 목록 확인 전(남은 확인 시각)', GF, true, true, APPLIED, { gateway: P, fw: C }, 'pending'],
   ['두 지점 · 관문이 뺀 뒤 다시 건 행(확인 시각 없이 남은 쪽지)', GF, true, false, APPLIED, { gateway: P, fw: C }, 'pending'],
   ['두 지점 · 기존 차단 유지로 다시 확인', GF, true, true, KEPT, { gateway: C, fw: C }, 'enforced'],
+  ['두 지점 · 연속성 확인 불가로 다시 확인', GF, true, true, UNCERTAIN, { gateway: C, fw: C }, 'enforced'],
   ['두 지점 · 내부 방화벽 지연', GF, true, true, APPLIED, { gateway: C, fw: S }, 'mismatch'],
   ['두 지점 · 관문 불일치 쪽지', GF, true, false, MISMATCH, { gateway: S, fw: C }, 'mismatch'],
   ['두 지점 · 관문 지연(쪽지 전)', GF, true, true, APPLIED, { gateway: S, fw: C }, 'mismatch'],
@@ -264,7 +271,7 @@ describe('종합 상태 경우 표 (서버 STATE_CASE 와 같다 · 결정 b)', 
   })
 
   it('표는 24건이고 살아 있는 다섯 상태를 모두 덮는다', () => {
-    expect(STATE_CASES).toHaveLength(24)
+    expect(STATE_CASES).toHaveLength(25)
     expect(new Set(STATE_CASES.map((c) => c[6]))).toEqual(new Set(['enforced', 'pending', 'excluded', 'mismatch', 'failed']))
   })
 })
