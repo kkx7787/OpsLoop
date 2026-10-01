@@ -61,7 +61,7 @@ OPERATOR = SimpleNamespace(state=SimpleNamespace(user={"u": "han", "r": "operato
 GF, F = ["gateway", "fw"], ["fw"]
 C, P, S, X, R = ({"state": s} for s in ("confirmed", "pending", "stale", "failed", "removing"))
 APPLIED, MISMATCH, EXCLUDED = "관문 반영 · abcd1234 · x", "관문 불일치 · 5분 넘게 반영되지 않음", "집행 제외 · 금지 대역"
-KEPT = APPLIED + " · 기존 차단 유지"
+KEPT, UNCERTAIN = APPLIED + " · 기존 차단 유지", APPLIED + " · 연속성 확인 불가"
 STATE_CASES = [
     ("두 지점 · 모두 확인", GF, True, True, APPLIED, {"gateway": C, "fw": C}, "enforced"),
     ("두 지점 · 관문 확인 · 내부 방화벽 대기", GF, True, True, APPLIED, {"gateway": C, "fw": P}, "pending"),
@@ -72,6 +72,7 @@ STATE_CASES = [
     ("두 지점 · 다시 건 뒤 관문 새 목록 확인 전(남은 확인 시각)", GF, True, True, APPLIED, {"gateway": P, "fw": C}, "pending"),
     ("두 지점 · 관문이 뺀 뒤 다시 건 행(확인 시각 없이 남은 쪽지)", GF, True, False, APPLIED, {"gateway": P, "fw": C}, "pending"),
     ("두 지점 · 기존 차단 유지로 다시 확인", GF, True, True, KEPT, {"gateway": C, "fw": C}, "enforced"),
+    ("두 지점 · 연속성 확인 불가로 다시 확인", GF, True, True, UNCERTAIN, {"gateway": C, "fw": C}, "enforced"),
     ("두 지점 · 내부 방화벽 지연", GF, True, True, APPLIED, {"gateway": C, "fw": S}, "mismatch"),
     ("두 지점 · 관문 불일치 쪽지", GF, True, False, MISMATCH, {"gateway": S, "fw": C}, "mismatch"),
     ("두 지점 · 관문 지연(쪽지 전)", GF, True, True, APPLIED, {"gateway": S, "fw": C}, "mismatch"),
@@ -476,7 +477,7 @@ class SchemaTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_해제_만료_행을_다시_걸면_관문_포함_여부와_무관하게_관문_세_열을_둔다(self):
         # 2026-10-01 결정 · 결정 2: 요청 시각에는 다시 걸기 기록만 남는다. 관문 세 열은 관문이 실제로 뺐다고 확인한 뒤 집행기가 비우고
-        # (unenforced 도 그때), 뺀 적 없이 이어졌으면 새 보고로 기존 차단 유지를 적는다(enforcer RearmPgTest)
+        # (unenforced 도 그때), 아니면 새 보고로 기존 차단 유지 · 연속성 확인 불가를 적는다(결정 3, enforcer RearmPgTest)
         key, ip = "R001|v3|198.51.100.14|x", "198.51.100.14"
         await self.incident(key, "R001", ip, sensors=["cowrie"])
         await self.act(key, main.ActionIn(action="block_ip", expires_hours=24, points=["gateway", "fw"]))

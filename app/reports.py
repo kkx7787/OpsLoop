@@ -186,7 +186,8 @@ ACTIONS_SQL = """
 #   요청 지점 · 관문 적용 시각만 꺼낸다(값은 싣지 않는다). 새 요청은 created · rearmed 와, 만료가 지난 행을 다시 건 extended(만료 전
 #   값 from 이 기록 시각보다 앞선다)다. 살아 있는 차단의 만료 연장은 새 요청이 아니다. extended 에는 요청자가 없다.
 #   요청 지점(points=gateway,fw · fw · 열이 없던 DB 의 '-', 이슈 #77)이 없는 옛 감사는 두 지점 요청이다. 집행 확인의 쪽지(note=)가
-#   ' · 기존 차단 유지' 로 끝나면 앞 확인을 비운 적 없이 다시 확인한 것이다(kept, 집행기 NOTE_KEPT, 이슈 #77 결정 2).
+#   ' · 기존 차단 유지'(kept) · ' · 연속성 확인 불가'(uncertain)로 끝나면 앞 확인을 비운 적 없이 다시 확인한 것이다. 관문 차단이 이어진
+#   것을 보고로 확인했는가로 가른다(집행기 NOTE_KEPT · NOTE_UNCERTAIN, 이슈 #77 결정 2 · 3).
 #   시각 글자는 pg_input_is_valid 로 먼저 가른다(캐스트 오류가 트랜잭션 전체를 멈춘다). next 는 같은 주소의 다음 요청,
 #   n 은 같은 주소 안의 요청 순번이다((ip, n) 이 요청 하나. 같은 시각 요청도 가른다)
 REQUESTS_CTE = """
@@ -197,7 +198,8 @@ REQUESTS_CTE = """
                substring(detail from '(?:^|[[:space:]])from=([^=]+) to=') AS was,
                substring(detail from '(?:^|[[:space:]])points=([^[:space:]]+)') AS points,
                substring(detail from '(?:^|[[:space:]])at=([^=]+) note=') AS at,
-               detail ~ ' note=관문 반영 · [^=]* · 기존 차단 유지$' AS kept
+               detail ~ ' note=관문 반영 · [^=]* · 기존 차단 유지$' AS kept,
+               detail ~ ' note=관문 반영 · [^=]* · 연속성 확인 불가$' AS uncertain
         FROM audit_log
         WHERE eventid IN ('console.block.created', 'console.block.rearmed', 'console.block.extended',
                           'console.block.enforced')
@@ -226,8 +228,9 @@ AUDIT_SQL = """
 #   넣는다), 지점이 없는 옛 요청 · '-' 는 두 지점이다. 살아 있는 차단의 넓히기(console.block.points)는 새 요청이 아니라 넣지 않는다
 #   (그 뒤의 관문 확인은 짝이 없다. 기준 설명에 적는다). 요청마다 같은 주소의 다음 요청 전 · 기간 끝 전의 첫 집행 확인(enforced)과 짝짓고,
 #   그 확인의 관문 적용 시각(at=, 차단 목록의 enforced_at 과 같은 값. 읽지 못하면 확인 기록 시각)에서 요청 시각을 뺀다.
-#   짝이 기존 차단 유지(kept)면 관문이 빼기 전에 다시 건 요청이라 새 반영이 아니다. maintained 로 따로 세고 지연(enforced · 중앙값 ·
-#   최대)에서 뺀다(이슈 #77 결정 2). 관문이 뺀 뒤 다시 건 요청은 unenforced 뒤의 새 확인과 짝지어 지연에 든다.
+#   짝이 기존 차단 유지(kept) · 연속성 확인 불가(uncertain)면 관문이 이 주소를 뺐다는 오류 없는 보고 없이 다시 건 요청이라 새 반영이
+#   아니다. maintained · uncertain 으로 따로 세고 지연(enforced · 평균 · 중앙값 · 최대)에서 뺀다(이슈 #77 결정 2 · 3). 관문이 뺀 뒤 다시
+#   건 요청은 unenforced 뒤의 새 확인과 짝지어 지연에 든다.
 #   차단 목록으로 재지 않는다. 집행기가 해제 · 만료된 행의 enforced_at 을 비우고(enforcer/block_enforcer.py) 다시 걸면
 #   created_at 을 덮어, 기간이 차단 수명(24시간)보다 길면 지난 요청의 집행이 사라진다.
 #   확인(e)을 주소로 한 번 조인하고(해시 · 병합 조인) 요청마다 첫 확인을 DISTINCT ON 으로 고른다. 요청마다 a 를 다시 훑으면
@@ -235,16 +238,17 @@ AUDIT_SQL = """
 #   (greatest 는 NULL 을 무시해 0 이 된다)
 ENFORCE_SQL = REQUESTS_CTE + """,
     e AS (
-        SELECT ts, ip, CASE WHEN pg_input_is_valid(at, 'timestamptz') THEN at::timestamptz ELSE ts END AS at, kept
+        SELECT ts, ip, CASE WHEN pg_input_is_valid(at, 'timestamptz') THEN at::timestamptz ELSE ts END AS at, kept, uncertain
         FROM a WHERE eventid = 'console.block.enforced'),
     f AS (
-        SELECT DISTINCT ON (r.ip, r.n) coalesce(e.kept, false) AS kept,
-               CASE WHEN e.ts IS NOT NULL AND NOT e.kept
+        SELECT DISTINCT ON (r.ip, r.n) coalesce(e.kept, false) AS kept, coalesce(e.uncertain, false) AS uncertain,
+               CASE WHEN e.ts IS NOT NULL AND NOT e.kept AND NOT e.uncertain
                     THEN greatest(0, extract(epoch FROM (e.at - r.ts)))::float8 END AS delay
         FROM r LEFT JOIN e ON e.ip = r.ip AND e.ts >= r.ts AND (r.next IS NULL OR e.ts < r.next)
         WHERE r.points IS NULL OR r.points = '-' OR 'gateway' = ANY(string_to_array(r.points, ','))
         ORDER BY r.ip, r.n, e.ts)
     SELECT count(*) AS created, count(f.delay) AS enforced, count(*) FILTER (WHERE f.kept) AS maintained,
+           count(*) FILTER (WHERE f.uncertain) AS uncertain, avg(f.delay) AS mean,
            percentile_cont(0.5) WITHIN GROUP (ORDER BY f.delay) AS p50, max(f.delay) AS max
     FROM f"""
 
@@ -417,14 +421,17 @@ async def blocks(c, since, until, as_of) -> dict:
                   "만료 뒤 다시 건 차단을 함께 센다",
                   "관문 반영 지연(관문 요청만): 관문을 요청한 새 차단 요청부터 첫 집행 확인이 적은 관문 적용 시각까지(같은 주소의 "
                   "다음 요청 전). 해제 · 만료된 차단도 넣고, 기간 끝까지 확인되지 않은 요청은 집행 확인 수에서 빠진다. 내부 방화벽만 "
-                  "요청한 차단과, 살아 있는 차단에 관문을 더한 것(차단 지점 넓힘)은 넣지 않는다. 관문이 빼기 전에 다시 건 차단은 "
-                  "관문 차단이 이어진 것이라 '기존 차단 유지' 로 따로 세고 지연(확인 수 · 중앙값 · 최대)에서 뺀다",
+                  "요청한 차단과, 살아 있는 차단에 관문을 더한 것(차단 지점 넓힘)은 넣지 않는다. 해제 · 만료 뒤 관문이 그 주소를 "
+                  "뺐다는 오류 없는 보고 없이 다시 건 차단은 새 반영이 아니다. 관문 보고가 오류 없이 이어졌으면 '기존 차단 유지', "
+                  "보고 누락 · 덮임 · 오류가 있거나 다시 걸기 전에 만료가 지났으면 '연속성 확인 불가' 로 따로 세고 둘 다 지연(확인 수 · "
+                  "평균 · 중앙값 · 최대)에서 뺀다",
                   "차단 상태: 출력 시각 기준. 요청한 지점이 모두 확인해야 적용이다",
                   "시험 출발지의 차단(차단 시연)도 함께 센다"],
         "actions": actions,
         "requests": {"total": sum(requests.values()), **requests},
         "audit": audit,
         "enforcement": {"created": enforce["created"], "enforced": enforce["enforced"], "maintained": enforce["maintained"],
+                        "uncertain": enforce["uncertain"], "mean_seconds": num(enforce["mean"]),
                         "p50_seconds": num(enforce["p50"]), "max_seconds": num(enforce["max"])},
         "states": dict(states),
     }

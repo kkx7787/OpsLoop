@@ -209,7 +209,8 @@ def released_text(who, when):
 #   - 요청자는 'triage:<판정자>', 만료는 --block-hours
 # 살아 있는 차단의 만료는 앞당기지 않는다(만료 없는 옛 차단은 그대로 없다). 집행 정보(관문 세 열 method · enforced_at ·
 # enforce_note)는 새 요청(빈 자리 · 만료된 행 · 누가 풀었는지 없는 해제)이어도 비우지 않는다(이슈 #77 결정 2). 관문이 실제로
-# 뺐다고 확인하면 집행기가 비우고(unenforced) 새로 확인하며, 뺀 적 없이 이어졌으면 다시 건 뒤의 새 보고로 '기존 차단 유지' 를 적는다.
+# 뺐다고 확인하면 집행기가 비우고(unenforced) 새로 확인하며, 아니면 다시 건 뒤의 새 보고로 '기존 차단 유지'(관문 보고가 이어짐) 또는
+# '연속성 확인 불가' 를 적는다(결정 3).
 # 예전에는 재차단이 released_by · 만료를 지워 사람의 해제를 되살렸다.
 # 적용 지점(이슈 #77)은 새 요청이면 규칙 기본값(default_points), 살아 있는 차단이면 합집합이다(콘솔 BLOCK_SQL 과 같은 식).
 _LIVE = "(blocklist.released_at IS NULL AND (blocklist.expires_at IS NULL OR blocklist.expires_at > now()))"
