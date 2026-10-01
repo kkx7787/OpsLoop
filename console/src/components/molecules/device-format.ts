@@ -96,3 +96,13 @@ export function deviceLogsHref(id: string): string {
 export function deviceIncidentsHref(id: string): string {
   return `/incidents?${new URLSearchParams({ device: id })}`
 }
+
+/** 수집 · 관제 상태 화면(#84). 주소는 옛 수집 노드 화면 그대로다 */
+export const STATUS_PATH = '/nodes'
+/** 수집 · 관제 상태 화면에서 처음 펼칠 관측 센서 · 관제 시스템 줄(고정 대상 id) */
+export const STATUS_OPEN_PARAM = 'open'
+
+/** 수집 · 관제 상태 화면. open 을 주면 그 대상 줄을 펼치고 그 줄로 스크롤한다 */
+export function statusHref(open?: string): string {
+  return open ? `${STATUS_PATH}?${new URLSearchParams({ [STATUS_OPEN_PARAM]: open })}` : STATUS_PATH
+}

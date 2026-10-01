@@ -33,7 +33,7 @@ type Confirmable = Exclude<IncidentAction, 'acknowledge'>
  * 함께 해제'를 둔다(include_absorbed, 기본 끔). 흡수된 인시던트는 지워져 상세가 없으므로 첫 사건에서만 걸고 푼다.
  * 함께 차단하면 만료 전까지 새로 흡수되는 출발지도 서버가 같은 만료로 올린다(후속 차단). 흡수는 판정 · 차단 뒤에도
  * 붙으므로, 흡수 기록이 아직 없어도 흡수를 쓰는 규칙(absorbs)이면 선택을 보인다. 사람이 푼 곳 · 차단 금지 대역은 넣지 않는다.
- * 차단은 요청이다. 데이터 노드 집행기가 요청 지점(AWS 관문 · web-01 앞 내부 방화벽)에 넘기고, 실제 적용 결과는 지점별로 따로 본다(이슈 #47 · #51).
+ * 차단은 요청이다. 데이터 노드 집행기가 요청 지점(허니팟 관문 · web-01 앞 내부 방화벽)에 넘기고, 실제 적용 결과는 지점별로 따로 본다(이슈 #47 · #51).
  * 차단 확인에는 '적용 지점' 묶음을 둔다(이슈 #77, BlockPointsField). 내부 방화벽은 늘 막고 관문은 확인란 하나로 더한다. 기본값은 서버
  * block_points.default(규칙만으로 정함)이고 흡수 함께 차단 · 후속 차단도 같은 지점이다. 이전 서버(block_points 없음)는 묶음을 두지 않고
  * 지점을 보내지 않는다(서버가 두 지점으로 본다).
@@ -205,7 +205,7 @@ export function ActionBar({ detail, className }: ActionBarProps) {
                   차단합니다.{' '}
                   <InfoTip label="차단">
                     {activeBlock && '이미 살아 있는 차단이 있으면 만료를 앞당기지 않습니다. '}
-                    {!blockPoints && '적용 대상: AWS 관문 · web-01 앞 내부 방화벽. '}
+                    {!blockPoints && '적용 대상: 허니팟 관문 · web-01 앞 내부 방화벽. '}
                     실제 적용 결과는 지점별로 확인합니다.
                   </InfoTip>
                 </span>
@@ -332,7 +332,7 @@ interface BlockPointsFieldProps {
 }
 
 /**
- * 적용 지점(이슈 #77): 내부 방화벽(늘 적용 · 고정) · 'AWS 관문에서도 막기' 확인란 하나. 관문 전용은 없다.
+ * 적용 지점(이슈 #77): 내부 방화벽(늘 적용 · 고정) · '허니팟 관문에서도 막기' 확인란 하나. 관문 전용은 없다.
  * 까닭은 확인란 옆 ⓘ, 늘 보이는 한 줄은 안전 경고(허니팟 관측이 끊김) · 관문 빼기 기록 · 잠긴 까닭뿐이다
  */
 function BlockPointsField({ checked, locked, basis, live, onChange }: BlockPointsFieldProps) {
@@ -353,7 +353,7 @@ function BlockPointsField({ checked, locked, basis, live, onChange }: BlockPoint
         내부 방화벽 · 늘 적용
       </label>
       <InfoTip
-        label="AWS 관문에서도 막기"
+        label="허니팟 관문에서도 막기"
         id={tipId}
         render={({ button, panel }) => (
           <div className="flex flex-col gap-1">
@@ -366,7 +366,7 @@ function BlockPointsField({ checked, locked, basis, live, onChange }: BlockPoint
                   aria-describedby={[note ? noteId : null, tipId].filter(Boolean).join(' ')}
                   onChange={(e) => onChange(e.target.checked)}
                 />
-                AWS 관문에서도 막기
+                허니팟 관문에서도 막기
               </label>
               {button}
             </div>

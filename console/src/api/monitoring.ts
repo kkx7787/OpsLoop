@@ -69,6 +69,9 @@ export interface PointCounts {
   unrequested?: number
   /** 이 지점을 요청했다가 빼서(관리자 관문 빼기) 이 지점이 뺐다고 확인하기 전인 차단 수(결정 14). 위 네 수에 없다. 이전 서버에는 없다 */
   removing?: number
+  /** 미확인 가운데 정상 반영 시간(5분) 안의 확인 전 · 5분 넘은 확인 전과 불일치 수(#84 결정 6). 이전 서버에는 없다 */
+  checking?: number
+  delayed?: number
   stalled: string | null
   unreadable?: boolean
 }

@@ -7,7 +7,7 @@ import { Badge } from '../../atoms/Badge'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { badgeOf } from './dashboard-layout'
 import { ProtectedCard } from './ProtectedCard'
-import { headBadge, LABEL_MAX, pendingText, protectedHeadBadge, summaryFlags } from './target-format'
+import { LABEL_MAX, pendingText, summaryHeadBadge, summaryLineFlags } from './target-format'
 import { TargetCard } from './TargetCard'
 
 export interface TargetSummaryListProps {
@@ -24,6 +24,8 @@ export interface TargetSummaryListProps {
   card?: 'protected' | 'full'
   /** 상태판 갱신이 실패해 이전 결과를 보이는 중. 줄마다 배지 끝에 '이전 결과'(접힌 줄이 카드 머리 역할이다) */
   stale?: boolean
+  /** 처음 그릴 때 펼쳐 둘 대상(#84 ?open). 스크롤 · 초점은 화면이 조회가 끝난 뒤 한 번 한다 */
+  defaultOpen?: TargetId
   className?: string
 }
 
@@ -31,10 +33,13 @@ export interface TargetSummaryListProps {
  * 대상마다 한 줄(이름 · 머리 배지 · 경고 배지 · 미판정)로 접은 목록(#72). 누르면 그 자리에 카드를 펼친다. 여러 개를 함께 펼칠 수 있다.
  * 보호 대상은 새 카드(ProtectedCard inline, #83)를 펼치고, 접혀 있는 동안은 로그를 묻지 않는다.
  * 줄 전체가 단추라 그 안에 링크를 두지 않는다. 링크(미판정 · 최근 사건 · 차단 목록)는 펼친 카드 안에만 있다.
- * 모바일의 보호 대상과, 모든 폭의 관측 센서 · 관제 시스템이 쓴다.
+ * 배지는 summaryLineFlags(지점 적용 · 보고 문제 · 멈춤 · 지표 오래됨, #84)다.
+ * 모바일 대시보드의 보호 대상과, 수집 · 관제 상태 화면의 관측 센서 · 관제 시스템(모든 폭)이 쓴다.
+ * 줄은 상단바(sticky 48px) 아래로 스크롤되게 위 여백(scroll-mt)을 둔다.
+ * 배지가 많아 이름 칸이 5rem 밑으로 줄 자리면 배지 · 미판정을 다음 줄로 내린다(이름이 사라지지 않게, 390 폭 실측 #84).
  */
-export function TargetSummaryList({ title, targets, asOf, badges, card = 'full', stale = false, className }: TargetSummaryListProps) {
-  const [open, setOpen] = useState<ReadonlySet<TargetId>>(() => new Set())
+export function TargetSummaryList({ title, targets, asOf, badges, card = 'full', stale = false, defaultOpen, className }: TargetSummaryListProps) {
+  const [open, setOpen] = useState<ReadonlySet<TargetId>>(() => new Set(defaultOpen && targets.some((t) => t.id === defaultOpen) ? [defaultOpen] : []))
   const baseId = useId()
   const toggle = (id: TargetId) =>
     setOpen((prev) => {
@@ -46,30 +51,32 @@ export function TargetSummaryList({ title, targets, asOf, badges, card = 'full',
   return (
     <ul aria-label={`${title} 요약`} className={cn('m-0 flex list-none flex-col divide-y divide-line rounded-card bg-surface p-0 shadow-card', className)}>
       {targets.map((target, index) => {
-        const head = card === 'protected' ? protectedHeadBadge(target) : headBadge(target)
-        const flags = summaryFlags(target)
+        const head = summaryHeadBadge(target, card, stale)
+        const flags = summaryLineFlags(target)
         const expanded = open.has(target.id)
         // id 속성에는 순번을 쓴다(등록 노드 id 를 요소 id 에 넣지 않는다)
         const panelId = `${baseId}-${index}`
         return (
-          <li key={target.id} data-target-summary={target.id}>
+          <li key={target.id} data-target-summary={target.id} className="scroll-mt-16">
             <button
               type="button"
               aria-expanded={expanded}
               aria-controls={panelId}
               onClick={() => toggle(target.id)}
-              className="flex min-h-11 w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-2 text-left text-sm text-ink"
+              className="flex min-h-11 w-full cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 border-0 bg-transparent px-3 py-2 text-left text-sm text-ink"
             >
               <span aria-hidden="true" className="inline-block w-3 shrink-0 text-ink-muted">
                 {expanded ? '▾' : '▸'}
               </span>
-              <span className="min-w-0 flex-1 truncate font-medium" title={targetKind(target) === 'node' ? revealHidden(target.label) : undefined}>
+              <span className="min-w-0 flex-1 basis-20 truncate font-medium" title={targetKind(target) === 'node' ? revealHidden(target.label) : undefined}>
                 <UntrustedText value={target.label} max={LABEL_MAX} clip />
               </span>
-              <span className="flex min-w-0 flex-wrap items-center justify-end gap-1">
-                <Badge tone={head.tone} className="shrink-0" data-head-badge="">
-                  {head.label}
-                </Badge>
+              <span className="ml-auto flex max-w-[calc(100%-4.5rem)] min-w-0 flex-wrap items-center justify-end gap-1" data-summary-badges="">
+                {head && (
+                  <Badge tone={head.tone} className="shrink-0" data-head-badge="">
+                    {head.label}
+                  </Badge>
+                )}
                 {flags.map((flag) => (
                   <Badge key={flag.key} tone={flag.tone} className="shrink-0" data-summary-flag={flag.key}>
                     {flag.text}
@@ -81,7 +88,7 @@ export function TargetSummaryList({ title, targets, asOf, badges, card = 'full',
                   </Badge>
                 )}
               </span>
-              <span className="shrink-0 text-xs tabular-nums text-ink-muted">{pendingText(target)}</span>
+              <span className="ml-auto shrink-0 text-xs tabular-nums text-ink-muted">{pendingText(target)}</span>
             </button>
             {expanded && (
               <div id={panelId} className="pb-1">

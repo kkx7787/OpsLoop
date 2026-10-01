@@ -35,6 +35,7 @@ export const routes: RouteObject[] = [
           { path: 'sources', lazy: async () => ({ Component: (await import('@/pages/sources/SourcesPage')).SourcesPage }) },
           { path: 'sources/detail', lazy: async () => ({ Component: (await import('@/pages/sources/SourceDetailPage')).SourceDetailPage }), handle: { crumb: '출발지 상세' } satisfies RouteHandle },
           { path: 'reports', lazy: async () => ({ Component: (await import('@/pages/reports/ReportsPage')).ReportsPage }) },
+          // 수집 · 관제 상태(#84). 주소는 옛 수집 노드 그대로(?open=<관측 센서 · 관제 시스템 id> 로 그 줄을 펼친다)
           { path: 'nodes', lazy: async () => ({ Component: (await import('@/pages/nodes/NodesPage')).NodesPage }) },
           { path: 'nodes/new', lazy: async () => ({ Component: (await import('@/pages/nodes/NodeEnrollmentPage')).NodeEnrollmentPage }), handle: { crumb: '노드 추가' } satisfies RouteHandle },
           { path: 'inventory', lazy: async () => ({ Component: (await import('@/pages/assets/AssetsPage')).AssetsPage }) },

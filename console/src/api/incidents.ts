@@ -26,7 +26,7 @@ export type DeviceGroup = 'protected' | 'sensor' | 'monitor'
 /** 사건의 장비 상태. devices 에 확인이 있으면 confirmed, 규칙 범위만 있으면 rule_scope, 없으면 unconfirmed('장비 미확인') */
 export type DeviceState = 'confirmed' | 'rule_scope' | 'unconfirmed'
 
-/** 관련 장비 하나. part 는 aws-sensor 의 나눔(Cowrie · 웹 디코이 · AWS 관문)에만 있다. 등록 노드의 label 은 hostname 이라 비신뢰다 */
+/** 관련 장비 하나. part 는 aws-sensor 의 나눔(SSH 허니팟(Cowrie) · 웹 디코이 · 허니팟 관문)에만 있다. 등록 노드의 label 은 hostname 이라 비신뢰다 */
 export interface IncidentDevice {
   id: string
   part: 'cowrie' | 'decoy' | 'gateway' | null
@@ -217,7 +217,7 @@ export interface ActorBlock {
   /** 요청자(콘솔 사용자 · triage:<판정자>). 이전 서버의 상세에는 없다 */
   requested_by?: string | null
   /**
-   * 집행 지점(AWS 관문 · 내부 방화벽)별 결과(이슈 #51). 집행기만 쓴다. 요청하지 않은 지점은 키가 없다(요청했다가 뺀 지점은 그 지점이
+   * 집행 지점(허니팟 관문 · 내부 방화벽)별 결과(이슈 #51). 집행기만 쓴다. 요청하지 않은 지점은 키가 없다(요청했다가 뺀 지점은 그 지점이
    * 뺐다고 확인하기 전까지 removing, #77 결정 14). 이전 서버 · 집행기에는 없다
    */
   enforcement?: BlockEnforcement | null

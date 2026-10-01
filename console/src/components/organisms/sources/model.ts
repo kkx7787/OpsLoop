@@ -113,7 +113,7 @@ export function incidentsOfHref(ip: string): string {
 
 /** 고정 관제 대상 이름(app/targets.py TARGETS 와 같다). 모르는 값(등록 노드의 node_id 등, #64)은 원문을 비신뢰 문자열로 그린다 */
 export const TARGET_LABEL: Record<string, string> = {
-  'aws-sensor': 'AWS 센서',
+  'aws-sensor': '허니팟 센서',
   'web-01': 'web-01',
   console: '관제 콘솔',
   'data-node': '데이터 노드',
@@ -126,7 +126,7 @@ export function targetLabel(id: string): string | null {
 /**
  * 집행기 확인이 멈춘 지점의 '적용 확인'을 바꾸는 까닭(targets.py response_block 과 같은 판단).
  * 판단 근거라 '확인 지연' 배지 옆 도움말(ⓘ · EnforcePointList)로 보인다. 멈춘 사실은 멈춤 띠(CheckerStaleBanner)가 본문에 적는다.
- * AWS 관문 · 내부 방화벽 두 지점이 같이 쓰므로 지점 이름을 넣지 않는다
+ * 허니팟 관문 · 내부 방화벽 두 지점이 같이 쓰므로 지점 이름을 넣지 않는다
  */
 export const CHECKER_STALE_NOTE = '집행기 확인이 10분 넘게 멈춰 마지막 적용 확인을 믿지 않습니다. 그사이 이 지점이 규칙을 잃어도 드러나지 않습니다.'
 
@@ -159,7 +159,7 @@ export function checkersUnknown(checkers: BlockCheckers | undefined): boolean {
 /** 집행기 확인이 멈춘 지점 이름들(띠 문구). 없으면 빈 배열 */
 export function staleCheckers(checkers: BlockCheckers | undefined): string[] {
   const out: string[] = []
-  if (checkers?.gateway_stale) out.push('AWS 관문')
+  if (checkers?.gateway_stale) out.push('허니팟 관문')
   if (checkers?.fw_stale) out.push('내부 방화벽')
   return out
 }

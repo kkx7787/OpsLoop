@@ -283,7 +283,7 @@ describe('묶기', () => {
   it('같은 규칙 · 출발지는 묶음을 연 때부터 60초 동안 한 장에 붙어 건수 · 장비 합집합(보호 대상 먼저)이 되고, 60초 뒤에는 새 장이다', async () => {
     const items: Record<string, Incident> = {
       k1: incident('k1', { devices: [DECOY, WEB01] }),
-      k2: incident('k2', { severity: 'critical', devices: [WEB01, device({ id: 'aws-sensor', part: 'gateway', label: 'AWS 관문', group: 'sensor', logs: ['관문 기록'] }), DECOY] }),
+      k2: incident('k2', { severity: 'critical', devices: [WEB01, device({ id: 'aws-sensor', part: 'gateway', label: '허니팟 관문', group: 'sensor', logs: ['관문 기록'] }), DECOY] }),
       k3: incident('k3', { devices: [WEB02] }),
     }
     const { watcher, toasts, shown } = setup({ list: async () => ({ items: Object.values(items) }) })

@@ -17,11 +17,11 @@ export const MONITORING_SUMMARY: Summary = {
 /**
  * 지점별 차단(#72 · #77). 요청 16건 · 집행 제외 13건 · 미요청 0 · 빠짐 확인 전 0 이면 지점마다 합이 3 이다(합 = 요청 − 제외 − 그 지점
  * 미요청 − 그 지점 빠짐 확인 전).
- * 내부 방화벽은 집행기 확인이 멈춰 적용 · 실패를 미확인에 합쳤다
+ * 내부 방화벽은 집행기 확인이 멈춰 적용 · 실패를 미확인에 합쳤다. 관문의 미확인 1 은 정상 반영 시간 안의 확인 전(checking, #84)이다
  */
 export const BLOCKS_BY_POINT: PointCounts[] = [
-  { point: 'gateway', label: 'AWS 관문', applied: 2, failed: 0, unverified: 1, unrequested: 0, removing: 0, stalled: null },
-  { point: 'fw', label: '내부 방화벽', applied: 0, failed: 0, unverified: 3, unrequested: 0, removing: 0, stalled: '집행기 확인 중단 · 마지막 확인 12분 전' },
+  { point: 'gateway', label: '허니팟 관문', applied: 2, failed: 0, unverified: 1, unrequested: 0, removing: 0, checking: 1, delayed: 0, stalled: null },
+  { point: 'fw', label: '내부 방화벽', applied: 0, failed: 0, unverified: 3, unrequested: 0, removing: 0, checking: 0, delayed: 0, stalled: '집행기 확인 중단 · 마지막 확인 12분 전' },
 ]
 
 /** 차단 목록 한 행(두 지점 요청 · 집행 기록 없음 = 집행 대기). 내부 방화벽만 요청한 행은 points: ['fw'] 를 넣는다(#77) */
@@ -42,12 +42,12 @@ export const MONITOR = {
   loader: monitorItem({ key: 'loader', label: '적재기', reason: '적재기 확인 중단 · 마지막 45분 전', at: '2026-09-23T07:15:00Z' }),
   enforcerFw: monitorItem({ key: 'enforcer:fw', label: '내부 방화벽 집행기', reason: '집행기 확인 중단 · 마지막 확인 12분 전' }),
   /** 까닭은 카드 까닭 그대로다(관문 업로더가 있으면 끝에 관문 기록 신호 시각) */
-  sensor: monitorItem({ key: 'sensor', label: 'AWS 센서 수신', reason: '업로더 생존 신호 40분 전 · 적재기 확인 2분 전 · 확인 때 이미 15분 넘게 새 신호 없음 · 관문 기록 신호 40분 전', at: '2026-09-23T07:20:00Z' }),
-  gatewayUploader: monitorItem({ key: 'gateway_uploader', label: 'AWS 관문 기록 수신', reason: '관문 기록 신호 40분 전 · 적재기 확인 2분 전 · 확인 때 이미 15분 넘게 새 신호 없음', at: '2026-09-23T07:20:00Z' }),
+  sensor: monitorItem({ key: 'sensor', label: '허니팟 센서 수신', reason: '업로더 생존 신호 40분 전 · 적재기 확인 2분 전 · 확인 때 이미 15분 넘게 새 신호 없음 · 관문 기록 신호 40분 전', at: '2026-09-23T07:20:00Z' }),
+  gatewayUploader: monitorItem({ key: 'gateway_uploader', label: '허니팟 관문 기록 수신', reason: '관문 기록 신호 40분 전 · 적재기 확인 2분 전 · 확인 때 이미 15분 넘게 새 신호 없음', at: '2026-09-23T07:20:00Z' }),
   detectBridge: monitorItem({ key: 'detect:bridge', label: '노드 · 관제 탐지(1분)', reason: 'w2 마지막 실행 16분 전', at: '2026-09-23T07:44:00Z' }),
   /** 기대 버전(수집 설정)에 기록이 없다. 마지막 실행 시각이 없다 */
   detectBridgeMissing: monitorItem({ key: 'detect:bridge', label: '노드 · 관제 탐지(1분)', reason: 'c1 · sg1 24시간 넘게 실행 없음' }),
-  failedGateway: monitorItem({ key: 'block_failed:gateway', label: 'AWS 관문 적용 실패', count: 2 }),
+  failedGateway: monitorItem({ key: 'block_failed:gateway', label: '허니팟 관문 적용 실패', count: 2 }),
   pointStaleFw: monitorItem({ key: 'point_stale:fw', label: '내부 방화벽 불일치', count: 2 }),
   mismatch: monitorItem({ key: 'gateway_mismatch', label: '관문 불일치', count: 1 }),
   reportFw: monitorItem({ key: 'report:fw', label: '내부 방화벽 보고', reason: '마지막 보고 20분 전' }),

@@ -196,7 +196,7 @@ describe('IncidentsPage', () => {
     expect(await screen.findByRole('table', { name: '인시던트 목록' })).toBeInTheDocument()
   })
 
-  it('0건이면 조건 수와 초기화 · 수집 노드 링크를 보인다', async () => {
+  it('0건이면 조건 수와 초기화 · 수집 · 관제 상태 링크를 보인다', async () => {
     const fetch = stubApi(() => json(page(0, [], 0)))
     const { router } = renderRoutes(routes(), '/incidents?status=open&judged=false')
 
@@ -204,7 +204,7 @@ describe('IncidentsPage', () => {
     // 화면 설계 번호(S-03) 같은 내부 표기는 보이지 않는다
     expect(screen.queryByText(/S-03/)).toBeNull()
     expect(screen.getByText(/2개 조건 적용 중/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '수집 노드 보기' })).toHaveAttribute('href', '/nodes')
+    expect(screen.getByRole('link', { name: '수집 · 관제 상태 보기' })).toHaveAttribute('href', '/nodes')
     expect(screen.getByText(/총/)).toHaveTextContent('총 0건')
 
     fireEvent.click(screen.getAllByRole('button', { name: '조건 초기화' })[0])
@@ -520,12 +520,12 @@ describe('IncidentsPage · 관련 장비(#72)', () => {
 
   const WEB: IncidentDevice = { id: 'web-01', part: null, label: 'web-01', group: 'protected', logs: ['웹 접근'], basis: 'confirmed' }
   const DECOY: IncidentDevice = { id: 'aws-sensor', part: 'decoy', label: '웹 디코이', group: 'sensor', logs: ['웹 요청'], basis: 'confirmed' }
-  const GUESS: IncidentDevice = { id: 'aws-sensor', part: 'cowrie', label: 'Cowrie', group: 'sensor', logs: ['SSH 세션'], basis: 'fallback' }
+  const GUESS: IncidentDevice = { id: 'aws-sensor', part: 'cowrie', label: 'SSH 허니팟(Cowrie)', group: 'sensor', logs: ['SSH 세션'], basis: 'fallback' }
   const node = (label: string): IncidentDevice => ({ id: 'web-02', part: null, label, group: 'protected', logs: ['SSH 인증'], basis: 'rule_scope' })
   const OPTIONS: DeviceOption[] = [
     { id: 'web-01', label: 'web-01', group: 'protected' },
     { id: 'web-02', label: 'web02.lab', group: 'protected' },
-    { id: 'aws-sensor', label: 'AWS 센서', group: 'sensor' },
+    { id: 'aws-sensor', label: '허니팟 센서', group: 'sensor' },
     { id: 'console', label: '관제 콘솔', group: 'monitor' },
     { id: 'data-node', label: '데이터 노드', group: 'monitor' },
   ]
@@ -544,7 +544,7 @@ describe('IncidentsPage · 관련 장비(#72)', () => {
     await screen.findByRole('table', { name: '인시던트 목록' })
     expect(listUrls(fetch)).toEqual(['/api/incidents?judged=false&device=web-01&limit=25&offset=0'])
     expect(screen.getByRole('combobox', { name: '장비' })).toHaveValue('web-01')
-    await waitFor(() => expect(optionTexts()).toEqual(['전체', 'web-01', 'web02.lab', 'AWS 센서', '관제 콘솔', '데이터 노드', '장비 미확인']))
+    await waitFor(() => expect(optionTexts()).toEqual(['전체', 'web-01', 'web02.lab', '허니팟 센서', '관제 콘솔', '데이터 노드', '장비 미확인']))
     // 장비 선택지를 따로 묻지 않는다(목록 요청과 그 쪽의 CVE 배지 요청뿐)
     expect(calledUrls(fetch).every((url) => url.startsWith('/api/incidents?') || url.startsWith('/api/cti/badges?'))).toBe(true)
     expect(screen.getByRole('button', { name: '미판정만' })).toHaveAttribute('aria-pressed', 'false')

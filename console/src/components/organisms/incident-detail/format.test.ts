@@ -204,7 +204,7 @@ describe('enforcementPoints (이슈 #51)', () => {
       fw: { state: 'stale', since: '2026-09-29T01:05:00Z', mode: 'nft', note: '내부 방화벽 보고가 5분 넘게 멈춤' },
       gateway: { state: 'confirmed', since: '2026-09-29T01:00:30Z', mode: 'fail2ban', note: null },
     } })
-    expect(rows.map(r => [r.key, r.label, r.point.state])).toEqual([['gateway', 'AWS 관문', 'confirmed'], ['fw', '내부 방화벽', 'stale']])
+    expect(rows.map(r => [r.key, r.label, r.point.state])).toEqual([['gateway', '허니팟 관문', 'confirmed'], ['fw', '내부 방화벽', 'stale']])
     expect(rows[1].point.note).toBe('내부 방화벽 보고가 5분 넘게 멈춤')
   })
 

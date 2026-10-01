@@ -50,7 +50,7 @@ describe('차단 목록', () => {
     // 집행 수를 막은 수로 잘못 읽지 않게 하는 한 줄은 본문에, 용어 · 집행 범위는 ⓘ 에
     expect(screen.getByText(/^집행 확인은 요청한 지점이 모두 확인한 것입니다\. 내부 방화벽은 실패 · 미확인을 따로 셉니다/).closest('[data-infotip]')).toBeNull()
     expect(screen.getByRole('button', { name: '집행 범위 설명' })).toHaveAccessibleDescription(/관문 미요청은 내부 방화벽만 요청한 차단입니다/)
-    expect(screen.getByRole('button', { name: '집행 범위 설명' })).toHaveAccessibleDescription(/AWS 관문은 허니팟 유입\(22 · 23 · 8080\)을, 내부 방화벽은 web-01 접근을 막습니다/)
+    expect(screen.getByRole('button', { name: '집행 범위 설명' })).toHaveAccessibleDescription(/허니팟 관문은 허니팟 유입\(22 · 23 · 8080\)을, 내부 방화벽은 web-01 접근을 막습니다/)
     expect(screen.getByRole('button', { name: '집행 범위 설명' })).toHaveAccessibleDescription(/미확인은 대기 · 확인 지연 · 기록 없음입니다\.$/)
     // 내부 방화벽 칸(#72): 실패 1(203.0.113.10) · 미확인 1(203.0.113.11 기록 없음). 해제된 행은 세지 않는다
     const count = (label: string) => screen.getByText(label, { selector: 'div' }).nextElementSibling as HTMLElement
@@ -78,7 +78,7 @@ describe('차단 목록', () => {
   })
 
   it('지점이 보낸 확인 지연 까닭은 ⓘ 로 접지 않고 본문에 둔다(오류 안내)', async () => {
-    const note = 'AWS 관문 보고가 5분 넘게 멈춤 (마지막 2026-09-23T07:50:00Z)'
+    const note = '허니팟 관문 보고가 5분 넘게 멈춤 (마지막 2026-09-23T07:50:00Z)'
     const rows = [blockEntry({ actor_ip: '203.0.113.20', enforcement: { gateway: { state: 'stale', since: '2026-09-23T07:59:00Z', mode: 'nft', note } } })]
     vi.stubGlobal('fetch', vi.fn<typeof globalThis.fetch>(async (input) => {
       const url = String(input)
@@ -196,10 +196,10 @@ describe('차단 목록', () => {
     expect(cell('198.51.100.4')).toMatch(/^관문 불일치관문 상태가 목록과 다름 · 마지막 확인 \S+ \S+ · nft관문 불일치 · 관문 상태가 7분 전$/)
     fireEvent.click(screen.getByRole('button', { name: '해제 2' }))
     // 목록 밖 행은 요청 지점마다 빠짐 확인 전(관문 enforced_at · 결과 기록이 남음) · 빠짐이다(#77)
-    expect(cell('198.51.100.5')).toBe('해제됨AWS 관문빠짐내부 방화벽빠짐사람이 풂 · 관문 · 내부 방화벽 목록에서 빠짐')
-    expect(cell('198.51.100.7')).toBe('해제됨AWS 관문빠짐 확인 전내부 방화벽빠짐사람이 풂 · 관문에서 빠졌는지 확인 전 · nft관문 반영 · abcd1234 · 2026-09-23T06:00:00Z')
+    expect(cell('198.51.100.5')).toBe('해제됨허니팟 관문빠짐내부 방화벽빠짐사람이 풂 · 관문 · 내부 방화벽 목록에서 빠짐')
+    expect(cell('198.51.100.7')).toBe('해제됨허니팟 관문빠짐 확인 전내부 방화벽빠짐사람이 풂 · 관문에서 빠졌는지 확인 전 · nft관문 반영 · abcd1234 · 2026-09-23T06:00:00Z')
     fireEvent.click(screen.getByRole('button', { name: '만료 1' }))
-    expect(cell('198.51.100.6')).toBe('만료됨AWS 관문빠짐내부 방화벽빠짐만료가 지남 · 관문 · 내부 방화벽 목록에서 빠짐')
+    expect(cell('198.51.100.6')).toBe('만료됨허니팟 관문빠짐내부 방화벽빠짐만료가 지남 · 관문 · 내부 방화벽 목록에서 빠짐')
   })
 
   it('관제 상태 캐시에 내부 방화벽 집행기 멈춤이 있으면 두 칸 뒤에 집행기 멈춤을 붙이고 수는 그대로 둔다(#72)', async () => {
@@ -276,19 +276,19 @@ describe('차단 목록', () => {
     expect(points('203.0.113.40')).toEqual([['gateway', 'unrequested'], ['fw', 'confirmed']])
     expect(points('203.0.113.41')).toEqual([['gateway', 'unrequested']])
     expect(points('203.0.113.46')).toEqual([['gateway', 'removing'], ['fw', 'confirmed']])
-    expect(li('203.0.113.40').querySelector('[data-enforce-point="gateway"]')).toHaveTextContent(/^AWS 관문미요청$/)
+    expect(li('203.0.113.40').querySelector('[data-enforce-point="gateway"]')).toHaveTextContent(/^허니팟 관문미요청$/)
     // 배지: 관문 칸이 종합 상태를 대신하지 못하는 행(종합이 집행 확인이 아니거나 관문 칸이 적용 확인이 아님)에만. 불일치는 그 지점 이름이다
     const cell = (ip: string) => li(ip).querySelector('[data-block-state]')!.textContent!.replace('집행 상세', '')
-    expect(cell('203.0.113.40')).toMatch(/^집행 확인AWS 관문미요청내부 방화벽적용 확인내부 방화벽 반영 확인/)
-    expect(cell('203.0.113.41')).toMatch(/^집행 대기AWS 관문미요청내부 방화벽 반영 확인 전/)
-    expect(cell('203.0.113.42')).toMatch(/^AWS 관문적용 확인내부 방화벽적용 확인/)
-    expect(cell('203.0.113.43')).toMatch(/^집행 실패AWS 관문실패내부 방화벽적용 확인/)
-    expect(cell('203.0.113.44')).toMatch(/^내부 방화벽 불일치AWS 관문적용 확인내부 방화벽확인 지연/)
-    expect(cell('203.0.113.45')).toMatch(/^집행 대기AWS 관문적용 확인내부 방화벽대기내부 방화벽 반영 확인 전/)
-    expect(cell('203.0.113.46')).toMatch(/^집행 확인AWS 관문빠짐 확인 전내부 방화벽적용 확인내부 방화벽 반영 확인 · 관문에서 빠졌는지 확인 전/)
+    expect(cell('203.0.113.40')).toMatch(/^집행 확인허니팟 관문미요청내부 방화벽적용 확인내부 방화벽 반영 확인/)
+    expect(cell('203.0.113.41')).toMatch(/^집행 대기허니팟 관문미요청내부 방화벽 반영 확인 전/)
+    expect(cell('203.0.113.42')).toMatch(/^허니팟 관문적용 확인내부 방화벽적용 확인/)
+    expect(cell('203.0.113.43')).toMatch(/^집행 실패허니팟 관문실패내부 방화벽적용 확인/)
+    expect(cell('203.0.113.44')).toMatch(/^내부 방화벽 불일치허니팟 관문적용 확인내부 방화벽확인 지연/)
+    expect(cell('203.0.113.45')).toMatch(/^집행 대기허니팟 관문적용 확인내부 방화벽대기내부 방화벽 반영 확인 전/)
+    expect(cell('203.0.113.46')).toMatch(/^집행 확인허니팟 관문빠짐 확인 전내부 방화벽적용 확인내부 방화벽 반영 확인 · 관문에서 빠졌는지 확인 전/)
     // 집행 상세의 지점별 시각 · 방식은 결과 기록이 있는 줄만(미요청은 기록이 아니다)
     fireEvent.click(within(li('203.0.113.40')).getByLabelText('203.0.113.40 집행 상세'))
-    expect(li('203.0.113.40').querySelector('details')!.textContent).not.toContain('AWS 관문 ·')
+    expect(li('203.0.113.40').querySelector('details')!.textContent).not.toContain('허니팟 관문 ·')
     // 관문을 뺀 행에 남은 관문 메모(관문 세 열)는 집행 상세에 보이지 않는다(관문 칸이 빠짐 확인 전으로 대신한다). 관문 요청 행은 그대로다
     fireEvent.click(within(li('203.0.113.46')).getByLabelText('203.0.113.46 집행 상세'))
     expect(li('203.0.113.46').querySelector('details')!.textContent).not.toContain('관문 반영 · abcd1234')

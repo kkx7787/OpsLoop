@@ -45,7 +45,7 @@ describe('경로표', () => {
     expect(screen.getByRole('navigation', { name: '주 메뉴' })).toBeInTheDocument()
   })
 
-  it.each([['/', '관제 현황'], ['/blocklist', '차단 목록'], ['/rules', '규칙 · 리플레이'], ['/nodes', '수집 노드'], ['/inventory', '자산 · 취약점'], ['/sources', '출발지 분석'], ['/reports', '보고서']])('%s는 구현 화면이다', async (path, title) => {
+  it.each([['/', '관제 현황'], ['/blocklist', '차단 목록'], ['/rules', '규칙 · 리플레이'], ['/nodes', '수집 · 관제 상태'], ['/inventory', '자산 · 취약점'], ['/sources', '출발지 분석'], ['/reports', '보고서']])('%s는 구현 화면이다', async (path, title) => {
     stubIncidents({ username: 'han', role: 'operator' })
     renderRoutes(routes, path)
     expect(await screen.findByRole('heading', { level: 1, name: title })).toBeInTheDocument()
@@ -79,6 +79,21 @@ describe('경로표', () => {
     expect(screen.getByRole('navigation', { name: '현재 위치' })).toHaveTextContent(/^최근 로그$/)
     expect(within(screen.getByRole('navigation', { name: '주 메뉴' })).queryByRole('link', { current: 'page' })).toBeNull()
     expect(fetch.mock.calls.some(([input]) => String(input) === '/api/devices/web-01/logs?limit=100')).toBe(true)
+  })
+
+  it('/nodes 는 수집 · 관제 상태(#84)이고 노드 추가는 그 아래 경로다. 상단바 새로고침은 제목 줄 새로고침으로 하나다', async () => {
+    stubIncidents({ username: 'han', role: 'admin' })
+    const view = renderRoutes(routes, '/nodes')
+    expect(await screen.findByRole('heading', { level: 1, name: '수집 · 관제 상태' })).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: '현재 위치' })).toHaveTextContent(/^수집›수집 · 관제 상태$/)
+    expect(screen.getAllByRole('button', { name: '새로고침' })).toHaveLength(1)
+    expect(document.querySelector('[data-page-status] [data-page-refresh]')).not.toBeNull()
+    view.unmount()
+
+    stubIncidents({ username: 'han', role: 'admin' })
+    renderRoutes(routes, '/nodes/new')
+    expect(await screen.findByRole('heading', { level: 1, name: '노드 추가' })).toBeInTheDocument()
+    expect(screen.getByRole('navigation', { name: '현재 위치' })).toHaveTextContent(/^수집›수집 · 관제 상태›노드 추가$/)
   })
 
   it('/inventory 는 수집 묶음의 자산 · 취약점 메뉴가 현재 위치다', async () => {

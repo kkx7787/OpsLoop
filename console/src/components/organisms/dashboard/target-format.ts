@@ -12,6 +12,7 @@ import {
   type TargetLog,
   type TargetMetrics,
   type TargetResponse,
+  type TargetSystem,
   type TargetLatest,
   type TargetVulns,
 } from '@/api/targets'
@@ -23,12 +24,16 @@ import type { Tone } from '../../atoms/tones'
  * 수집 상태 · 오래됨 · 적용 확인은 서버가 정한다. 화면은 옮겨 적기만 하고, 로그 시각만으로 정상 · 장애 색을 만들지 않는다.
  */
 
-/** 수집 상태 배지. 글자 없이 색만 쓰지 않는다. 미확인은 장애가 아니라 모른다는 뜻이라 중립색이다 */
+/**
+ * 수집 상태 배지. 글자 없이 색만 쓰지 않는다. 미확인은 장애가 아니라 모른다는 뜻이라 중립색이다.
+ * 콘솔의 '응답 중'(#76)은 이 조회에 응답했다는 사실일 뿐 생존 확정이 아니라 정상 초록으로 꾸미지 않는다
+ */
 export const COLLECTION_LABEL: Record<CollectionState, string> = {
   ok: '정상',
   quiet: '요청 없음',
   no_signal: '수신 없음',
   unknown: '생존 상태 미확인',
+  responding: '응답 중',
 }
 
 export const COLLECTION_TONE: Record<CollectionState, Tone> = {
@@ -36,11 +41,12 @@ export const COLLECTION_TONE: Record<CollectionState, Tone> = {
   quiet: 'neutral',
   no_signal: 'warning',
   unknown: 'neutral',
+  responding: 'neutral',
 }
 
 /** 모르는 상태 값은 미확인으로 읽는다(정상으로 꾸미지 않는다) */
 export function collectionState(value: string | null | undefined): CollectionState {
-  return value === 'ok' || value === 'quiet' || value === 'no_signal' ? value : 'unknown'
+  return value === 'ok' || value === 'quiet' || value === 'no_signal' || value === 'responding' ? value : 'unknown'
 }
 
 /** 로그 가운데 가장 최근 시각. 없으면 null */
@@ -257,7 +263,7 @@ export function headBadge(target: { collection: Pick<TargetCollection, 'state' |
   return { label: COLLECTION_LABEL[state], tone: COLLECTION_TONE[state] }
 }
 
-/** 보호 대상 카드 · 요약 줄의 정상 글(#83). 보고서 표(COLLECTION_LABEL)와 관측 센서 · 관제 시스템은 '정상' 그대로다 */
+/** 보호 대상 카드 · 요약 줄의 정상 글(#83). 보고서 표(COLLECTION_LABEL)와 관측 센서 · 관제 시스템(콘솔은 '응답 중')은 그대로다 */
 export const PROTECTED_OK_LABEL = '수집 정상'
 
 /** 보호 대상의 머리 배지: 정상이면 '수집 정상', 그 밖은 headBadge 와 같다 */
@@ -266,9 +272,18 @@ export function protectedHeadBadge(target: { collection: Pick<TargetCollection, 
   return head.label === COLLECTION_LABEL.ok ? { ...head, label: PROTECTED_OK_LABEL } : head
 }
 
+/**
+ * 접힌 요약 줄의 머리 배지(#84). 보호 대상은 protectedHeadBadge, 그 밖은 headBadge. 콘솔 '응답 중' 은 이번 조회에 응답했다는
+ * 사실이라 상태판 갱신이 실패해 이전 결과를 보이는 동안에는 두지 않는다(null, 줄 끝 '이전 결과' 하나만, 결정 5)
+ */
+export function summaryHeadBadge(target: { collection: Pick<TargetCollection, 'state' | 'stopped'> }, card: 'protected' | 'full', stale: boolean): { label: string; tone: Tone } | null {
+  if (stale && collectionState(target.collection.state) === 'responding') return null
+  return card === 'protected' ? protectedHeadBadge(target) : headBadge(target)
+}
+
 /** 접힌 요약 줄의 경고 배지 하나 */
 export interface SummaryFlag {
-  key: 'failed' | 'enforcer' | 'unreadable' | 'loader' | 'detect' | 'parse'
+  key: 'failed' | 'enforcer' | 'unreadable' | 'loader' | 'detect' | 'parse' | 'delayed' | 'checking' | 'removing' | 'report' | 'metrics'
   text: string
   tone: Tone
 }
@@ -298,5 +313,36 @@ export function summaryFlags(target: {
   for (const warning of Array.isArray(target.collection.warnings) ? target.collection.warnings : []) {
     if (warning?.key === 'parse') add({ key: 'parse', text: '웹 로그 적재 없음', tone: 'warning' })
   }
+  return flags
+}
+
+/**
+ * 접힌 요약 줄(TargetSummaryList: 수집 · 관제 상태 화면의 관측 센서 · 관제 시스템, 모바일 대시보드의 보호 대상)의 배지(#84 결정 1 · 6 · 7).
+ * 넓은 화면의 보호 대상 카드 머리(ProtectedCard)는 한 줄 높이를 지키려고 summaryFlags 그대로다.
+ *  지점 적용(요청한 지점만, 미요청 제외) — 지점마다 하나: 적용 실패(빨강, 명시적 실패) > 적용 확인 지연(주의, 5분 넘은 확인 전 · 불일치) >
+ *    적용 확인 중(중립, 정상 반영 시간 5분 안의 확인 전). 수는 차단 건수다(n건). 해제 확인 중(중립, 빠짐 확인 전)은 따로.
+ *    그 지점 집행기가 멈췄거나 집행 확인 불가면 그 경고 하나로 합친다(서버가 수를 미확인에 합쳐 보낸다)
+ *  보고 문제(주의) — 서버 report_issue(관제 이상 띠 report:<지점> 과 같은 판정)
+ *  적재기 · 탐지 멈춤 · 웹 로그 적재 없음 — summaryFlags 와 같다
+ *  지표 오래됨(주의) — 자원 지표가 오래됨(system.state stale). 지표를 모으는 보호 대상에만 생긴다
+ * 이전 서버(checking · delayed · report_issue 없음)는 그 배지를 만들지 않는다. 상세(펼친 카드 · 차단 목록)는 지점별 수를 그대로 보인다
+ */
+export function summaryLineFlags(target: {
+  response: Pick<TargetResponse, 'point' | 'failed' | 'stalled' | 'unreadable'> & Partial<Pick<TargetResponse, 'checking' | 'delayed' | 'removing' | 'report_issue'>>
+  collection: Pick<TargetCollection, 'stopped' | 'warnings'>
+  system?: Pick<TargetSystem, 'state'>
+}): SummaryFlag[] {
+  const response = target.response
+  const flags: SummaryFlag[] = []
+  if (response.point && !response.stalled) {
+    if (positive(response.failed)) flags.push({ key: 'failed', text: `적용 실패 ${count(response.failed)}건`, tone: 'danger' })
+    else if (positive(response.delayed)) flags.push({ key: 'delayed', text: `적용 확인 지연 ${count(response.delayed)}건`, tone: 'warning' })
+    else if (positive(response.checking)) flags.push({ key: 'checking', text: `적용 확인 중 ${count(response.checking)}건`, tone: 'neutral' })
+    if (positive(response.removing)) flags.push({ key: 'removing', text: `해제 확인 중 ${count(response.removing)}건`, tone: 'neutral' })
+    if (typeof response.report_issue === 'string' && response.report_issue) flags.push({ key: 'report', text: '보고 문제', tone: 'warning' })
+  }
+  // 집행기 멈춤 · 집행 확인 불가 · 적재기 · 탐지 멈춤 · 웹 로그 적재 없음(적용 실패 수는 위 지점 배지가 대신한다)
+  for (const flag of summaryFlags(target)) if (flag.key !== 'failed') flags.push(flag)
+  if (target.system?.state === 'stale') flags.push({ key: 'metrics', text: '지표 오래됨', tone: 'warning' })
   return flags
 }

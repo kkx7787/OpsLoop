@@ -6,7 +6,10 @@ import type { QueueItem, Target, TargetsQueue, TargetsResult } from '@/api/targe
  * 기본값은 대상 네 곳이 모두 정상이고, 차단 · 취약점 수치가 0 이 아닌 경우와 0 인 경우가 섞여 있다.
  * 취약점은 수정 상태별 수(#72)가 있는 자산(honeypot-dmz · web-01 · data-01)과 없는 자산(이전 서버 모양)이 섞여 있다.
  * targetsResult 기본값에는 queue 가 없다(이전 서버). 먼저 처리할 사건은 targetsQueue() 를 넣는다.
- * #83 칸(미결 수 undetermined · 최근 사건 verdict · 취약점 대조 check_failed/check_stale)은 서버처럼 모두 싣되 0 · 없음이다
+ * #83 칸(미결 수 undetermined · 최근 사건 verdict · 취약점 대조 check_failed/check_stale)은 서버처럼 모두 싣되 0 · 없음이다.
+ * #84: 이름은 #78 역할 이름(허니팟 센서 · SSH 허니팟(Cowrie) · 허니팟 관문)이다. 대응에는 확인 중 · 지연 수(checking · delayed)와
+ * 보고 문제(report_issue)를 싣는다(허니팟 센서의 미확인 1 은 정상 반영 시간 안의 확인 전, web-01 은 받은 보고 없음).
+ * 콘솔은 '응답 중'(responding)과 DB 연결 확인(#76)이다
  */
 
 export const TARGETS_AS_OF = '2026-09-28T10:00:00Z'
@@ -20,16 +23,16 @@ export function minutesAgo(minutes: number): string {
 export function awsSensor(extra: Partial<Target> = {}): Target {
   return {
     id: 'aws-sensor',
-    label: 'AWS 센서',
-    role: 'Cowrie 허니팟 · 웹 디코이 · AWS 관문 (DMZ)',
+    label: '허니팟 센서',
+    role: 'SSH 허니팟(Cowrie) · 웹 디코이 · 허니팟 관문 (AWS DMZ)',
     collection: {
       state: 'ok',
       reason: '업로더 생존 신호 3분 전 · 최근 1시간 로그 있음',
       signal: { label: '업로더 생존 신호', seen_at: minutesAgo(3), checked_at: minutesAgo(1), stale_after_seconds: 900, problem: null },
       logs: [
-        { key: 'cowrie', label: 'Cowrie', last_at: minutesAgo(2) },
+        { key: 'cowrie', label: 'SSH 허니팟(Cowrie)', last_at: minutesAgo(2) },
         { key: 'decoy', label: '웹 디코이', last_at: minutesAgo(90) },
-        { key: 'gateway', label: 'AWS 관문 기록', last_at: null },
+        { key: 'gateway', label: '허니팟 관문 기록', last_at: null },
       ],
       extra: [],
     },
@@ -39,14 +42,14 @@ export function awsSensor(extra: Partial<Target> = {}): Target {
       pending: 12,
       undetermined: 0,
       parts: [
-        { key: 'cowrie', label: 'Cowrie', incidents_1h: 3, pending: 10 },
+        { key: 'cowrie', label: 'SSH 허니팟(Cowrie)', incidents_1h: 3, pending: 10 },
         { key: 'decoy', label: '웹 디코이', incidents_1h: 1, pending: 2 },
-        { key: 'gateway', label: 'AWS 관문', incidents_1h: 0, pending: 0 },
+        { key: 'gateway', label: '허니팟 관문', incidents_1h: 0, pending: 0 },
       ],
       latest: { incident_key: LATEST_KEY, rule_id: 'R105', rule_name: '제품 식별 탐색', severity: 'high', actor_ip: '203.0.113.7', target: null, last_ts: minutesAgo(20), judged: false, verdict: null },
     },
     system: { state: 'not_collected', metrics: null },
-    response: { point: 'gateway', point_label: 'AWS 관문', applied: 2, unverified: 1, exempt: 3, report: { seen_at: minutesAgo(2), checked_at: minutesAgo(1), problem: null } },
+    response: { point: 'gateway', point_label: '허니팟 관문', applied: 2, unverified: 1, stale: 0, checking: 1, delayed: 0, exempt: 3, report: { seen_at: minutesAgo(2), checked_at: minutesAgo(1), problem: null }, report_issue: null },
     vulns: {
       available: true,
       assets: [
@@ -72,7 +75,7 @@ export function web01(extra: Partial<Target> = {}): Target {
     },
     security: { incidents_1h: 0, high_1h: 0, pending: 0, undetermined: 0, parts: [], latest: null },
     system: { state: 'ok', metrics: { ts: minutesAgo(1), cpu_pct: 12.4, mem_used_pct: 41.6, disk_root_pct: 63, load1: 0.42 } },
-    response: { point: 'fw', point_label: '내부 방화벽', applied: 0, unverified: 0, exempt: 0, report: { seen_at: null, checked_at: minutesAgo(1), problem: '보고 파일 없음' } },
+    response: { point: 'fw', point_label: '내부 방화벽', applied: 0, unverified: 0, stale: 0, checking: 0, delayed: 0, exempt: 0, report: { seen_at: null, checked_at: minutesAgo(1), problem: '보고 파일 없음' }, report_issue: '받은 보고 없음 · 보고 파일 없음' },
     // 조사 · 대조 모두 50시간 전(조사 오래됨 · 대조 오래됨)
     vulns: { available: true, assets: [{ asset_id: 'web-01', vuln_total: 30, vuln_kev: 0, vuln_fix_available: 12, vuln_reboot_pending: 0, vuln_fix_unknown: 4, collected_at: minutesAgo(60 * 50), checked_at: minutesAgo(60 * 50), stale: true, missing: false, check_failed: false, check_stale: true }] },
     ...extra,
@@ -85,11 +88,15 @@ export function consoleTarget(extra: Partial<Target> = {}): Target {
     label: '관제 콘솔',
     role: '콘솔 A · B (HAProxy 뒤)',
     collection: {
-      state: 'unknown',
-      reason: '생존 신호를 보내지 않음',
+      state: 'responding',
+      reason: 'DB 연결 확인: 콘솔 A 있음 · 콘솔 B 없음(평소 꺼 두는 예비)',
       signal: null,
       logs: [{ key: 'console', label: '마지막 로그인 기록', last_at: minutesAgo(12) }],
       extra: [],
+      db_links: [
+        { name: 'opsloop-console-a', label: '콘솔 A', present: true, note: null },
+        { name: 'opsloop-console-b', label: '콘솔 B', present: false, note: '평소 꺼 두는 예비' },
+      ],
     },
     security: { incidents_1h: 1, high_1h: 0, pending: 1, parts: [], latest: { incident_key: 'R201|v2|user:root|x', rule_id: 'R201', rule_name: '콘솔 로그인 실패', severity: 'low', actor_ip: null, target: 'user:root', last_ts: minutesAgo(12), judged: true } },
     system: { state: 'not_collected', metrics: null },
@@ -188,7 +195,7 @@ export function device(extra: Partial<IncidentDevice> = {}): IncidentDevice {
 }
 
 export const DECOY = device({ id: 'aws-sensor', part: 'decoy', label: '웹 디코이', group: 'sensor', logs: ['웹 요청'] })
-export const COWRIE = device({ id: 'aws-sensor', part: 'cowrie', label: 'Cowrie', group: 'sensor', logs: ['SSH 세션'], basis: 'rule_scope' })
+export const COWRIE = device({ id: 'aws-sensor', part: 'cowrie', label: 'SSH 허니팟(Cowrie)', group: 'sensor', logs: ['SSH 세션'], basis: 'rule_scope' })
 export const DATA_NODE_DEVICE = device({ id: 'data-node', label: '데이터 노드', group: 'monitor', logs: ['수집 관문', '원장 가져오기'], basis: 'rule_scope' })
 
 /** 먼저 처리할 사건 한 줄. 기본은 web-01 · 디코이 둘 다 확인된 w2 R102(앞 묶음) */
@@ -226,7 +233,7 @@ export function targetsQueue(extra: Partial<TargetsQueue> = {}): TargetsQueue {
     items: [
       queueItem(),
       queueItem({ incident_key: 'R202|s1|unit:x', rule_id: 'R202', rule_name: '미등록 에이전트', severity: 'medium', actor_ip: null, target: 'agent:x', first_ts: minutesAgo(120), pending_seconds: 7200, target_seconds: 3600, overdue: true, devices: [DATA_NODE_DEVICE], device_state: 'rule_scope' }),
-      queueItem({ incident_key: 'R005|v3|x', rule_id: 'R005', rule_name: '기준선 벗어남', severity: 'low', actor_ip: null, target: null, first_ts: minutesAgo(60), pending_seconds: 3600, target_seconds: 86_400, devices: [], device_state: 'unconfirmed', device_fallback: [device({ id: 'aws-sensor', part: 'cowrie', label: 'Cowrie', group: 'sensor', logs: ['SSH 세션'], basis: 'fallback' })] }),
+      queueItem({ incident_key: 'R005|v3|x', rule_id: 'R005', rule_name: '기준선 벗어남', severity: 'low', actor_ip: null, target: null, first_ts: minutesAgo(60), pending_seconds: 3600, target_seconds: 86_400, devices: [], device_state: 'unconfirmed', device_fallback: [device({ id: 'aws-sensor', part: 'cowrie', label: 'SSH 허니팟(Cowrie)', group: 'sensor', logs: ['SSH 세션'], basis: 'fallback' })] }),
       queueItem({ incident_key: 'R001|v3|203.0.113.9', rule_id: 'R001', rule_name: 'SSH 무차별 대입', severity: 'medium', actor_ip: '203.0.113.9', first_ts: minutesAgo(600), pending_seconds: 36_000, target_seconds: 43_200, lane: 'back', devices: [COWRIE], device_state: 'rule_scope' }),
     ],
     ...extra,

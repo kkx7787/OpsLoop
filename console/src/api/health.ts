@@ -1,12 +1,12 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query'
-import { deviceLogsHref } from '@/components/molecules/device-format'
+import { deviceLogsHref, STATUS_PATH, statusHref } from '@/components/molecules/device-format'
 import { api } from './client'
 import { ApiError } from './errors'
 import { monitoringKeys } from './monitoring-keys'
 
 /**
  * 관제 이상(#72 · #82). 서버 계약은 app/targets.py monitor_view.
- *  GET /api/dashboard/monitor → ControlHealth (적재기 · 집행기 확인, 센서 · 관문 기록 수신, 탐지 경로, 지점별 적용 실패 · 불일치 · 보고,
+ *  GET /api/dashboard/monitor → ControlHealth (적재기 · 집행기 확인, 센서 · 관문 기록 수신, 탐지 경로, 지점별 적용 실패 · 불일치 · 보고 · 확인 지연,
  *  노드 수신 · 노드별 웹 로그 적재 · 자원 지표)
  * items 는 이상(alert)과 모름(unknown)만 싣는다. 비면 이상이 없다는 뜻이다.
  * 대시보드 띠와 사이드바 요약이 같은 조회 · 같은 판정(controlHealthView)을 쓴다. 조회가 실패하면 이전 항목을 보이지 않는다(Q14).
@@ -16,8 +16,9 @@ export type MonitorLevel = 'alert' | 'unknown'
 
 /**
  * 관제 이상 한 항목. key 는 heartbeats · loader · enforcer:<지점> · sensor · gateway_uploader · detect:<경로> · block_failed:<지점> ·
- * point_stale:<지점> · gateway_mismatch · report:<지점> · nodes_silent · nodes · parse:<node_id> · metrics:<node_id>.
- * 해당 없는 칸은 null 이다(at 은 멈춘 확인 · 신호 · 탐지의 마지막 시각, count 는 적용 실패 · 불일치 · 끊긴 노드 수)
+ * point_stale:<지점> · gateway_mismatch · report:<지점> · point_delayed:<지점>(#84, 5분 넘은 확인 전) · nodes_silent · nodes ·
+ * parse:<node_id> · metrics:<node_id>.
+ * 해당 없는 칸은 null 이다(at 은 멈춘 확인 · 신호 · 탐지의 마지막 시각, count 는 적용 실패 · 불일치 · 확인 지연 · 끊긴 노드 수)
  */
 export interface MonitorItem {
   key: string
@@ -110,12 +111,15 @@ export function monitorItemText(item: Pick<MonitorItem, 'reason' | 'count'>): st
 }
 
 /**
- * 항목을 누르면 갈 곳. 차단 집행 쪽(집행기 · 적용 실패 · 불일치 · 지점 보고)은 차단 목록, 노드 수신 · 자원 지표는 수집 노드,
- * 웹 로그 적재는 그 장비의 최근 로그. 적재기 · 센서 · 관문 기록 · 탐지 · 생존 신호는 볼 화면이 없어 링크가 없다(모르는 키도)
+ * 항목을 누르면 갈 곳(#84). 차단 집행 쪽(집행기 · 적용 실패 · 불일치 · 지점 보고 · 확인 지연)은 차단 목록, 노드 수신 · 자원 지표는 수집 · 관제 상태의
+ * 등록 노드 표, 센서 · 관문 기록 수신은 그 화면의 허니팟 센서 줄(펼침), 탐지 경로 · 적재기 · 생존 신호는 데이터 노드 줄(펼침),
+ * 웹 로그 적재는 그 장비의 최근 로그. 모르는 키는 링크가 없다
  */
 export function monitorItemHref(key: string): string | null {
-  if (['enforcer:', 'block_failed:', 'point_stale:', 'report:'].some((p) => key.startsWith(p)) || key === 'gateway_mismatch') return '/blocklist'
-  if (key === 'nodes_silent' || key === 'nodes' || key.startsWith('metrics:')) return '/nodes'
+  if (['enforcer:', 'block_failed:', 'point_stale:', 'report:', 'point_delayed:'].some((p) => key.startsWith(p)) || key === 'gateway_mismatch') return '/blocklist'
+  if (key === 'nodes_silent' || key === 'nodes' || key.startsWith('metrics:')) return STATUS_PATH
+  if (key === 'sensor' || key === 'gateway_uploader') return statusHref('aws-sensor')
+  if (key.startsWith('detect:') || key === 'loader' || key === 'heartbeats') return statusHref('data-node')
   if (key.startsWith('parse:') && key.length > 'parse:'.length) return deviceLogsHref(key.slice('parse:'.length))
   return null
 }

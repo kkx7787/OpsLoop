@@ -11,10 +11,9 @@ import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { Time } from '../../atoms/Time'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { CtiBadge } from '../../molecules/CtiBadge'
-import { deviceIncidentsHref, deviceLogsHref } from '../../molecules/device-format'
 import { InfoTip } from '../../molecules/InfoTip'
 import { incidentHref } from '../incidents/model'
-import { assetHref, collectionState, headBadge, isLogDevice, LABEL_MAX, latestJudgedText, latestLog, pendingHref, responseParts, systemText, vulnText } from './target-format'
+import { assetHref, collectionState, headBadge, LABEL_MAX, latestJudgedText, latestLog, pendingHref, responseParts, systemText, vulnText } from './target-format'
 
 export interface TargetCardProps {
   target: Target
@@ -32,16 +31,17 @@ export interface TargetCardProps {
 
 /**
  * 관제 대상 카드 한 장(#52): 머리(이름 · 역할 · 수집 상태) 아래에 수집 · 보안 · 최근 사건 · 시스템 · 대응 · 취약점을 한 줄 요약으로 쌓는다.
- * #83 부터 대시보드는 관측 센서 · 관제 시스템 접힌 줄을 펼칠 때만 쓴다(보호 대상은 ProtectedCard). #84 에서 정리한다.
+ * 수집 · 관제 상태 화면(#84)의 관측 센서 · 관제 시스템 접힌 줄을 펼칠 때 쓴다(보호 대상은 ProtectedCard). card 모양은 시험 · 카탈로그용이다.
  * 수집 상태는 서버가 생존 신호로 정한다. 신호가 없는 대상은 마지막 로그 시각을 보이되 색을 입히지 않는다('생존 상태 미확인' 은 배지가 말한다).
+ * 콘솔(#76)은 '응답 중'(이 조회에 응답했다는 사실)과 수집 줄 'DB 연결 확인: 콘솔 A 있음 · …'(서버 까닭)이고, 한계는 '수집' ⓘ 에 둔다.
  * 판정 근거(수신 없음 기준 · 정상일 때 서버의 까닭 · 정상 보고 시각)는 구역 제목 옆 도움말(ⓘ)에 두고,
  * 수신 없음 · 미확인의 까닭과 보고 문제 · 집행기 멈춤 · 수집 경고 표지(#82 웹 로그 적재 없음)는 본문에 둔다.
  * 콘솔 카드의 현재 콘솔은 실시간 연결(hello)의 이름이다. REST 요청은 콘솔 두 대에 번갈아 가므로 응답의 콘솔 이름은 쓰지 않는다.
  * 등록 노드 카드(#64)는 web-01 카드와 같은 틀이다. 이름(hostname)은 노드가 적어 낸 값이라 비신뢰 문자열로 그리고,
- * 이름이 node_id 와 다르면 역할 옆에 node_id 를 붙여 수집 노드 화면과 맞춰 보게 한다.
+ * 이름이 node_id 와 다르면 역할 옆에 node_id 를 붙여 수집 · 관제 상태의 노드 표와 맞춰 보게 한다.
  * #72: 머리 배지는 headBadge(데이터 노드 확인 멈춤은 '주의', data-collection 은 서버 값 그대로), '미판정 N' 은 그 장비의 미판정 목록으로 잇는다.
  * 카드가 넓으면(컨테이너 56rem 이상) 두 단(수집 · 보안 · 최근 사건 | 시스템 · 대응 · 취약점)이다. 인쇄는 폭과 관계없이 한 단이다.
- * #73: 보호 대상(web-01 · 등록 노드) 카드 맨 아래에 '사건 보기 · 최근 로그' 한 줄. 모바일은 펼친 카드(inline) 안에만 있고 인쇄에는 빠진다.
+ * 보호 대상 동선('사건 보기 · 최근 로그', #73)은 ProtectedCard 와 수집 · 관제 상태의 노드 표가 맡는다.
  */
 export function TargetCard({ target, asOf, cti, variant = 'card', className }: TargetCardProps) {
   const titleId = useId()
@@ -101,12 +101,6 @@ export function TargetCard({ target, asOf, cti, variant = 'card', className }: T
           <VulnFacts vulns={target.vulns} asOf={asOf} />
         </Row>
       </dl>
-      {isLogDevice(target) && (
-        <p className="m-0 flex flex-wrap gap-x-4 gap-y-1 border-t border-line px-3 py-1.5 text-xs print:hidden" data-device-links="">
-          <Link to={deviceIncidentsHref(target.id)}>사건 보기</Link>
-          <Link to={deviceLogsHref(target.id)}>최근 로그</Link>
-        </p>
-      )}
     </div>
   )
 }
@@ -153,12 +147,17 @@ function settled(collection: TargetCollection): boolean {
   return state === 'ok' || state === 'quiet'
 }
 
+/** 콘솔 DB 연결 확인의 한계(#76). 응답이 멈춘 프로세스도 세션은 남는다 */
+const CONSOLE_DB_NOTE = 'DB 연결은 콘솔이 DB 에 붙어 있다는 뜻일 뿐 응답 · HAProxy 분배를 보장하지 않습니다.'
+
 /**
  * 수집 구역 도움말: 수신 없음 기준과, 정상 · 요청 없음일 때의 서버 까닭. 둘 다 없으면 단추를 두지 않는다.
- * AWS 센서는 적재기가 확인할 때의 신호 지연으로 가르고, 적재기 확인이 30분(app/targets.py CHECKER_STALE) 넘게 없으면 확인 중단이다(#82)
+ * 허니팟 센서는 적재기가 확인할 때의 신호 지연으로 가르고, 적재기 확인이 30분(app/targets.py CHECKER_STALE) 넘게 없으면 확인 중단이다(#82).
+ * 콘솔(응답 중)은 DB 연결 확인의 한계 한 문장이다(#76)
  */
 function collectionTip(target: Target): RowTip | null {
   const collection = target.collection
+  if (collectionState(collection.state) === 'responding') return { label: '수집 상태', content: <span className="block">{CONSOLE_DB_NOTE}</span> }
   const signal = collection.signal
   const reason = settled(collection) && collection.reason ? collection.reason : null
   if (!signal && !reason) return null
@@ -277,9 +276,10 @@ function CollectionFacts({ target, collection, asOf }: { target: Target; collect
           ))}
         </span>
       )}
-      {/* 까닭에는 기록한 쪽이 남긴 읽기 문제가 섞일 수 있어 비신뢰 문자열로 그린다. 정상 · 요청 없음의 까닭은 도움말에 있다 */}
+      {/* 까닭에는 기록한 쪽이 남긴 읽기 문제가 섞일 수 있어 비신뢰 문자열로 그린다. 정상 · 요청 없음의 까닭은 도움말에 있다.
+          콘솔(응답 중)의 까닭은 DB 연결 확인 줄이라 본문 글로 둔다(#76) */}
       {collection.reason && !settled(collection) && (
-        <span className="text-2xs text-ink-muted">
+        <span className={collectionState(collection.state) === 'responding' ? 'break-words' : 'text-2xs text-ink-muted'} data-db-links={collectionState(collection.state) === 'responding' ? '' : undefined}>
           <UntrustedText value={collection.reason} max={200} />
         </span>
       )}

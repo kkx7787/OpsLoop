@@ -43,7 +43,7 @@ describe('TargetCard(#52)', () => {
   it.each([
     [awsSensor(), '정상', 'bg-success-soft'],
     [web01(), '요청 없음', 'bg-muted-soft'],
-    [consoleTarget(), '생존 상태 미확인', 'bg-muted-soft'],
+    [consoleTarget(), '응답 중', 'bg-muted-soft'],
     [dataNode(), '수신 없음', 'bg-warning-soft'],
   ])('%#: 수집 상태는 글자 배지로 보인다(색만 쓰지 않는다)', (target, label, tone) => {
     const { card } = renderCard(target)
@@ -57,7 +57,7 @@ describe('TargetCard(#52)', () => {
     const { card, row } = renderCard(awsSensor())
     const collect = row('수집')
     expect(collect).toHaveTextContent('업로더 생존 신호 3분 전 · 09-28 18:57')
-    expect(collect).toHaveTextContent('Cowrie 2분 전 · 웹 디코이 1시간 전 · AWS 관문 기록 없음')
+    expect(collect).toHaveTextContent('SSH 허니팟(Cowrie) 2분 전 · 웹 디코이 1시간 전 · 허니팟 관문 기록 없음')
     expect(collect).not.toHaveTextContent('생존 상태 미확인')
     // 정상 판정의 까닭(서버)은 신호 줄 · 배지와 같은 말이라 '수집' 옆 도움말(ⓘ)에만 있고, 수신 없음 기준도 거기 있다
     const tip = within(card).getByRole('button', { name: '수집 상태 설명' })
@@ -81,7 +81,8 @@ describe('TargetCard(#52)', () => {
   })
 
   it('생존 신호가 없는 대상은 마지막 로그 시각을 보이고, 미확인은 배지 한 곳에만 둔다', () => {
-    const { card, row } = renderCard(consoleTarget())
+    // 콘솔 응답 중(#76) 전의 이전 서버 모양
+    const { card, row } = renderCard(consoleTarget({ collection: { ...consoleTarget().collection, state: 'unknown', reason: '생존 신호를 보내지 않음', db_links: undefined } }))
     expect(within(card).getByText('생존 상태 미확인')).toHaveAttribute('data-collection-badge')
     expect(row('수집')).toHaveTextContent('마지막 로그 12분 전')
     expect(row('수집')).not.toHaveTextContent('생존 상태 미확인')
@@ -177,6 +178,31 @@ describe('TargetCard(#52)', () => {
     expect(row('수집')).toHaveTextContent('업로더 생존 신호 없음')
   })
 
+  it('콘솔은 응답 중(중립색)과 수집 줄 DB 연결 확인이고 한계는 ⓘ 에 둔다. 머리 · 수집 줄에 대기 · 미확인 · 생존 확정 글이 없다(#76)', () => {
+    const { card, row } = renderCard(consoleTarget())
+    expect(within(card).getByText('응답 중')).toHaveAttribute('data-collection-badge')
+    expect(card).toHaveAttribute('data-collection', 'responding')
+    const db = row('수집').querySelector('[data-db-links]')
+    expect(db).toHaveTextContent(/^DB 연결 확인: 콘솔 A 있음 · 콘솔 B 없음\(평소 꺼 두는 예비\)$/)
+    expect(db).not.toHaveClass('text-ink-muted')
+    expect(row('수집')).toHaveTextContent('마지막 로그 12분 전')
+    expect(row('수집')).toHaveTextContent('실시간 연결: 콘솔 A')
+    const tip = within(card).getByRole('button', { name: '수집 상태 설명' })
+    expect(tip).toHaveAccessibleDescription('DB 연결은 콘솔이 DB 에 붙어 있다는 뜻일 뿐 응답 · HAProxy 분배를 보장하지 않습니다.')
+    // 머리(이름 · 역할 · 배지)와 수집 줄(도움말 상자 밖)
+    const head = card.firstElementChild as HTMLElement
+    const body = [...row('수집').childNodes].filter((n) => !(n instanceof HTMLElement && n.contains(tipPanel(tip)))).map((n) => n.textContent).join('')
+    for (const text of [head.textContent ?? '', body]) {
+      expect(text).not.toMatch(/대기|미확인|생존|정상/)
+    }
+  })
+
+  it('콘솔 DB 연결을 읽지 못하면 확인 불가다(#76)', () => {
+    const { row } = renderCard(consoleTarget({ collection: { ...consoleTarget().collection, reason: 'DB 연결 확인 불가', db_links: null } }))
+    expect(row('수집').querySelector('[data-db-links]')).toHaveTextContent(/^DB 연결 확인 불가$/)
+    expect(row('수집')).not.toHaveTextContent('미확인')
+  })
+
   it('콘솔 카드의 현재 콘솔은 실시간 연결(hello)의 이름이다', () => {
     const { row, unmount } = renderCard(consoleTarget(), { live: { status: 'connected', retries: 0, console: 'opsloop-console-b' } })
     expect(row('수집')).toHaveTextContent('실시간 연결: 콘솔 B')
@@ -200,11 +226,11 @@ describe('TargetCard(#52)', () => {
     expect(card).not.toHaveTextContent('실시간 연결')
   })
 
-  it('보안은 최근 1시간 신규 · 높음 이상 · 미판정, AWS 센서는 발생원별 수를 붙인다', () => {
+  it('보안은 최근 1시간 신규 · 높음 이상 · 미판정, 허니팟 센서는 발생원별 수를 붙인다', () => {
     const { row } = renderCard(awsSensor())
     expect(row('보안')).toHaveTextContent('최근 1시간 신규 4 · 높음 이상 1 · 미판정 12')
-    expect(row('보안')).toHaveTextContent('Cowrie 3 · 웹 디코이 1 · AWS 관문 0')
-    expect(within(row('보안')).getByTitle('Cowrie 미판정 10 · 웹 디코이 미판정 2 · AWS 관문 미판정 0')).toBeInTheDocument()
+    expect(row('보안')).toHaveTextContent('SSH 허니팟(Cowrie) 3 · 웹 디코이 1 · 허니팟 관문 0')
+    expect(within(row('보안')).getByTitle('SSH 허니팟(Cowrie) 미판정 10 · 웹 디코이 미판정 2 · 허니팟 관문 미판정 0')).toBeInTheDocument()
   })
 
   it('미판정 N 은 그 장비의 미판정 목록(판정 전 · 장비 조건, 기간 없음)으로 잇고 글자는 그대로다(#72)', () => {
@@ -223,32 +249,13 @@ describe('TargetCard(#52)', () => {
     expect(within(node.row('보안')).getByRole('link', { name: '미판정 3' })).toHaveAttribute('href', '/incidents?judged=false&device=web-02')
   })
 
-  it('보호 대상(web-01 · 등록 노드) 카드에만 맨 아래 사건 보기 · 최근 로그 한 줄이 있고 인쇄에는 빠진다(#73)', () => {
-    for (const [target, id] of [[web01(), 'web-01'], [nodeTarget('web-02'), 'web-02']] as const) {
-      const { card, unmount } = renderCard(target)
-      const links = card.querySelector<HTMLElement>('[data-device-links]') as HTMLElement
-      expect(links).toHaveClass('print:hidden')
-      expect(card.lastElementChild).toBe(links)
-      expect(within(links).getByRole('link', { name: '사건 보기' })).toHaveAttribute('href', `/incidents?device=${id}`)
-      expect(within(links).getByRole('link', { name: '최근 로그' })).toHaveAttribute('href', `/devices/${id}/logs`)
-      expect(within(links).getByRole('link', { name: '최근 로그' })).not.toHaveAttribute('target')
-      unmount()
-    }
-    for (const target of [awsSensor(), consoleTarget(), dataNode()]) {
+  it('관측 센서 · 관제 시스템 카드라 보호 대상 동선 줄(사건 보기 · 최근 로그)이 없다(#84: ProtectedCard · 노드 표가 맡는다)', () => {
+    for (const target of [awsSensor(), consoleTarget(), dataNode(), web01()]) {
       const { card, unmount } = renderCard(target)
       expect(card.querySelector('[data-device-links]')).toBeNull()
       expect(within(card).queryByRole('link', { name: '최근 로그' })).toBeNull()
       unmount()
     }
-    // 모바일에서 펼친 카드(inline)에도 같은 줄이 있다
-    render(
-      <MemoryRouter>
-        <LiveContext.Provider value={CONNECTED}>
-          <TargetCard target={web01()} asOf={AS_OF} variant="inline" />
-        </LiveContext.Provider>
-      </MemoryRouter>,
-    )
-    expect(screen.getByRole('link', { name: '최근 로그' })).toHaveAttribute('href', '/devices/web-01/logs')
   })
 
   it('데이터 노드 확인이 멈추면 머리 배지는 주의(주의색)이고 data-collection 은 서버 값(ok) 그대로다(#72)', () => {
@@ -320,13 +327,13 @@ describe('TargetCard(#52)', () => {
   it('대응: 적용 확인(초록) · 미확인 · 정책상 제외, 차단 목록으로 잇고 정상 보고 시각은 도움말에 둔다', () => {
     const { card, row } = renderCard(awsSensor())
     const response = row('대응')
-    expect(within(response).getByText('차단 적용 2 (AWS 관문)')).toHaveClass('bg-success-soft')
+    expect(within(response).getByText('차단 적용 2 (허니팟 관문)')).toHaveClass('bg-success-soft')
     expect(within(response).getByText('차단 적용 여부 미확인 1')).toHaveClass('bg-warning-soft')
     expect(within(response).getByText('정책상 차단 제외 3')).toBeInTheDocument()
     expect(within(response).getByRole('link')).toHaveAttribute('href', '/blocklist')
     const panel = tipPanel(within(card).getByRole('button', { name: '집행 지점 보고 설명' }))
     expect(response).toContainElement(panel)
-    expect(panel).toHaveTextContent('AWS 관문 보고 2분 전')
+    expect(panel).toHaveTextContent('허니팟 관문 보고 2분 전')
     expect(panel).toContainElement(response.querySelector('[data-report]') as HTMLElement)
   })
 

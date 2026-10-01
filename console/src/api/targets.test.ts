@@ -79,7 +79,7 @@ describe('관제 대상 상태판 API(#52)', () => {
     expect((await fetchTargets()).queue).toBeUndefined()
   })
 
-  it('무리(#72): 보호 대상은 web-01 과 등록 노드, 관측 센서는 AWS 센서, 관제 시스템은 콘솔 · 데이터 노드. 고정 대상 순서는 그대로다', () => {
+  it('무리(#72): 보호 대상은 web-01 과 등록 노드, 관측 센서는 허니팟 센서, 관제 시스템은 콘솔 · 데이터 노드. 고정 대상 순서는 그대로다', () => {
     expect(PROTECTED_IDS).toEqual(['web-01'])
     expect(PROTECTED_KIND).toBe('node')
     expect(SENSOR_IDS).toEqual(['aws-sensor'])

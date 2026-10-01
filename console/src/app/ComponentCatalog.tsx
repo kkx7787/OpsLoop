@@ -106,7 +106,7 @@ export function ComponentCatalog() {
       <Section title="단추">
         <Row>
           <Button variant="primary">판정 기록</Button>
-          <Button>수집 노드 보기</Button>
+          <Button>수집 · 관제 상태 보기</Button>
           <Button variant="ghost">담당 해제</Button>
           <Button variant="danger">차단 해제</Button>
           <Button variant="primary" loading={saving} onClick={() => setSaving(true)}>
@@ -121,7 +121,7 @@ export function ComponentCatalog() {
           <Button size="lg" variant="primary">
             다시 연결
           </Button>
-          <Button size="lg">수집 노드 보기</Button>
+          <Button size="lg">수집 · 관제 상태 보기</Button>
           <Button size="icon" aria-label="새로고침">
             ↻
           </Button>
@@ -267,7 +267,7 @@ export function ComponentCatalog() {
           actions={
             <>
               <Button size="sm">조건 초기화</Button>
-              <Button size="sm">수집 노드 보기</Button>
+              <Button size="sm">수집 · 관제 상태 보기</Button>
             </>
           }
         />
@@ -289,7 +289,7 @@ export function ComponentCatalog() {
             <Button size="lg" variant="primary">
               다시 연결
             </Button>
-            <Button size="lg">수집 노드 보기</Button>
+            <Button size="lg">수집 · 관제 상태 보기</Button>
           </>
         }
         footnote="열려 있던 판정 패널과 팝업은 닫고 이 화면으로 옵니다."
