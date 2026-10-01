@@ -64,8 +64,9 @@
   - 확인(보고가 5분 안 · 그 목록에 (ip, until) 이 있음 · rejected 에 없음 · 셈이 맞음): enforced_at = 처음 확인한 보고의 at,
     method = 보고의 mode, enforce_note = '관문 반영 · <digest 앞 8자> · <at>'. 같은 (ip, until, mode) 는 다시 쓰지 않는다
     (감사 이벤트가 쌓이지 않게). 앞 확인(확인 시각 · 반영 쪽지)이 비운 적 없이 남은 채 새로 확인하면(다시 걸기 · 연장 · 방식 바뀜)
-    쪽지 끝에 ' · 기존 차단 유지'(NOTE_KEPT)를 붙인다. 관문이 이 주소를 뺐다고 확인하지 못한 채 새 목록을 적용한 것이라 기간 보고서가
-    관문 반영 지연에서 뺀다(이슈 #77 결정 2). 관문은 목록을 적용한 뒤 실제 집합과 대조해 빠진 항목을 rejected 로 돌려주므로 행마다의 판단은
+    쪽지 끝에 관문 차단이 이어졌다고 보고로 확인되면 ' · 기존 차단 유지'(NOTE_KEPT), 확인되지 않으면 ' · 연속성 확인 불가'(NOTE_UNCERTAIN)를
+    붙인다(continuity, 아래 '다시 건 행'). 둘 다 새 반영이 아니라 기간 보고서가 관문 반영 지연에서 뺀다(이슈 #77 결정 2 · 3).
+    관문은 목록을 적용한 뒤 실제 집합과 대조해 빠진 항목을 rejected 로 돌려주므로 행마다의 판단은
     rejected 가 맡는다. 다른 관문 오류(되살림 · 일부 반영 실패 · 목록 밖 원소)는 로그에만 남기고 그 밖의 행은 확인한다 — 한 행이
     계속 실패한다고 집합에 있는 행까지 불일치로 두면 화면 · 대시보드가 '막지 못했다'고 잘못 읽히고, 풀릴 때 행마다 새 at 으로
     다시 써 감사 이벤트가 쌓인다.
@@ -88,13 +89,24 @@
     이 주소가 빠진 목록을 오류 없이 적용했다고 보고한 뒤에만 남은 세 열을 비운다(관문을 요청한 행은 다시 적용하면 새로 확인한다).
     관문이 빠지기 전 목록을 아직 적용 중이면 세 열을 두고 확인을 잇는다.
   - 다시 건 행(해제 · 만료로 두 목록 밖이었다가 다시 든 행, 결정 2): 콘솔 · triage · 흡수는 관문 포함 여부와 무관하게 관문 세 열을
-    요청 시각에 비우지 않는다. 관문이 그 사이 이 주소가 빠진 목록을 오류 없이 적용했다고 보고했으면(regained · 다시 걸기 전의
-    gone_seen) 세 열을 비우고(unenforced 한 번) 새로 확인한다. 아니면 관문 차단이 이어진 것으로 보고 unenforced 없이 다시 든 목록을
-    올린 뒤의 보고(그 목록 회차 ≤ 보고 회차 · 보고 시각 ≥ 올린 시각)로만 확인해 기존 차단 유지로 적는다. 다시 걸기 전의 확인은
-    이어받지 않는다(adopt 는 상태 파일을 잃었을 때만). 마지막 확인 뒤 새로 요청해 관문 목록에 새로 든 행(관문 없이 다시 건 행이나 관리자
-    관문 빼기 뒤의 행을 풀고 관문을 포함해 다시 걸기 · 상태 파일을 잃음 · 옛 집행기가 이어받은 확인, outdated)도 남은 확인을 쓰지 않고
-    새 보고로 기존 차단 유지를 적는다. 확인 전에는 관문 결과가 pending(집행기 회차 전에는 removing)이라 종합 상태가
-    대기다. 확인 시각 없이 남은 방식 · 반영 쪽지(관문이 뺐다고 확인해 비운 뒤 다시 건 행)는 첫 회차에 감사 없이 비운다.
+    요청 시각에 비우지 않는다. 관문 쪽은 관문 장부(빠진 회차 left · 다시 든 회차 back · 빠지기 전 until was)와 관문 보고 이력(gw_log,
+    회차마다 읽은 보고의 시각 · 목록 회차 · 깨끗함)으로 셋으로 가른다(결정 3).
+      새 적용: 관문이 그 사이 이 주소가 빠진 목록을 오류 없이 적용했다고 보고했으면(regained · 다시 걸기 전의 gone_seen) 세 열을
+        비우고(unenforced 한 번) 새로 확인한다.
+      기존 차단 유지: 빠진 회차부터 확인까지 보고를 모두 읽었고 모두 깨끗하며 빠진 목록의 보고가 없고, 빠지기 전 목록의 마지막 보고와
+        다시 든 목록의 첫 보고가 이어진 관문 회차(RUN_GAP 안, 그 사이 보고가 덮이지 않음)이고 빠지기 전 until 이 그 보고 전에 지나지
+        않았을 때만이다.
+      연속성 확인 불가: 그 밖(보고 누락 · 덮임 · 오류, 다시 걸기 전에 만료가 지남 · 이력 없음). 만료 시각만으로 관문이 뺐다고 보지 않아
+        unenforced 를 만들지 않는다(만료는 console.block.expired 로만 남는다).
+    뒤의 둘은 unenforced 없이 다시 든 목록을 올린 뒤의 보고(그 목록 회차 ≤ 보고 회차 · 보고 시각 ≥ 올린 시각)로만 확인해 쪽지에 표지를
+    붙인다. 셋 모두 현재 적용은 그 최신 보고로 확인한다. 다시 걸기 전의 확인은 이어받지 않는다(adopt 는 상태 파일을 잃었을 때만).
+    마지막 확인 뒤 새로 요청해 관문 목록에 새로 든 행(관문 없이 다시 건 행이나 관리자 관문 빼기 뒤의 행을 풀고 관문을 포함해 다시 걸기 ·
+    상태 파일을 잃음 · 옛 집행기가 이어받은 확인, outdated)도 남은 확인을 쓰지 않고 새 보고로 확인해 같은 규칙으로 표지를 붙인다(장부 ·
+    이력이 없으면 연속성 확인 불가). 관문 목록에서 빠진 적 없는 재요청 · 연장 · 방식 바뀜 · 같은 회차 안 다시 걸기는 그 목록을 올린
+    회차 직전부터 보고가 빠짐없이 깨끗하고 앞 확인의 until 이 새 보고 전에 지나지 않았을 때만 기존 차단 유지, 아니면 연속성 확인 불가다
+    (옛 집행기가 돈 회차가 끼면 보고 이력이 없어 연속성 확인 불가). 확인 전에는 관문 결과가 pending(집행기 회차 전에는
+    removing)이라 종합 상태가 대기다. 확인 시각 없이 남은 방식 · 반영 쪽지(관문이 뺐다고 확인해 비운 뒤 다시 건 행)는 첫 회차에
+    감사 없이 비운다.
   - 만료: 지난 2일 안에 만료된 행마다 note_block_expired(ip, expires_at) 를 한 번 부른다 (DB 쪽이 line_hash 로 멱등).
   - 제외: 만료 없음 · 금지 대역 · 대역 주소 행은 enforce_note '집행 제외 · …' (값이 같으면 쓰지 않는다).
     제외였던 행이 목록에 들어오면(만료를 새로 줬다 등) 확인될 때까지 쪽지를 비워 '집행 대기'로 둔다.
@@ -104,8 +116,8 @@
   다음 회차에 본다.
 
 상태 파일 ($OPSLOOP_ENFORCER_HOME/state.json, v 1)
-  회차 번호 · 올린 목록 · digest 별 마지막 회차 · 행이 목록에 들어온/빠진 회차(다시 든 행은 빠져 있던 회차도) · 확인 기록 ·
-  5분 시계 · 만료 기록.
+  회차 번호 · 올린 목록 · digest 별 마지막 회차 · 행이 목록에 들어온/빠진 회차(다시 든 행은 빠져 있던 회차 · 빠지기 전 until 도) ·
+  확인 기록 · 5분 시계 · 만료 기록 · 관문 보고 이력(gw_log, 최근 SEEN_KEEP 회차).
   기존 장부(seen · entries · gone)는 관문 목록(entries)의 것이고, 내부 방화벽 목록은 fw_book{seen, entries, gone, seq} 에 둔다.
   관문 목록 모드는 fw_list_ok · fw_list_seq(모드를 정한 회차)다. 옛 집행기는 이 키들을 모르는 채 저장하므로, fw_book.seq 가
   직전 회차가 아니면 fw_book 을 기존 장부에서 다시 만들고, fw_list_seq 가 직전 회차가 아니면 전체 모드로 시작한다.
@@ -149,7 +161,8 @@ FUTURE_SLACK = timedelta(minutes=2)      # 관문 시계가 이보다 앞서면 
 EXPIRED_LOOKBACK = timedelta(days=2)     # 이 안에 만료된 행만 만료 기록을 남긴다 (집행기가 멈췄던 동안의 만료도 줍는다)
 BAN_HOLD = timedelta(hours=24)           # 관문 jail opsloop-block 의 bantime. 만료 뒤 이만큼 지나면 어느 방식이든 빠졌다
 COUNT_SLACK = timedelta(minutes=2)       # 적용 수를 셀 때 곧 만료될 항목은 빼고 센다
-SEEN_KEEP = 360                          # digest 별 마지막 회차를 이만큼(6시간) 기억한다
+SEEN_KEEP = 360                          # digest 별 마지막 회차 · 관문 보고 이력을 이만큼(6시간) 기억한다
+RUN_GAP = timedelta(seconds=90)          # 관문 동기화 타이머(1분 · 정확도 5초)의 이어진 두 회차 보고 시각 차 상한. 넘으면 그 사이 회차의 보고를 못 봤다
 KEEP = timedelta(days=3)                 # 빠진 행 · 만료 기록을 상태에 두는 기간
 STATUS_MAX = 2 * 1024 * 1024
 REJECTED_MAX = 4096
@@ -178,7 +191,8 @@ EXEMPT_NETS = tuple(ipaddress.ip_network(n) for n in (
     "::1/128", "fc00::/7", "fe80::/10"))
 
 NOTE_APPLIED = "관문 반영 · {d8} · {at}"
-NOTE_KEPT = " · 기존 차단 유지"                  # 앞 확인을 비운 적 없이 새로 확인했다 (이슈 #77 결정 2, 보고서가 읽는다)
+NOTE_KEPT = " · 기존 차단 유지"                  # 관문 차단이 이어진 것을 보고로 확인했다 (이슈 #77 결정 2 · 3, 보고서가 읽는다)
+NOTE_UNCERTAIN = " · 연속성 확인 불가"           # 관문이 뺐는지도 이어졌는지도 보고로 확인하지 못했다 (이슈 #77 결정 3, 보고서가 읽는다)
 NOTE_MISMATCH = "관문 불일치 · {why}"
 NOTE_NO_EXPIRY = "집행 제외 · 만료 없음"
 NOTE_EXEMPT = "집행 제외 · 금지 대역"
@@ -186,7 +200,7 @@ NOTE_RANGE = "집행 제외 · 대역 주소"
 NOTE_OVERCAP = "목록 상한 {n} 초과"
 NOTE_FW_UNSET = "내부 방화벽 설정 없음"         # 내부 방화벽을 요청했는데 OPSLOOP_FW_ID 가 없다 (이슈 #77)
 NOTE_FW_OLD = "내부 방화벽 동기화 옛 판"        # 내부 방화벽이 관문 목록(entries)을 적용한다 (이슈 #77)
-APPLIED_RE = re.compile(r"관문 반영 · ([0-9a-f]{8}) · ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z)( · 기존 차단 유지)?")
+APPLIED_RE = re.compile(r"관문 반영 · ([0-9a-f]{8}) · ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}Z)( · 기존 차단 유지| · 연속성 확인 불가)?")
 
 # systemd 가 표준 출력의 <N> 접두사를 로그 등급으로 읽는다. 손으로 돌릴 때는 붙이지 않는다
 _JOURNAL = bool(os.environ.get("JOURNAL_STREAM"))
@@ -421,7 +435,9 @@ def new_state():
             "fw_status_fail_since": None, "fw_unknown_since": None, "fw_error_since": None, "points": {},
             # 이슈 #77. fw_book 은 내부 방화벽 목록(points.fw)의 장부(seq 는 마지막 회차), fw_list_ok · fw_list_seq 는
             # 관문 목록 모드(True 면 지점별)와 그것을 정한 회차다. 기존 장부(seen · entries · gone)는 관문 목록(entries)의 것이다
-            "fw_book": {"seen": {}, "entries": {}, "gone": {}, "seq": 0}, "fw_list_ok": False, "fw_list_seq": 0}
+            "fw_book": {"seen": {}, "entries": {}, "gone": {}, "seq": 0}, "fw_list_ok": False, "fw_list_seq": 0,
+            # 이슈 #77 결정 3. 회차마다 읽은 관문 보고 {seq, at, g(목록 회차), ok}. 다시 건 행의 관문 차단이 이어졌는지 본다
+            "gw_log": []}
 
 
 def resume(st):
@@ -514,9 +530,15 @@ def bookkeep(book, entries, digest, seq, now):
         if not e or e.get("until") != until:
             g = book["gone"].get(ip)
             if not e and isinstance(g, dict) and isinstance(g.get("seq"), int):
-                gap = {"left": g["seq"], "back": seq}
+                # 다시 든 시각(back_at)과 빠지기 전 until(was. 행이 만료돼 빠졌으면 그 만료와 더 이른 쪽)도 남긴다. 관문 원소는 그때
+                # 빠지므로 다시 든 목록을 그 전에 적용했는지 본다 (결정 3, continuity)
+                was = [v for v in (g.get("until"), g.get("exp")) if isinstance(v, str) and parse_ts(v)]
+                gap = {"left": g["seq"], "back": seq, "back_at": iso_full(now),
+                       **({"was": min(was, key=parse_ts)} if was else {})}
             else:
                 gap = {k: e[k] for k in ("left", "back") if e and isinstance(e.get(k), int)}
+                if gap:
+                    gap.update({k: e[k] for k in ("back_at", "was") if isinstance(e.get(k), str)})
             book["entries"][ip] = {"until": until, "seq": seq, "at": iso_full(now), **gap}
         book["gone"].pop(ip, None)
     for ip in [ip for ip in book["entries"] if ip not in cur]:
@@ -665,6 +687,26 @@ def judge(st, gw, problem, now, books, prefix="", label="관문"):
     return j
 
 
+def log_report(st, j):
+    """관문 보고 이력 (이슈 #77 결정 3). 이번 회차에 읽은 관문 보고의 시각(at, 못 읽었으면 None) · 목록 회차(g, 모르는 목록 · 5분 넘게
+    멈춘 보고는 None) · 깨끗함(ok, 셈이 맞고 오류 없음)을 남긴다. 다시 건 행에서 관문이 그 사이 뺐는지(regained) · 차단이 이어졌는지
+    (continuity) 본다. 최근 SEEN_KEEP 회차만 둔다."""
+    kept = [r for r in st["gw_log"] if isinstance(r, dict) and isinstance(r.get("seq"), int)
+            and st["seq"] - SEEN_KEEP < r["seq"] < st["seq"]]
+    st["gw_log"] = kept + [{"seq": st["seq"], "at": iso(j["at"]) if j["at"] else None, "g": j["gseq"], "ok": j["ok"]}]
+
+
+def reports_since(st, start):
+    """관문 보고 이력의 회차 start 부터 이번 회차까지가 빠짐없이 깨끗하면 그 기록들, 아니면 None. 누락(이력 없는 회차: 옛 집행기가
+    돈 회차 · 오래됨 · 상태 파일을 잃음, 못 읽음 · 모르는 목록 · 5분 멈춤)이나 오류(셈 틀림 · 관문 오류)가 있으면 None 이다."""
+    by = {r["seq"]: r for r in st["gw_log"] if isinstance(r, dict) and isinstance(r.get("seq"), int)}
+    recs = [by.get(s) for s in range(start, st["seq"] + 1)]
+    if any(r is None or not isinstance(r.get("g"), int) or parse_ts(r.get("at")) is None or r.get("ok") is not True
+           for r in recs):
+        return None
+    return recs
+
+
 def unset_judge(st):
     """OPSLOOP_FW_ID 가 없을 때 내부 방화벽의 판단 (이슈 #77 G7). 내부 방화벽은 늘 요청되므로 목록 행은 stale '설정 없음'이고,
     목록 밖 행의 fw 갈래는 확인할 곳이 없어 바로 지운다."""
@@ -709,21 +751,58 @@ def adopt(row, until, j):
     m = APPLIED_RE.fullmatch(row["note"] or "")
     if not m or row["enforced_at"] is None or row["method"] != j["mode"] or m.group(2) != iso(row["enforced_at"]):
         return None
-    return {"until": until, "at": iso(row["enforced_at"]), "d8": m.group(1), "mode": j["mode"], "req": req_of(row),
-            **({"kept": True} if m.group(3) else {})}
+    tail = {NOTE_KEPT: {"kept": True}, NOTE_UNCERTAIN: {"uncertain": True}}.get(m.group(3), {})
+    return {"until": until, "at": iso(row["enforced_at"]), "d8": m.group(1), "mode": j["mode"], "req": req_of(row), **tail}
 
 
-def confirmation(row, until, j):
-    """새 관문 확인 기록. 앞 확인(확인 시각 · 반영 쪽지)이 비운 적 없이 남아 있으면 기존 차단 유지(kept)다 (이슈 #77 결정 2):
-    관문이 이 주소를 뺐다고 확인하지 못한 채(다시 걸기 · 연장 · 방식 바뀜) 새 목록을 적용했다. 불일치 쪽지를 거쳤으면 아니다."""
+def confirmation(row, until, j, st, prev):
+    """새 관문 확인 기록. 앞 확인(확인 시각 · 반영 쪽지)이 비운 적 없이 남아 있으면 관문이 이 주소를 뺐다고 확인하지 못한 채(다시 걸기 ·
+    연장 · 방식 바뀜) 새 목록을 적용한 것이라 새 반영이 아니다. 관문 차단이 이어졌다고 보고로 확인되면 기존 차단 유지(kept), 아니면
+    연속성 확인 불가(uncertain)다 (이슈 #77 결정 2 · 3, continuity). 불일치 쪽지를 거쳤으면 새 반영이다. prev 는 앞 확인 기록이다."""
     c = {"until": until, "at": iso(j["at"]), "d8": j["d8"], "mode": j["mode"], "req": req_of(row)}
     if row["enforced_at"] is not None and APPLIED_RE.fullmatch(row["note"] or ""):
-        c["kept"] = True
+        c[continuity(row["ip"], st, j, prev)] = True
     return c
 
 
+def continuity(ip, st, j, prev):
+    """앞 확인을 비운 적 없이 새로 확인할 때 관문 차단이 이어졌다고 보고로 확인되는가 (이슈 #77 결정 3). 'kept' 또는 'uncertain'.
+    - 관문 목록에서 빠졌다 다시 든 주소(해제 · 만료 · 관문 없이 다시 걸기 · 관문 빼기 뒤 다시 걸기 · 전체 모드에서 빠짐)이고 다시 든 뒤
+      아직 확인하지 않았으면: 빠진 회차부터 이번 회차까지 관문 보고를 회차마다 읽었고(누락 없음: 못 읽음 · 모르는 목록 · 멈춘 보고 ·
+      이력 없음) 모두 깨끗하고(오류 없음: 셈 틀림 · 관문 오류) 빠진 목록의 보고가 없으며, 빠지기 전 목록의 마지막 보고와 다시 든 목록의
+      첫 보고가 이어진 관문 회차(RUN_GAP 안. 넘으면 그 사이 회차의 보고가 덮였거나 관문이 멈췄다)이고, 빠지기 전 until(was)이 그 첫
+      보고 전에 지나지 않았을 때만(원소가 until 에 빠진다) kept 다.
+    - 그 밖(관문 목록에서 빠진 적 없는 재요청 · 연장 · 방식 바뀜 · 같은 회차 안에 풀고 다시 걸기): 지금 until 이 든 목록을 올린 회차
+      직전부터(앞 확인이 이 until 을 이미 확인했으면 방식만 바뀐 것이라 직전 회차부터) 이번 회차까지 관문 보고가 빠짐없이 깨끗하고 앞
+      확인의 until 이 이번 보고 전에 지나지 않았을 때만 kept 다. 앞 확인 기록이 없으면(상태 파일을 잃음) uncertain 이다. 옛 집행기가
+      다시 든 행을 다룬 회차는 장부에 빠진 회차가 없고 보고 이력도 없어 여기서 uncertain 이 된다.
+    만료 시각만으로 관문이 뺐다고 보지 않는다(unenforced 를 만들지 않는다. 만료는 console.block.expired 로만 남는다)."""
+    e = st["entries"].get(ip) or {}
+    left, back = e.get("left"), e.get("back")
+    if isinstance(left, int) and isinstance(back, int) and not (prev and isinstance(prev.get("seq"), int) and prev["seq"] >= back):
+        recs = reports_since(st, left)
+        back_at, was = parse_ts(e.get("back_at")), parse_ts(e.get("was"))
+        if recs is None or back_at is None or was is None:
+            return "uncertain"
+        # 다시 든 목록의 보고는 다시 든 회차 이후 · 다시 든 뒤 시작한 관문 회차의 것이다. 그 전 시각의 보고는 내용이 같은(같은 만료로
+        # 다시 건) 빠지기 전 목록의 것이다(applied_in 과 같다)
+        post = [parse_ts(r["at"]) >= back_at.replace(microsecond=0) and r["g"] >= back for r in recs]
+        if any(left <= r["g"] < back for r in recs) or post[0] or True not in post or False in post[post.index(True):]:
+            return "uncertain"
+        a = max(parse_ts(r["at"]) for r, p in zip(recs, post) if not p)
+        b = min(parse_ts(r["at"]) for r, p in zip(recs, post) if p)
+        return "kept" if b - a <= RUN_GAP and was > b else "uncertain"
+    u = parse_ts(prev.get("until")) if prev else None
+    seq = e.get("seq")
+    if u is None or not isinstance(seq, int):
+        return "uncertain"
+    if isinstance(prev.get("seq"), int) and prev["seq"] >= seq and prev.get("until") == e.get("until"):
+        seq = st["seq"]
+    return "kept" if u > j["at"] and reports_since(st, seq - 1) is not None else "uncertain"
+
+
 def applied_note(c):
-    return NOTE_APPLIED.format(d8=c["d8"], at=c["at"]) + (NOTE_KEPT if c.get("kept") else "")
+    return NOTE_APPLIED.format(d8=c["d8"], at=c["at"]) + (NOTE_KEPT if c.get("kept") else NOTE_UNCERTAIN if c.get("uncertain") else "")
 
 
 def rearmed(ip, st, book=None):
@@ -762,9 +841,10 @@ def want_listed(row, st, j, now):
         if (not c or c.get("until") != until or c.get("mode") != j["mode"]
                 or outdated(row, e, parse_ts(c.get("at")), c.get("req"))):
             # 상태 파일을 잃었으면 DB 에 남은 확인을 이어받는다. 다시 건 행 · 마지막 확인 뒤 새로 요청해 관문 목록에 새로 든 행은
-            # 이어받지 않는다(요청 전의 확인이다, 결정 2). 남은 확인이 그렇게 낡았어도 새로 확인한다(기존 차단 유지)
+            # 이어받지 않는다(요청 전의 확인이다, 결정 2). 남은 확인이 그렇게 낡았어도 새로 확인한다(기존 차단 유지 · 연속성 확인 불가,
+            # 결정 3). seq 는 확인을 적은 회차다(다시 든 뒤의 확인인지 regained · continuity 가 본다)
             fresh = not c and not again and not outdated(row, e, row["enforced_at"])
-            c = (adopt(row, until, j) if fresh else None) or confirmation(row, until, j)
+            c = {**((adopt(row, until, j) if fresh else None) or confirmation(row, until, j, st, c)), "seq": st["seq"]}
             st["confirmed"][ip] = c
         return {"enforced_at": parse_ts(c["at"]), "method": c["mode"], "enforce_note": applied_note(c)}, "confirm"
     if j["mismatch"]:
@@ -894,13 +974,24 @@ def gone_seen(ip, st, j, now, current):
     return bool(g) and j["ok"] and j["gseq"] >= g["seq"]
 
 
-def regained(ip, st, j):
+def regained(ip, st, j, at=None):
     """관문 목록에 다시 든 주소를, 관문이 그 전에 이 주소가 빠진 목록을 오류 없이 적용했다고 보고했는가 (이슈 #77).
-    빠져 있던 회차 [left, back) 안에 S3 에 있던 목록이면 이 주소가 없다. 빠지기 전 목록을 아직 적용 중이거나 판단할 수 없으면 거짓이다."""
+    빠져 있던 회차 [left, back) 안에 S3 에 있던 목록이면 이 주소가 없다. 이번 보고와, 다시 든 뒤 아직 확인하지 않았으면 빠진 회차부터의
+    관문 보고 이력(결정 3)을 본다. 빠지기 전 목록을 아직 적용 중이거나 판단할 수 없으면 거짓이다. at 은 행에 남은 관문 확인 시각이다."""
     e = st["entries"].get(ip) or {}
     left, back = e.get("left"), e.get("back")
-    return (isinstance(left, int) and isinstance(back, int) and j["ok"] and j["gseq"] is not None
-            and left <= j["gseq"] < back)
+    if not (isinstance(left, int) and isinstance(back, int)):
+        return False
+    if j["ok"] and j["gseq"] is not None and left <= j["gseq"] < back:
+        return True
+    c = st["confirmed"].get(ip)
+    if c and isinstance(c.get("seq"), int) and c["seq"] >= back:
+        return False                      # 다시 든 뒤에 확인했다 (이력의 빠진 목록 보고는 그 전 일이다)
+    back_at = parse_ts(e.get("back_at"))
+    if at is not None and back_at is not None and at >= back_at.replace(microsecond=0):
+        return False                      # 남은 확인이 다시 든 뒤의 것이다 (거부 · 불일치로 확인 기록을 잃었어도 다시 비우지 않는다)
+    return any(isinstance(r, dict) and r.get("ok") is True and isinstance(r.get("g"), int) and left <= r["g"] < back
+               for r in st["gw_log"])
 
 
 def gone_held(ip, st, now):
@@ -967,11 +1058,14 @@ def plan(rows, st, j, now, current, judges=None):
         want, tag = {}, kind
         alive = kind in ("list", "overcap")
         if kind == "list" and wants(row, "gateway"):
+            # 관문이 그 사이 뺐는지는 확인 기록을 고치기 전에 본다(이번 회차에 다시 든 목록을 확인해도 뺀 뒤의 새 적용이다, 결정 3)
+            regain = row["enforced_at"] is not None and regained(ip, st, j, row["enforced_at"])
             want, tag = want_listed(row, st, j, now)
-            if tag == "pending" and row["enforced_at"] is not None and regained(ip, st, j):
-                # 관문 목록에 다시 든 행(관리자 관문 빼기 뒤 넓히기 등, 이슈 #77)인데 관문이 그 전에 이 주소가 빠진 목록을 오류 없이
-                # 적용했다. 남은 세 열은 관문이 뺀 뒤의 옛 확인이라 비운다(unenforced). 관문이 다시 적용하면 새 시각으로 확인한다.
-                # 관문이 빠지기 전 목록을 아직 적용 중이거나 판단할 수 없으면 세 열을 두고 기다린다(다시 적용하면 확인을 잇는다)
+            if regain and tag in ("pending", "confirm"):
+                # 관문 목록에 다시 든 행(다시 걸기 · 관리자 관문 빼기 뒤 넓히기 등, 이슈 #77)인데 관문이 그 전에 이 주소가 빠진 목록을
+                # 오류 없이 적용했다. 남은 세 열은 관문이 뺀 뒤의 옛 확인이라 비운다(unenforced). 다음 회차에 새 시각으로 확인한다(새 적용).
+                # 관문이 빠지기 전 목록을 아직 적용 중이거나 판단할 수 없으면 세 열을 두고 기다린다(continuity 가 표지를 정한다)
+                st["confirmed"].pop(ip, None)
                 want, tag = {"enforced_at": None, "method": None, "enforce_note": None}, "pending+reset"
             elif tag == "pending" and (row["note"] or "").startswith("집행 제외"):
                 # 제외였던 행이 목록에 들어왔다 (만료가 생겼거나 금지 대역에서 빠졌다). 확인 전까지는 '집행 대기'다
@@ -991,7 +1085,7 @@ def plan(rows, st, j, now, current, judges=None):
                 want["enforce_note"] = want["method"] = None
             want["enforcement"] = enforcement_of(row, st, judges, now, current=current)
             tag = "fw-" + want["enforcement"]["fw"]["state"] + ("+gw-removing" if "gateway" in want["enforcement"] else "")
-            if row["enforced_at"] is not None and row["gw"] and regained(ip, st, j):
+            if row["enforced_at"] is not None and row["gw"] and regained(ip, st, j, row["enforced_at"]):
                 # 전체 모드라 관문 목록에 다시 들었는데 관문이 그 전에 이 주소가 빠진 목록을 오류 없이 적용했다. 남은 세 열은 관문이
                 # 뺀 뒤의 옛 확인이라 비운다(unenforced). 관문이 다시 넣는 것은 관문 미요청이라 적지 않고 빠짐 확인 전을 잇는다
                 want.update(enforced_at=None, method=None, enforce_note=None)
@@ -1006,6 +1100,9 @@ def plan(rows, st, j, now, current, judges=None):
             else:
                 for book in st["points"].values():
                     book.pop(ip, None)
+                g = st["gone"].get(ip)
+                if kind == "expired" and isinstance(g, dict) and "exp" not in g:
+                    g["exp"] = iso(row["expires_at"])       # 다시 걸면 이때 관문 원소가 빠졌을 수 있다 (결정 3, continuity)
                 want["enforcement"] = removing_of(row, st, judges, now, current)
                 if kind == "exclude":
                     want["enforce_note"] = row["extra"]
@@ -1208,6 +1305,7 @@ def cycle(cfg, store, s3w, s3r, st, dry_run=False):
     gw_pub = (doc["digest"], gw_entries) if current else None
     fw_pub = (fdg, fw_entries) if current else None
     j = judge(st, gw, problem, now, [(st, gw_pub)])
+    log_report(st, j)
     fail_at = parse_ts(st.get("upload_fail_since")) if st.get("upload_fail_since") else None
     stuck = None
     if fail_at is not None and now - fail_at >= STALE:
