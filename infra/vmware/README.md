@@ -781,6 +781,7 @@ Teams 쪽 준비: Power Automate 에서 "Teams 웹훅 요청을 받으면 채널
 알림 본문의 콘솔 링크 기준 주소는 콘솔 서비스의 환경변수 `OPSLOOP_CONSOLE_URL` 로 정한다(기본 `http://192.168.70.254:8443`).
 배포 순서: 새 콘솔 이미지를 올리기 전에 `infra/migrations/20260924_notify.sql` 을 먼저 적용한다. 표가 없으면 알림만 멈추고 콘솔의 다른 기능은 뜬다.
 콘솔 VM 마다 compose `.env` 에 `OPSLOOP_WORKER=opsloop-console-a`(B 는 `-b`)를 둔다. 발송기가 집은 알림을 이 이름으로 표시하므로, 재기동 때 자기가 보내던 알림을 바로 되찾는다.
+같은 이름이 DB 연결 이름표(`application_name`)도 되어 상태판이 콘솔 A · B 의 DB 연결을 가른다(아래 '콘솔 DB 연결 · 허니팟 명칭', 이슈 #76).
 
 ### 콘솔 진입점 감시 (Mac, 이슈 #43)
 
@@ -808,7 +809,7 @@ S="$HOME/Library/Application Support/OpsLoop/bin/console-watch.sh"
 
 ## 차단 집행기 설치 (데이터 노드, 이슈 #47)
 
-DB 차단 목록을 AWS 관문에 넘기고 관문의 적용 결과를 DB 에 되쓴다. S3 경계 · 키는 `infra/terraform/README.md` '차단 목록 전달'.
+DB 차단 목록을 허니팟 관문(AWS)에 넘기고 관문의 적용 결과를 DB 에 되쓴다. S3 경계 · 키는 `infra/terraform/README.md` '차단 목록 전달'.
 
 ```
 데이터 노드  opsloop-enforcer.timer (1분) ─ DB blocklist → s3 block/v1/latest.json (opsloop-block-writer)
@@ -855,7 +856,7 @@ ssh -F ~/.ssh/config.opsloop data01 'sudo -n opsloop-enforcer status'   # 관문
 
 ## 내부 방화벽 차단 집행 (이슈 #51)
 
-사람이 요청한 차단을 AWS 관문뿐 아니라 실서비스(web-01) 앞의 내부 방화벽에서도 집행한다. 목록 객체는 하나이고 두 지점이 각자 자기
+사람이 요청한 차단을 허니팟 관문뿐 아니라 실서비스(web-01) 앞의 내부 방화벽에서도 집행한다. 목록 객체는 하나이고 두 지점이 각자 자기
 갈래를 가져가 적용한 뒤 결과를 보고한다(이슈 #77 부터 요청마다 지점을 고른다. 아래 '차단 적용 지점'). 집행기는 두 보고를 따로 판단해
 차단 행의 지점별 결과(`enforcement`)에 적고, 콘솔 차단 목록 · 사건 상세가 지점마다 대기 · 적용 확인 · 실패 · 확인 지연 · 미요청 · 빠짐 확인 전과
 마지막 확인 시각을 보인다.
@@ -870,7 +871,7 @@ ssh -F ~/.ssh/config.opsloop data01 'sudo -n opsloop-enforcer status'   # 관문
 검증하는 것은 둘로 나눈다.
 
 - **내부 방화벽:** web-01 을 향한 실제 접속이 막힌다. 공격자 VM 의 재시도가 시간 초과로 끝나고 방화벽에 `fw-block-drop` 이 남는다.
-- **AWS 관문:** 같은 목록이 전달 · 적용된다. 문서용 주소를 관문 집합에 넣어도 공격자 VM 의 인터넷 접속이 막히는 것은 아니다
+- **허니팟 관문:** 같은 목록이 전달 · 적용된다. 문서용 주소를 관문 집합에 넣어도 공격자 VM 의 인터넷 접속이 막히는 것은 아니다
   (공격자 VM 은 인터넷에 나가지 않는다). 목록 동기화와 실제 트래픽 차단은 다른 검증이다.
 
 | 구성 | 위치 |
@@ -977,7 +978,7 @@ infra/vmware/scripts/verify.sh        # 7장이 공격자 → web-01 을 '실패
 
 ### 차단 적용 지점 (이슈 #77)
 
-차단 요청마다 지점을 고른다. 내부 방화벽은 늘 막고 AWS 관문은 고른 요청만 막는다(기본값 · 규칙은 `docs/2026-09-08-판정-기준.md` §5).
+차단 요청마다 지점을 고른다. 내부 방화벽은 늘 막고 허니팟 관문은 고른 요청만 막는다(기본값 · 규칙은 `docs/2026-09-08-판정-기준.md` §5).
 목록 키 · 판(`block/v1/latest.json`, `v:1`), 관문 동기화 · Terraform · IAM 은 그대로다. 관문은 반영하지 않는다.
 
 ```
@@ -1088,8 +1089,8 @@ ssh -F ~/.ssh/config.opsloop data01 "sudo -n sed -i '/^OPSLOOP_FW_ID=/d' /etc/de
 
 ## 생존 신호 표 (이슈 #52)
 
-대시보드 관제 대상 카드가 '살아 있음' 을 말하는 근거다. 생존 신호가 있는 대상만 정상 · 수신 없음을 가르고, 로그 시각만 있는 대상은
-'생존 상태 미확인' 으로 둔다(로그가 없다고 장애로 칠하지 않는다). 표 하나(`sensor_heartbeats`)에 기록하는 쪽이 둘이다.
+관제 대상 카드(대시보드 보호 대상 · 수집 · 관제 상태 화면)가 '살아 있음' 을 말하는 근거다. 생존 신호가 있는 대상만 정상 · 수신 없음을 가르고, 로그 시각만 있는 대상은
+'생존 상태 미확인' 으로 둔다(로그가 없다고 장애로 칠하지 않는다. 관제 콘솔은 아래 'DB 연결'). 표 하나(`sensor_heartbeats`)에 기록하는 쪽이 둘이다.
 
 ```
 데이터 노드  opsloop-ingest (5분)   ─ pull.py 가 호스트별 hb 결과를 pull-state.json 에 → record_heartbeats.py(적재 역할) → uploader:<인스턴스 ID>
@@ -1140,6 +1141,49 @@ infra/vmware/scripts/verify-db-roles.sh      # '관제 대상 상태판' 절
   `DROP TABLE sensor_heartbeats; DROP FUNCTION sensor_heartbeats_guard();` 를 돌리고, 복원 훈련 구조 기대값(`restore-drill/queries.py`
   의 표 · 트리거 · 함수 하나씩)도 함께 되돌린다.
 - 시험: `python3 infra/test_status_board_db.py` · `python3 puller/test_record_heartbeats.py` (시험 DB 가 있으면 트리거 · 권한까지)
+
+### 콘솔 DB 연결 · 허니팟 명칭 (이슈 #76 · #78 · #84)
+
+관제 콘솔은 생존 신호가 없다. 상태판(`GET /api/dashboard/targets`)은 콘솔을 '응답 중'(이 조회에 응답했다는 사실)과
+'DB 연결 확인: 콘솔 A 있음 · 콘솔 B 없음(평소 꺼 두는 예비)' 으로 보인다(화면은 수집 · 관제 상태 › 관제 시스템 › 관제 콘솔 줄을 펼친다).
+같은 DB · 콘솔 역할(`usename = current_user`) 세션 가운데 이름표(`application_name`)가 콘솔 이름인 연결이 있는지만 보고 수는 세지 않는다
+(`app/targets.py` CONSOLE_LINKS_SQL). 이름표는 compose `.env` 의 `OPSLOOP_WORKER` 이고 풀 · 실시간 통보(LISTEN) 연결에 함께 붙는다(`app/live.py` db_settings).
+
+- DB 연결은 콘솔 프로세스가 DB 에 붙어 있다는 뜻일 뿐 응답 · HAProxy 분배를 보장하지 않는다(멈춘 프로세스도 세션은 남는다).
+  컨테이너를 멈추면 다음 조회(30초 안), VM 이 꺼지거나 망이 끊기면 keepalive(30초 조용하면 10초 간격 3번)로 약 1분 뒤 '없음' 이다.
+- `OPSLOOP_WORKER` 가 비면 hostname 이 이름표라 응답 중인데도 '콘솔 A 없음' 이다(발송기 경고가 먼저 알린다). 옛 이미지 콘솔은 이름표가 없어
+  켜져 있어도 '없음' 이다. 같은 역할로 붙는 triage.py 는 콘솔 이름표가 아니라 세지 않는다. 다만 같은 콘솔 역할로 콘솔 이름표를 단 연결
+  (예: `PGAPPNAME` 을 준 triage)은 그 콘솔로 센다. 복원 훈련 콘솔(`opsloop-drill`)에서는 둘 다 '없음' 이 맞다.
+- `pg_stat_activity` 읽기 권한(기본 PUBLIC)을 거두면 'DB 연결 확인 불가' 다. 관제 이상 띠에는 싣지 않는다(B 는 평소 꺼 두고, A 없음은 B 가
+  응답 중인 상황이라 콘솔 장애 알림 몫이다). 보고서 콘솔 행은 '출력 시각의 DB 연결: …' 이다.
+- 명칭(#78): 화면 · 보고서 · triage 출력의 대상 이름을 '허니팟 센서', 집행 지점을 '허니팟 관문' 으로 바꿨다(나눔 'SSH 허니팟(Cowrie)' · '웹 디코이' ·
+  '허니팟 관문', 확인란 '허니팟 관문에서도 막기'). 내부 id(`aws-sensor` · `gateway`) · 주소 인자(`?device=aws-sensor`) · 집행 메모 말머리('관문 불일치')는
+  그대로다. 날짜가 박힌 결과 문서 · 증거 · 적용된 마이그레이션은 옛 이름 그대로 둔다.
+
+반영 (Mac, 저장소 루트). DB 단계는 데이터 한 줄이고 표 · 권한은 바뀌지 않는다:
+
+```bash
+C=$(git rev-parse --short HEAD)
+# 1. 차단 금지 대역의 관문 EIP 메모를 새 이름('허니팟 관문 EIP')으로. 여러 번 적용해도 같고 앱 · triage 와 순서는 상관없다
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n docker exec -i opsloop-db psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -q' \
+  < infra/migrations/20261004_honeypot_names.sql
+# 2. 콘솔 이미지: 화면(npm run build → app/static)과 API 를 콘솔 A 에 올린다 (이슈 #47 과 같은 절차 · 백업 먼저)
+# 3. 콘솔 B 는 꺼 둔 채 새 이미지로만 합류한다. 옛 B 이미지는 이름표가 없어 켜져 있어도 '콘솔 B 없음' 이다
+infra/vmware/scripts/console-join.sh --from image --apply     # B 를 켤 때: image · env · up · verify · ready · assets
+# 4. triage.py(데이터 노드, 출력 이름만 바뀐다). install-ingest.sh 가 parser · detector · puller 를 통째로 바꾸므로
+#    git diff --stat 으로 triage.py 말고는 주석 · 시험만 바뀌었는지 먼저 본다
+git archive "$C" parser detector puller | ssh -F ~/.ssh/config.opsloop data01 \
+  "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo bash /tmp/ol/puller/install-ingest.sh $C"
+# 5. 확인: '지금 붙어 있는 접속' 에 opsloop_console  opsloop-console-a  n 줄이 있다
+infra/vmware/scripts/verify-db-roles.sh
+echo "SELECT cidr, note FROM block_exempt WHERE cidr = '15.164.37.49/32';" \
+  | ssh -F ~/.ssh/config.opsloop data01 'sudo -n docker exec -i opsloop-db psql -U opsloop -d opsloop'     # 허니팟 관문 EIP
+```
+
+- 화면 확인: 관제 콘솔 줄 머리 '응답 중' · 'DB 연결 확인: 콘솔 A 있음 · 콘솔 B 없음(평소 꺼 두는 예비)'. B 를 켜면 다음 조회에 'B 있음', B 에서
+  `docker stop opsloop-api` 를 하면 30초 안에 'B 없음' 이다. `/incidents?device=aws-sensor` 가 그대로 걸러지고, 화면 · 보고서에 옛 이름(#78 전)이 없다.
+- 관문 EIP 줄을 지운 뒤 `20260927_block_enforce.sql` 을 다시 적용했거나 20261004 적용 전 백업을 복원하면 옛 메모가 돌아온다. 1번을 다시 한다.
+- 되돌리기: 콘솔 이미지 · triage 만 옛 판으로 되돌리면 이전 표기로 돌아간다. 메모는 글자만 다르므로 되돌리지 않아도 된다.
 
 ## CVE · KEV 연계 (이슈 #39)
 
@@ -1249,7 +1293,7 @@ ssh -F ~/.ssh/config.opsloop data01 'sudo -n -u opsloop-cti /usr/local/bin/opslo
 
 ## 셸 스크립트 점검 (이슈 #62)
 
-저장소의 셸 스크립트(추적 중인 `*.sh` 와 첫 줄이 sh · bash 인 `cti/opsloop-cti`)를 shellcheck 로 본다. 방화벽 · 콘솔 · 데이터 노드 · AWS 관문에서 도는 것들이라 스크립트를 고친 커밋마다 돌린다. 읽기만 한다.
+저장소의 셸 스크립트(추적 중인 `*.sh` 와 첫 줄이 sh · bash 인 `cti/opsloop-cti`)를 shellcheck 로 본다. 방화벽 · 콘솔 · 데이터 노드 · 허니팟 관문(AWS)에서 도는 것들이라 스크립트를 고친 커밋마다 돌린다. 읽기만 한다.
 
 ```bash
 # 저장소 루트에서
