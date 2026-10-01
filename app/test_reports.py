@@ -8,7 +8,7 @@
      표가 없는 구역은 available=false 와 빠진 표 이름 · 출력자는 세션 사용자
   4. 다른 모듈과 같은 글자: 차단 상태 분류(main.BLOCK_STATES_SQL, 같은 상수 block_points.BLOCK_STATES_SQL) · 규칙별 판정
      (operations.quality 의 질의) · 차단 감사 종류 순서(지점 넓힘은 만료 변경 뒤) · 관문 반영 지연은 관문 요청만(이슈 #77) ·
-     기존 차단 유지 표지는 집행기 NOTE_KEPT 와 같은 글자(결정 2)
+     기존 차단 유지 · 연속성 확인 불가 표지는 집행기 NOTE_KEPT · NOTE_UNCERTAIN 과 같은 글자(결정 2 · 3)
 SQL 이 맞는지는 test_reports_db.py 가 시험 DB 로 본다.
 """
 import importlib.util
@@ -97,14 +97,17 @@ class SameTextTests(unittest.TestCase):
         self.assertIn("WHERE r.points IS NULL OR r.points = '-' OR 'gateway' = ANY(string_to_array(r.points, ','))",
                       r.ENFORCE_SQL)
         self.assertNotIn("r.points", r.REQUESTERS_SQL)          # 새 요청 수는 모든 요청이다
-        # 기존 차단 유지(결정 2): 짝 확인의 쪽지가 집행기 NOTE_KEPT 로 끝나면 따로 세고 지연에서 뺀다
+        # 기존 차단 유지 · 연속성 확인 불가(결정 2 · 3): 짝 확인의 쪽지가 집행기 NOTE_KEPT · NOTE_UNCERTAIN 으로 끝나면 따로 세고
+        # 지연(확인 수 · 평균 · 중앙값 · 최대)에서 뺀다
         spec = importlib.util.spec_from_file_location(
             "block_enforcer_for_reports", os.path.join(os.path.dirname(HERE), "enforcer", "block_enforcer.py"))
         be = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(be)
         self.assertIn(f" note=관문 반영 · [^=]*{be.NOTE_KEPT}$' AS kept", r.REQUESTS_CTE)
-        self.assertIn("CASE WHEN e.ts IS NOT NULL AND NOT e.kept", r.ENFORCE_SQL)
+        self.assertIn(f" note=관문 반영 · [^=]*{be.NOTE_UNCERTAIN}$' AS uncertain", r.REQUESTS_CTE)
+        self.assertIn("CASE WHEN e.ts IS NOT NULL AND NOT e.kept AND NOT e.uncertain", r.ENFORCE_SQL)
         self.assertIn("count(*) FILTER (WHERE f.kept) AS maintained", r.ENFORCE_SQL)
+        self.assertIn("count(*) FILTER (WHERE f.uncertain) AS uncertain, avg(f.delay) AS mean", r.ENFORCE_SQL)
 
     def test_규칙별_판정은_규칙_화면과_같은_질의다(self):
         self.assertIn(r.QUALITY_SQL, inspect.getsource(operations.quality))
