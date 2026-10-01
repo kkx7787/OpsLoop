@@ -1171,7 +1171,7 @@ $$;
 
 -- 차단 집행 (이슈 #47)
 --   사람이 요청한 차단(콘솔 block_ip · triage threat · 흡수 후속 차단)을 데이터 노드 집행기(enforcer/block_enforcer.py)가
---   S3 block/v1/latest.json 으로 AWS 관문에 넘기고, 관문이 forward 체인(허니팟 DNAT 유입)에서 막는다. 규칙 · 심각도로 무인
+--   S3 block/v1/latest.json 으로 허니팟 관문에 넘기고, 관문이 forward 체인(허니팟 DNAT 유입)에서 막는다. 규칙 · 심각도로 무인
 --   차단하지 않는다. 이 블록은 그 DB 쪽이다. 여러 번 적용해도 결과가 같다.
 --     block_exempt         차단 금지 대역. 콘솔 · triage · 흡수 · psql 어느 경로로도 이 대역의 주소는 차단 목록에 들어가지 않는다.
 --                          문서용 대역(192.0.2.0/24 · 198.51.100.0/24 · 203.0.113.0/24)은 넣지 않는다(시험 출발지로 쓴다).
@@ -1211,7 +1211,7 @@ INSERT INTO block_exempt (cidr, note) VALUES
     ('198.18.0.0/15',   '성능 시험 대역'),
     ('224.0.0.0/4',     '멀티캐스트'),
     ('240.0.0.0/4',     '예약 · 브로드캐스트'),
-    ('15.164.37.49/32', 'AWS 관문 EIP'),
+    ('15.164.37.49/32', '허니팟 관문 EIP'),
     ('::1/128',         'IPv6 루프백'),
     ('fc00::/7',        'IPv6 사설(ULA)'),
     ('fe80::/10',       'IPv6 링크 로컬')
@@ -1309,7 +1309,7 @@ END
 $$;
 
 -- 차단 집행 지점 · 시험 출발지 (이슈 #51)
---   집행 지점이 관문 하나에서 둘(AWS 관문 · 온프레미스 내부 방화벽)이 된다. 관문의 확인 세 열(method · enforced_at · enforce_note)과
+--   집행 지점이 관문 하나에서 둘(허니팟 관문 · 온프레미스 내부 방화벽)이 된다. 관문의 확인 세 열(method · enforced_at · enforce_note)과
 --   그 감사(console.block.enforced · unenforced)는 그대로 두고, 지점별 결과는 enforcement(jsonb)에 둔다.
 --     enforcement  {"gateway": {...}, "fw": {...}}. 지점마다 state(pending 보고 전 · confirmed 그 지점이 적용한 목록에 이 행이 있음 ·
 --                  failed 그 지점이 거부 · stale 보고 없음 또는 5분 넘게 미반영) · since(그 상태가 된 시각 ISO) · mode(nft · fail2ban) · note.
@@ -1777,7 +1777,7 @@ END
 $$;
 
 -- 차단 적용 지점 선택 (이슈 #77)
---   차단 요청마다 적용 지점을 고른다. 내부 방화벽은 늘 막고 AWS 관문은 고른 요청만 막는다(관문 전용은 없다). 기본값은 콘솔 ·
+--   차단 요청마다 적용 지점을 고른다. 내부 방화벽은 늘 막고 허니팟 관문은 고른 요청만 막는다(관문 전용은 없다). 기본값은 콘솔 ·
 --   triage 가 규칙으로 정한다(app/block_points.py). 집행기는 목록 문서의 entries(관문 목록)에 관문을 요청한 행을, points.fw(내부
 --   방화벽 목록)에 모든 행을 싣는다(enforcer/block_enforcer.py).
 --     blocklist.points  요청 지점. '{gateway,fw}' · '{fw}' 두 값만 받는다(정규 순서, CHECK blocklist_points_valid). 기존 행과 열을
