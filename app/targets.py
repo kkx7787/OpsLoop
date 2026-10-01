@@ -1,6 +1,6 @@
-"""관제 대상별 상태판 (이슈 #52 · #64 · #72 · #82 · #83). GET /api/dashboard/targets · GET /api/dashboard/monitor(관제 이상)
+"""관제 대상별 상태판 (이슈 #52 · #64 · #72 · #82 · #83 · #84). GET /api/dashboard/targets · GET /api/dashboard/monitor(관제 이상)
 
-고정 카드 네 장(AWS 센서 · web-01 · 관제 콘솔 · 데이터 노드) 뒤에 등록 노드 카드(nodes 에서 폐기되지 않고 고정 대상과 겹치지
+고정 카드 네 장(허니팟 센서 · web-01 · 관제 콘솔 · 데이터 노드) 뒤에 등록 노드 카드(nodes 에서 폐기되지 않고 고정 대상과 겹치지
 않는 노드, node_id 순)를 붙여 수집 · 보안 · 시스템 · 대응 · 취약점을 대상별로 모은다. 등록 노드 카드는 web-01 카드와 같은 모양이다.
 반복 읽기 · 읽기 전용 트랜잭션 하나에서 읽는다(대시보드 summary 와 같다). 표 · 권한이 없는 것은 오류가 아니라
 선검사(to_regclass + has_table_privilege, 열 권한만 있는 nodes 는 has_column_privilege)로 갈라 '미확인' 으로 답한다.
@@ -8,11 +8,14 @@
 사건의 관련 장비(목록 · 상세 · 먼저 처리할 사건)도 여기서 계산한다. 조회할 때마다 기존 근거로 계산하고 저장하지 않는다.
 
 정직한 표기
-  - 수집: 생존 신호가 있는 대상만 신호 시각으로 정상 · 수신 없음을 가른다. 로그 시각만으로 정상 · 장애를 정하지 않는다
-    (콘솔은 생존 신호가 없어 늘 '생존 상태 미확인' 이다). 신호는 정상인데 로그가 없으면 '요청 없음'(quiet)이다.
+  - 수집: 생존 신호가 있는 대상만 신호 시각으로 정상 · 수신 없음을 가른다. 로그 시각만으로 정상 · 장애를 정하지 않는다.
+    신호는 정상인데 로그가 없으면 '요청 없음'(quiet)이다. 콘솔은 생존 신호가 없어 생존을 확정하지 않고, 이 조회에 응답했다는
+    사실('응답 중', responding)과 DB 연결(콘솔 역할 세션 가운데 콘솔 이름표 연결의 있음 · 없음)만 적는다(이슈 #76). DB 연결은
+    응답 · HAProxy 분배를 보장하지 않는다.
   - 대응: 그 지점(관문 · 내부 방화벽)이 적용을 확인한 것만 적용이다. 지점이 없는 대상은 수를 내지 않는다(null).
     0 이 '막지 못했다' 로 읽히지 않게 화면이 문구를 고른다. 지점별 수는 그 지점을 요청한 행만 세고, 요청하지 않은 행은
     미요청(unrequested), 요청했다가 빼서 그 지점이 뺐다고 확인하기 전인 행은 빠짐 확인 전(removing)으로 따로 센다(이슈 #77).
+    미확인은 정상 반영 시간(5분) 안의 확인 전(checking)과 그 밖(delayed: 5분 넘은 확인 전 · 지점 불일치)으로 나눈다(이슈 #84).
   - 사건 → 대상 매핑은 순수 함수(resolve_links)다. 붙인 곳마다 근거(확인 · 규칙 범위 · 대체 추정)를 단다. 한 사건이 여러 대상에
     붙을 수 있어 카드 합은 전체와 다르다. 카드 수 · 장비 필터는 대체 추정을 뺀 곳(shown)으로 센다. 어느 대상에도 붙이지 못한 사건은
     숨기지 않고 unmapped(화면 '장비 미확인')로 센다.
@@ -43,6 +46,10 @@ HEARTBEAT_STALE = 900          # 업로더 생존 신호 · 탐지 실행 · 집
 CHECKER_STALE = 1800           # 적재기 확인 중단. checked_at 은 풀러 회차가 시작한 시각이고 기록은 받기 뒤라, 회차 간격 5분 +
                                #   받기 최장 10분(RUN_SECONDS) + 적재 · 탐지 여유를 넘겨야 멈춘 것이다(30분)
 BLOCK_CHECKER_STALE = 600      # 집행기 확인 중단. 집행기는 1분마다 돈다. 10분 넘게 확인이 없으면 지점 적용 확인을 믿지 않는다
+APPLY_WAIT = 300               # 집행 지점 반영을 기다리는 정상 시간(5분). 확인 전이 이보다 오래면 확인 지연이다. 집행기 point_state 의
+                               #   '5분 넘게 반영되지 않음'(enforcer/block_enforcer.py STALE)과 같은 기준이다(test_targets 가 맞춰 본다)
+# 요청 지점 결과의 상태. 집행기 POINT_STATES 와 같다(test_targets 가 맞춰 본다). 빠짐 확인 전(removing)은 요청 지점이 이어받지 않는다
+POINT_STATES = ("pending", "confirmed", "failed", "stale")
 NODE_SILENT = 600              # 노드 수신 끊김(operations.py /api/nodes 의 10분과 같다)
 METRICS_STALE = 600            # 자원 지표 최신 행이 이보다 오래되면 오래됨(10분)
 PARSE_LAG = 600                # 도착한 웹 로그 줄(receipt)보다 마지막 nginx. 이벤트가 이보다 앞서면 적재되지 않은 것이다(10분)
@@ -53,9 +60,14 @@ HIGH_SEVERITIES = ("critical", "high")
 #   마지막 로그(LOGS_SQL) · 웹 로그 적재 판정(PARSE_SQL) · 요약 최근 원문 수집(main.EVENTS_SQL)이 쓴다
 FUTURE_LIMIT = "interval '5 minutes'"
 
+# 허니팟 쪽 이름(이슈 #78). 위치(AWS) 대신 역할로 부른다. 내부 id(aws-sensor · cowrie · gateway)와 주소 인자는 그대로다(저장된
+#   링크 · 보고서 호환). 문장 안의 짧은 이름 '관문' 과 집행기 쪽지 말머리(ENFORCE_MISMATCH '관문 불일치')는 그대로 둔다
+SENSOR_NAME = "허니팟 센서"
+COWRIE_NAME = "SSH 허니팟(Cowrie)"
+GATEWAY_NAME = "허니팟 관문"
 # (id, 이름, 역할). 순서가 카드 순서다
 TARGETS = [
-    ("aws-sensor", "AWS 센서", "Cowrie 허니팟 · 웹 디코이 · AWS 관문 (DMZ)"),
+    ("aws-sensor", SENSOR_NAME, f"{COWRIE_NAME} · 웹 디코이 · {GATEWAY_NAME} (AWS DMZ)"),
     ("web-01", "web-01", "실서비스 웹 서버 (온프레미스)"),
     ("console", "관제 콘솔", "콘솔 A · B (HAProxy 뒤)"),
     ("data-node", "데이터 노드", "DB · 적재 · 탐지 · 집행 (온프레미스)"),
@@ -69,21 +81,21 @@ EVENT_PREFIXES = {"cowrie.": "cowrie", "decoy.": "decoy", "gateway.": "gateway",
 # 발생원 조건 없이 세션 · 기준선을 보는 규칙은 허니팟(Cowrie) 규칙이다
 COWRIE_TYPES = frozenset({"session_compound", "baseline_deviation", "key_plant"})
 # 발생원 조건이 없는 세션 규칙(v3 R002)은 sessions 표 전체를 본다. 그 표에는 Cowrie 세션과 디코이 세션(parse_decoy)이 함께 있어
-#   대상은 AWS 센서지만 나눔은 사건의 세션(evidence.sessions)으로 고른다
+#   대상은 허니팟 센서지만 나눔은 사건의 세션(evidence.sessions)으로 고른다
 SESSION_TYPES = frozenset({"session_compound"})
 SESSION_SOURCES = ("cowrie", "decoy")
-# AWS 센서 카드의 발생원 나눔
-AWS_PARTS = [("cowrie", "Cowrie"), ("decoy", "웹 디코이"), ("gateway", "AWS 관문")]
+# 허니팟 센서 카드의 발생원 나눔
+AWS_PARTS = [("cowrie", COWRIE_NAME), ("decoy", "웹 디코이"), ("gateway", GATEWAY_NAME)]
 PART_KEYS = frozenset(key for key, _ in AWS_PARTS)
-# 업로더 생존 신호(role) → (신호 이름, 여럿일 때 부르는 이름). 센서 신호는 AWS 센서 카드의 수집 판정이다
+# 업로더 생존 신호(role) → (신호 이름, 여럿일 때 부르는 이름). 센서 신호는 허니팟 센서 카드의 수집 판정이다
 UPLOADERS = {"sensor": ("업로더 생존 신호", "센서"), "gateway": ("관문 기록 신호", "관문")}
 # 대상별 로그(events.sensor, 이름). 데이터 노드는 로그가 아니라 탐지 실행이 신호다
-LOGS = {"aws-sensor": [("cowrie", "Cowrie"), ("decoy", "웹 디코이"), ("gateway", "AWS 관문 기록")],
+LOGS = {"aws-sensor": [("cowrie", COWRIE_NAME), ("decoy", "웹 디코이"), ("gateway", f"{GATEWAY_NAME} 기록")],
         "web-01": [("web-01", "web-01 로그")], "console": [("console", "마지막 로그인 기록")], "data-node": []}
-# 수집 상태 ok · quiet 를 가르는 로그(AWS 관문 기록은 요청이 아니라 관문 자체의 기록이라 넣지 않는다)
+# 수집 상태 ok · quiet 를 가르는 로그(관문 기록은 요청이 아니라 관문 자체의 기록이라 넣지 않는다)
 ACTIVE_LOGS = {"aws-sensor": ("cowrie", "decoy"), "web-01": ("web-01",)}
 # 집행 지점(차단을 실제로 적용하는 곳)과 그 이름. 콘솔 · 데이터 노드 앞에는 차단 결과를 모으는 지점이 없다
-POINTS = {"aws-sensor": ("gateway", "AWS 관문"), "web-01": ("fw", "내부 방화벽")}
+POINTS = {"aws-sensor": ("gateway", GATEWAY_NAME), "web-01": ("fw", "내부 방화벽")}
 POINT_LABELS = dict(POINTS.values())       # {지점: 이름}. 관문 먼저
 # 대상별 자산(asset_inventory.asset_id)
 TARGET_ASSETS = {"aws-sensor": ["honeypot-dmz", "gateway"], "web-01": ["web-01"],
@@ -142,6 +154,24 @@ MONITOR_READABLE_SQL = (f"SELECT ({HEARTBEATS_READABLE_SQL}) AS heartbeats, ({ME
                                     for n, name in ((1, "cards"), (2, "web"), (3, "parse"))))
 
 HEARTBEATS_SQL = "SELECT source, kind, role, host, seen_at, checked_at, problem FROM sensor_heartbeats ORDER BY source"
+
+# 관제 콘솔의 DB 연결(이슈 #76). (DB 이름표 application_name, 이름, 없을 때 붙이는 말). 이름표는 compose OPSLOOP_WORKER 이고
+#   (live.db_settings) 화면 api/live.ts consoleLabel 과 같은 이름이다. B 는 평소 꺼 두는 예비라 없음이 평상시다
+CONSOLES = (("opsloop-console-a", "콘솔 A", None), ("opsloop-console-b", "콘솔 B", "평소 꺼 두는 예비"))
+DB_LINKS_HEAD = "DB 연결 확인"             # 카드 수집 줄 머리. 보고서는 reports.REPORT_DB_LINKS_HEAD
+DB_LINKS_UNKNOWN = "DB 연결 확인 불가"     # pg_stat_activity 를 읽지 못함
+# pg_stat_activity 를 읽을 수 있는가. 뷰 안 함수는 호출자 권한으로 돈다. 기본은 PUBLIC 이지만 질의가 실패하면 트랜잭션 전체가
+#   멈추므로 위 선검사들처럼 먼저 본다
+CONSOLE_LINKS_READABLE_SQL = ("SELECT has_table_privilege('pg_catalog.pg_stat_activity', 'SELECT')"
+                              " AND has_function_privilege('pg_catalog.pg_stat_get_activity(integer)', 'EXECUTE')")
+# 콘솔 이름마다 이 DB 에 그 이름표로 붙은 콘솔 역할(usename = current_user, 콘솔은 opsloop_console 로 직접 로그인한다) 연결이
+#   있는가. 수는 보지 않는다(풀 유휴 정리로 오르내린다). 다른 역할이 같은 이름표를 써도 세지 않는다. 다른 역할 세션은 역할 · 이름표까지만
+#   보인다. 조회마다 새 트랜잭션이라 그 순간의 목록이다. $1 콘솔 이름표들(CONSOLES 순서)
+CONSOLE_LINKS_SQL = """
+    SELECT u.n AS name,
+           EXISTS (SELECT 1 FROM pg_catalog.pg_stat_activity a
+                   WHERE a.datname = current_database() AND a.usename = current_user AND a.application_name = u.n) AS present
+    FROM unnest($1::text[]) WITH ORDINALITY AS u(n, i) ORDER BY u.i"""
 
 # 매핑 대상 사건: 최근 1시간에 시작했거나, 24시간 안에 이어졌거나, 판정 기록이 없는 것(창 안, in_window). 창 밖이어도 최신 판정이
 #   사람의 미결(dashboard.HUMAN_UNDETERMINED)이면 읽는다. 창 밖 미결은 미결 수에만 세고 카드 rows(최근 중요 탐지 · 대응 금지 대역 수)에는
@@ -292,11 +322,29 @@ PARSE_SQL = f"""
     FROM unnest($1::text[], $2::text[]) AS q(node_id, sensor) JOIN nodes n ON n.node_id = q.node_id
     ORDER BY q.node_id"""
 
+def _since(p: str) -> str:
+    """그 지점 결과가 지금 상태가 된 시각(enforcement.<지점>.since). 기록이 없거나, 요청 지점 상태(POINT_STATES)가 아니거나(관문을 뺀 뒤
+    다시 요청한 행에 남은 removing. 집행기가 이어받지 않는다), 시각 글자가 아니면 요청 시각(created_at. 콘솔 · triage 가 다시 걸거나
+    넓힐 때 now() 로 둔다)이다. 시각 글자는 pg_input_is_valid 로 먼저 가른다(캐스트 오류가 트랜잭션 전체를 멈춘다)."""
+    since = f"enforcement -> '{p}' ->> 'since'"
+    states = ", ".join(f"'{s}'" for s in POINT_STATES)
+    return (f"coalesce(CASE WHEN enforcement -> '{p}' ->> 'state' IN ({states}) AND pg_input_is_valid({since}, 'timestamptz') "
+            f"THEN ({since})::timestamptz END, created_at)")
+
+
+def _checking(p: str) -> str:
+    """그 지점이 확인 전(pending · 기록 없음)이고 정상 반영 시간(APPLY_WAIT) 안이다. 시각을 모르면 안이 아니다(NULL 이 아니라 거짓)."""
+    return (f"coalesce(enforcement -> '{p}' ->> 'state', '') NOT IN ('confirmed', 'failed', 'stale') "
+            f"AND coalesce({_since(p)} > $1::timestamptz - make_interval(secs => {APPLY_WAIT}), false)")
+
+
 # 살아 있는 차단(해제 · 만료 안 됨, 만료 없는 옛 차단 · 집행 제외 아님)을 지점별로 적용 확인 · 실패 · 미확인으로 나눈다.
 #   지점마다 그 지점을 요청한 행(blocklist.points, 이슈 #77)만 세고, 요청하지 않은 행은 미요청(unrequested), 그 가운데 그 지점에
 #   기록이 남은 행(관리자 관문 빼기 뒤 관문이 뺐다고 확인하기 전)은 빠짐 확인 전(removing)으로 따로 센다(block_points.removing_sql).
 #   실패는 그 지점이 거부했다고 보고한 것(failed)이다. 모르는 것이 아니라 알려진 미적용이라 미확인과 가른다.
 #   미확인은 그 밖(pending · stale · 기록 없음)이고, 그 가운데 지점 불일치(stale: 적용 수 부족 · 5분 넘게 미반영)는 따로도 센다.
+#   미확인은 확인 중(checking)과 확인 지연(delayed)으로도 나눈다(합이 미확인, 이슈 #84 결정 6). 확인 중은 확인 전(pending · 기록 없음)이고
+#   그 상태가 된 시각(_since)이 정상 반영 시간(APPLY_WAIT) 안인 것, 확인 지연은 그 밖(그 시간을 넘긴 확인 전 · 지점 불일치)이다.
 #   만료 없음 · 집행 제외는 종합 상태(block_points.STATE_CASE)의 excluded 와 같은 정의다. mismatch 는 관문을 요청한 행의 관문 불일치
 #   쪽지다(관제 이상 gateway_mismatch). $1 기준 시각
 BLOCKS_SQL = "SELECT " + ", ".join(
@@ -305,6 +353,9 @@ BLOCKS_SQL = "SELECT " + ", ".join(
     f"count(*) FILTER (WHERE '{p}' = ANY(points) "
     f"AND coalesce(enforcement -> '{p}' ->> 'state', '') NOT IN ('confirmed', 'failed')) AS {p}_unverified, "
     f"count(*) FILTER (WHERE '{p}' = ANY(points) AND enforcement -> '{p}' ->> 'state' = 'stale') AS {p}_stale, "
+    f"count(*) FILTER (WHERE '{p}' = ANY(points) AND {_checking(p)}) AS {p}_checking, "
+    f"count(*) FILTER (WHERE '{p}' = ANY(points) "
+    f"AND coalesce(enforcement -> '{p}' ->> 'state', '') NOT IN ('confirmed', 'failed') AND NOT ({_checking(p)})) AS {p}_delayed, "
     f"count(*) FILTER (WHERE {unrequested_sql(p)}) AS {p}_unrequested, "
     f"count(*) FILTER (WHERE {removing_sql(p)}) AS {p}_removing"
     for p, _ in POINTS.values()) + f""",
@@ -384,7 +435,7 @@ def candidate_sources(spec: dict, nodes=None) -> list[str]:
 
 
 def attach(sources, nodes=None) -> set[tuple[str, str | None]]:
-    """발생원들 → {(대상, AWS 센서 발생원 나눔 또는 None)}. 고정 발생원(SENSOR_TARGET)이 먼저이고 그다음 등록 노드의
+    """발생원들 → {(대상, 허니팟 센서 발생원 나눔 또는 None)}. 고정 발생원(SENSOR_TARGET)이 먼저이고 그다음 등록 노드의
     발생원(nodes: {발생원: 노드 id})이다. 모르는 발생원은 버린다."""
     out = set()
     for source in sources:
@@ -411,8 +462,8 @@ def resolve_links(target, sensors, spec, nodes=None) -> tuple[dict, str | bool]:
     후보의 대상이 하나면 그 대상(규칙 범위)이고, 대상이 둘 이상이면(발생원이 섞인 규칙) 이벤트로 고른다(붙인 곳 없음 · EVENTS).
     등록 노드 발생원이 더해져서 둘 이상이 됐을 뿐이면(고정 발생원만으로는 하나, n1 R101 의 sshd.) 고르지 못할 때 등록 노드 없이
     정한 값을 대체 추정으로 둔다(n1 R101 은 web-01 대체 추정 · EVENTS).
-    대상은 하나인데 AWS 센서 발생원이 여럿이면 대상은 정하고(규칙 범위) 나눔만 이벤트로 고른다(EVENTS).
-    (5) 후보가 없는 세션 규칙(v3 R002)은 AWS 센서(규칙 범위)이고 나눔은 사건의 세션으로 고른다(SESSIONS).
+    대상은 하나인데 허니팟 센서 발생원이 여럿이면 대상은 정하고(규칙 범위) 나눔만 이벤트로 고른다(EVENTS).
+    (5) 후보가 없는 세션 규칙(v3 R002)은 허니팟 센서(규칙 범위)이고 나눔은 사건의 세션으로 고른다(SESSIONS).
     (6) 후보가 없는 기준선 · 키 심기 규칙은 Cowrie 대체 추정이다. 기준선(R005)은 Cowrie · 디코이 · 콘솔을 함께 센다
     (detector/detect.py BASELINE_SENSORS) (7) 그 밖은 붙이지 못한다.
     """
@@ -506,7 +557,7 @@ def log_kinds(target_id: str, part: str | None, spec: dict | None, cards) -> lis
 
 
 def device_label(target_id: str, part: str | None, cards) -> str:
-    """AWS 센서는 나눔 이름(나눔 없으면 'AWS 센서'), 고정 대상은 이름, 등록 노드는 카드 이름(hostname, 비신뢰)."""
+    """허니팟 센서는 나눔 이름(나눔 없으면 '허니팟 센서'), 고정 대상은 이름, 등록 노드는 카드 이름(hostname, 비신뢰)."""
     if target_id == "aws-sensor" and part:
         return dict(AWS_PARTS)[part]
     fixed = {tid: label for tid, label, _ in TARGETS}
@@ -535,7 +586,7 @@ def devices_of(links: dict, spec: dict | None, cards) -> dict:
 
 
 def device_options(cards) -> list[dict]:
-    """목록 장비 필터의 선택지. 행과 관계없이 늘 싣는다: web-01 → 등록 노드(node_id 순) → AWS 센서 → 콘솔 → 데이터 노드."""
+    """목록 장비 필터의 선택지. 행과 관계없이 늘 싣는다: web-01 → 등록 노드(node_id 순) → 허니팟 센서 → 콘솔 → 데이터 노드."""
     fixed = {tid: label for tid, label, _ in TARGETS}
     ids = [WEB_NODE, *(card["id"] for card in cards), "aws-sensor", *MONITOR_IDS]
     labels = fixed | {card["id"]: card["label"] for card in cards}
@@ -549,7 +600,7 @@ def device_matches(device: str, links: dict) -> bool:
 
 
 def lane_of(links: dict) -> str:
-    """먼저 처리할 사건의 묶음. 장비 미확인 · 보호 대상 · 관제 시스템이 하나라도 있으면 앞, AWS 센서뿐이면 뒤(허니팟 · 디코이).
+    """먼저 처리할 사건의 묶음. 장비 미확인 · 보호 대상 · 관제 시스템이 하나라도 있으면 앞, 허니팟 센서뿐이면 뒤(허니팟 · 디코이).
     규칙 번호로 가르지 않는다."""
     return "back" if shown_targets(links) == {"aws-sensor"} else "front"
 
@@ -623,7 +674,7 @@ def collection(state, reason, signal, logs, extra=()) -> dict:
 
 
 def uploader_signal(as_of, available: bool, heartbeats: list, role: str = "sensor") -> tuple:
-    """업로더 생존 신호(role=sensor · gateway) 판정 (state, reason, row). AWS 센서 카드와 관제 이상(sensor · gateway_uploader)이 같이 쓴다.
+    """업로더 생존 신호(role=sensor · gateway) 판정 (state, reason, row). 허니팟 센서 카드와 관제 이상(sensor · gateway_uploader)이 같이 쓴다.
 
     seen_at 은 풀러가 회차를 시작하며 읽은 hb 의 S3 시각, checked_at 은 그 회차가 시작한 시각이고, 기록은 받기가 끝난 뒤다.
     그래서 신호가 끊겼는지는 확인 시점 기준(checked_at - seen_at > 15분, pull.py 의 HB_STALE 과 같다)으로 재고, 적재기가 멈췄는지는
@@ -670,7 +721,7 @@ def sensor_signal(as_of, available: bool, heartbeats: list) -> tuple:
 
 
 def sensor_collection(as_of, available: bool, heartbeats: list, last: dict) -> dict:
-    """AWS 센서. 업로더 생존 신호(role=sensor, uploader_signal)로 가르고, 신호가 새로우면 Cowrie · 웹 디코이 로그로 정상 · 요청 없음을
+    """허니팟 센서. 업로더 생존 신호(role=sensor, uploader_signal)로 가르고, 신호가 새로우면 Cowrie · 웹 디코이 로그로 정상 · 요청 없음을
     가른다. 까닭 끝에 관문 기록 신호 시각(gateway_note)을 붙인다(state 는 센서 판정 그대로다)."""
     state, reason, row = uploader_signal(as_of, available, heartbeats)
     signal = signal_of(UPLOADERS["sensor"][0], HEARTBEAT_STALE,
@@ -747,10 +798,28 @@ def node_collection(as_of, node, last: dict, sources=None, readable=True, gap=No
     return done("quiet", f"{head} · 최근 1시간 요청 없음")
 
 
-def console_collection(last: dict) -> dict:
-    """관제 콘솔. 생존 신호가 없어 늘 미확인이다. 지금 붙은 콘솔은 화면이 실시간 연결(hello)로 보인다.
-    까닭은 신호를 보내지 않는다는 사실만 적는다. 실시간 연결 줄은 카드에 보이고, 보고서(종이)에는 그 줄이 없다."""
-    return collection("unknown", "생존 신호를 보내지 않음", None, logs_of("console", last))
+def db_links_of(rows) -> list[dict]:
+    """CONSOLE_LINKS_SQL 행 → [{name, label, present, note}](CONSOLES 순서). note 는 없을 때 붙이는 말이다(없으면 null)."""
+    present = {r["name"]: bool(r["present"]) for r in rows}
+    return [{"name": name, "label": label, "present": present.get(name, False), "note": note}
+            for name, label, note in CONSOLES]
+
+
+def db_links_reason(links, head=DB_LINKS_HEAD, unknown=DB_LINKS_UNKNOWN) -> str:
+    """콘솔 DB 연결 글: '<head>: 콘솔 A 있음 · 콘솔 B 없음(평소 꺼 두는 예비)'. 읽지 못했으면(links None) unknown 이다.
+    확인한 있음 · 없음만 적고 대기 · 정상 · 생존으로 꾸미지 않는다. 보고서는 머리를 '출력 시각의 DB 연결' 로 바꿔 부른다."""
+    if links is None:
+        return unknown
+    return f"{head}: " + " · ".join(f"{x['label']} {'있음' if x['present'] else '없음'}"
+                                     + (f"({x['note']})" if not x["present"] and x["note"] else "") for x in links)
+
+
+def console_collection(last: dict, links=None) -> dict:
+    """관제 콘솔(이슈 #76). 생존 신호가 없어 생존을 확정하지 않는다. 이 조회에 응답했다는 사실로 '응답 중'(responding)이고 까닭은
+    DB 연결 확인(db_links_reason)이다. links 는 db_links_of 결과이고 읽지 못하면 None('확인 불가')이다. DB 연결은 콘솔 프로세스가
+    DB 에 붙어 있다는 뜻일 뿐 응답 · HAProxy 분배를 보장하지 않는다(멈춘 프로세스도 세션은 남는다). 응답한 콘솔은 화면이 실시간
+    연결(hello)로 보인다. 관제 이상 띠에는 싣지 않는다(B 는 평소 꺼 두고, A 없음은 B 가 응답 중인 상황이라 콘솔 장애 알림 몫이다)."""
+    return collection("responding", db_links_reason(links), None, logs_of("console", last)) | {"db_links": links}
 
 
 def checkers(as_of, available: bool, heartbeats: list) -> list[dict]:
@@ -825,6 +894,8 @@ def point_counts(point: str, blocks, report, as_of, heartbeats_available) -> dic
     """한 지점의 적용 확인 · 실패 · 미확인 수와 미확인 가운데 지점 불일치(stale) 수(BLOCKS_SQL 한 행, 없으면 0).
     카드 대응 · 요약(blocks_by_point) · 관제 이상이 같이 쓴다. 수는 그 지점을 요청한 행만이고, 요청하지 않은 행은 unrequested,
     그 가운데 빠짐 확인 전은 removing 이다(이슈 #77. 요청 사실이라 아래 합치기에 넣지 않는다).
+    미확인은 확인 중(checking: 정상 반영 시간 5분 안의 확인 전)과 확인 지연(delayed: 5분 넘은 확인 전 · 지점 불일치)으로도 나눈다
+    (checking + delayed = unverified, 이슈 #84 결정 6).
 
     지점 결과(enforcement)를 내리는 쪽은 집행기뿐이다. 집행기가 멈추면 옛 '적용 확인' 이 그대로 남으므로, 그 지점의 집행기
     확인(block:<지점>.checked_at)이 없거나 10분 넘게 멈췄으면 적용 · 실패 · 불일치를 믿지 않고 모두 미확인으로 합친다. 생존 신호 표를
@@ -834,6 +905,8 @@ def point_counts(point: str, blocks, report, as_of, heartbeats_available) -> dic
     failed = int(blocks[f"{point}_failed"]) if blocks else 0
     unverified = int(blocks[f"{point}_unverified"]) if blocks else 0
     stale = int(blocks[f"{point}_stale"]) if blocks else 0
+    checking = int(blocks[f"{point}_checking"]) if blocks else 0
+    delayed = int(blocks[f"{point}_delayed"]) if blocks else 0
     unrequested = int(blocks[f"{point}_unrequested"]) if blocks else 0
     removing = int(blocks[f"{point}_removing"]) if blocks else 0
     stalled = None
@@ -845,27 +918,32 @@ def point_counts(point: str, blocks, report, as_of, heartbeats_available) -> dic
         elif older(as_of, report["checked_at"], BLOCK_CHECKER_STALE):
             stalled = f"집행기 확인 중단 · 마지막 확인 {ago(as_of, report['checked_at'])}"
     if stalled:
-        applied, failed, unverified, stale = 0, 0, applied + failed + unverified, 0
+        # 멈춘 지점은 확인 중 · 지연도 가르지 않는다(화면은 그 지점 경고 하나로 보인다)
+        applied, failed, unverified, stale, checking, delayed = 0, 0, applied + failed + unverified, 0, 0, 0
     return {"point": point, "label": POINT_LABELS[point], "applied": applied, "failed": failed, "unverified": unverified,
-            "stale": stale, "unrequested": unrequested, "removing": removing, "stalled": stalled,
-            "unreadable": not heartbeats_available}
+            "stale": stale, "checking": checking, "delayed": delayed, "unrequested": unrequested, "removing": removing,
+            "stalled": stalled, "unreadable": not heartbeats_available}
+
+
+COUNT_KEYS = ("applied", "failed", "unverified", "stale", "checking", "delayed", "unrequested", "removing")
 
 
 def response_block(target_id: str, blocks, exempt: int, reports: dict, as_of=None, heartbeats_available=False) -> dict:
-    """대응. 지점이 있는 대상만 적용 확인 · 실패 · 미확인 수와 그 가운데 지점 불일치 수(stale), 그 지점 미요청 수(unrequested) ·
-    빠짐 확인 전 수(removing)(point_counts)를 낸다. 지점이 없으면 수 대신 null 이다(0 이 아니다). reports 는 {지점: 차단 보고 신호 행}(없으면 빈 사전)."""
+    """대응. 지점이 있는 대상만 적용 확인 · 실패 · 미확인 수와 그 가운데 지점 불일치 · 확인 중 · 확인 지연 수, 그 지점 미요청 수
+    (unrequested) · 빠짐 확인 전 수(removing)(point_counts)를 낸다. 지점이 없으면 수 대신 null 이다(0 이 아니다).
+    reports 는 {지점: 차단 보고 신호 행}(없으면 빈 사전). report_issue 는 관제 이상 띠 report:<지점> 과 같은 판정(report_reason)의
+    글이다(이슈 #84 결정 1. 접힌 줄 '보고 문제' 배지). 집행기가 멈췄거나(stalled, 띠는 enforcer:<지점>) 이상이 없으면 null 이다."""
     point, label = POINTS.get(target_id, (None, None))
     if point is None:
-        return {"point": None, "point_label": None, "applied": None, "failed": None, "unverified": None, "stale": None,
-                "unrequested": None, "removing": None, "exempt": exempt, "report": None, "stalled": None, "unreadable": None}
+        return {"point": None, "point_label": None, **{k: None for k in COUNT_KEYS}, "exempt": exempt, "report": None,
+                "report_issue": None, "stalled": None, "unreadable": None}
     report = reports.get(point)
     counts = point_counts(point, blocks, report, as_of, heartbeats_available)
-    return {"point": point, "point_label": label,
-            **{k: counts[k] for k in ("applied", "failed", "unverified", "stale", "unrequested", "removing")},
-            "exempt": exempt,
+    issue = None if counts["stalled"] or report is None or as_of is None else report_reason(report, as_of)
+    return {"point": point, "point_label": label, **{k: counts[k] for k in COUNT_KEYS}, "exempt": exempt,
             "report": {"seen_at": cti.iso(report["seen_at"]), "checked_at": cti.iso(report["checked_at"]),
                        "problem": report["problem"]} if report else None,
-            "stalled": counts["stalled"], "unreadable": counts["unreadable"]}
+            "report_issue": issue, "stalled": counts["stalled"], "unreadable": counts["unreadable"]}
 
 
 VULN_COUNTS = ("vuln_total", "vuln_kev", "vuln_fix_available", "vuln_reboot_pending", "vuln_fix_unknown")
@@ -973,9 +1051,10 @@ def monitor_items(checks, points: dict, mismatch: int, node_rows, nodes_readable
                   devices=()) -> list[dict]:
     """관제 이상 띠 · 사이드바 항목. 이상(alert) · 모름(unknown)만 이 순서로 싣는다: 생존 신호 표 → 적재기 → 집행기(지점별) →
     센서 수신 → 관문 기록 수신 → 탐지 경로 → 적용 실패(지점별) → 지점 불일치(지점별) → 관문 불일치 → 지점 보고(지점별) →
-    노드 수신 → 노드별 웹 로그 적재 → 노드별 자원 지표. 카드가 이상 · 확인 불가로 보이는 수집 · 탐지 · 집행 상태는 카드와 같은 판정으로
-    여기에도 싣고, 같은 현상은 한 항목만 싣는다(표를 읽을 수 없거나 적재기가 멈추면 센서의 모름, 관문 불일치가 있으면
-    관문 지점 불일치, 집행기가 멈추면 그 지점 보고, 수신이 끊긴 노드의 자원 지표는 뺀다).
+    확인 지연(지점별, 5분 넘은 확인 전. 이슈 #84) → 노드 수신 → 노드별 웹 로그 적재 → 노드별 자원 지표. 카드가 이상 · 확인 불가로
+    보이는 수집 · 탐지 · 집행 상태는 카드와 같은 판정으로 여기에도 싣고, 같은 현상은 한 항목만 싣는다(표를 읽을 수 없거나 적재기가
+    멈추면 센서의 모름, 관문 불일치가 있으면 관문 지점 불일치, 집행기가 멈추면 그 지점 보고, 그 지점 보고가 있으면 그 지점 확인 지연,
+    수신이 끊긴 노드의 자원 지표는 뺀다).
     생존 신호 표를 읽을 수 없으면 적재기 · 집행기 · 지점 보고는 판정하지 않는다. 노드 수신은 활성(수신 정상 · 끊김) 노드가 한 대라도
     끊기면 이상이다(등록 대기 · 폐기는 활성이 아니다). cards_readable 이 거짓이면 web-01 행만 읽은 것이다(등록 노드 열 모름).
     web_expected 면 nodes 에 web-01 행이 없을 때(고정 카드 '노드 등록 기록 없음') 모름이다.
@@ -999,7 +1078,7 @@ def monitor_items(checks, points: dict, mismatch: int, node_rows, nodes_readable
             if counts["stalled"]:
                 add(f"enforcer:{point}", "alert", f"{counts['label']} 집행기", counts["stalled"])
     covered = any(x["key"] in ("heartbeats", "loader") for x in items)
-    for key, label, signal in (("sensor", "AWS 센서 수신", sensor), ("gateway_uploader", "AWS 관문 기록 수신", gateway)):
+    for key, label, signal in (("sensor", f"{SENSOR_NAME} 수신", sensor), ("gateway_uploader", f"{GATEWAY_NAME} 기록 수신", gateway)):
         state, reason, row = signal or (None, None, None)
         if state == "no_signal":
             add(key, "alert", label, reason, cti.iso(row["seen_at"]))
@@ -1025,6 +1104,13 @@ def monitor_items(checks, points: dict, mismatch: int, node_rows, nodes_readable
                 add(f"report:{point}", "unknown", f"{counts['label']} 보고", "보고 기록 없음")
             elif (reason := report_reason(report, as_of)) is not None:
                 add(f"report:{point}", "alert", f"{counts['label']} 보고", reason, cti.iso(report["seen_at"]))
+    # 확인 지연 가운데 지점 불일치(위 항목)를 뺀 5분 넘은 확인 전. 집행기가 보고를 판정하지 못한 회차(보류)에는 직전 대기와 그 시각이
+    #   남아 카드 '적용 확인 지연' 만 뜬다. 그 지점 보고 항목이 있으면 같은 현상이라 싣지 않는다(집행기가 멈춘 지점은 0 이다)
+    shown = {x["key"] for x in items}
+    for point, counts in points.items():
+        late = counts["delayed"] - counts["stale"]
+        if late > 0 and f"report:{point}" not in shown:
+            add(f"point_delayed:{point}", "alert", f"{counts['label']} 적용 확인 지연", count=late)
     silent = []
     if not nodes_readable:
         add("nodes", "unknown", "노드 수신", "노드 표를 읽을 수 없음")
@@ -1156,7 +1242,7 @@ async def link_incidents(c, incidents: list, nodes=None) -> tuple[dict, dict]:
             joins.append(join_item(inc, spec))
             fallback[inc["incident_key"]] = found
         elif need == SESSIONS:
-            # 세션으로 고르지 못하면(근거에 세션 없음 · 이벤트 없음) AWS 센서(규칙 범위)이고 나눔은 Cowrie 대체 추정이다
+            # 세션으로 고르지 못하면(근거에 세션 없음 · 이벤트 없음) 허니팟 센서(규칙 범위)이고 나눔은 Cowrie 대체 추정이다
             links[inc["incident_key"]] = fallback[inc["incident_key"]] = {("aws-sensor", None): RULE_SCOPE,
                                                                           ("aws-sensor", "cowrie"): FALLBACK}
             item = session_item(inc)
@@ -1230,6 +1316,9 @@ async def targets_view(c, as_of, queue: bool = False) -> dict:
         if nodes_readable and await c.fetchval(NODES_READABLE_SQL, PARSE_COLUMNS) else {}
     blocks = await c.fetchrow(BLOCKS_SQL, as_of)
     reports = reports_of(heartbeats)
+    # 콘솔 DB 연결(이슈 #76). pg_stat_activity 를 읽을 수 없으면 확인 불가(None)다
+    db_links = db_links_of(await c.fetch(CONSOLE_LINKS_SQL, [name for name, _, _ in CONSOLES])) \
+        if await c.fetchval(CONSOLE_LINKS_READABLE_SQL) else None
 
     # 차단 금지 대역에 드는 출발지(대상별로 서로 다른 주소 수)
     ips = sorted({i["actor_ip"] for slot in per.values() for i in slot["rows"] if i["actor_ip"]})
@@ -1243,7 +1332,7 @@ async def targets_view(c, as_of, queue: bool = False) -> dict:
     collections = {
         "aws-sensor": sensor_collection(as_of, heartbeats_available, heartbeats, last),
         "web-01": node_collection(as_of, node, last, readable=nodes_readable, gap=gaps.get(WEB_NODE)),
-        "console": console_collection(last),
+        "console": console_collection(last, db_links),
         "data-node": data_collection(as_of, started, heartbeats_available, heartbeats, paths),
         **{card["id"]: node_collection(as_of, card["node"], last, logs[card["id"]], gap=gaps.get(card["id"]))
            for card in cards},
@@ -1270,7 +1359,7 @@ async def targets_view(c, as_of, queue: bool = False) -> dict:
 
 
 async def monitor_view(c, as_of) -> dict:
-    """관제 이상(띠 · 사이드바). 적재기 · 집행기 확인, 센서 · 관문 기록 수신, 탐지 경로, 지점별 적용 실패 · 불일치 · 보고,
+    """관제 이상(띠 · 사이드바). 적재기 · 집행기 확인, 센서 · 관문 기록 수신, 탐지 경로, 지점별 적용 실패 · 불일치 · 보고 · 확인 지연,
     활성 노드 수신, 보호 대상별 웹 로그 적재 · 자원 지표를 본다. 읽을 수 있는 표 · 열을 한 질의로 보고(MONITOR_READABLE_SQL) 표마다
     한 번씩 읽어 질의는 8개 이하(now 포함)다.
     nodes 는 카드 열까지 읽을 수 있으면 전부(web-01 포함), web-01 이 읽는 열만 되면 web-01 한 행(등록 노드 열 모름)이고, 둘 다 안

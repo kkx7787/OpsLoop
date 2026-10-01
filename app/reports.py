@@ -437,10 +437,21 @@ async def blocks(c, since, until, as_of) -> dict:
     }
 
 
+# 콘솔 행의 수집 까닭 머리(이슈 #76). 카드(targets.DB_LINKS_HEAD 'DB 연결 확인')와 같은 사실이고 출력 시각의 값임을 머리에 적는다
+REPORT_DB_LINKS_HEAD = "출력 시각의 DB 연결"
+REPORT_DB_LINKS_UNKNOWN = f"{REPORT_DB_LINKS_HEAD}: 확인 불가"
+
+
+def collection_row(collection: dict) -> dict:
+    """대상 행의 수집 칸. 콘솔(db_links 칸이 있음)은 까닭을 '출력 시각의 DB 연결: 콘솔 A 있음 · …' 으로 바꾼다(state 는 응답 중 그대로)."""
+    reason = targets.db_links_reason(collection["db_links"], REPORT_DB_LINKS_HEAD, REPORT_DB_LINKS_UNKNOWN) \
+        if "db_links" in collection else collection["reason"]
+    return {"state": collection["state"], "reason": reason}
+
+
 async def targets_section(c, since, until, as_of) -> dict:
     view = await targets.targets_view(c, as_of)
-    rows = [{"id": x["id"], "label": x["label"],
-             "collection": {"state": x["collection"]["state"], "reason": x["collection"]["reason"]},
+    rows = [{"id": x["id"], "label": x["label"], "collection": collection_row(x["collection"]),
              "response": {k: x["response"][k] for k in ("point_label", "applied", "failed", "unverified", "unrequested",
                                                         "removing", "exempt", "stalled")}}
             for x in view["targets"]]

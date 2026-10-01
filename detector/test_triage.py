@@ -84,7 +84,7 @@ GUARD = """
     END $$;
     CREATE TRIGGER trg_blocklist_points AFTER UPDATE OF points ON blocklist
         FOR EACH ROW EXECUTE FUNCTION pg_temp.blocklist_points_change();
-    INSERT INTO block_exempt (cidr, note) VALUES ('10.0.0.0/8', '사설 · AWS VPC'), ('15.164.37.49/32', 'AWS 관문 EIP'),
+    INSERT INTO block_exempt (cidr, note) VALUES ('10.0.0.0/8', '사설 · AWS VPC'), ('15.164.37.49/32', '허니팟 관문 EIP'),
         ('192.168.0.0/16', '사설 · 관리망 · 서비스망');
 """
 
@@ -224,7 +224,11 @@ class BlockPointsTests(unittest.TestCase):
             with self.subTest(rule=rid):
                 self.assertEqual(triage.default_points(rid), ["fw"])
         self.assertEqual(triage.points_name(["fw"]), "내부 방화벽")
-        self.assertEqual(triage.points_name(["fw", "gateway"]), "AWS 관문 + 내부 방화벽")
+        self.assertEqual(triage.points_name(["fw", "gateway"]), "허니팟 관문 + 내부 방화벽")
+        # 지점 이름은 콘솔 지점 이름(app/targets.py POINTS 의 GATEWAY_NAME, 이슈 #78)과 같다. targets 는 앱 의존이 있어 글자로 읽는다
+        with open(os.path.join(HERE, "..", "app", "targets.py"), encoding="utf-8") as f:
+            gateway = re.search(r'^GATEWAY_NAME = "(.+)"$', f.read(), re.M).group(1)
+        self.assertEqual(triage.POINT_NAMES, {"gateway": gateway, "fw": "내부 방화벽"})
 
     def shown(self, rid, ip="192.0.2.8", target=None, **ev):
         base = {"counts": {}, "creds": [], "commands": [], "files": [], "also": [], "blocked": False,
@@ -237,10 +241,10 @@ class BlockPointsTests(unittest.TestCase):
 
     def test_판정_화면의_차단_지점(self):
         self.assertEqual(self.shown("R001"), ["  차단 지점 내부 방화벽"])
-        self.assertEqual(self.shown("R004"), ["  차단 지점 AWS 관문 + 내부 방화벽"])
+        self.assertEqual(self.shown("R004"), ["  차단 지점 허니팟 관문 + 내부 방화벽"])
         # 살아 있는 차단은 넓히기만 한다: 두 지점 차단이 살아 있으면 R001 로 다시 걸어도 두 지점이 남는다
         self.assertEqual(self.shown("R001", blocked=True, live_points=["gateway", "fw"]),
-                         ["  차단 지점 AWS 관문 + 내부 방화벽"])
+                         ["  차단 지점 허니팟 관문 + 내부 방화벽"])
         # 올릴 수 없는 출발지(금지 대역 · 사람이 푼 곳)와 IP 가 아닌 대상에는 없다
         self.assertEqual(self.shown("R001", exempt=("10.0.0.0/8", "사설")), [])
         self.assertEqual(self.shown("R001", released=("admin", T0)), [])
@@ -663,7 +667,7 @@ class AbsorbedDatabaseTests(unittest.TestCase):
         self.assertEqual(self.cur.fetchone(), ("threat",))
         # 관문 EIP 는 사설 대역이 아니어도 막지 않는다
         done = triage.record(self.conn, key, "15.164.37.49", "threat", "근거", 1.0, "han", None, True)
-        self.assertIn("15.164.37.49/32(AWS 관문 EIP)", done["refused"])
+        self.assertIn("15.164.37.49/32(허니팟 관문 EIP)", done["refused"])
 
     def test_gather_and_flow_do_not_offer_block_for_exempt_or_released(self):
         # 판정 화면이 까닭을 미리 보이고 차단을 묻지 않는다. 판정은 남고 이력에 까닭이 붙는다
@@ -674,7 +678,7 @@ class AbsorbedDatabaseTests(unittest.TestCase):
                          "first_ts, last_ts) VALUES (%s, 'R006', 'SSH 키 심기', 'v3', 'critical', '15.164.37.49', %s, %s)",
                          (key, T0, T0))
         ev = triage.gather(self.cur, key, "15.164.37.49", T0, T0, [], "v3")
-        self.assertEqual(ev["exempt"], ("15.164.37.49/32", "AWS 관문 EIP"))
+        self.assertEqual(ev["exempt"], ("15.164.37.49/32", "허니팟 관문 EIP"))
         self.cur.execute("""INSERT INTO blocklist (actor_ip, reason, incident_key, expires_at, released_at, released_by)
             VALUES (%s, 'console', 'x', now() + interval '1 hour', now(), 'admin')""", (OWN,))
         ev = triage.gather(self.cur, FIRST, OWN, T0, T0, [], "v3")
@@ -689,7 +693,7 @@ class AbsorbedDatabaseTests(unittest.TestCase):
         with mock.patch("builtins.input", fake_input), mock.patch("sys.stdout", io.StringIO()) as out:
             triage.triage(self.conn, "R006", 5, "han")
         self.assertFalse(any("차단 목록에 올릴까요" in p for p in prompts))
-        self.assertIn("차단하지 않습니다: 15.164.37.49 는 차단 금지 대역 15.164.37.49/32(AWS 관문 EIP)", out.getvalue())
+        self.assertIn("차단하지 않습니다: 15.164.37.49 는 차단 금지 대역 15.164.37.49/32(허니팟 관문 EIP)", out.getvalue())
         self.assertIn("차단하지 않습니다: admin 가", out.getvalue())
         self.cur.execute("SELECT count(*) FROM verdicts WHERE verdict = 'threat'")
         self.assertEqual(self.cur.fetchone()[0], 2)
@@ -768,7 +772,7 @@ class AbsorbedDatabaseTests(unittest.TestCase):
         finally:
             self.cur.execute("RESET ROLE")
         self.assertTrue(triage.has_exempt_table(self.cur))
-        self.assertEqual(triage.exempt_of(self.cur, "15.164.37.49"), ("15.164.37.49/32", "AWS 관문 EIP"))
+        self.assertEqual(triage.exempt_of(self.cur, "15.164.37.49"), ("15.164.37.49/32", "허니팟 관문 EIP"))
         self.assertEqual(triage.refused_text("15.164.37.49", "blocklist_exempt", None),
                          "15.164.37.49 는 차단 금지 대역에 들어 차단하지 않습니다. 인프라 · 사설 · 예약 주소는 막지 않습니다")
 

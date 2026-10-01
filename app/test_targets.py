@@ -7,12 +7,13 @@
      정의 없음 · 모르는 발생원. 실제 규칙 파일 전부(detector/rules*.json)가 계약대로 붙는지
   2. 집계(tally · latest_of): 한 사건이 여러 대상에 붙음 · 1시간 경계 · 높은 심각도 · 미판정 · 나눔 · 붙이지 못한 사건 ·
      최근 중요 탐지(높음 우선 → 없으면 아무 사건 · 24시간 경계 · 같은 시각은 키 순)
-  3. 수집 상태: AWS 센서(표 없음 · 행 없음 · 적재기 확인 중단 30분 · 신호 없음 · 확인 시점 기준 15분 경계 · 기록 지연 · 남은 행 무시 ·
+  3. 수집 상태: 허니팟 센서(표 없음 · 행 없음 · 적재기 확인 중단 30분 · 신호 없음 · 확인 시점 기준 15분 경계 · 기록 지연 · 남은 행 무시 ·
      정상 · 요청 없음) ·
-     web-01(노드 수신 판정 네 값) · 콘솔(늘 미확인, 신호 null) · 데이터 노드(탐지 실행 · 적재기 · 집행기 확인)
+     web-01(노드 수신 판정 네 값) · 콘솔(응답 중 · DB 연결 확인 · 확인 불가, 신호 null, 이슈 #76) · 데이터 노드(탐지 실행 · 적재기 · 집행기 확인)
   4. 시스템 · 대응 · 취약점: 미수집 · 권한 없음 · 행 없음 · 오래됨 · 지점 없는 대상은 수 대신 null(0 이 아님) · 실패는 미확인과 따로 ·
      집행기 확인 멈춤이면 적용 확인을 미확인으로 합침 ·
-     보고 신호 · 자산 없음은 0 이 아니라 missing · 48시간
+     보고 신호 · 자산 없음은 0 이 아니라 missing · 48시간 · 미확인을 확인 중(5분 안) · 확인 지연으로 나눔(이슈 #84) ·
+     카드 보고 문제(report_issue)는 띠 report:<지점> 과 같은 판정
   5. 라우터: main 앱에 붙음 · 세션 없으면 401 · 표 · 권한이 없는 DB 에서도 200(미확인) · 집행 제외 말머리가 main 과 같다 ·
      nodes 를 읽을 수 없으면 고정 네 대상만(web-01 수신 미확인) · 등록 노드 카드는 고정 대상 뒤에 web-01 카드와 같은 필드로
   6. 등록 노드(이슈 #64): 발생원 · node:<id> 가 그 노드 카드로 감(고정 발생원이 먼저) · 노드 에이전트 이벤트(sshd. · nginx.)는
@@ -182,7 +183,7 @@ class ResolveTests(unittest.TestCase):
             ("s1", "R202"): {("data-node", None)},
         }
         joins = {("w2", "R101"), ("w2", "R102"), ("w2", "R104"), ("c1", "R105"), ("c1", "R106"), ("sg1", "R107")}
-        sessions = {"R002"}        # 발생원 조건 없는 세션 규칙: 대상은 AWS 센서, 나눔은 세션으로
+        sessions = {"R002"}        # 발생원 조건 없는 세션 규칙: 대상은 허니팟 센서, 나눔은 세션으로
         seen = set()
         for version, rule_id, s in file_rules():
             seen.add((version, rule_id))
@@ -289,7 +290,7 @@ class SensorCollectionTests(unittest.TestCase):
                                             hb("block:gateway", kind="block_report", role="gateway")], LOGS_ACTIVE)
         self.assertEqual((c["state"], c["reason"]), ("unknown", "생존 신호 미기록 · 관문 기록 신호 3분 전"))
         self.assertEqual([(l["key"], l["label"]) for l in c["logs"]],
-                         [("cowrie", "Cowrie"), ("decoy", "웹 디코이"), ("gateway", "AWS 관문 기록")])
+                         [("cowrie", "SSH 허니팟(Cowrie)"), ("decoy", "웹 디코이"), ("gateway", "허니팟 관문 기록")])
         self.assertEqual(c["logs"][1]["last_at"], None)
         self.assertEqual(c["extra"], [])
 
@@ -390,11 +391,42 @@ class OtherCollectionTests(unittest.TestCase):
                                       "last_at": (NOW - timedelta(minutes=61)).isoformat()}])
         self.assertEqual(c["extra"][0]["at"], (NOW - timedelta(minutes=2)).isoformat())
 
-    def test_콘솔은_늘_생존_상태_미확인이다(self):
-        c = t.console_collection({"console": NOW})
-        self.assertEqual((c["state"], c["reason"], c["signal"], c["extra"]),
-                         ("unknown", "생존 신호를 보내지 않음", None, []))
-        self.assertEqual(c["logs"], [{"key": "console", "label": "마지막 로그인 기록", "last_at": NOW.isoformat()}])
+    def test_콘솔은_응답_중이고_DB_연결의_있음_없음만_적는다(self):
+        # 이슈 #76: 이 조회에 응답했다는 사실('응답 중')과 콘솔 이름표 연결의 있음 · 없음. 대기 · 정상 · 생존으로 꾸미지 않는다
+        def links(a, b):
+            return t.db_links_of([{"name": "opsloop-console-a", "present": a}, {"name": "opsloop-console-b", "present": b}])
+        cases = [(links(True, False), "DB 연결 확인: 콘솔 A 있음 · 콘솔 B 없음(평소 꺼 두는 예비)"),
+                 (links(False, True), "DB 연결 확인: 콘솔 A 없음 · 콘솔 B 있음"),
+                 (links(True, True), "DB 연결 확인: 콘솔 A 있음 · 콘솔 B 있음"),
+                 (links(False, False), "DB 연결 확인: 콘솔 A 없음 · 콘솔 B 없음(평소 꺼 두는 예비)"),
+                 (None, "DB 연결 확인 불가")]
+        for value, reason in cases:
+            with self.subTest(reason=reason):
+                c = t.console_collection({"console": NOW}, value)
+                self.assertEqual((c["state"], c["reason"], c["signal"], c["extra"], c["db_links"]),
+                                 ("responding", reason, None, [], value))
+                for word in ("대기", "정상", "생존", "미확인"):
+                    self.assertNotIn(word, c["reason"])
+                self.assertEqual(c["logs"], [{"key": "console", "label": "마지막 로그인 기록", "last_at": NOW.isoformat()}])
+        self.assertEqual(links(True, False), [
+            {"name": "opsloop-console-a", "label": "콘솔 A", "present": True, "note": None},
+            {"name": "opsloop-console-b", "label": "콘솔 B", "present": False, "note": "평소 꺼 두는 예비"}])
+        # 질의는 이름마다 한 행을 낸다. 행이 없는 이름은 없음이다. 이름표는 compose OPSLOOP_WORKER 값이다
+        self.assertEqual([x["present"] for x in t.db_links_of([])], [False, False])
+        self.assertEqual([name for name, _, _ in t.CONSOLES], ["opsloop-console-a", "opsloop-console-b"])
+        # 인자 없이 부르면(옛 호출) 확인 불가다
+        self.assertEqual(t.console_collection({})["reason"], "DB 연결 확인 불가")
+
+    def test_콘솔_DB_연결_질의는_콘솔_역할의_이름표_연결만_본다(self):
+        # 수는 보지 않는다(풀 유휴 정리로 오르내린다). 다른 역할이 같은 이름표를 써도 세지 않는다. 이 DB 의 연결만이다
+        for part in ("a.datname = current_database()", "a.usename = current_user", "a.application_name = u.n",
+                     "FROM unnest($1::text[]) WITH ORDINALITY AS u(n, i) ORDER BY u.i",
+                     "EXISTS (SELECT 1 FROM pg_catalog.pg_stat_activity a"):
+            self.assertIn(part, t.CONSOLE_LINKS_SQL)
+        self.assertNotIn("count(", t.CONSOLE_LINKS_SQL)
+        self.assertEqual(t.CONSOLE_LINKS_READABLE_SQL,
+                         "SELECT has_table_privilege('pg_catalog.pg_stat_activity', 'SELECT')"
+                         " AND has_function_privilege('pg_catalog.pg_stat_get_activity(integer)', 'EXECUTE')")
 
     def test_데이터_노드는_탐지_실행이_신호다(self):
         rows = [hb("uploader:i-01", checked=2), hb("uploader:i-02", checked=1),
@@ -448,33 +480,40 @@ class BlocksTests(unittest.TestCase):
 
     def test_지점이_없는_대상은_수_대신_null_이다(self):
         blocks = {"gateway_applied": 0, "gateway_failed": 0, "gateway_unverified": 0, "gateway_stale": 0,
-                  "gateway_unrequested": 0, "gateway_removing": 0, "fw_applied": 0, "fw_failed": 0, "fw_unverified": 0,
-                  "fw_stale": 0, "fw_unrequested": 0, "fw_removing": 0}
+                  "gateway_checking": 0, "gateway_delayed": 0, "gateway_unrequested": 0, "gateway_removing": 0,
+                  "fw_applied": 0, "fw_failed": 0, "fw_unverified": 0, "fw_stale": 0, "fw_checking": 0, "fw_delayed": 0,
+                  "fw_unrequested": 0, "fw_removing": 0}
         for tid in ("console", "data-node"):
             r = t.response_block(tid, blocks, 2, {}, NOW, True)
             self.assertEqual(r, {"point": None, "point_label": None, "applied": None, "failed": None, "unverified": None,
-                                 "stale": None, "unrequested": None, "removing": None, "exempt": 2, "report": None,
-                                 "stalled": None, "unreadable": None})
+                                 "stale": None, "checking": None, "delayed": None, "unrequested": None, "removing": None,
+                                 "exempt": 2, "report": None, "report_issue": None, "stalled": None, "unreadable": None})
 
     def test_지점이_있으면_그_지점의_확인_수와_보고를_낸다(self):
         blocks = {"gateway_applied": 3, "gateway_failed": 0, "gateway_unverified": 1, "gateway_stale": 1,
-                  "gateway_unrequested": 2, "gateway_removing": 1, "fw_applied": 0, "fw_failed": 2, "fw_unverified": 4,
-                  "fw_stale": 3, "fw_unrequested": 0, "fw_removing": 0}
+                  "gateway_checking": 0, "gateway_delayed": 1, "gateway_unrequested": 2, "gateway_removing": 1,
+                  "fw_applied": 0, "fw_failed": 2, "fw_unverified": 4, "fw_stale": 3, "fw_checking": 1, "fw_delayed": 3,
+                  "fw_unrequested": 0, "fw_removing": 0}
         report = hb("block:fw", kind="block_report", role="fw", seen=None, checked=1, problem="보고 파일 없음")
         # 생존 신호 표를 읽을 수 없으면(마이그레이션 전 · 권한 빠짐) 멈춤을 판정하지 못해 옛 '적용 확인' 을 믿지 않는다(#82).
         #   관문 미요청 · 빠짐 확인 전(이슈 #77)은 집행기 멈춤과 무관한 요청 사실이라 합치지 않는다
         aws = t.response_block("aws-sensor", blocks, 0, {"fw": report}, NOW, False)
-        self.assertEqual(aws, {"point": "gateway", "point_label": "AWS 관문", "applied": 0, "failed": 0, "unverified": 4,
-                               "stale": 0, "unrequested": 2, "removing": 1, "exempt": 0, "report": None,
+        #   멈춘 지점은 확인 중 · 확인 지연도 가르지 않고, 보고 문제(띠 report:<지점>)도 없다(띠는 enforcer · heartbeats 가 말한다)
+        self.assertEqual(aws, {"point": "gateway", "point_label": "허니팟 관문", "applied": 0, "failed": 0, "unverified": 4,
+                               "stale": 0, "checking": 0, "delayed": 0, "unrequested": 2, "removing": 1, "exempt": 0,
+                               "report": None, "report_issue": None,
                                "stalled": "집행 보고를 읽을 수 없음 · 적용 여부 확인 불가", "unreadable": True})
         # 표는 읽는데 그 지점의 집행기 확인 기록이 없으면 적용 확인을 믿지 않는다(집행기 멈춤이다)
         aws = t.response_block("aws-sensor", blocks, 0, {"fw": report}, NOW, True)
         self.assertEqual((aws["applied"], aws["failed"], aws["unverified"], aws["stale"], aws["stalled"], aws["unreadable"]),
                          (0, 0, 4, 0, "집행기 확인 기록 없음", False))
-        # 지점 불일치(stale)는 미확인 가운데 따로 센 수다
+        # 지점 불일치(stale)는 미확인 가운데 따로 센 수다. 확인 중 + 확인 지연 = 미확인이다(이슈 #84)
         web = t.response_block("web-01", blocks, 1, {"fw": report}, NOW, True)
         self.assertEqual((web["point"], web["point_label"], web["applied"], web["failed"], web["unverified"], web["stale"],
-                          web["exempt"], web["stalled"]), ("fw", "내부 방화벽", 0, 2, 4, 3, 1, None))
+                          web["checking"], web["delayed"], web["exempt"], web["stalled"]),
+                         ("fw", "내부 방화벽", 0, 2, 4, 3, 1, 3, 1, None))
+        # 받은 보고가 없으면 띠 report:fw 와 같은 글이다
+        self.assertEqual(web["report_issue"], "받은 보고 없음 · 보고 파일 없음")
         # 집행기 확인이 10분 넘게 멈췄다: 실패 · 적용 · 미확인을 모두 미확인으로 합친다(10분 정각은 아직 확인 중)
         old = hb("block:gateway", kind="block_report", role="gateway", seen=11, checked=11)
         aws = t.response_block("aws-sensor", blocks, 0, {"gateway": old}, NOW, True)
@@ -583,6 +622,24 @@ class NodesConn(FakeConn):
         if sql == t.NODES_SQL:
             self.calls.append(sql)
             return self.ROWS
+        return await super().fetch(sql, *args)
+
+
+class ConsoleConn(FakeConn):
+    """pg_stat_activity 를 읽을 수 있는 DB. 콘솔 A 이름표 연결만 있다. seen 은 CONSOLE_LINKS_SQL 인자다."""
+    seen = []
+
+    async def fetchval(self, sql, *args):
+        if sql == t.CONSOLE_LINKS_READABLE_SQL:
+            self.calls.append(sql)
+            return True
+        return await super().fetchval(sql, *args)
+
+    async def fetch(self, sql, *args):
+        if sql == t.CONSOLE_LINKS_SQL:
+            self.calls.append(sql)
+            ConsoleConn.seen.append(args)
+            return [{"name": n, "present": n == "opsloop-console-a"} for n in args[0]]
         return await super().fetch(sql, *args)
 
 
@@ -747,8 +804,12 @@ class RouterTests(unittest.TestCase):
         self.assertEqual((body["as_of"], body["window_seconds"], body["heartbeats_available"], body["metrics_available"]),
                          (NOW.isoformat(), 3600, False, False))
         self.assertEqual([x["id"] for x in body["targets"]], ["aws-sensor", "web-01", "console", "data-node"])
-        self.assertEqual([x["label"] for x in body["targets"]], ["AWS 센서", "web-01", "관제 콘솔", "데이터 노드"])
-        self.assertEqual([x["collection"]["state"] for x in body["targets"]], ["unknown"] * 4)
+        self.assertEqual([x["label"] for x in body["targets"]], ["허니팟 센서", "web-01", "관제 콘솔", "데이터 노드"])
+        # 콘솔은 이 조회에 응답했으니 응답 중이다. 연결 목록을 읽을 수 없으면 확인 불가다(이슈 #76)
+        self.assertEqual([x["collection"]["state"] for x in body["targets"]], ["unknown", "unknown", "responding", "unknown"])
+        console = body["targets"][2]["collection"]
+        self.assertEqual((console["reason"], console["db_links"]), ("DB 연결 확인 불가", None))
+        self.assertIn(t.CONSOLE_LINKS_READABLE_SQL, self.pool.calls)
         self.assertEqual([x["system"]["state"] for x in body["targets"]],
                          ["not_collected", "no_privilege", "not_collected", "not_collected"])
         self.assertEqual([x["vulns"] for x in body["targets"]], [{"available": False, "assets": []}] * 4)
@@ -756,10 +817,28 @@ class RouterTests(unittest.TestCase):
         # 한 트랜잭션(반복 읽기 · 읽기 전용)이고, 없는 표는 읽지 않는다
         self.assertEqual([c for c in self.pool.calls if isinstance(c, tuple)],
                          [("transaction", {"isolation": "repeatable_read", "readonly": True})])
-        for sql in (t.HEARTBEATS_SQL, t.METRICS_SQL, t.RULES_SQL, t.JOIN_SQL):
+        for sql in (t.HEARTBEATS_SQL, t.METRICS_SQL, t.RULES_SQL, t.JOIN_SQL, t.CONSOLE_LINKS_SQL):
             self.assertNotIn(sql, self.pool.calls)
         self.assertIn(t.HEARTBEATS_READABLE_SQL, self.pool.calls)
         self.assertIn(t.METRICS_READABLE_SQL, self.pool.calls)
+
+    def test_콘솔_카드는_응답_중이고_DB_연결은_이름표_연결의_있음_없음이다(self):
+        self.pool.conn = ConsoleConn
+        ConsoleConn.seen = []
+        self.client.cookies.set(self.auth.COOKIE, self.auth.issue("han", "viewer"))
+        body = self.client.get("/api/dashboard/targets").json()
+        console = next(x for x in body["targets"] if x["id"] == "console")["collection"]
+        self.assertEqual((console["state"], console["reason"], console["signal"]),
+                         ("responding", "DB 연결 확인: 콘솔 A 있음 · 콘솔 B 없음(평소 꺼 두는 예비)", None))
+        self.assertEqual(console["db_links"], [
+            {"name": "opsloop-console-a", "label": "콘솔 A", "present": True, "note": None},
+            {"name": "opsloop-console-b", "label": "콘솔 B", "present": False, "note": "평소 꺼 두는 예비"}])
+        # 콘솔 이름표들을 한 번에 묻는다. 같은 트랜잭션(반복 읽기 · 읽기 전용) 안이다
+        self.assertEqual(ConsoleConn.seen, [(["opsloop-console-a", "opsloop-console-b"],)])
+        self.assertEqual([c for c in self.pool.calls if isinstance(c, tuple)],
+                         [("transaction", {"isolation": "repeatable_read", "readonly": True})])
+        # 다른 대상에는 DB 연결 칸이 없다
+        self.assertEqual([x["id"] for x in body["targets"] if "db_links" in x["collection"]], ["console"])
 
     def test_nodes_를_읽을_수_없으면_고정_네_대상만이다(self):
         self.client.cookies.set(self.auth.COOKIE, self.auth.issue("han", "viewer"))
@@ -852,7 +931,7 @@ class NodeResolveTests(unittest.TestCase):
         # 고정 발생원만으로도 섞인 규칙은 전처럼 붙인 곳 없이 이벤트로 고른다
         self.assertEqual(t.resolve(None, None, spec(eventids=["nginx.request", "decoy.request"]), NODES),
                          (set(), t.EVENTS))
-        # 등록 노드 발생원이 더해져 섞였을 뿐이면 고르지 못할 때 등록 노드 없이 정한 값이다(AWS 센서 나눔도 그대로)
+        # 등록 노드 발생원이 더해져 섞였을 뿐이면 고르지 못할 때 등록 노드 없이 정한 값이다(허니팟 센서 나눔도 그대로)
         cowrie_and_node = spec(sensors=["cowrie", "web-02"], eventids=["cowrie.login.failed"])
         self.assertEqual(t.resolve(None, None, cowrie_and_node), ({("aws-sensor", "cowrie")}, False))
         self.assertEqual(t.resolve(None, None, cowrie_and_node, NODES), ({("aws-sensor", "cowrie")}, t.EVENTS))
@@ -943,12 +1022,13 @@ class NodeCardTests(unittest.TestCase):
         self.assertEqual(t.vulns_block("web-03", True, assets, NOW), {"available": True, "assets": []})
         self.assertEqual(t.vulns_block("web-02", False, assets, NOW), {"available": False, "assets": []})
         blocks = {"gateway_applied": 3, "gateway_failed": 0, "gateway_unverified": 1, "gateway_stale": 0,
-                  "gateway_unrequested": 0, "gateway_removing": 0, "fw_applied": 1, "fw_failed": 0, "fw_unverified": 0,
-                  "fw_stale": 0, "fw_unrequested": 0, "fw_removing": 0}
+                  "gateway_checking": 1, "gateway_delayed": 0, "gateway_unrequested": 0, "gateway_removing": 0,
+                  "fw_applied": 1, "fw_failed": 0, "fw_unverified": 0, "fw_stale": 0, "fw_checking": 0, "fw_delayed": 0,
+                  "fw_unrequested": 0, "fw_removing": 0}
         self.assertEqual(t.response_block("web-02", blocks, 1, {}, NOW, True),
                          {"point": None, "point_label": None, "applied": None, "failed": None, "unverified": None,
-                          "stale": None, "unrequested": None, "removing": None, "exempt": 1, "report": None,
-                          "stalled": None, "unreadable": None})
+                          "stale": None, "checking": None, "delayed": None, "unrequested": None, "removing": None,
+                          "exempt": 1, "report": None, "report_issue": None, "stalled": None, "unreadable": None})
 
 
 # ----------------------------------------------------------------------
@@ -1076,18 +1156,19 @@ class DeviceTests(unittest.TestCase):
     def test_대체_추정만_있으면_장비_미확인이고_추정은_따로_싣는다(self):
         got = t.devices_of({(AWS, "cowrie"): F}, file_spec("v3", "R005"), [])
         self.assertEqual(got, {"devices": [], "device_state": "unconfirmed", "device_fallback": [
-            {"id": AWS, "part": "cowrie", "label": "Cowrie", "group": "sensor", "logs": ["SSH 세션"], "basis": F}]})
+            {"id": AWS, "part": "cowrie", "label": "SSH 허니팟(Cowrie)", "group": "sensor", "logs": ["SSH 세션"], "basis": F}]})
         got = t.devices_of({(WEB, None): F}, file_spec("n1", "R101"), CARDS)
         self.assertEqual((got["devices"], got["device_state"]), ([], "unconfirmed"))
         self.assertEqual([(d["label"], d["logs"]) for d in got["device_fallback"]], [("web-01", ["SSH 인증"])])
         self.assertEqual(t.devices_of({}, None, []), {"devices": [], "device_state": "unconfirmed", "device_fallback": []})
 
-    def test_세션을_고르지_못한_R002_는_AWS_센서_세션_기록이다(self):
+    def test_세션을_고르지_못한_R002_는_허니팟_센서_세션_기록이다(self):
         got = t.devices_of({(AWS, None): S, (AWS, "cowrie"): F}, file_spec("v3", "R002"), [])
-        self.assertEqual(got["devices"], [{"id": AWS, "part": None, "label": "AWS 센서", "group": "sensor",
+        self.assertEqual(got["devices"], [{"id": AWS, "part": None, "label": "허니팟 센서", "group": "sensor",
                                            "logs": ["세션 기록"], "basis": S}])
         self.assertEqual(got["device_state"], "rule_scope")
-        self.assertEqual([(d["label"], d["logs"], d["basis"]) for d in got["device_fallback"]], [("Cowrie", ["SSH 세션"], F)])
+        self.assertEqual([(d["label"], d["logs"], d["basis"]) for d in got["device_fallback"]],
+                         [("SSH 허니팟(Cowrie)", ["SSH 세션"], F)])
         # 세션으로 찾은 나눔
         got = t.devices_of({(AWS, "decoy"): C}, file_spec("v3", "R002"), [])
         self.assertEqual([(d["label"], d["logs"]) for d in got["devices"]], [("웹 디코이", ["웹 요청"])])
@@ -1099,7 +1180,7 @@ class DeviceTests(unittest.TestCase):
             ({("web-02", None): C}, file_spec("i2", "R301"), CARDS, [("web02.lab", ["지표 수신"])]),
             ({("console", None): C}, file_spec("a1", "R201"), [], [("관제 콘솔", ["감사 기록"])]),
             ({("data-node", None): S}, file_spec("s1", "R202"), [], [("데이터 노드", ["수집 관문", "원장 가져오기"])]),
-            ({(AWS, "cowrie"): S}, file_spec("v3", "R001"), [], [("Cowrie", ["SSH 세션"])]),
+            ({(AWS, "cowrie"): S}, file_spec("v3", "R001"), [], [("SSH 허니팟(Cowrie)", ["SSH 세션"])]),
             ({(AWS, "decoy"): S}, file_spec("w2", "R103"), [], [("웹 디코이", ["웹 요청"])]),
             # 등록 노드 카드는 hostname 이름 · 보호 대상이고 노드 에이전트 이벤트(sshd. · nginx.)를 본다
             ({("web-02", None): C}, file_spec("n1", "R101"), CARDS, [("web02.lab", ["SSH 인증"])]),
@@ -1109,7 +1190,7 @@ class DeviceTests(unittest.TestCase):
             ({(WEB, None): C, ("console", None): C, (AWS, "decoy"): C}, file_spec("w2", "R101"), [],
              [("web-01", ["SSH 인증"]), ("웹 디코이", ["웹 요청"]), ("관제 콘솔", ["콘솔 기록"])]),
             ({("console", None): C}, file_spec("w2", "R104"), [], [("관제 콘솔", ["콘솔 기록"])]),
-            ({(AWS, "gateway"): C}, file_spec("w2", "R102"), [], [("AWS 관문", ["관문 기록"])]),
+            ({(AWS, "gateway"): C}, file_spec("w2", "R102"), [], [("허니팟 관문", ["관문 기록"])]),
         ]
         for links, s, cards, want in cases:
             with self.subTest(links=sorted(links, key=str)):
@@ -1121,7 +1202,7 @@ class DeviceTests(unittest.TestCase):
     def test_장비_선택지는_행과_관계없이_보호_대상_관측_센서_관제_시스템_순이다(self):
         self.assertEqual(t.device_options(CARDS), [
             {"id": WEB, "label": "web-01", "group": "protected"}, {"id": "web-02", "label": "web02.lab", "group": "protected"},
-            {"id": AWS, "label": "AWS 센서", "group": "sensor"}, {"id": "console", "label": "관제 콘솔", "group": "monitor"},
+            {"id": AWS, "label": "허니팟 센서", "group": "sensor"}, {"id": "console", "label": "관제 콘솔", "group": "monitor"},
             {"id": "data-node", "label": "데이터 노드", "group": "monitor"}])
         self.assertEqual([o["id"] for o in t.device_options([])], [WEB, AWS, "console", "data-node"])
 
@@ -1200,8 +1281,9 @@ def run_row(version, minutes, honeypot):
 
 
 BLOCK_ROW = {"gateway_applied": 3, "gateway_failed": 0, "gateway_unverified": 1, "gateway_stale": 0,
-             "gateway_unrequested": 0, "gateway_removing": 0, "fw_applied": 1, "fw_failed": 2, "fw_unverified": 0,
-             "fw_stale": 0, "fw_unrequested": 0, "fw_removing": 0, "mismatch": 0}
+             "gateway_checking": 1, "gateway_delayed": 0, "gateway_unrequested": 0, "gateway_removing": 0,
+             "fw_applied": 1, "fw_failed": 2, "fw_unverified": 0, "fw_stale": 0, "fw_checking": 0, "fw_delayed": 0,
+             "fw_unrequested": 0, "fw_removing": 0, "mismatch": 0}
 BLOCK_OK = {**BLOCK_ROW, "fw_failed": 0}
 
 
@@ -1274,22 +1356,25 @@ class MonitorTests(unittest.TestCase):
 
     def test_지점별_수는_카드_대응과_같은_정의다(self):
         report = hb("block:fw", kind="block_report", role="fw", checked=1)
-        blocks = {**BLOCK_ROW, "fw_unverified": 2, "fw_stale": 1, "gateway_unrequested": 3, "gateway_removing": 1}
+        blocks = {**BLOCK_ROW, "fw_unverified": 2, "fw_stale": 1, "fw_checking": 1, "fw_delayed": 1, "gateway_unrequested": 3,
+                  "gateway_removing": 1}
         # 생존 신호 표를 읽을 수 없으면 집행 보고를 모르니 적용 · 실패 · 불일치를 미확인에 합친다(옛 '적용 확인' 을 초록으로 두지 않는다)
         #   집행기가 멈춘 것이 아니라 모르는 것이라 unreadable 로 가른다(화면은 '집행기 멈춤' 이 아니라 '확인 불가').
         #   미요청 · 빠짐 확인 전(이슈 #77)은 합치지 않는다
         self.assertEqual(t.point_counts("gateway", blocks, None, NOW, False),
-                         {"point": "gateway", "label": "AWS 관문", "applied": 0, "failed": 0, "unverified": 4, "stale": 0,
-                          "unrequested": 3, "removing": 1, "stalled": "집행 보고를 읽을 수 없음 · 적용 여부 확인 불가",
-                          "unreadable": True})
+                         {"point": "gateway", "label": "허니팟 관문", "applied": 0, "failed": 0, "unverified": 4, "stale": 0,
+                          "checking": 0, "delayed": 0, "unrequested": 3, "removing": 1,
+                          "stalled": "집행 보고를 읽을 수 없음 · 적용 여부 확인 불가", "unreadable": True})
         self.assertEqual(t.point_counts("fw", blocks, report, NOW, True),
                          {"point": "fw", "label": "내부 방화벽", "applied": 1, "failed": 2, "unverified": 2, "stale": 1,
-                          "unrequested": 0, "removing": 0, "stalled": None, "unreadable": False})
+                          "checking": 1, "delayed": 1, "unrequested": 0, "removing": 0, "stalled": None, "unreadable": False})
         # 집행기 확인이 없으면 적용 · 실패를 미확인에 합친다
         self.assertEqual(t.point_counts("gateway", blocks, None, NOW, True),
-                         {"point": "gateway", "label": "AWS 관문", "applied": 0, "failed": 0, "unverified": 4, "stale": 0,
-                          "unrequested": 3, "removing": 1, "stalled": "집행기 확인 기록 없음", "unreadable": False})
-        keys = ("applied", "failed", "unverified", "stale", "unrequested", "removing", "stalled", "unreadable")
+                         {"point": "gateway", "label": "허니팟 관문", "applied": 0, "failed": 0, "unverified": 4, "stale": 0,
+                          "checking": 0, "delayed": 0, "unrequested": 3, "removing": 1, "stalled": "집행기 확인 기록 없음",
+                          "unreadable": False})
+        keys = ("applied", "failed", "unverified", "stale", "checking", "delayed", "unrequested", "removing", "stalled",
+                "unreadable")
         for tid, point in (("aws-sensor", "gateway"), ("web-01", "fw")):
             for reports, available in (({}, True), ({"fw": report}, True), ({}, False)):
                 with self.subTest(target=tid, reports=list(reports), available=available):
@@ -1319,7 +1404,7 @@ class MonitorTests(unittest.TestCase):
         paths = t.detect_paths([run_row("v3", 20, True)], NOW)
         items = self.items(heartbeats=rows, blocks=BLOCK_ROW, mismatch=1, readable=False, paths=paths)
         self.assertEqual([(x["key"], x["level"], x["label"]) for x in items], [
-            ("loader", "alert", "적재기"), ("enforcer:gateway", "alert", "AWS 관문 집행기"),
+            ("loader", "alert", "적재기"), ("enforcer:gateway", "alert", "허니팟 관문 집행기"),
             ("enforcer:fw", "alert", "내부 방화벽 집행기"), ("detect:honeypot", "alert", "허니팟 탐지(5분)"),
             ("detect:bridge", "alert", "노드 · 관제 탐지(1분)"), ("gateway_mismatch", "alert", "관문 불일치"),
             ("nodes", "unknown", "노드 수신")])
@@ -1391,7 +1476,7 @@ class MonitorTests(unittest.TestCase):
         card = t.sensor_collection(NOW, True, rows, LOGS_ACTIVE)
         self.assertEqual(card["state"], "no_signal")
         self.assertEqual(self.items(heartbeats=rows, blocks=BLOCK_OK, node_rows=web), [
-            {"key": "sensor", "level": "alert", "label": "AWS 센서 수신", "reason": card["reason"],
+            {"key": "sensor", "level": "alert", "label": "허니팟 센서 수신", "reason": card["reason"],
              "at": (NOW - timedelta(minutes=20)).isoformat(), "count": None}])
         # 관문 업로더 행이 있으면 까닭 끝의 관문 기록 신호 시각까지 카드와 같은 글이다
         rows = [hb("uploader:i-01", seen=20), hb("uploader:i-0g", role="gateway", seen=4), *self.fresh()[1:]]
@@ -1420,7 +1505,7 @@ class MonitorTests(unittest.TestCase):
         gw = hb("uploader:i-0g", role="gateway", seen=20, checked=1)
         items = self.items(heartbeats=[*self.fresh(), gw], blocks=BLOCK_OK, node_rows=web)
         self.assertEqual([(x["key"], x["level"], x["label"], x["reason"], x["at"]) for x in items], [
-            ("gateway_uploader", "alert", "AWS 관문 기록 수신",
+            ("gateway_uploader", "alert", "허니팟 관문 기록 수신",
              "관문 기록 신호 20분 전 · 적재기 확인 1분 전 · 확인 때 이미 15분 넘게 새 신호 없음",
              (NOW - timedelta(minutes=20)).isoformat())])
         # 적재기가 더는 확인하지 않는 관문 행뿐이면(구성에서 뺀 호스트의 남은 행) 싣지 않는다. 적재기는 센서 행으로 확인 중이다.
@@ -1441,7 +1526,7 @@ class MonitorTests(unittest.TestCase):
         web = [node_row("web-01")]
         blocks = {**BLOCK_OK, "gateway_stale": 1, "fw_stale": 2}
         self.assertEqual(self.items(blocks=blocks, node_rows=web), [
-            {"key": "point_stale:gateway", "level": "alert", "label": "AWS 관문 불일치", "reason": None, "at": None, "count": 1},
+            {"key": "point_stale:gateway", "level": "alert", "label": "허니팟 관문 불일치", "reason": None, "at": None, "count": 1},
             {"key": "point_stale:fw", "level": "alert", "label": "내부 방화벽 불일치", "reason": None, "at": None, "count": 2}])
         # 관문 불일치가 있으면 관문 지점 불일치는 그 항목 하나다. 순서는 적용 실패 → 지점 불일치 → 관문 불일치
         items = self.items(blocks={**blocks, "fw_failed": 1}, mismatch=1, node_rows=web)
@@ -1477,6 +1562,74 @@ class MonitorTests(unittest.TestCase):
         # 보고 행이 없으면 모름이다(집행기 판정과 따로 넘겼을 때)
         self.assertEqual([(x["key"], x["level"], x["reason"]) for x in self.items(blocks=BLOCK_OK, node_rows=web, reports={})],
                          [("report:gateway", "unknown", "보고 기록 없음"), ("report:fw", "unknown", "보고 기록 없음")])
+
+    def test_카드_보고_문제는_띠_지점_보고와_같은_판정이다(self):
+        # 이슈 #84 결정 1: 접힌 줄 '보고 문제' 배지(response.report_issue)는 띠 report:<지점> 의 reason 과 같다(15분 오래됨 · 읽기 문제
+        #   5분 이어짐). 집행기가 멈추면 둘 다 없다(띠는 enforcer:<지점>)
+        web = [node_row("web-01")]
+        base = [r for r in self.fresh() if r["source"] != "block:fw"]
+        fw = hb("block:fw", kind="block_report", role="fw", seen=16)
+        for name, report, want in [
+                ("16분 전", fw, "마지막 보고 16분 전"),
+                ("15분 정각", fw | {"seen_at": NOW - timedelta(minutes=15)}, None),
+                ("문제 4분", fw | {"seen_at": NOW - timedelta(minutes=4), "problem": "RequestTimeout"}, None),
+                ("문제 6분", fw | {"seen_at": NOW - timedelta(minutes=6), "problem": "보고 서명이 틀림"},
+                 "마지막 보고 6분 전 · 보고 서명이 틀림"),
+                ("받은 보고 없음", fw | {"seen_at": None, "problem": "보고 파일 없음"}, "받은 보고 없음 · 보고 파일 없음"),
+                ("집행기 멈춤", fw | {"checked_at": NOW - timedelta(minutes=11)}, None)]:
+            with self.subTest(name):
+                rows = [*base, report]
+                band = {x["key"]: x["reason"] for x in self.items(heartbeats=rows, blocks=BLOCK_OK, node_rows=web)}
+                card = t.response_block("web-01", BLOCK_OK, 0, t.reports_of(rows), NOW, True)
+                self.assertEqual((card["report_issue"], band.get("report:fw")), (want, want))
+        self.assertIsNone(t.response_block("web-01", BLOCK_OK, 0, t.reports_of(base + [fw]), NOW, False)["report_issue"])
+        self.assertIsNone(t.response_block("console", BLOCK_OK, 0, t.reports_of(base + [fw]), NOW, True)["report_issue"])
+
+    def test_확인_중과_확인_지연은_미확인을_나누고_집행기_5분_기준과_같다(self):
+        # 이슈 #84 결정 6: 확인 전(pending · 기록 없음)이 정상 반영 시간(5분) 안이면 확인 중, 넘었거나 지점 불일치면 확인 지연.
+        #   5분은 집행기 point_state '5분 넘게 반영되지 않음'(enforcer STALE)과 같은 기준이다. 시각은 enforcement.<지점>.since,
+        #   기록이 없거나 요청 지점 상태(집행기 POINT_STATES, 남은 removing 은 아님)가 아니거나 시각 글자가 아니면 요청 시각(created_at)이고,
+        #   캐스트 오류가 나지 않게 먼저 가른다
+        root = Path(__file__).resolve().parents[1]
+        tree = ast.parse((root / "enforcer" / "block_enforcer.py").read_text())
+
+        def const(name):
+            return next(n.value for n in tree.body
+                        if isinstance(n, ast.Assign) and any(getattr(x, "id", None) == name for x in n.targets))
+        self.assertEqual(eval(ast.unparse(const("STALE")), {"timedelta": timedelta}).total_seconds(), t.APPLY_WAIT)   # noqa: S307
+        self.assertEqual(ast.literal_eval(const("POINT_STATES")), t.POINT_STATES)
+        for p in ("gateway", "fw"):
+            with self.subTest(point=p):
+                since = f"enforcement -> '{p}' ->> 'since'"
+                self.assertIn(f"coalesce(CASE WHEN enforcement -> '{p}' ->> 'state' IN ('pending', 'confirmed', 'failed', 'stale')"
+                              f" AND pg_input_is_valid({since}, 'timestamptz') THEN ({since})::timestamptz END, created_at)",
+                              t.BLOCKS_SQL)
+                self.assertIn(f"AS {p}_checking", t.BLOCKS_SQL)
+                self.assertIn(f"AS {p}_delayed", t.BLOCKS_SQL)
+                self.assertIn(f"coalesce(enforcement -> '{p}' ->> 'state', '') NOT IN ('confirmed', 'failed', 'stale')",
+                              t.BLOCKS_SQL)
+        self.assertIn(f"> $1::timestamptz - make_interval(secs => {t.APPLY_WAIT}), false)", t.BLOCKS_SQL)
+
+    def test_5분_넘은_확인_전은_지점별_확인_지연이고_그_지점_보고가_있으면_뺀다(self):
+        # 이슈 #84 결정 6 · 카드 ⇒ 띠: 카드 '적용 확인 지연'(delayed) 가운데 지점 불일치(point_stale)를 뺀 수다. 집행기가 보고를 판정하지
+        #   못한 회차(보류)에는 직전 대기와 그 시각이 남는다. 그 지점 보고 항목이 있으면 같은 현상이라 싣지 않고, 집행기가 멈춘 지점은 0 이다
+        web = [node_row("web-01")]
+        blocks = {**BLOCK_OK, "gateway_unverified": 3, "gateway_stale": 1, "gateway_checking": 0, "gateway_delayed": 3,
+                  "fw_unverified": 1, "fw_checking": 0, "fw_delayed": 1}
+        self.assertEqual([(x["key"], x["level"], x["label"], x["reason"], x["count"]) for x in self.items(blocks=blocks, node_rows=web)], [
+            ("point_stale:gateway", "alert", "허니팟 관문 불일치", None, 1),
+            ("point_delayed:gateway", "alert", "허니팟 관문 적용 확인 지연", None, 2),
+            ("point_delayed:fw", "alert", "내부 방화벽 적용 확인 지연", None, 1)])
+        # 확인 중(5분 안)만이면 없다
+        self.assertEqual(self.items(blocks={**BLOCK_OK, "fw_unverified": 2, "fw_checking": 2}, node_rows=web), [])
+        # 그 지점 보고 항목이 있으면 그 항목 하나다(다른 지점은 그대로)
+        rows = [*(r for r in self.fresh() if r["source"] != "block:fw"), hb("block:fw", kind="block_report", role="fw", seen=16)]
+        self.assertEqual([x["key"] for x in self.items(heartbeats=rows, blocks=blocks, node_rows=web)],
+                         ["point_stale:gateway", "report:fw", "point_delayed:gateway"])
+        # 집행기가 멈춘 지점은 나누지 않아(point_counts) 집행기 항목만이다
+        rows = [r for r in self.fresh() if r["source"] != "block:fw"]
+        self.assertEqual([x["key"] for x in self.items(heartbeats=rows, blocks=blocks, node_rows=web)],
+                         ["enforcer:fw", "point_stale:gateway", "point_delayed:gateway"])
 
     def test_웹_로그_적재와_자원_지표는_보호_대상별이다(self):
         rows = [node_row("web-01"), node_row("web-02", reception="silent", seen=12), node_row("web-03")]

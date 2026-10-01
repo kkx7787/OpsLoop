@@ -478,6 +478,11 @@ class ReportsDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(set(web["response"]), {"point_label", "applied", "failed", "unverified", "unrequested", "removing",
                                                 "exempt", "stalled"})
         self.assertEqual(set(web), {"id", "label", "collection", "response"})
+        # 콘솔 행(이슈 #76): 응답 중 그대로이고 까닭은 출력 시각의 DB 연결이다. 시험 연결에는 콘솔 이름표가 없어 둘 다 없음이다
+        console = next(x for x in section["targets"] if x["id"] == "console")
+        self.assertEqual(console["collection"], {"state": "responding", "reason": "출력 시각의 DB 연결: 콘솔 A 없음 · 콘솔 B 없음"
+                                                                                  "(평소 꺼 두는 예비)"})
+        self.assertEqual(next(x for x in section["targets"] if x["id"] == "aws-sensor")["label"], "허니팟 센서")
         # 실제 이벤트만 · until 과 같은 시각 제외 · 감사 · 로그인 기록도 센서로 센다
         self.assertEqual(section["sensors"], [{"sensor": "audit", "events": 19}, {"sensor": "console", "events": 3},
                                               {"sensor": "cowrie", "events": 2}, {"sensor": "decoy", "events": 1}])

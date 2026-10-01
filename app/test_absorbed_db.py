@@ -49,7 +49,7 @@ GUARD = """
     END $$;
     CREATE TRIGGER blocklist_guard BEFORE INSERT OR UPDATE OF actor_ip ON blocklist
         FOR EACH ROW EXECUTE FUNCTION pg_temp.blocklist_guard();
-    INSERT INTO block_exempt (cidr, note) VALUES ('10.0.0.0/8', '사설 · AWS VPC'), ('15.164.37.49/32', 'AWS 관문 EIP'),
+    INSERT INTO block_exempt (cidr, note) VALUES ('10.0.0.0/8', '사설 · AWS VPC'), ('15.164.37.49/32', '허니팟 관문 EIP'),
         ('192.168.0.0/16', '사설 · 관리망 · 서비스망');
 """
 
@@ -448,7 +448,7 @@ class AbsorbedDatabaseTests(unittest.IsolatedAsyncioTestCase):
     async def test_console_block_refused_for_exempt_net(self):
         # 인프라 주소(R202 사건의 web-01 · 관문 EIP)는 400 과 사유. 차단 · 조치 · 상태 변경 모두 남지 않는다
         for ip, where in (("192.168.50.21", "192.168.0.0/16(사설 · 관리망 · 서비스망)"),
-                          ("15.164.37.49", "15.164.37.49/32(AWS 관문 EIP)")):
+                          ("15.164.37.49", "15.164.37.49/32(허니팟 관문 EIP)")):
             key = f"R202|s1|{ip}|x"
             await self.incident(key, ip)
             with self.subTest(ip=ip), self.assertRaises(main.HTTPException) as error:
@@ -468,7 +468,7 @@ class AbsorbedDatabaseTests(unittest.IsolatedAsyncioTestCase):
         await self.incident("R202|s1|15.164.37.49|x", "15.164.37.49")
         with patch.object(main.app.state, "pool", self.pool, create=True):
             d = await main.get_incident("R202|s1|15.164.37.49|x")
-            self.assertEqual(d["actor"]["exempt"], {"cidr": "15.164.37.49/32", "note": "AWS 관문 EIP"})
+            self.assertEqual(d["actor"]["exempt"], {"cidr": "15.164.37.49/32", "note": "허니팟 관문 EIP"})
             self.assertIsNone(d["actor"]["blocked"])
             await self.conn.execute("""INSERT INTO blocklist (actor_ip, reason, incident_key, expires_at, method,
                 enforced_at, enforce_note, requested_by) VALUES ($1, 'console', $2, now() + interval '1 hour', 'nft',
@@ -504,7 +504,7 @@ class AbsorbedDatabaseTests(unittest.IsolatedAsyncioTestCase):
                          "15.164.37.49 는 차단 금지 대역에 들어 차단하지 않습니다. 인프라 · 사설 · 예약 주소는 막지 않습니다")
         self.assertTrue(await absorbed_mod.has_exempt_table(self.conn))
         self.assertEqual(await absorbed_mod.exempt_of(self.conn, "15.164.37.49"),
-                         {"cidr": "15.164.37.49/32", "note": "AWS 관문 EIP"})
+                         {"cidr": "15.164.37.49/32", "note": "허니팟 관문 EIP"})
 
     async def test_absorbed_block_skips_db_exempt_and_net_rows(self):
         # 코드 상수에 없는 DB 금지 대역(관문 EIP)과 대역 주소는 미리 빼 트리거에 걸리지 않는다(한 곳 때문에 전체가 실패하지 않는다)

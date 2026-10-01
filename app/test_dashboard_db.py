@@ -232,17 +232,20 @@ class DashboardDatabaseTests(unittest.IsolatedAsyncioTestCase):
                 ('block:gateway', 'block_report', 'gateway', 'i-0fedcba9876543210', now(), now(), NULL),
                 ('block:fw', 'block_report', 'fw', 'fw-opsloop', now(), now(), NULL)""")
             data = await main.summary()
+        # 미확인은 확인 중(방금 요청한 대기 · 기록 없음) · 확인 지연(지점 불일치)으로도 나눈다(이슈 #84 결정 6)
         self.assertEqual(data["blocks_by_point"], [
-            {"point": "gateway", "label": "AWS 관문", "applied": 2, "failed": 1, "unverified": 2, "stale": 0,
-             "unrequested": 0, "removing": 1, "stalled": None, "unreadable": False},
+            {"point": "gateway", "label": "허니팟 관문", "applied": 2, "failed": 1, "unverified": 2, "stale": 0,
+             "checking": 2, "delayed": 0, "unrequested": 0, "removing": 1, "stalled": None, "unreadable": False},
             {"point": "fw", "label": "내부 방화벽", "applied": 2, "failed": 1, "unverified": 3, "stale": 1,
-             "unrequested": 0, "removing": 0, "stalled": None, "unreadable": False}])
+             "checking": 2, "delayed": 1, "unrequested": 0, "removing": 0, "stalled": None, "unreadable": False}])
         # 생존 신호 표를 읽을 수 없으면 집행 보고를 모르니 옛 '적용 확인' 을 믿지 않고 모두 미확인이다(#82).
         #   집행기가 멈춘 것이 아니라 모르는 것이라 unreadable 로 가른다. 미요청은 합치지 않는다
-        self.assertEqual([(p["applied"], p["failed"], p["unverified"], p["stale"], p["unrequested"], p["removing"],
-                           p["stalled"], p["unreadable"]) for p in unread["blocks_by_point"]],
-                         [(0, 0, 5, 0, 0, 1, "집행 보고를 읽을 수 없음 · 적용 여부 확인 불가", True),
-                          (0, 0, 6, 0, 0, 0, "집행 보고를 읽을 수 없음 · 적용 여부 확인 불가", True)])
+        self.assertEqual([(p["applied"], p["failed"], p["unverified"], p["stale"], p["checking"], p["delayed"],
+                           p["unrequested"], p["removing"], p["stalled"], p["unreadable"]) for p in unread["blocks_by_point"]],
+                         [(0, 0, 5, 0, 0, 0, 0, 1, "집행 보고를 읽을 수 없음 · 적용 여부 확인 불가", True),
+                          (0, 0, 6, 0, 0, 0, 0, 0, "집행 보고를 읽을 수 없음 · 적용 여부 확인 불가", True)])
+        for point in data["blocks_by_point"]:
+            self.assertEqual(point["checking"] + point["delayed"], point["unverified"])
         # 192.0.2.5 는 관문 불일치 쪽지가 있어도 관문 실패가 먼저라 실패다. 192.0.2.1 은 관문 열(enforced_at)이 비어 대기다
         self.assertEqual((data["blocked_ips"], data["blocks"]), (8, {"enforced": 1, "pending": 3, "excluded": 2,
                                                                      "mismatch": 0, "failed": 2}))

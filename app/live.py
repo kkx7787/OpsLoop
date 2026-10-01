@@ -21,6 +21,10 @@
   닫았을 수 있어서다(DB_KEEPALIVE). 옛 연결은 다음에 빌릴 때 닫히고 새로 붙는다. 다시 붙으면 모든 화면에 {"type": "resync"} 를 보낸다. 끊긴 동안 놓친 통보는 화면이 전부 다시 받아 메운다.
   /health 에는 넣지 않는다. DB 가 잠깐 흔들려도 두 콘솔이 함께 빠지지 않게 한다. 상태는 로그 한 줄로 남긴다.
   기동 때 첫 연결이 안 되면 예외로 기동을 실패시킨다(풀 만들기와 같다). 헬스체크가 빠져 다른 콘솔이 받는다.
+
+이름표
+  콘솔의 DB 연결(풀 · 이 LISTEN 연결)은 application_name 을 콘솔 이름(CONSOLE_NAME)으로 단다(db_settings, 이슈 #76). 상태판이
+  pg_stat_activity 에서 콘솔 역할의 그 이름 연결이 있는지 본다(targets.CONSOLE_LINKS_SQL).
 """
 import asyncio
 import json
@@ -63,6 +67,13 @@ def console_name() -> str:
 
 
 CONSOLE_NAME = console_name()
+
+
+def db_settings() -> dict:
+    """콘솔 DB 연결(풀 · LISTEN)의 서버 설정: keepalive(DB_KEEPALIVE) + 이름표 application_name = 콘솔 이름(이슈 #76).
+    DB 가 63바이트에서 자르지만 판정에 쓰는 이름(opsloop-console-a · b)은 짧은 ASCII 다. 시험이 CONSOLE_NAME 을 바꿔 끼울 수
+    있게 부를 때마다 만든다. DB_KEEPALIVE 는 그대로 둔다."""
+    return {**DB_KEEPALIVE, "application_name": CONSOLE_NAME}
 
 
 def event_payload(kind: str, incident_key: str, row_id) -> str:
@@ -135,7 +146,7 @@ hub = Hub()
 
 async def _asyncpg_connect(dsn):
     import asyncpg
-    return await asyncpg.connect(dsn, timeout=CONNECT_TIMEOUT, server_settings=DB_KEEPALIVE)
+    return await asyncpg.connect(dsn, timeout=CONNECT_TIMEOUT, server_settings=db_settings())
 
 
 class Listener:

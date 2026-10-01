@@ -8,6 +8,7 @@ DB 없이 가짜 연결로 본다. 실제 PostgreSQL 로 보는 두 연결 · �
   - 감시: 종료 알림 · SELECT 1 실패 · 시간 초과로 끊김을 안다. 1초 → 2배 → 최대 5초로 다시 붙고 resync 를 보낸다(이슈 #56).
     옛 연결의 늦은 종료 알림은 무시한다. 끊김 · 실패 · 재연결을 로그 한 줄씩 남긴다(주소 · 비밀번호는 없다)
   - 기동: 첫 연결이 안 되면 예외로 기동을 실패시키고 풀을 닫는다. 붙으면 두 채널을 듣고 종료 때 닫는다
+  - 이름표(이슈 #76): 풀 · LISTEN 연결 모두 keepalive 네 값에 application_name = 콘솔 이름을 더해 붙는다. DB_KEEPALIVE 는 그대로다
 """
 import asyncio
 import json
@@ -158,6 +159,14 @@ class ConsoleNameTest(unittest.TestCase):
             self.assertEqual(live.console_name(), "x" * 64)
         with mock.patch.dict(os.environ, {"OPSLOOP_WORKER": ""}):
             self.assertEqual(live.console_name(), socket.gethostname()[:64])
+
+    def test_DB_설정은_keepalive_에_콘솔_이름표를_더한다(self):
+        # 이슈 #76: 상태판이 pg_stat_activity 에서 이 이름표로 콘솔 연결을 찾는다. keepalive 상수는 그대로 둔다
+        self.assertNotIn("application_name", live.DB_KEEPALIVE)
+        for name in ("opsloop-console-a", "opsloop-console-b"):
+            with mock.patch.object(live, "CONSOLE_NAME", name):
+                self.assertEqual(live.db_settings(), {**live.DB_KEEPALIVE, "application_name": name})
+        self.assertNotIn("application_name", live.DB_KEEPALIVE)
 
     def test_notifier_default_name_is_the_console_name(self):
         import notifier
@@ -393,10 +402,20 @@ class LifespanTest(unittest.IsolatedAsyncioTestCase):
                 mock.patch.object(self.main.asyncpg, "connect", connect):
             async with self.main.lifespan(self.main.app):
                 pass
-        self.assertEqual(seen["pool"]["server_settings"], live.DB_KEEPALIVE)
+        # 이름표(application_name)는 콘솔 이름이다(이슈 #76). 풀 · 통보 연결이 같은 설정이다
+        want = {**live.DB_KEEPALIVE, "application_name": live.CONSOLE_NAME}
+        self.assertEqual(seen["pool"]["server_settings"], want)
         self.assertEqual((seen["pool"]["min_size"], seen["pool"]["max_size"]), (2, 10))
-        self.assertEqual(seen["listen"]["server_settings"], live.DB_KEEPALIVE)
+        self.assertEqual(seen["listen"]["server_settings"], want)
         self.assertEqual(seen["listen"]["timeout"], live.CONNECT_TIMEOUT)
+        # 콘솔 B 로 기동하면 B 이름표로 붙는다
+        seen.clear()
+        with mock.patch.object(live, "CONSOLE_NAME", "opsloop-console-b"), \
+                mock.patch.object(self.main.asyncpg, "create_pool", create_pool), \
+                mock.patch.object(self.main.asyncpg, "connect", connect):
+            async with self.main.lifespan(self.main.app):
+                pass
+        self.assertEqual({seen[k]["server_settings"]["application_name"] for k in ("pool", "listen")}, {"opsloop-console-b"})
 
     async def test_통보가_다시_붙으면_풀_연결을_새_세대로_바꾼다(self):
         # DB 가 keepalive 로 닫은 풀 연결을 끊긴 동안 모르고 들고 있다 빌려주지 않게 한다(이슈 #56)

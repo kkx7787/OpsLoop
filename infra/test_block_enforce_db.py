@@ -2,8 +2,10 @@
 """차단 자동 집행(이슈 #47) DB 시험.  python3 infra/test_block_enforce_db.py
 
 DB 없이 도는 글자 시험: 마이그레이션(infra/migrations/20260927_block_enforce.sql)이 schema.sql 의 audit_blocklist ·
-trg_audit_blocklist 문장과 '차단 집행 (이슈 #47)' 블록을 글자 그대로 담는지, 블록이 역할 블록 뒤(파일 끝)에 있는지, 차단 금지
-대역 초기값 · 권한 줄이 계약과 같은지, verify-db-roles.sh 에 집행 역할 줄이 있는지, R201(a1) 이 새 감사 이벤트를 세지 않는지 본다.
+trg_audit_blocklist 문장과 '차단 집행 (이슈 #47)' 블록을 글자 그대로 담는지(관문 EIP 메모 한 줄과 머리 주석의 관문 이름 한 줄만
+다르다. 이슈 #78 데이터 마이그레이션 20261004_honeypot_names.sql 이 바꾼 초기값과 schema.sql 주석이다), 블록이 역할 블록 뒤
+(파일 끝)에 있는지, 차단 금지 대역 초기값 · 권한 줄이 계약과 같은지, verify-db-roles.sh 에 집행 역할 줄이 있는지, R201(a1) 이 새 감사
+이벤트를 세지 않는지 본다.
 
 OPSLOOP_TEST_DATABASE_URL 이 슈퍼유저 연결이면 이름이 무작위인 데이터베이스를 만들어 schema.sql 전체와 마이그레이션을 두 번씩
 적용하고(역할 이름은 무작위로 바꾼다) 트리거 · 함수 · 권한을 실제로 돌린다. 역할로 바꿔 돌리는 것은
@@ -56,6 +58,12 @@ GRANTS = [
     "GRANT EXECUTE ON FUNCTION note_block_expired(inet, timestamptz) TO opsloop_enforcer;",
     "GRANT SELECT ON block_exempt TO opsloop_console;",
 ]
+# 초기값 가운데 적용된 이 마이그레이션과 schema.sql 이 다른 한 줄(이슈 #78). 옛 DB 는 20261004_honeypot_names.sql 이 바꾼다
+EIP_OLD = "    ('15.164.37.49/32', 'AWS 관문 EIP'),"
+EIP_NEW = "    ('15.164.37.49/32', '허니팟 관문 EIP'),"
+# 머리 주석 가운데 관문 이름만 바꾼 한 줄(이슈 #78). 적용된 마이그레이션은 옛 글자 그대로다
+NAME_OLD = "--   S3 block/v1/latest.json 으로 AWS 관문에 넘기고, 관문이 forward 체인(허니팟 DNAT 유입)에서 막는다."
+NAME_NEW = "--   S3 block/v1/latest.json 으로 허니팟 관문에 넘기고, 관문이 forward 체인(허니팟 DNAT 유입)에서 막는다."
 NEW_EVENTS = ["console.block.created", "console.block.rearmed", "console.block.enforced", "console.block.unenforced",
               "console.block.expired"]
 R201_EVENTS = ["console.block.released", "console.block.shortened"]
@@ -188,7 +196,11 @@ class BlockEnforceTextTest(unittest.TestCase):
         schema, mig = read(SCHEMA), read(MIGRATION)
         head, body = mig.split("\nBEGIN;\n", 1)
         self.assertTrue(all(ln.startswith("--") for ln in head.splitlines()))       # 머리는 주석뿐이다
-        self.assertEqual(body.rstrip("\n"), audit_sql(schema) + "\n" + block47(schema) + "\nCOMMIT;")
+        # 관문 EIP 메모 한 줄과 머리 주석의 관문 이름 한 줄만 다르다(schema.sql 은 새 글자, 적용된 마이그레이션은 옛 글자 그대로)
+        for new, old in ((EIP_NEW, EIP_OLD), (NAME_NEW, NAME_OLD)):
+            self.assertEqual((schema.count(new), schema.count(old), mig.count(old), mig.count(new)), (1, 0, 1, 0))
+        self.assertEqual(body.rstrip("\n"),
+                         (audit_sql(schema) + "\n" + block47(schema) + "\nCOMMIT;").replace(EIP_NEW, EIP_OLD).replace(NAME_NEW, NAME_OLD))
         self.assertEqual(schema.count(AUDIT_START), 1)                              # 감사 함수는 한 벌뿐이다
 
     def test_집행_블록은_역할_블록과_CTI_블록_뒤_파일_끝에_있다(self):
