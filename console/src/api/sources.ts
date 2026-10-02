@@ -2,7 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import type { IncidentStatus, Severity, Verdict } from '@/lib/domain'
 import { codePointLength } from '@/lib/untrusted'
 import { api } from './client'
-import type { ActorBlock, BlockExempt } from './incidents'
+import type { ActorBlock, BlockExempt, IncidentBase } from './incidents'
 
 /**
  * 출발지 분석(S-09 · 이슈 #58). 서버 계약은 app/sources.py. 응답 필드 이름은 서버 그대로 둔다(snake_case).
@@ -135,8 +135,8 @@ export interface SourcesResult {
   items: SourceSummary[]
 }
 
-/** 이 출발지의 사건 한 건(사건 흐름) */
-export interface SourceIncident {
+/** 이 출발지의 사건 한 건(사건 흐름). 장비(devices · device_state · device_fallback)는 사건 목록 항목과 같은 계산 · 모양이다 */
+export interface SourceIncident extends Pick<IncidentBase, 'devices' | 'device_state' | 'device_fallback'> {
   incident_key: string
   rule_id: string
   /** 같은 출발지 · 같은 시각의 사건이 규칙 버전(v1 · v2 …)마다 따로 있을 수 있어 함께 보인다 */

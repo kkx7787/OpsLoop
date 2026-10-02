@@ -16,6 +16,8 @@
   - 지문은 전용 열이 없어 이벤트에서 꺼낸다(FINGERPRINTS, 운영 DB 에서 확인한 문구). 흔한 라이브러리끼리 겹치므로 같은 지문이
     같은 행위자라는 뜻은 아니다. UA · SSH 버전은 공격자가 넣은 글자라 512자로 자르기만 하고 화면이 비신뢰 글자로 그린다
   - 표 · 권한이 없으면(마이그레이션 전 · 역할 블록만 다시 적용한 DB) 그 값은 null 이다. 화면이 '확인 불가' 로 그린다
+  - 사건 흐름의 장비는 사건 목록 · 상세와 같은 계산(targets.incident_devices)이다. 요약 '노린 대상' 은 이벤트 발생원 기준이라
+    따로 센다(targets_of)
   - 차단 행은 사건 상세(main.get_incident 의 blocked)와 같은 모양이다. 감사 기록 기반 차단 이력은 싣지 않는다(/api/audit 는
     관리자 전용이라 모든 역할에 보이면 노출 범위가 바뀐다). 조치 이력은 이 주소 사건의 block_ip · unblock_ip 뿐이다
 """
@@ -107,14 +109,15 @@ BLOCKS_SQL = """
 HAS_EVENTS_SQL = f"SELECT EXISTS (SELECT 1 FROM events WHERE src_ip = $1::inet AND {NO_INCIDENT_EVENTS})"
 LAST_SEEN_SQL = f"SELECT max(ts) FROM events WHERE src_ip = $1::inet AND {NO_INCIDENT_EVENTS}"
 
-# 상세 사건 흐름. $1 주소 · $2 행 수
-DETAIL_INCIDENTS_SQL = """
+# 상세 사건 흐름. 주소 · 근거 열(EVIDENCE_COLUMNS)은 장비 계산(targets.incident_devices)에 쓴다. $1 주소 · $2 행 수
+DETAIL_INCIDENTS_SQL = f"""
     WITH latest AS (
         SELECT DISTINCT ON (v.incident_key) v.incident_key, v.verdict
         FROM verdicts v JOIN incidents i ON i.incident_key = v.incident_key
         WHERE i.actor_ip = $1::inet
         ORDER BY v.incident_key, v.created_at DESC, v.id DESC)
-    SELECT i.incident_key, i.rule_id, i.rule_version, i.rule_name, i.severity, i.status, i.first_ts, i.last_ts, i.target, l.verdict
+    SELECT i.incident_key, i.rule_id, i.rule_version, i.rule_name, i.severity, i.status, i.first_ts, i.last_ts, i.target, l.verdict,
+           host(i.actor_ip) AS actor_ip, {targets.EVIDENCE_COLUMNS}
     FROM incidents i LEFT JOIN latest l USING (incident_key)
     WHERE i.actor_ip = $1::inet
     ORDER BY i.first_ts, i.incident_key LIMIT $2"""
@@ -211,6 +214,13 @@ def source_item(row, seen, block, in_nets: bool, exempt_readable: bool, nodes=No
             "block": block_of(block)}
 
 
+def incident_item(row, devices: dict) -> dict:
+    """사건 흐름 한 행. 장비(devices · device_state · device_fallback)는 사건 목록 항목과 같은 모양이다.
+    근거 열(sensors · sessions)은 목록처럼 싣지 않는다."""
+    item = {k: v for k, v in dict(row).items() if k not in ("sensors", "sessions")}
+    return item | {"first_ts": cti.iso(row["first_ts"]), "last_ts": cti.iso(row["last_ts"])} | devices
+
+
 def checkers_of(readable: bool, heartbeats, as_of) -> dict:
     """집행기(관문 · 내부 방화벽) 확인이 멈췄는가. 멈췄으면 지점 결과(enforcement)의 적용 확인을 믿지 않는다
     (targets.response_block 과 같은 기준: 기록이 없거나 10분 넘게 확인이 없으면 멈춤). 생존 신호 표를 읽을 수 없으면 null."""
@@ -301,6 +311,7 @@ async def source_detail(request: Request, ip: str = Query(..., max_length=64)):
         summary = (await source_items(c, [row], as_of))[0] if row else None
         last_seen = summary["last_seen"] if summary else cti.iso(await c.fetchval(LAST_SEEN_SQL, addr))
         incidents = await c.fetch(DETAIL_INCIDENTS_SQL, addr, DETAIL_INCIDENTS)
+        devices, _ = await targets.incident_devices(c, incidents, as_of)
         kinds = await c.fetch(EVENT_KINDS_SQL, addr, DETAIL_KINDS, row is not None)
         fingerprints = {kind: [{"value": r["value"], "count": r["count"]}
                                for r in await c.fetch(fp_counts_sql(kind), addr, DETAIL_FINGERPRINTS)]
@@ -318,8 +329,7 @@ async def source_detail(request: Request, ip: str = Query(..., max_length=64)):
         checks = await checkers(c, as_of)
     return {
         "as_of": cti.iso(as_of), "ip": addr, "summary": summary, "last_seen": last_seen, "checkers": checks,
-        "incidents": [{**dict(r), "first_ts": cti.iso(r["first_ts"]), "last_ts": cti.iso(r["last_ts"])}
-                      for r in incidents],
+        "incidents": [incident_item(r, devices[r["incident_key"]]) for r in incidents],
         "incidents_total": row["incidents"] if row else 0,
         "event_kinds": [{**dict(r), "first_ts": cti.iso(r["first_ts"]), "last_ts": cti.iso(r["last_ts"])}
                         for r in kinds],

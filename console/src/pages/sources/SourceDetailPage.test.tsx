@@ -5,6 +5,7 @@ import { noRetryClient, renderRoutes } from '@/test/render'
 import { json } from '@/test/monitoring-fixtures'
 import { expectInertDom, expectLongFolds, expectMixedRevealed, HOSTILE, LONG, MIXED } from '@/test/hostile-fixtures'
 import { HASSH, LIVE_BLOCK, sourceDetail, sourceSummary } from '@/test/sources-fixtures'
+import { COWRIE, device } from '@/test/targets-fixtures'
 import { IncidentsPage } from '@/pages/incidents/IncidentsPage'
 import { SourceDetailPage } from './SourceDetailPage'
 
@@ -95,6 +96,31 @@ describe('출발지 상세', () => {
     expect(within(actions).getByRole('link', { name: 'R003' })).toBeInTheDocument()
 
     expect(screen.getByRole('link', { name: '사건 목록에서 보기' })).toHaveAttribute('href', `/incidents?actor_ip=${IP}`)
+  })
+
+  it('사건 흐름의 장비 열은 사건 목록과 같은 장비 배지이고, 장비를 못 정한 사건은 장비 미확인이다', async () => {
+    const [first, second] = sourceDetail().incidents
+    const detail = sourceDetail({
+      incidents: [
+        { ...first, devices: [device(), COWRIE], device_state: 'confirmed' },
+        // 대체 추정 장비는 배지에 쓰지 않는다
+        { ...second, devices: [], device_state: 'unconfirmed', device_fallback: [{ ...COWRIE, basis: 'fallback' }] },
+      ],
+    })
+    setup(`/sources/detail?ip=${IP}`, () => json(detail))
+    const flow = await screen.findByRole('table', { name: '사건 흐름' })
+    expect(within(flow).getByRole('columnheader', { name: '장비' })).toBeInTheDocument()
+    expect(within(flow).queryByRole('columnheader', { name: '대상' })).toBeNull()
+
+    const cells = [...flow.querySelectorAll('td[data-label="장비"]')] as HTMLElement[]
+    expect(cells).toHaveLength(2)
+    expect([...cells[0].querySelectorAll('[data-device]')].map((el) => el.textContent)).toEqual(['web-01 · 웹 접근', 'SSH 허니팟(Cowrie) · SSH 세션'])
+    expect(cells[1].querySelector('[data-device-unknown]')).toHaveTextContent('장비 미확인')
+    expect(cells[1].querySelector('[data-device]')).toBeNull()
+    expect(cells[1]).not.toHaveTextContent('Cowrie')
+
+    // 요약 '노린 대상' 은 이벤트 발생원 기준이라 따로 그린다
+    expect(fact(screen.getByRole('region', { name: '요약' }), '노린 대상')).toHaveTextContent('허니팟 센서')
   })
 
   it('사건 목록에서 보기는 출발지 조건으로 사건 목록을 열고, 조건 칩으로 뺄 수 있다', async () => {
@@ -221,10 +247,10 @@ describe('출발지 상세', () => {
 })
 
 describe('출발지 상세 · 악성 문자열(#41)', () => {
-  it('지문 · 이벤트 · 조치 · 차단 · 사건의 비신뢰 값을 글자로만 그리고 긴 값은 접는다', async () => {
+  it('지문 · 이벤트 · 조치 · 차단 · 사건 · 장비의 비신뢰 값을 글자로만 그리고 긴 값은 접는다', async () => {
     const detail: SourceDetail = sourceDetail({
       summary: sourceSummary({ block: LIVE_BLOCK, targets: [HOSTILE.svg] }),
-      incidents: [{ ...sourceDetail().incidents[0], rule_name: HOSTILE.style, target: MIXED }],
+      incidents: [{ ...sourceDetail().incidents[0], rule_name: HOSTILE.style, devices: [device({ id: 'web-02', label: MIXED })] }],
       event_kinds: [{ sensor: HOSTILE.prefetch, eventid: HOSTILE.rlo, count: 1, first_ts: '2026-09-27T01:00:00Z', last_ts: '2026-09-27T01:00:00Z' }],
       fingerprints: { hassh: [{ value: HOSTILE.zwsp, count: 1 }], ssh_version: [{ value: MIXED, count: 3 }], user_agent: [{ value: LONG, count: 1 }] },
       actions: [{ incident_key: sourceDetail().incidents[0].incident_key, action: HOSTILE.mention, operator: HOSTILE.jsUrl, note: MIXED, created_at: '2026-09-29T02:00:00Z' }],

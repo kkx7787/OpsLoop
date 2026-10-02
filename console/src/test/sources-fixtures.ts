@@ -1,4 +1,5 @@
 import type { Fingerprint, FingerprintsResult, SourceDetail, SourceSummary, SourcesResult } from '@/api/sources'
+import { COWRIE } from './targets-fixtures'
 
 /** 출발지 분석(S-09) 표본. 서버 계약은 app/sources.py */
 export const SOURCES_AS_OF = '2026-09-29T03:00:00Z'
@@ -53,9 +54,10 @@ export function sourceDetail(extra: Partial<SourceDetail> = {}): SourceDetail {
     summary,
     last_seen: summary.last_seen,
     checkers: { gateway_stale: false, fw_stale: false },
+    // 장비는 사건 목록과 같은 계산이다. R001 은 규칙 범위(Cowrie), R003 은 근거 발생원으로 확인한 Cowrie
     incidents: [
-      { incident_key: 'R001|v3|198.51.100.23|2026-09-27T01:00:00+00:00', rule_id: 'R001', rule_version: 'v3', rule_name: 'SSH 무차별 대입', severity: 'medium', status: 'resolved', first_ts: '2026-09-27T01:00:00Z', last_ts: '2026-09-27T01:20:00Z', target: null, verdict: 'threat' },
-      { incident_key: 'R003|v3|198.51.100.23|2026-09-29T02:30:00+00:00', rule_id: 'R003', rule_version: 'v3', rule_name: '악성코드 투하', severity: 'critical', status: 'open', first_ts: '2026-09-29T02:30:00Z', last_ts: '2026-09-29T02:40:00Z', target: null, verdict: null },
+      { incident_key: 'R001|v3|198.51.100.23|2026-09-27T01:00:00+00:00', rule_id: 'R001', rule_version: 'v3', rule_name: 'SSH 무차별 대입', severity: 'medium', status: 'resolved', first_ts: '2026-09-27T01:00:00Z', last_ts: '2026-09-27T01:20:00Z', target: null, verdict: 'threat', devices: [COWRIE], device_state: 'rule_scope', device_fallback: [] },
+      { incident_key: 'R003|v3|198.51.100.23|2026-09-29T02:30:00+00:00', rule_id: 'R003', rule_version: 'v3', rule_name: '악성코드 투하', severity: 'critical', status: 'open', first_ts: '2026-09-29T02:30:00Z', last_ts: '2026-09-29T02:40:00Z', target: null, verdict: null, devices: [{ ...COWRIE, basis: 'confirmed' }], device_state: 'confirmed', device_fallback: [] },
     ],
     incidents_total: 2,
     event_kinds: [
