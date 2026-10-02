@@ -15,6 +15,10 @@
   - 잠금        동시에 돈 두 회차는 한 번만 알림 · 살아 있는 잠금이면 건너뜀 · 죽은 pid · 5분 넘은 잠금은 치움
   - 기타        알림 문구는 osascript 인자로 · osascript 실패 · --status · --test-alert · 잘못된 환경변수 · 모르는 옵션 ·
                 기록 돌리기 · 깨진 상태 파일
+  - 백업 오래됨 (이슈 #91) 기록이 없으면 조용히 · 마지막 성공이 10시간 넘으면 한 번(웹훅 포함) · 새 성공이면 풀리고 다음 오래됨에
+                다시 · 시작 · 실패 · 시도 줄은 성공이 아님 · 재시도 뒤 성공 줄은 성공 · 점검 창에는 알리지 않고 끝나면 알림 ·
+                OPSLOOP_BACKUP_DIR · BACKUP_STALE_HOURS · --status 한 줄 · 실제 backup-agent.sh 가 쓴 줄을 읽는다 ·
+                Mac 시간대가 KST 가 아니어도 같다
   - 진짜 curl   127.0.0.1 에 띄운 서버로 200 · 503 · 연결 거부를 가르고, 웹훅은 자체 서명 https 서버가
                 주소(경로 · 쿼리)와 JSON 본문을 그대로 받는지 본다 (openssl 이 없으면 웹훅은 건너뛴다)
   - 셸 문법     bash -n (/bin/bash 3.2 포함) · shellcheck(있으면)
@@ -34,6 +38,8 @@ import tempfile
 import threading
 import time
 import unittest
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 WATCH = os.path.join(HERE, "console-watch.sh")
@@ -426,6 +432,184 @@ class PauseTest(Base):
                 r = self.run_watch(*bad)
                 self.assertEqual(r.returncode, 2, r.stderr)
                 self.assertIn("1 ~ 10080", r.stderr)
+
+
+KST = timezone(timedelta(hours=9))
+AGENT = os.path.join(HERE, "backup-agent.sh")
+
+
+def kst(t):
+    """backup-agent.sh 의 기록 시각 모양 ('2026-10-02 12:30:12 KST')."""
+    return datetime.fromtimestamp(int(t), KST).strftime("%Y-%m-%d %H:%M:%S") + " KST"
+
+
+class BackupStaleTest(Base):
+    """마지막 성공 백업이 오래되면 한 번 알린다 (이슈 #91)."""
+
+    def setUp(self):
+        super().setUp()
+        self.bdir = os.path.join(self.home, "opsloop-backup")
+        self.blog = os.path.join(self.bdir, "backup.log")
+
+    def round_lines(self, t, end="백업 성공"):
+        return ["== %s 백업 시작" % kst(t - 40), "-- %s 시도 1/3" % kst(t - 40),
+                "시계 차이 (data01 − Mac) +0.120초 · 잰 왕복 0.300초", "== %s %s" % (kst(t), end)]
+
+    def write_backup(self, *ok_ago, extra=(), path=None):
+        path = path or self.blog
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        now = time.time()
+        lines = []
+        for ago in ok_ago:
+            lines += self.round_lines(now - ago)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines + list(extra)) + "\n")
+        return int(now - ok_ago[-1]) if ok_ago else None
+
+    def test_기록이_없으면_조용히_넘어간다(self):
+        self.ok(mode="200")
+        self.assertEqual(self.osa(), [])
+        self.assertEqual(self.read_state()["backup_alerted"], "0")
+        self.assertIn("백업: 기록 없음 (%s · 알리지 않는다)" % self.blog, self.ok("--status").stdout)
+        os.makedirs(self.bdir)
+        with open(self.blog, "w") as f:
+            f.write("== %s 백업 시작\n" % kst(time.time() - 20 * 3600))
+        self.ok(mode="200")
+        self.assertEqual(self.osa(), [], "성공 줄이 하나도 없으면 실행기의 실패 알림이 맡는다")
+        self.assertIn("백업: 기록에 성공 줄이 없다", self.ok("--status").stdout)
+
+    def test_마지막_성공이_10시간_넘으면_한_번_알린다(self):
+        self.write_backup(30 * 3600, 9 * 3600 + 59 * 60)
+        self.ok(mode="200")
+        self.assertEqual(self.osa(), [], "10시간 안이다")
+        ok_at = self.write_backup(30 * 3600, 11 * 3600)
+        self.ok(mode="refused")
+        self.assertEqual(self.titles(), ["OpsLoop 콘솔 DOWN", "OpsLoop DB 백업 오래됨"])
+        body = self.osa()[1][-1]
+        self.assertIn("마지막 성공 백업 %s · 11시간 0분 전 (기준 10시간 · 목표 12시간)"
+                      % time.strftime("%Y-%m-%d %H:%M", time.localtime(ok_at)), body)
+        self.assertNotIn(self.home, body, "알림 문구에 로컬 경로를 넣지 않는다")
+        st = self.read_state()
+        self.assertEqual((st["backup_alerted"], st["backup_ok"]), ("1", str(ok_at)))
+        self.assertIn("알림: OpsLoop DB 백업 오래됨", read(self.log))
+        self.ok(mode="200")
+        self.ok(mode="200")
+        self.assertEqual(self.titles(), ["OpsLoop 콘솔 DOWN", "OpsLoop DB 백업 오래됨", "OpsLoop 콘솔 복구"],
+                         "오래됨은 한 번만 알린다")
+
+    def test_새_성공이_보이면_풀리고_다음_오래됨에_다시_한_번_알린다(self):
+        self.write_backup(11 * 3600)
+        self.ok(mode="200")
+        self.assertEqual(self.titles(), ["OpsLoop DB 백업 오래됨"])
+        new_at = self.write_backup(11 * 3600, 61 * 60)
+        self.ok(mode="200")
+        self.assertEqual(len(self.osa()), 1)
+        st = self.read_state()
+        self.assertEqual((st["backup_alerted"], st["backup_ok"]), ("0", str(new_at)))
+        self.assertIn("백업 오래됨 풀림 · 새 성공", read(self.log))
+        # 시간이 흘러 새 성공도 기준을 넘었다 (기준을 1시간으로 줄여 흉내 낸다)
+        self.ok(mode="200", BACKUP_STALE_HOURS="1")
+        self.assertEqual(self.titles(), ["OpsLoop DB 백업 오래됨"] * 2)
+        self.assertIn("1시간 1분 전 (기준 1시간", self.osa()[1][-1])
+        self.ok(mode="200", BACKUP_STALE_HOURS="1")
+        self.assertEqual(len(self.osa()), 2)
+
+    def test_Mac_시간대가_KST_가_아니어도_같다(self):
+        # 기록의 'KST' 를 +09:00 으로 푼다. 알림 속 시각은 Mac 시간대로 낸다
+        for tz in ("UTC", "America/New_York"):
+            with self.subTest(tz=tz):
+                if os.path.exists(self.state):
+                    os.remove(self.state)
+                open(self.osa_log, "w").close()
+                self.write_backup(30 * 3600, 9 * 3600 + 59 * 60)
+                self.ok(mode="200", TZ=tz)
+                self.assertEqual(self.osa(), [], "10시간 안이다")
+                ok_at = self.write_backup(30 * 3600, 11 * 3600)
+                self.ok(mode="200", TZ=tz)
+                self.assertEqual(self.titles(), ["OpsLoop DB 백업 오래됨"])
+                when = datetime.fromtimestamp(ok_at, ZoneInfo(tz)).strftime("%Y-%m-%d %H:%M")
+                self.assertIn("마지막 성공 백업 %s · 11시간 0분 전" % when, self.osa()[0][-1])
+                self.assertEqual(self.read_state()["backup_ok"], str(ok_at))
+
+    def test_시작_실패_시도_줄은_성공으로_보지_않는다(self):
+        now = time.time()
+        self.write_backup(11 * 3600, extra=[
+            "== %s 백업 시작" % kst(now - 3600), "-- %s 시도 1/3" % kst(now - 3600),
+            "참고: 덤프 뒤에 판정 · 조치가 늘었다 · 백업 성공",
+            "-- %s 시도 1/3 실패 (종료 코드 255) · 180초 뒤 다시 돈다" % kst(now - 3500),
+            "-- %s KST 백업 성공" % kst(now - 3400),
+            "== %s 백업 실패 (종료 코드 255 · 시도 3/3)" % kst(now - 3000)])
+        self.ok(mode="200")
+        self.assertEqual(self.titles(), ["OpsLoop DB 백업 오래됨"])
+        self.assertIn("11시간 0분 전", self.osa()[0][-1])
+
+    def test_재시도_뒤_성공_줄도_성공이다(self):
+        now = time.time()
+        self.write_backup(11 * 3600, extra=self.round_lines(now - 1800, "백업 성공 (시도 2/3 · 재시도 뒤 성공)"))
+        self.ok(mode="200")
+        self.assertEqual(self.osa(), [])
+        self.assertIn("· 30분 전 (오래됨 기준 10시간)", self.ok("--status").stdout)
+
+    def test_점검_창에는_알리지_않고_창이_끝나면_알린다(self):
+        self.write_env("WEBHOOK_URL=%s\n" % HOOK)
+        self.write_backup(11 * 3600)
+        self.write_pause(int(time.time()) + 600)
+        self.ok(mode="200")
+        self.assertEqual(self.osa(), [])
+        self.assertEqual(self.hook_calls(), [])
+        self.assertIn("백업 오래됨 (마지막 성공", read(self.log))
+        self.assertIn("알리지 않는다", read(self.log))
+        self.assertEqual(self.read_state()["backup_alerted"], "0")
+        os.remove(self.pause_file)
+        self.ok(mode="200")
+        self.assertEqual(self.titles(), ["OpsLoop DB 백업 오래됨"])
+        hooks = self.hook_calls()
+        self.assertEqual(len(hooks), 1, "같은 알림 경로(웹훅)로도 보낸다")
+        a = hooks[0]["args"]
+        self.assertIn("OpsLoop DB 백업 오래됨", json.loads(a[a.index("--data-binary") + 1])["text"])
+
+    def test_기록_폴더는_OPSLOOP_BACKUP_DIR_로_바꾼다(self):
+        other = os.path.join(self.t, "elsewhere", "backup.log")
+        self.write_backup(11 * 3600, path=other)
+        self.ok(mode="200")
+        self.assertEqual(self.osa(), [])
+        self.ok(mode="200", OPSLOOP_BACKUP_DIR=os.path.dirname(other))
+        self.assertEqual(self.titles(), ["OpsLoop DB 백업 오래됨"])
+
+    def test_status_에_마지막_성공과_경과를_한_줄(self):
+        ok_at = self.write_backup(3 * 3600 + 12 * 60)
+        out = self.ok("--status").stdout
+        line = "백업: 마지막 성공 %s · 3시간 12분 전 (오래됨 기준 10시간)" % time.strftime("%Y-%m-%d %H:%M",
+                                                                              time.localtime(ok_at))
+        self.assertIn(line + "\n", out)
+        self.assertEqual(self.health_calls(), [], "--status 는 진입점을 보지 않는다")
+        self.write_backup(11 * 3600)
+        self.ok(mode="200")
+        self.assertIn("· 오래됨 알림 보냄", self.ok("--status").stdout)
+
+    def test_잘못된_BACKUP_STALE_HOURS_는_2(self):
+        for bad in ("0", "abc", "-1", "10h"):
+            with self.subTest(bad=bad):
+                r = self.run_watch(BACKUP_STALE_HOURS=bad)
+                self.assertEqual(r.returncode, 2, r.stderr)
+                self.assertIn("BACKUP_STALE_HOURS", r.stderr)
+        self.assertEqual(self.curls(), [])
+
+    def test_backup_agent_가_쓴_줄을_그대로_읽는다(self):
+        # 실제 실행기로 기록을 만든다 (backup-db.sh 는 성공만 하는 가짜)
+        agent_bin = os.path.join(self.t, "agent-bin")
+        os.makedirs(agent_bin)
+        shutil.copy(AGENT, os.path.join(agent_bin, "backup-agent.sh"))
+        write_exec(os.path.join(agent_bin, "backup-db.sh"), "#!/bin/sh\necho \"백업 1.0M $1/opsloop-x.dump\"\n")
+        os.makedirs(self.bdir)
+        with open(self.blog, "w") as f:
+            r = subprocess.run([BASH, os.path.join(agent_bin, "backup-agent.sh")], env=dict(self.env, OPSLOOP_BACKUP_DIR=self.bdir),
+                               stdin=subprocess.DEVNULL, stdout=f, stderr=subprocess.STDOUT, timeout=60)
+        self.assertEqual(r.returncode, 0, read(self.blog))
+        out = self.ok("--status").stdout
+        self.assertRegex(out, r"백업: 마지막 성공 \d{4}-\d\d-\d\d \d\d:\d\d · \d+초 전 \(오래됨 기준 10시간\)")
+        self.ok(mode="200", BACKUP_STALE_HOURS="1")
+        self.assertEqual(self.osa(), [])
 
 
 class LockTest(Base):

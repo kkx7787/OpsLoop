@@ -2,6 +2,7 @@
 # 콘솔 진입점 감시(console-watch.sh)를 Mac 의 launchd 에 올린다 (이슈 #43). 60초마다 한 회차 · 올리자마자 한 번 돈다.
 # 콘솔 두 대가 다 죽으면 콘솔 안의 알림 발송기도 같이 멈추므로 그때 알릴 경로를 Mac 에 따로 둔다.
 # Mac 이 잠든 동안은 돌지 않는다(VM 도 함께 멈춘다). 깨어나면 다음 간격에 다시 돈다.
+# 같은 회차가 DB 백업 기록(~/opsloop-backup/backup.log)의 마지막 성공도 본다. 10시간 넘게 지나면 한 번 알린다 (이슈 #91).
 # VM 을 일부러 끄거나 점검할 때는 점검 창을 둔다: ~/Library/Application\ Support/OpsLoop/bin/console-watch.sh --pause <분>
 # 사용: infra/vmware/scripts/install-console-watch.sh              설치 · 스크립트 갱신 (다시 실행해도 된다)
 #       infra/vmware/scripts/install-console-watch.sh --uninstall  내린다 (기록 · 설정 · 상태는 지우지 않는다. --remove 도 같다)

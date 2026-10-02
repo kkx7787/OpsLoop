@@ -11,15 +11,20 @@
 # 점검 창: ~/.config/opsloop/console-watch.pause 에 만료 시각(epoch 초)이 있고 아직 안 지났으면 알리지 않고 상태만 적는다.
 #   창 안에서 시작된 DOWN 이 창이 끝난 뒤에도 이어지면 그때 알린다. DOWN 을 알린 뒤 창 안에서 복구되면 창이 끝난 뒤 복구를 알린다.
 #   복구를 알리기 전에 다시 DOWN 이 되면 처음 DOWN 이 이어진 것으로 본다(복구 알림을 잃지 않는다 · 30분 재알림도 처음 알림부터 센다).
+# 백업 오래됨 (이슈 #91): 회차마다 DB 백업 기록(~/opsloop-backup/backup.log)의 마지막 '== <시각> KST 백업 성공' 줄을 본다.
+#   지금보다 10시간 넘게 지났으면 한 번 알린다(같은 알림 경로). 새 성공이 보이면 풀리고, 다음에 다시 오래되면 또 한 번 알린다.
+#   점검 창에는 알리지 않는다(창이 끝난 뒤에도 오래돼 있으면 그때 알린다). 기록 파일이나 성공 줄이 없으면 조용히 넘어간다.
+#   백업 실행기가 돌지 못해(launchd 에서 내림 · 계속 잠듦) 스스로 실패를 알리지 못할 때를 잡는다. 백업 목표(RPO)는 12시간이다.
 # 사용: console-watch.sh               한 회차 (launchd 가 부르는 모양)
-#       console-watch.sh --status      마지막 상태 · 점검 창 · 웹훅 설정 여부 (주소는 내지 않는다)
+#       console-watch.sh --status      마지막 상태 · 점검 창 · 마지막 성공 백업 · 웹훅 설정 여부 (주소는 내지 않는다)
 #       console-watch.sh --pause <분>  지금부터 <분> 동안 점검 창을 둔다 (1 ~ 10080)
 #       console-watch.sh --resume      점검 창을 없앤다
 #       console-watch.sh --test-alert  알림 경로를 시험한다 (macOS 알림 · 웹훅)
 # 기록: ~/Library/Logs/opsloop/console-watch.log (1 MiB 를 넘으면 .1 로 한 벌 돌린다)
 # 상태: ~/Library/Application Support/OpsLoop/console-watch.state
 #   한 번에 한 회차만 돈다(같은 폴더의 console-watch.lock). 다른 회차가 돌고 있으면 기록만 남기고 건너뛴다
-# 환경변수(시험 · 임시 변경): CONSOLE_WATCH_URL · CONSOLE_WATCH_TRIES(3) · CONSOLE_WATCH_GAP(5초) · CONSOLE_WATCH_RENOTIFY(1800초)
+# 환경변수(시험 · 임시 변경): CONSOLE_WATCH_URL · CONSOLE_WATCH_TRIES(3) · CONSOLE_WATCH_GAP(5초) · CONSOLE_WATCH_RENOTIFY(1800초) ·
+#   OPSLOOP_BACKUP_DIR(~/opsloop-backup) · BACKUP_STALE_HOURS(10)
 set -uo pipefail
 umask 077
 # launchd 의 PATH 는 짧다. 기본 경로는 뒤에 붙인다(시험은 가짜 curl · osascript 를 앞에 둔다)
@@ -43,6 +48,8 @@ LOCK="$STATE_DIR/console-watch.lock"
 LOCK_STALE_MIN=5
 LOG_MAX=1048576
 PAUSE_MAX_MIN=10080
+BACKUP_LOG="${OPSLOOP_BACKUP_DIR:-$HOME/opsloop-backup}/backup.log"
+STALE_HOURS=${BACKUP_STALE_HOURS:-10}
 
 # 0 이상의 정수 (12자리까지. 산술 비교가 넘치지 않게)
 isnum() {
@@ -121,7 +128,7 @@ check() {
 }
 
 load_state() {
-  S_STATE=UNKNOWN S_SINCE=0 S_DOWN_SINCE=0 S_ALERTED=0 S_LAST_ALERT=0 S_LAST_CHECK=0 S_DETAIL=""
+  S_STATE=UNKNOWN S_SINCE=0 S_DOWN_SINCE=0 S_ALERTED=0 S_LAST_ALERT=0 S_LAST_CHECK=0 S_DETAIL="" S_B_OK=0 S_B_ALERTED=0
   [ -f "$STATE" ] || return 0
   local k v
   while IFS='=' read -r k v; do
@@ -133,6 +140,8 @@ load_state() {
       last_alert) if isnum "$v"; then S_LAST_ALERT=$v; fi ;;
       last_check) if isnum "$v"; then S_LAST_CHECK=$v; fi ;;
       detail) S_DETAIL=$v ;;
+      backup_ok) if isnum "$v"; then S_B_OK=$v; fi ;;
+      backup_alerted) case "$v" in 0 | 1) S_B_ALERTED=$v ;; esac ;;
     esac
   done < "$STATE"
   return 0
@@ -141,9 +150,49 @@ load_state() {
 save_state() {
   mkdir -p "$STATE_DIR" || return 1
   local tmp="$STATE.tmp.$$"
-  printf 'state=%s\nsince=%s\ndown_since=%s\nalerted=%s\nlast_alert=%s\nlast_check=%s\ndetail=%s\n' \
-    "$S_STATE" "$S_SINCE" "$S_DOWN_SINCE" "$S_ALERTED" "$S_LAST_ALERT" "$S_LAST_CHECK" "$S_DETAIL" > "$tmp" \
-    && mv -f "$tmp" "$STATE"
+  printf 'state=%s\nsince=%s\ndown_since=%s\nalerted=%s\nlast_alert=%s\nlast_check=%s\ndetail=%s\nbackup_ok=%s\nbackup_alerted=%s\n' \
+    "$S_STATE" "$S_SINCE" "$S_DOWN_SINCE" "$S_ALERTED" "$S_LAST_ALERT" "$S_LAST_CHECK" "$S_DETAIL" "$S_B_OK" "$S_B_ALERTED" \
+    > "$tmp" && mv -f "$tmp" "$STATE"
+}
+
+# 백업 기록의 시각('YYYY-MM-DD HH:MM:SS', KST) → epoch 초
+kst_epoch() {
+  date -j -f '%Y-%m-%d %H:%M:%S %z' "$1 +0900" +%s 2>/dev/null || date -d "$1 +0900" +%s 2>/dev/null
+}
+
+# 백업 기록의 마지막 성공 시각을 B_OK(epoch 초)에 둔다. 기록 · 성공 줄이 없거나 읽지 못하면 1
+#   줄 모양: '== 2026-10-02 12:30:12 KST 백업 성공' (뒤에 괄호 설명이 붙을 수 있다). 시도 줄('-- …')은 보지 않는다
+last_backup_ok() {
+  local line d t z v
+  B_OK=0
+  [ -f "$BACKUP_LOG" ] && [ -r "$BACKUP_LOG" ] || return 1
+  line=$(grep -a '^== [0-9-]* [0-9:]* KST 백업 성공' "$BACKUP_LOG" 2>/dev/null | tail -n 1)
+  [ -n "$line" ] || return 1
+  read -r _ d t z _ <<< "$line"
+  [ "$z" = KST ] || return 1
+  v=$(kst_epoch "$d $t") || return 1
+  isnum "$v" || return 1
+  B_OK=$v
+}
+
+# 백업 오래됨. $1 지금 · $2 점검 창(1). 마지막 성공이 STALE_HOURS 넘게 지났으면 한 번 알린다. 새 성공이 보이면 푼다
+check_backup() {
+  local now=$1 age
+  last_backup_ok || return 0
+  if [ "$S_B_ALERTED" = 1 ] && [ "$B_OK" != "$S_B_OK" ]; then
+    log "  백업 오래됨 풀림 · 새 성공 $(fmt_time "$B_OK")"
+    S_B_ALERTED=0
+  fi
+  S_B_OK=$B_OK
+  age=$((now - B_OK))
+  [ "$age" -gt $((STALE_HOURS * 3600)) ] || return 0
+  [ "$S_B_ALERTED" = 0 ] || return 0
+  if [ "$2" = 1 ]; then
+    log "  백업 오래됨 (마지막 성공 $(fmt_time "$B_OK") · $(fmt_dur "$age") 전) · 점검 창 ($(fmt_time "$PAUSE_UNTIL") 까지) · 알리지 않는다"
+    return 0
+  fi
+  alert "OpsLoop DB 백업 오래됨" "마지막 성공 백업 $(fmt_time "$B_OK") · $(fmt_dur "$age") 전 (기준 ${STALE_HOURS}시간 · 목표 12시간)"
+  S_B_ALERTED=1
 }
 
 # 점검 창이면 PAUSE_UNTIL 을 정하고 0. 파일이 없거나 지났거나 읽지 못하면 1 (읽지 못하면 기록하고 알린다)
@@ -328,6 +377,7 @@ run_once() {
       fi
     fi
   fi
+  check_backup "$now" "$pause"
   S_LAST_CHECK=$now S_DETAIL=$DETAIL
   save_state || log "  상태 파일을 쓰지 못했다: $STATE"
 }
@@ -342,6 +392,15 @@ status() {
     if [ "$S_ALERTED" = 1 ]; then echo "DOWN 알림: 보냄 ($(fmt_time "$S_LAST_ALERT")) · 복구 알림 대기"; fi
   fi
   if paused; then echo "점검 창: $(fmt_time "$PAUSE_UNTIL") 까지 (알리지 않는다)"; else echo "점검 창: 없음"; fi
+  if last_backup_ok; then
+    line="백업: 마지막 성공 $(fmt_time "$B_OK") · $(fmt_dur $(($(date +%s) - B_OK))) 전 (오래됨 기준 ${STALE_HOURS}시간)"
+    if [ "$S_B_ALERTED" = 1 ]; then line="$line · 오래됨 알림 보냄"; fi
+    echo "$line"
+  elif [ -f "$BACKUP_LOG" ]; then
+    echo "백업: 기록에 성공 줄이 없다 ($BACKUP_LOG)"
+  else
+    echo "백업: 기록 없음 ($BACKUP_LOG · 알리지 않는다)"
+  fi
   webhook_url || true
   WEBHOOK=""
   echo "웹훅: $WEBHOOK_STATE"
@@ -356,6 +415,10 @@ for pair in "TRIES=$TRIES" "GAP=$GAP" "RENOTIFY=$RENOTIFY"; do
 done
 if [ "$TRIES" -lt 1 ]; then
   echo "CONSOLE_WATCH_TRIES 는 1 이상이어야 한다" >&2
+  exit 2
+fi
+if ! isnum "$STALE_HOURS" || [ "$STALE_HOURS" -lt 1 ]; then
+  echo "BACKUP_STALE_HOURS 는 1 이상의 정수여야 한다" >&2
   exit 2
 fi
 
