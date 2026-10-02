@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DeviceOption, Incident, RuleQuality } from '@/api/incidents'
-import { clearFilters, countFilters, deviceOptionsOf, filtersFromSearch, ruleOptionsOf, searchFromFilters } from './filters'
+import { clearFilters, countFilters, deviceOptionsOf, filtersFromSearch, quickViewFilters, ruleOptionsOf, searchFromFilters, type ListFilters } from './filters'
 
 describe('filtersFromSearch', () => {
   it('주소의 조건 칸을 읽는다', () => {
@@ -81,6 +81,16 @@ describe('countFilters · clearFilters', () => {
     expect(clearFilters({ actor_ip: '203.0.113.5', sort: 'severity' })).toEqual({ sort: 'severity' })
     expect(countFilters({ judged: false, device: 'web-01' })).toBe(2)
     expect(clearFilters({ device: '_unconfirmed', sort: 'recent' })).toEqual({ sort: 'recent' })
+  })
+})
+
+describe('quickViewFilters (#94)', () => {
+  it('빠른 보기는 장비 · 정렬을 남기고 나머지 조건만 바꾼다', () => {
+    const current: ListFilters = { status: 'open', severity: 'low', actor_ip: '203.0.113.5', device: 'web-01', sort: 'recent' }
+    expect(quickViewFilters(current, { judged: false })).toEqual({ judged: false, device: 'web-01', sort: 'recent' })
+    // '전체 사건' 도 그 장비의 전체다
+    expect(quickViewFilters(current, {})).toEqual({ device: 'web-01', sort: 'recent' })
+    expect(quickViewFilters({ judged: false, rule_id: 'R003' }, { undetermined: true })).toEqual({ undetermined: true })
   })
 })
 

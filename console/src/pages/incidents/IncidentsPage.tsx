@@ -8,7 +8,7 @@ import { buttonClasses } from '@/components/atoms/button-styles'
 import { PageHeader } from '@/components/molecules/PageHeader'
 import { Banner } from '@/components/molecules/Banner'
 import { describeError } from '@/api/errors'
-import { clearFilters, countFilters, deviceOptionsOf, filtersFromSearch, ruleOptionsOf, searchFromFilters, type ListFilters } from '@/components/organisms/incidents/filters'
+import { clearFilters, countFilters, deviceOptionsOf, filtersFromSearch, quickViewFilters, ruleOptionsOf, searchFromFilters, type ListFilters } from '@/components/organisms/incidents/filters'
 import { IncidentFilterBar, IncidentSortControl } from '@/components/organisms/incidents/IncidentFilterBar'
 import { IncidentList } from '@/components/organisms/incidents/IncidentList'
 import { IncidentPagination } from '@/components/organisms/incidents/IncidentPagination'
@@ -87,13 +87,15 @@ export function IncidentsPage() {
     body = <IncidentList key={`${page}:${pageSize}:${searchParams}`} items={list.items} total={list.total} offset={(page - 1) * pageSize} now={now} dataUpdatedAt={incidents.dataUpdatedAt} badges={badges.data?.badges} className="md:h-full md:max-h-none" />
   }
 
+  // 빠른 보기는 장비 · 정렬을 남긴다(#94). 선택 표시도 장비를 뺀 조건 수로 정한다
+  const others = active - (filters.device ? 1 : 0)
   const quickViews: Array<{ label: string; filters: ListFilters; selected: boolean }> = [
-    { label: '전체 사건', filters: {}, selected: active === 0 },
-    { label: '미판정만', filters: { judged: false }, selected: active === 1 && filters.judged === false },
-    { label: 'critical 미판정', filters: { judged: false, severity: 'critical' }, selected: active === 2 && filters.judged === false && filters.severity === 'critical' },
+    { label: '전체 사건', filters: {}, selected: others === 0 },
+    { label: '미판정만', filters: { judged: false }, selected: others === 1 && filters.judged === false },
+    { label: 'critical 미판정', filters: { judged: false, severity: 'critical' }, selected: others === 2 && filters.judged === false && filters.severity === 'critical' },
     // 최신 판정이 사람이 남긴 미결(#83). 미판정과 따로 본다
-    { label: '미결', filters: { undetermined: true }, selected: active === 1 && filters.undetermined === true },
-    { label: '조치중', filters: { status: 'in_progress' }, selected: active === 1 && filters.status === 'in_progress' },
+    { label: '미결', filters: { undetermined: true }, selected: others === 1 && filters.undetermined === true },
+    { label: '조치중', filters: { status: 'in_progress' }, selected: others === 1 && filters.status === 'in_progress' },
   ]
   const start = list?.total ? (page - 1) * pageSize + 1 : 0
   const end = Math.min((page - 1) * pageSize + (list?.items.length ?? 0), list?.total ?? 0)
@@ -104,7 +106,7 @@ export function IncidentsPage() {
       <section aria-label="사건 탐색" className="flex shrink-0 flex-col rounded-card bg-surface shadow-card">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-3">
           <div role="group" aria-label="빠른 보기" className="flex flex-wrap gap-4">
-            {quickViews.map((view) => <button key={view.label} type="button" aria-pressed={view.selected} onClick={() => setFilters(view.filters)} className={cn('min-h-10 cursor-pointer border-b-2 px-0.5 text-sm transition-colors', view.selected ? 'border-primary font-semibold text-primary' : 'border-transparent text-ink-muted hover:text-ink')}>{view.label}</button>)}
+            {quickViews.map((view) => <button key={view.label} type="button" aria-pressed={view.selected} onClick={() => setFilters(quickViewFilters(filters, view.filters))} className={cn('min-h-10 cursor-pointer border-b-2 px-0.5 text-sm transition-colors', view.selected ? 'border-primary font-semibold text-primary' : 'border-transparent text-ink-muted hover:text-ink')}>{view.label}</button>)}
           </div>
         </div>
         <IncidentFilterBar value={filters} onChange={setFilters} rules={rules} devices={devices} className="px-3 py-2" />

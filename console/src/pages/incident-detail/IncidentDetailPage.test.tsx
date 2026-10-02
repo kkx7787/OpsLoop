@@ -248,9 +248,11 @@ describe('IncidentDetailPage', () => {
     expect(body.decision_seconds as number).toBeLessThanOrEqual(86_400)
 
     expect(await panel.findByText('판정을 기록했습니다')).toBeInTheDocument()
-    // 상세 캐시가 바로 바뀐다: 재판정 · 이력 · 종결
-    expect(panel.getByRole('heading', { name: '재판정' })).toBeInTheDocument()
-    expect(panel.getByRole('button', { name: '재판정 기록' })).toBeInTheDocument()
+    // 상세 캐시가 바로 바뀐다: 종결이라 폼이 접히고(#94) 이력 · 상태가 바뀐다
+    expect(panel.getByRole('heading', { name: '판정' })).toBeInTheDocument()
+    expect(panel.getByRole('button', { name: '재판정' })).toHaveAttribute('aria-expanded', 'false')
+    expect(panel.queryByRole('button', { name: '재판정 기록' })).toBeNull()
+    expect(panel.queryByRole('radio')).toBeNull()
     const history = panel.getByRole('table', { name: '판정 · 조치 이력' })
     expect(within(history).getByText('실제 위협')).toHaveAttribute('data-verdict', 'threat')
     expect(within(history).getByText('로그인 뒤 wget 으로 파일 투하')).toBeInTheDocument()
@@ -258,7 +260,7 @@ describe('IncidentDetailPage', () => {
     expect(history).not.toHaveTextContent('제안 기록 없음')
     expect(within(history).getByText(/^소요 /)).toBeInTheDocument()
     expect(screen.getAllByText('종결')[0]).toHaveAttribute('data-status', 'resolved')
-    expect(screen.getByText(/^판정까지 /)).toBeInTheDocument()
+    expect(screen.getByText(/^발생 → 판정 /)).toBeInTheDocument()
   })
 
   it('판정값은 뜻 한 줄만 늘 보이고, 예 · 세는 법은 선택지 옆 도움말에 있다(누르면 판정값이 골라지지 않는다)', async () => {
@@ -567,6 +569,83 @@ describe('IncidentDetailPage', () => {
     expect(screen.queryByText('순환 규칙')).toBeNull()
     const block = await within(screen.getByRole('region', { name: '조치와 판정' })).findByRole('button', { name: '차단' })
     expect(block).toHaveAttribute('title', '출발지가 없는 사건은 차단할 수 없습니다')
+  })
+})
+
+describe('IncidentDetailPage · 종결 사건 재판정(#94)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  /** 발생 06:00 → 첫 판정 06:30(30분). 위협으로 종결된 사건 */
+  const FIRST = { id: 1, verdict: 'threat', reason: '파일 투하', observed_value: 3, operator: 'han', proposed: null, decision_seconds: 40, created_at: '2026-09-18T06:30:00+00:00' } as const
+  const clock = () => screen.getByText(/^발생 → 판정 /)
+
+  it('최신 판정이 미결이 아니면 폼을 접고 재판정으로 편다. decision_seconds 는 편 때가 아니라 화면을 연 때부터다', async () => {
+    const opened = Date.parse('2026-10-02T09:00:00Z')
+    const now = vi.spyOn(Date, 'now').mockReturnValue(opened)
+    const fetch = stubApi({ body: detail({ status: 'resolved', verdicts: [FIRST] }) })
+    renderRoutes(routes(), PATH)
+    const { panel } = await readyPanel()
+
+    // 접힘: 현재 판정 · 이력은 보이고 판정값 · 기록 단추는 없다
+    expect(panel.getByRole('heading', { name: '판정' })).toBeInTheDocument()
+    const toggle = panel.getByRole('button', { name: '재판정' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(panel.queryByRole('radio')).toBeNull()
+    expect(panel.queryByRole('button', { name: '재판정 기록' })).toBeNull()
+    expect(panel.getByRole('table', { name: '판정 · 조치 이력' })).toBeInTheDocument()
+
+    // 1분 30초 뒤에 펴고, 2분 5초에 기록한다
+    now.mockReturnValue(opened + 90_000)
+    fireEvent.click(toggle)
+    expect(panel.getByRole('button', { name: '접기' })).toHaveAttribute('aria-expanded', 'true')
+    expect(panel.getByRole('heading', { name: '재판정' })).toBeInTheDocument()
+    fireEvent.click(panel.getByRole('radio', { name: /^오탐/ }))
+    now.mockReturnValue(opened + 125_000)
+    fireEvent.click(panel.getByRole('button', { name: '재판정 기록' }))
+
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/verdict`, 'POST')).toBeDefined())
+    expect(sentBody(fetch, `${incidentPath(KEY)}/verdict`, 'POST')).toMatchObject({ verdict: 'false_positive', decision_seconds: 125 })
+
+    // 기록하면 다시 접히고 결과 띠는 남는다. 시계는 첫 판정(30분)에서 멈춘 채다
+    expect(await panel.findByText('판정을 기록했습니다')).toBeInTheDocument()
+    expect(panel.getByRole('button', { name: '재판정' })).toHaveAttribute('aria-expanded', 'false')
+    expect(panel.queryByRole('radio')).toBeNull()
+    expect(clock()).toHaveTextContent('발생 → 판정 30분')
+  })
+
+  it('펼친 폼은 접기로 다시 접는다', async () => {
+    stubApi({ body: detail({ status: 'resolved', verdicts: [FIRST] }) })
+    renderRoutes(routes(), PATH)
+    const { panel } = await readyPanel()
+    fireEvent.click(panel.getByRole('button', { name: '재판정' }))
+    expect(panel.getAllByRole('radio')).toHaveLength(5)
+    fireEvent.click(panel.getByRole('button', { name: '접기' }))
+    expect(panel.queryByRole('radio')).toBeNull()
+    expect(panel.getByRole('button', { name: '재판정' })).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('최신 판정이 미결이면 지금처럼 펼친다', async () => {
+    stubApi({ body: detail({ status: 'resolved', verdicts: [{ ...FIRST, verdict: 'undetermined' }] }) })
+    renderRoutes(routes(), PATH)
+    const { panel } = await readyPanel()
+    expect(panel.getByRole('heading', { name: '재판정' })).toBeInTheDocument()
+    expect(panel.getByRole('button', { name: '재판정 기록' })).toBeInTheDocument()
+    expect(panel.queryByRole('button', { name: '재판정' })).toBeNull()
+  })
+
+  it('상세 시계는 발생 → 첫 판정이다. 재판정이 있어도 늘지 않고 목표 색도 첫 판정 기준이다', async () => {
+    // 첫 판정 30분(critical 목표 1시간 이내) · 최근 판정 3시간(초과)
+    const latest = { ...FIRST, id: 2, verdict: 'false_positive', created_at: '2026-09-18T09:00:00+00:00' } as const
+    stubApi({ body: detail({ status: 'resolved', verdicts: [FIRST, latest] }) })
+    renderRoutes(routes(), PATH)
+    await readyPanel()
+    expect(clock()).toHaveTextContent('발생 → 판정 30분')
+    expect(clock().closest('[data-elapsed-tone]')).toHaveAttribute('data-elapsed-tone', 'ok')
+    // 머리 배지는 그대로 최근 판정이다
+    expect(screen.getByTitle('최근 판정')).toHaveAttribute('data-verdict', 'false_positive')
   })
 })
 
@@ -1079,6 +1158,8 @@ describe('IncidentDetailPage · 비신뢰 문자열(#41)', () => {
     const { container } = renderRoutes(routes(), PATH, noRetryClient())
     await screen.findByRole('region', { name: '취약점 연계' })
     await readyPanel()
+    // 종결 사건이라 접힌 재판정 폼(도구 제안 포함)을 펴고 본다(#94)
+    fireEvent.click(screen.getByRole('button', { name: '재판정' }))
     const raw = screen.getByRole('region', { name: '원문 로그' })
     fireEvent.click(within(raw).getByRole('button', { name: '펼치기' }))
 

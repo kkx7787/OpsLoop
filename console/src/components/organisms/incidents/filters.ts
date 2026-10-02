@@ -88,6 +88,14 @@ export function clearFilters(filters: ListFilters): ListFilters {
   return filters.sort ? { sort: filters.sort } : {}
 }
 
+/** 빠른 보기. 장비 · 정렬은 남기고 나머지 조건만 바꾼다(#94). '전체 사건' 도 고른 장비의 전체다 */
+export function quickViewFilters(current: ListFilters, view: ListFilters): ListFilters {
+  const out: ListFilters = { ...view }
+  if (current.device) out.device = current.device
+  if (current.sort) out.sort = current.sort
+  return out
+}
+
 /** 규칙 선택지 한 줄 */
 export interface RuleOption {
   id: string
