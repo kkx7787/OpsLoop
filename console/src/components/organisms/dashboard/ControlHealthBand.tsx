@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { loginHref } from '@/api/client'
-import { controlHealthView, monitorItemHref, monitorItemText, type ControlHealthQuery, type MonitorItem } from '@/api/health'
+import { useControlHealthView, monitorItemHref, monitorItemText, type ControlHealthQuery, type MonitorItem } from '@/api/health'
 import type { LiveStatus } from '@/api/live'
 import { cn } from '@/lib/cn'
 import { revealHidden } from '@/lib/untrusted'
@@ -41,12 +41,12 @@ function liveState(live: LiveStatus | undefined): 'reconnecting' | 'closed' | nu
  * 장비 최근 로그). 기준은 ⓘ 하나에 둔다.
  */
 export function ControlHealthBand({ health, live, className }: ControlHealthBandProps) {
-  const view = controlHealthView(health)
-  const error = view.state === 'error'
+  const view = useControlHealthView(health)
+  const error = view.state === 'error' || view.state === 'stale'
   const items = view.state === 'ok' ? [...view.alerts, ...view.unknowns] : []
   const link = liveState(live)
   const status = error
-    ? `관제 상태 확인 불가${link ? ` · 실시간 연결 ${link === 'closed' ? '종료' : '끊김'}` : ''}`
+    ? `${view.state === 'stale' ? '관제 상태 갱신 지연 · 최신 상태 확인 필요' : '관제 상태 확인 불가'}${link ? ` · 실시간 연결 ${link === 'closed' ? '종료' : '끊김'}` : ''}`
     : link === 'closed'
       ? '실시간 연결 종료 · 다시 로그인 필요'
       : link

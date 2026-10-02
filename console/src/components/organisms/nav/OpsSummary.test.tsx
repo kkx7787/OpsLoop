@@ -23,7 +23,8 @@ describe('OpsSummary', () => {
     ['조회 실패', { state: 'error' }, '관제 상태 확인 불가', '확인 불가', 'warn'],
     ['이상 있음', ok([MONITOR.loader, MONITOR.mismatch], [MONITOR.nodes]), '관제 이상 2', '이상 2', 'warn'],
     ['모름만', ok([], [MONITOR.heartbeats, MONITOR.nodes]), '관제 상태 일부 미확인', '일부 미확인', 'idle'],
-    ['이상 없음', ok(), '관제 이상 없음', '이상 없음', 'idle'],
+    ['이상 없음', ok(), '관제 이상 없음', '이상 없음', 'ok'],
+    ['오래된 조회', { state: 'stale' }, '관제 상태 갱신 지연', '갱신 지연', 'warn'],
   ])('%s: 보통 · 짧은 글과 점 색', (_name, view, text, compactText, signal) => {
     const full = renderView(view)
     expect(full.link).toHaveTextContent(text)

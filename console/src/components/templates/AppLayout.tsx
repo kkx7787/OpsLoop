@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { Outlet, useLocation, useMatches } from 'react-router'
 import { loginHref } from '@/api/client'
 import { isApiError } from '@/api/errors'
-import { controlHealthView, useControlHealth } from '@/api/health'
+import { useControlHealthView, useControlHealth } from '@/api/health'
 import { useLiveUpdates } from '@/api/live'
 import { LiveContext } from '@/api/live-context'
 import { useNewIncidentToasts } from '@/api/new-incidents'
@@ -45,7 +45,7 @@ export function AppLayout({ groups, children }: AppLayoutProps) {
   // 비어 있거나 모양이 틀리면 로그인 안 된 것으로 본다. console(#43)은 선택이라 없거나 틀려도 견딘다
   const user = parseMe(me.data)
   const health = useControlHealth(user !== null)
-  const ops = controlHealthView(health)
+  const ops = useControlHealthView(health)
   const addUnseen = useTabBadge()
   const toasts = useNewIncidentToasts(user !== null, { onShown: addUnseen })
   const live = useLiveUpdates({ onMessage: toasts.onLiveMessage })

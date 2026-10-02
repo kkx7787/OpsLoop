@@ -49,7 +49,7 @@ export function DashboardPage() {
   const summaryError = <ApiErrorState error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} titleAs="h3" />
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      <PageHeader title="관제 현황" status={<PageRefresh parts={parts} announce />} />
+      <PageHeader title="관제 현황" badges={(data || queue) && <a href="/#pending-incidents" className="hidden text-xs font-medium md:inline-flex">판정 대기로 이동 ↓</a>} status={<PageRefresh parts={parts} announce />} />
       <ControlHealthBand health={health} live={live.status} />
       <TargetBoard
         data={targets.data}
@@ -61,7 +61,7 @@ export function DashboardPage() {
         onRetry={() => void targets.refetch()}
       />
       {data || queue ? (
-        <section aria-labelledby={queueTitleId} className="flex min-w-0 flex-col gap-4" data-pending-section="">
+        <section id="pending-incidents" tabIndex={-1} aria-labelledby={queueTitleId} className="flex min-w-0 scroll-mt-16 flex-col gap-4" data-pending-section="">
           <div className={cn('grid items-start gap-4', data && 'xl:grid-cols-[minmax(0,1fr)_300px]')}>
             <PendingQueue titleId={queueTitleId} queue={queue} oldest={data?.oldest_pending} stale={queue ? targetsStale : summaryStale} />
             {data && <AgeDistribution pending={data.pending} stale={summaryStale} />}

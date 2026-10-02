@@ -1,0 +1,108 @@
+..F.F....F/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/unittest/case.py:704: ResourceWarning: unclosed file <_io.TextIOWrapper name=6 encoding='utf-8'>
+  function, args, kwargs = self._cleanups.pop()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/unittest/case.py:704: ResourceWarning: unclosed file <_io.TextIOWrapper name=4 encoding='utf-8'>
+  function, args, kwargs = self._cleanups.pop()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+F..................................................................s..............................EE......................
+======================================================================
+ERROR: test_진짜_curl_로_200_503_연결_거부를_가른다 (test_console_watch.RealCurlTest.test_진짜_curl_로_200_503_연결_거부를_가른다)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/scripts/test_console_watch.py", line 877, in test_진짜_curl_로_200_503_연결_거부를_가른다
+    up = "http://127.0.0.1:%d/health" % self.serve(200)
+                                        ~~~~~~~~~~^^^^^
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/scripts/test_console_watch.py", line 866, in serve
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 457, in __init__
+    self.server_bind()
+    ~~~~~~~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 148, in server_bind
+    socketserver.TCPServer.server_bind(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 478, in server_bind
+    self.socket.bind(self.server_address)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_진짜_curl_이_표준_입력_설정의_주소로_보낸다 (test_console_watch.RealCurlTest.test_진짜_curl_이_표준_입력_설정의_주소로_보낸다)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/scripts/test_console_watch.py", line 901, in test_진짜_curl_이_표준_입력_설정의_주소로_보낸다
+    hook = "https://127.0.0.1:%d/workflows/x?sig=%s" % (self.serve(202, (cert, key)), SECRET)
+                                                        ~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/scripts/test_console_watch.py", line 866, in serve
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 457, in __init__
+    self.server_bind()
+    ~~~~~~~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 148, in server_bind
+    socketserver.TCPServer.server_bind(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 478, in server_bind
+    self.socket.bind(self.server_address)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+FAIL: test_대기_기본값은_180초이고_창_안에_못_돌면_다시_돌지_않는다 (test_backup_db.BackupAgentTest.test_대기_기본값은_180초이고_창_안에_못_돌면_다시_돌지_않는다)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/scripts/test_backup_db.py", line 496, in test_대기_기본값은_180초이고_창_안에_못_돌면_다시_돌지_않는다
+    self.assertEqual(self.titles(), ["OpsLoop DB 백업 실패"], "다시 돌지 않으므로 '재시도 예정' 이 아니다")
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Lists differ: [] != ['OpsLoop DB 백업 실패']
+
+Second list contains 1 additional elements.
+First extra element 0:
+'OpsLoop DB 백업 실패'
+
+- []
++ ['OpsLoop DB 백업 실패'] : 다시 돌지 않으므로 '재시도 예정' 이 아니다
+
+======================================================================
+FAIL: test_모두_실패하면_한_번_더_알리고_실패로_끝난다 (test_backup_db.BackupAgentTest.test_모두_실패하면_한_번_더_알리고_실패로_끝난다)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/scripts/test_backup_db.py", line 483, in test_모두_실패하면_한_번_더_알리고_실패로_끝난다
+    self.assertEqual(self.titles(), ["OpsLoop DB 백업 실패 · 재시도 예정", "OpsLoop DB 백업 실패 · 재시도 모두 실패"])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Lists differ: [] != ['OpsLoop DB 백업 실패 · 재시도 예정', 'OpsLoop DB 백업 실패 · 재시도 모두 실패']
+
+Second list contains 2 additional elements.
+First extra element 0:
+'OpsLoop DB 백업 실패 · 재시도 예정'
+
+- []
++ ['OpsLoop DB 백업 실패 · 재시도 예정', 'OpsLoop DB 백업 실패 · 재시도 모두 실패']
+
+======================================================================
+FAIL: test_재시도_대기_동안에도_잠자기_방지가_걸려_있다 (test_backup_db.BackupAgentTest.test_재시도_대기_동안에도_잠자기_방지가_걸려_있다)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/scripts/test_backup_db.py", line 609, in test_재시도_대기_동안에도_잠자기_방지가_걸려_있다
+    self.assertEqual(len(self.db_calls()), 1)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 2 != 1
+
+======================================================================
+FAIL: test_재시도_뒤_성공은_기록하고_알린다 (test_backup_db.BackupAgentTest.test_재시도_뒤_성공은_기록하고_알린다)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/scripts/test_backup_db.py", line 468, in test_재시도_뒤_성공은_기록하고_알린다
+    self.assertEqual(self.titles(), ["OpsLoop DB 백업 실패 · 재시도 예정", "OpsLoop DB 백업 재시도 뒤 성공"])
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Lists differ: [] != ['OpsLoop DB 백업 실패 · 재시도 예정', 'OpsLoop DB 백업 재시도 뒤 성공']
+
+Second list contains 2 additional elements.
+First extra element 0:
+'OpsLoop DB 백업 실패 · 재시도 예정'
+
+- []
++ ['OpsLoop DB 백업 실패 · 재시도 예정', 'OpsLoop DB 백업 재시도 뒤 성공']
+
+----------------------------------------------------------------------
+Ran 132 tests in 105.858s
+
+FAILED (failures=4, errors=2, skipped=1)

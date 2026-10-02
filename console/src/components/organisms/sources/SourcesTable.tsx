@@ -7,6 +7,7 @@ import { ColumnHeader } from './ColumnHeader'
 import { SourceBlockCell } from './SourceBlock'
 import { SourceMarks, TargetNames, VerdictMix } from './SourceBadges'
 import { sourceHref } from './model'
+import { useReturnTo } from '@/lib/returnTo'
 
 const cell = 'px-4 py-2.5 align-top'
 /** 열 이름과 계산 기준(열 머리 ⓘ) */
@@ -36,13 +37,14 @@ export interface SourcesTableProps {
  */
 export function SourcesTable({ items, now, checkers }: SourcesTableProps) {
   const navigate = useNavigate()
+  const origin = useReturnTo('/sources')
 
   function open(event: MouseEvent<HTMLTableRowElement>, ip: string) {
     if (event.defaultPrevented) return
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
     if (event.target instanceof Element && event.target.closest('a, button, summary, [data-infotip]')) return
     if (window.getSelection()?.toString()) return
-    void navigate(sourceHref(ip))
+    void navigate(sourceHref(ip), { state: { returnTo: origin.href } })
   }
 
   return (
@@ -60,7 +62,7 @@ export function SourcesTable({ items, now, checkers }: SourcesTableProps) {
           // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions
           <tr key={item.ip} data-source-ip={item.ip} onClick={(event) => open(event, item.ip)} className="cursor-pointer hover:bg-primary-soft/60">
             <td className={cell}>
-              <Link to={sourceHref(item.ip)} className="font-mono font-semibold break-all">
+              <Link to={sourceHref(item.ip)} state={{ returnTo: origin.href }} className="font-mono font-semibold break-all">
                 {item.ip}
               </Link>
               <div className="mt-1">

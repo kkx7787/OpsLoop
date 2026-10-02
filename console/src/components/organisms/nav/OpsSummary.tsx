@@ -24,12 +24,13 @@ function itemName(item: MonitorItem): string {
 function summaryOf(view: OpsView, compact: boolean): { kind: string; signal: Signal; text: string; title?: string } {
   if (view.state === 'pending') return { kind: 'pending', signal: 'idle', text: compact ? '관제 —' : '관제 상태 조회 전' }
   if (view.state === 'error') return { kind: 'error', signal: 'warn', text: compact ? '확인 불가' : '관제 상태 확인 불가' }
+  if (view.state === 'stale') return { kind: 'stale', signal: 'warn', text: compact ? '갱신 지연' : '관제 상태 갱신 지연' }
   const n = view.alerts.length
   if (n > 0) {
     return { kind: 'alert', signal: 'warn', text: compact ? `이상 ${n}` : `관제 이상 ${n}`, title: revealHidden(view.alerts.map(itemName).join(' · ')) }
   }
   if (view.unknowns.length > 0) return { kind: 'unknown', signal: 'idle', text: compact ? '일부 미확인' : '관제 상태 일부 미확인' }
-  return { kind: 'ok', signal: 'idle', text: compact ? '이상 없음' : '관제 이상 없음' }
+  return { kind: 'ok', signal: 'ok', text: compact ? '이상 없음' : '관제 이상 없음' }
 }
 
 /**

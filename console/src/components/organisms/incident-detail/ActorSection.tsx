@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
+import { useReturnTo } from '@/lib/returnTo'
 import type { AbsorbedInfo, ActorInfo, RelatedIncident } from '@/api/incidents'
 import { revealHidden, sliceCodePoints } from '@/lib/untrusted'
 import { Badge } from '../../atoms/Badge'
@@ -30,6 +31,7 @@ export interface ActorSectionProps {
  * 첫 사건이면 같은 페이로드로 흡수된 다른 출발지도 이 사건의 행위자로 보인다. 흡수된 인시던트는 지워져 상세가 없다.
  */
 export function ActorSection({ actor, related, actorIp, absorbed, className }: ActorSectionProps) {
+  const origin = useReturnTo()
   const { history, rules, blocked, exempt } = actor
   const state = blocked ? blockState(blocked) : null
   const checkedAt = blocked && state ? gatewayCheckedAt(blocked, state) : null
@@ -163,7 +165,7 @@ export function ActorSection({ actor, related, actorIp, absorbed, className }: A
                 {related.map((r) => (
                   <tr key={r.incident_key}>
                     <td className={TABLE.td}>
-                      <Link to={incidentHref(r.incident_key)} className="font-mono font-medium" title={revealHidden(r.incident_key)}>
+                      <Link to={incidentHref(r.incident_key)} state={{ returnTo: origin.href }} className="font-mono font-medium" title={revealHidden(r.incident_key)}>
                         {r.rule_id}
                       </Link>
                     </td>

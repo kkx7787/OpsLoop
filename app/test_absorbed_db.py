@@ -29,6 +29,9 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+# 다른 웹 계층 시험과 같이, asyncpg 미설치 환경에서는 DB 없는 시험용 대역을 먼저 준비한다.
+# 실제 DB 시험은 OPSLOOP_TEST_DATABASE_URL 이 있을 때만 실행한다.
+import test_web
 import absorbed as absorbed_mod
 import main
 

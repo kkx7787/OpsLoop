@@ -1,0 +1,58 @@
+Ess....[web] 출처 거부: POST /api/accounts/active 출처='-' host='testserver'
+[web] 출처 거부: POST /api/accounts 출처='-' host='testserver'
+[web] 출처 거부: POST /api/accounts/delete 출처='-' host='testserver'
+[web] 출처 거부: POST /api/accounts/password 출처='-' host='testserver'
+[web] 출처 거부: POST /api/accounts/active 출처='http://evil.example' host='testserver'
+[web] 출처 거부: POST /api/accounts 출처='http://evil.example' host='testserver'
+[web] 출처 거부: POST /api/accounts/delete 출처='http://evil.example' host='testserver'
+[web] 출처 거부: POST /api/accounts/password 출처='http://evil.example' host='testserver'
+....................................sssssssssss.........sssssssss..............................................................................................sssssssssssssssssssssssssssssss..........................................sssssss...........................................sssssssssssss..................................ssssssssssss....ssssssssss..........sss...................ssssssssssssssssssss...............................sssssssssssssssssssssssssss........................................................................................................ssssssssssssssssssssssssssssssssssssss..................[web] 출처 거부: POST /x 출처='http://localhost:5173' host='testserver'
+.[web] 출처 거부: POST /x 출처='http://evil.example' host='testserver'
+.........../Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+  warnings.warn(  # deprecated in 14.0 - 2024-11-09
+/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/site-packages/uvicorn/protocols/websockets/websockets_impl.py:17: DeprecationWarning: websockets.server.WebSocketServerProtocol is deprecated
+  from websockets.server import WebSocketServerProtocol
+......s...................[web] 출처 거부: POST /api/incidents/k1/verdict 출처='http://evil.example' host='testserver'
+[web] 출처 거부: PUT /api/incidents/k1/verdict 출처='http://evil.example' host='testserver'
+[web] 출처 거부: PATCH /api/incidents/k1/verdict 출처='http://evil.example' host='testserver'
+[web] 출처 거부: DELETE /api/incidents/k1/verdict 출처='http://evil.example' host='testserver'
+..[web] 출처 거부: POST /login 출처='http://192.168.70.254:8404' host='192.168.70.254:8443'
+[web] 출처 거부: POST /login 출처='http://192.168.70.254' host='192.168.70.254:8443'
+.[web] 출처 거부: POST /login 출처='http://evil.example' host='testserver'
+[web] 출처 거부: POST /login 출처='null' host='testserver'
+[web] 출처 거부: POST /login 출처='http://testserver.evil.example' host='testserver'
+[web] 출처 거부: POST /login 출처='http://testserver:8443' host='testserver'
+[web] 출처 거부: POST /login 출처='ftp://testserver' host='testserver'
+.[web] 출처 거부: POST /login 출처='-' host='testserver'
+..[web] 출처 거부: POST /logout 출처='-' host='testserver'
+.[web] 출처 거부: POST /login 출처='http://evil.example' host='testserver'
+..[web] 출처 거부: POST /login 출처='http://evil.example/login' host='testserver'
+.[web] 출처 거부: WS /ws 출처='http://evil.example' host='testserver'
+[web] 출처 거부: WS /ws 출처='-' host='testserver'
+...[web] 출처 거부: POST /api/incidents/k1/verdict 출처='http://evil.example' host='testserver'
+.....[web] 출처 설정을 해석하지 못해 뺍니다 (scheme://host[:port] 형식): 'bad-entry'
+[web] 출처 거부: POST /x 출처='http://console.example:8443' host='testserver'
+[web] 출처 거부: POST /x 출처='https://console.example' host='testserver'
+[web] 출처 거부: POST /x 출처='-' host='testserver'
+...........
+======================================================================
+ERROR: test_absorbed_db (unittest.loader._FailedTest.test_absorbed_db)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_absorbed_db
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/unittest/loader.py", line 426, in _find_test_path
+    module = self._get_module_from_name(name)
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/unittest/loader.py", line 367, in _get_module_from_name
+    __import__(name)
+    ~~~~~~~~~~^^^^^^
+  File "/Users/hanseongmin/opsloop-repo/app/test_absorbed_db.py", line 33, in <module>
+    import main
+  File "/Users/hanseongmin/opsloop-repo/app/main.py", line 27, in <module>
+    import asyncpg
+ModuleNotFoundError: No module named 'asyncpg'
+
+
+----------------------------------------------------------------------
+Ran 699 tests in 13.097s
+
+FAILED (errors=1, skipped=184)

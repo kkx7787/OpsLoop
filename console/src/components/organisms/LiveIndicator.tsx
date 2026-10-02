@@ -13,11 +13,11 @@ export interface LiveIndicatorProps extends Omit<ComponentProps<'span'>, 'childr
 
 /**
  * 연결 상태별 점 색과 글. 끊김은 눈에 띄어야 하고 이어져 있으면 조용해야 한다.
- * 이어져 있음은 웹소켓 연결만 뜻한다(센서 · 노드 수신이 아니다). 그래서 정상 색 대신 idle 로 둔다
+ * 초록은 웹소켓 연결 성공만 뜻한다. 수집 · 탐지 상태는 별도 관제 상태 표시로 확인한다.
  */
 const VIEW: Record<LiveStatus, { signal: Signal; label: string }> = {
   connecting: { signal: 'idle', label: '실시간 연결 중' },
-  connected: { signal: 'idle', label: '실시간 통보 연결' },
+  connected: { signal: 'ok', label: '실시간 통보 연결' },
   reconnecting: { signal: 'warn', label: '실시간 끊김 · 다시 연결 중' },
   closed: { signal: 'bad', label: '실시간 끊김 · 다시 로그인 필요' },
 }
@@ -38,6 +38,7 @@ export function LiveIndicator({ live, className, ...rest }: LiveIndicatorProps) 
   return (
     <span data-live={live.status} title={title} className={cn('inline-flex min-w-0 items-center gap-1.5', className)} {...rest}>
       <StatusDot signal={signal} />
+      <span aria-hidden="true" className="md:hidden">{live.status === 'connected' ? '연결' : live.status === 'connecting' ? '연결 중' : '끊김'}</span>
       <span className="sr-only md:not-sr-only">{label}</span>
       {name !== undefined && (
         <span data-console={known ?? ''} data-stale={stale || undefined} className={cn('sr-only md:not-sr-only md:inline-flex md:min-w-0', stale && 'opacity-45')}>

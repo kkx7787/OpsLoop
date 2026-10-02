@@ -61,7 +61,7 @@ export function LogTimes({ data, paused, className }: LogTimesProps) {
             <Cell name="loaded" title="마지막 적재">
               <At value={times.loaded_at} asOf={asOf} empty={missingTimeText(times.state)} />
             </Cell>
-            <Cell name="lines" title="마지막 줄">
+            <Cell name="lines" title="마지막 원본 줄">
               {times.lines.map((line) => {
                 const text = lineTimeText(times.state, line)
                 return (
@@ -91,6 +91,7 @@ export function LogTimes({ data, paused, className }: LogTimesProps) {
               <span className="font-medium">{paused ? '일시정지' : '5초마다'}</span>
             </Cell>
           </dl>
+          <p className="m-0 mt-2 text-xs text-ink-muted">원본 줄은 에이전트가 읽은 기록 기준입니다. 아래 목록에서 제외되는 기록도 포함합니다.</p>
           {panel}
         </section>
       )}

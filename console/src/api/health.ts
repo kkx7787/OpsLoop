@@ -3,6 +3,8 @@ import { deviceLogsHref, STATUS_PATH, statusHref } from '@/components/molecules/
 import { api } from './client'
 import { ApiError } from './errors'
 import { monitoringKeys } from './monitoring-keys'
+import { FRESHNESS_TICK_MS, STALE_MS } from '@/lib/freshness'
+import { useNow } from '@/lib/useNow'
 
 /**
  * 관제 이상(#72 · #82). 서버 계약은 app/targets.py monitor_view.
@@ -85,7 +87,7 @@ export function opsAnomalies(health: Pick<ControlHealth, 'items'> | undefined): 
 }
 
 /** 띠 · 사이드바가 그릴 상태: 받는 중 · 확인 불가 · 받음(이상 · 모름) */
-export type ControlHealthView = { state: 'pending' } | { state: 'error' } | { state: 'ok'; alerts: MonitorItem[]; unknowns: MonitorItem[] }
+export type ControlHealthView = { state: 'pending' } | { state: 'error' } | { state: 'stale' } | { state: 'ok'; alerts: MonitorItem[]; unknowns: MonitorItem[] }
 
 /** controlHealthView 가 보는 조회 결과 칸(useControlHealth 결과를 그대로 넘긴다). 시각 두 칸은 없으면 0 으로 본다 */
 export type ControlHealthQuery = Pick<UseQueryResult<ControlHealth>, 'data' | 'isError'> &
@@ -97,10 +99,16 @@ export type ControlHealthQuery = Pick<UseQueryResult<ControlHealth>, 'data' | 'i
  * 한 번도 받지 못한 채 다시 조회하는 동안은 react-query 가 pending 으로 되돌리고 error 를 비우므로, 마지막으로 끝난 조회가
  * 실패였는지(errorUpdatedAt > dataUpdatedAt)도 본다. 재조회마다 '조회 전' 으로 깜빡이지 않는다
  */
-export function controlHealthView(query: ControlHealthQuery): ControlHealthView {
+export function controlHealthView(query: ControlHealthQuery, now = Date.now()): ControlHealthView {
   if (query.isError || (query.errorUpdatedAt ?? 0) > (query.dataUpdatedAt ?? 0)) return { state: 'error' }
   if (!query.data) return { state: 'pending' }
+  if (query.dataUpdatedAt && now - query.dataUpdatedAt > STALE_MS) return { state: 'stale' }
   return { state: 'ok', ...opsAnomalies(query.data) }
+}
+
+/** 요청이 멈추거나 탭에서 돌아와도 오래된 정상 결과를 계속 초록으로 보이지 않는다. */
+export function useControlHealthView(query: ControlHealthQuery): ControlHealthView {
+  return controlHealthView(query, useNow(FRESHNESS_TICK_MS))
 }
 
 /** 항목 이름 뒤에 붙일 글: 까닭이 있으면 까닭, 없으면 건수 */

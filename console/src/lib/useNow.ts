@@ -5,8 +5,16 @@ export function useNow(intervalMs = 1000): number {
   const [now, setNow] = useState(() => Date.now())
   useEffect(() => {
     if (intervalMs <= 0) return
-    const id = window.setInterval(() => setNow(Date.now()), intervalMs)
-    return () => window.clearInterval(id)
+    const update = () => setNow(Date.now())
+    const visible = () => { if (document.visibilityState === 'visible') update() }
+    const id = window.setInterval(update, intervalMs)
+    window.addEventListener('focus', update)
+    document.addEventListener('visibilitychange', visible)
+    return () => {
+      window.clearInterval(id)
+      window.removeEventListener('focus', update)
+      document.removeEventListener('visibilitychange', visible)
+    }
   }, [intervalMs])
   return now
 }

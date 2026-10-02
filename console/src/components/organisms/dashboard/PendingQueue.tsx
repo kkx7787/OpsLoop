@@ -119,6 +119,7 @@ function QueueRow({ item }: { item: Row }) {
     <li>
       <Link
         to={incidentHref(item.incident_key)}
+        state={{ returnTo: '/' }}
         className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 hover:bg-canvas sm:grid-cols-[110px_minmax(0,1fr)_auto]"
       >
         <div className={cn('text-sm font-semibold tabular-nums', item.overdue ? 'text-warning' : 'text-ink')}>

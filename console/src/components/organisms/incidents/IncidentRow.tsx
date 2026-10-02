@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router'
 import type { CtiBadge as CtiBadgeValue } from '@/api/cti'
 import type { Incident } from '@/api/incidents'
 import { cn } from '@/lib/cn'
+import { useReturnTo } from '@/lib/returnTo'
 import { sensorOf } from '@/lib/domain'
 import { revealHidden } from '@/lib/untrusted'
 import { SeverityBadge } from '../../atoms/SeverityBadge'
@@ -31,6 +32,7 @@ export interface IncidentRowProps extends Omit<ComponentProps<'div'>, 'children'
  */
 export function IncidentRow({ incident, elapsedSeconds, rowIndex, cti, className, onClick, ...rest }: IncidentRowProps) {
   const navigate = useNavigate()
+  const origin = useReturnTo()
   const href = incidentHref(incident.incident_key)
   const pending = isPending(incident)
 
@@ -39,7 +41,7 @@ export function IncidentRow({ incident, elapsedSeconds, rowIndex, cti, className
     if (event.defaultPrevented) return
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
     if (window.getSelection()?.toString()) return
-    void navigate(href)
+    void navigate(href, { state: { returnTo: origin.href } })
   }
 
   return (
@@ -68,7 +70,7 @@ export function IncidentRow({ incident, elapsedSeconds, rowIndex, cti, className
       <div role="cell" className="flex min-w-0 flex-col gap-0.5">
         {/* 배지는 이름 옆에 두되, 이름이 6자 남짓(basis-24)보다 좁아지면 다음 줄로 내린다 */}
         <div className={cn('flex min-w-0 items-baseline gap-x-2', cti && 'flex-wrap gap-y-0.5')}>
-          <Link to={href} className="shrink-0 font-mono text-xs font-medium text-primary">
+          <Link to={href} state={{ returnTo: origin.href }} className="shrink-0 font-mono text-xs font-medium text-primary">
             {incident.rule_id}
           </Link>
           <span className={cn('truncate font-medium text-ink', cti && 'min-w-0 grow basis-24')} title={revealHidden(incident.rule_name)}>
