@@ -44,6 +44,7 @@ scripts/add-node.sh opsloop-web-01 768 1 vmnet2 00:50:56:20:02:21 netplan/web-01
 
 # 7. 수집 파이프라인 (데이터 노드). 설치 방법은 puller/install-ingest.sh 머리말
 # 8. 내부 DB 를 Mac 으로 백업 (VERIFY=restore 면 임시 DB 복원 시험까지). 같은 시각의 역할 목록 opsloop-<시각>.globals.sql(비밀번호 없음)도 받는다
+#    정기 실행(하루 세 번) · 재시도 · 알림은 아래 'DB 복원' 의 '정기 백업'
 scripts/backup-db.sh
 ```
 
@@ -444,21 +445,65 @@ infra/vmware/scripts/console-join.sh --from image --apply     # 3번 뒤: image 
 - 범위 밖: 화면에서 관리자 계정 추가 · 관리자 부여 · 관리자 비밀번호 변경, 본인 비밀번호 변경 화면, 이력이 있는 계정 삭제, 로그인 실패 횟수에 따른 잠금. triage.py 는 콘솔 역할로 붙고 판정자 이름을 계정 표와 대조하지 않는다(비활성 계정 이름으로도 판정이 남는다).
 - 잔여 위험: 함수는 콘솔이 넘기는 행위자(`opsloop.actor`)를 그대로 믿는다(다른 감사와 같은 수준, `infra/schema.sql` T-8). 콘솔 역할 비밀번호(콘솔 `.env` · `triage.env`)가 새면 관제사 · 조회자 계정의 역할을 바꾸거나 비활성 · 재활성하고, 관제사 계정을 만들거나 비밀번호를 바꿔 그 계정으로 로그인할 수는 있다(모두 감사에 남는다. 판정 · 차단은 콘솔 역할로도 이미 직접 넣을 수 있다). 관리자로 올리거나 관리자 계정을 건드리지는 못한다.
 - 되돌리기: 마이그레이션은 그대로 두고 콘솔 이미지만 옛것으로 되돌려도 돈다(#63 함수는 부르는 쪽이 없을 뿐이다). 다만 옛 이미지는 새 열을 읽지 않으므로 비활성 · 역할 변경 · 세션 무효화가 모두 무시된다(비활성 계정도 로그인되고, 쿠키는 12시간 동안 쿠키의 역할로 쓰인다).
-- 복원 훈련은 적용 뒤 첫 백업(04:30 · 16:30)이 생긴 다음에 한다. 그 전 백업을 복원하면 구조(트리거 · 함수 · 열)가 운영과 다르고 계정 지문이 새 열을 읽지 못해 `verify` 가 ✘ 다. 복원 훈련의 구조 참고값은 #77 뒤(트리거 10 · 함수 19, 아래 '차단 적용 지점 (이슈 #77)' 절)다. 그 전 운영(20261002 뒤 함수 18 · 그 전 15)은 '구조 수치 = 계약 참고값' 이 경고로 나온다.
+- 복원 훈련은 적용 뒤 첫 백업(04:30 · 12:30 · 20:30)이 생긴 다음에 한다. 그 전 백업을 복원하면 구조(트리거 · 함수 · 열)가 운영과 다르고 계정 지문이 새 열을 읽지 못해 `verify` 가 ✘ 다. 복원 훈련의 구조 참고값은 #77 뒤(트리거 10 · 함수 19, 아래 '차단 적용 지점 (이슈 #77)' 절)다. 그 전 운영(20261002 뒤 함수 18 · 그 전 15)은 '구조 수치 = 계약 참고값' 이 경고로 나온다.
 
 ## DB 복원 (이슈 #45)
 
-운영 DB(`opsloop-db` 컨테이너의 `opsloop`)를 Mac 의 백업으로 되돌린다. 백업은 `scripts/backup-db.sh` 가 받는다(launchd 04:30 · 16:30, 위 '순서' 8번).
+운영 DB(`opsloop-db` 컨테이너의 `opsloop`)를 Mac 의 백업으로 되돌린다. 백업은 `scripts/backup-db.sh` 가 받는다(launchd 04:30 · 12:30 · 20:30, 아래 '정기 백업').
 이 절은 **DB 인스턴스만 잃은 경우**다. 데이터 노드 호스트 · `/etc/opsloop` · 원장(S3 · `/var/lib/opsloop` 의 loki · gate · admin)은 살아 있다고 본다.
 데이터 노드 전체를 잃은 경우는 맨 아래 '데이터 노드 전손' 에 따로 적었다(범위 밖).
 목표는 RTO 2시간 · RPO 12시간이다. 단계마다 시작 시각을 적는다. RTO 는 장애 선언(T0)에서 시작해, 8단계 검증을 통과하고 10단계에서 콘솔 판정까지 확인한 때 끝난다.
+
+### 정기 백업 (이슈 #91)
+
+Mac 의 launchd(`local.opsloop.backup-db`)가 실행기 `scripts/backup-agent.sh` 를 부르고, 실행기가 `backup-db.sh` 를 `VERIFY=restore`(임시 DB 복원 시험까지)로 돌린다. 설치기가 두 파일을 `~/Library/Application Support/OpsLoop/bin` 에 복사해 그 사본을 쓴다.
+
+| 항목 | 내용 |
+|---|---|
+| 일정 | 매일 04:30 · 12:30 · 20:30 KST (8시간 간격). Mac 이 잠든 사이 시각이 지나면 깨어날 때 돈다. 꺼져 있던 회차는 건너뛴다(그동안 VM 도 멈춰 있다) |
+| 보관 | 덤프 · 역할 목록 각 21개(7일). `.unverified` 는 세지 않고 지우지 않는다 |
+| 재시도 | 실패하면 180초 쉬고 다시 돈다. 처음 1번 + 재시도 최대 2번이다. 한 회차 전체(재시도 · 복원 시험 포함)는 시작 뒤 20분(백업 창) 안에 끝낸다. 창 끝 30초 전까지 끝나지 않은 시도는 멈추라고 하고(임시 파일 · 시험 DB 를 치운다) 창 끝에도 남아 있으면 끊는다. 시도 중 Mac 이 잠들어 창 끝을 넘겨 깨면 멈추라고 한 뒤 30초는 정리할 틈을 주고 끊으므로 그만큼 창 밖에서 끝날 수 있다. 끊겨 남은 시험 DB 는 다음 시도가 시계 확인 앞에서 지운다. 쉬고 나서 창 안에 다시 돌 수 없으면 더 돌지 않는다 |
+| 즉시 알림 | macOS 알림. 첫 실패 때 바로 '재시도 예정', 재시도까지 모두 실패하면 '재시도 모두 실패', 재시도로 성공하면 '재시도 뒤 성공' 한 번. 처음 시도에 성공하면 알리지 않는다 |
+| 오래됨 알림 | 진입점 감시(`console-watch.sh`, 아래 '콘솔 진입점 감시')가 1분마다 기록의 마지막 '백업 성공' 시각을 본다. 10시간 넘게 지났으면 한 번 알린다(macOS 알림 · 설정된 웹훅). 새 성공이 보이면 풀리고 다시 오래되면 또 한 번 알린다. 점검 창(`--pause`)에는 알리지 않는다. 실행기가 아예 돌지 못해 스스로 알리지 못할 때(launchd 에서 내림 · Mac 이 오래 꺼짐)를 잡는다. 기록 파일이 없으면 조용히 넘어간다 |
+| 시계 확인 | 덤프 전에 Mac 과 data01 의 시계 차이를 잰다(ssh 앞뒤 Mac 시각의 가운데와 data01 의 `date`). 2초 넘게 다르면 data01 에서 `chronyc waitsync`(5초 간격 최대 12번)로 chrony 가 맞추기를 기다린 뒤 다시 잰다. 그래도 2초를 넘거나 chronyc 를 쓸 수 없으면 덤프하지 않고 실패로 끝낸다(재시도 대상). 잰 차이는 기록에 남긴다. data01 에는 쓰지 않는다 |
+| ssh | `BatchMode` · `ConnectTimeout=10` 에 `ServerAliveInterval=15` · `ServerAliveCountMax=4` 를 더했다(원장 rsync 도). 답이 없는 연결은 약 1분 뒤 끊고 그 시도를 실패로 끝낸다 |
+
+RPO 목표는 12시간 그대로다. 실측 보관 간격은 복원 훈련 `precheck` 의 '백업 간격 최댓값' 으로 본다.
+
+기록은 `~/opsloop-backup/backup.log` 다(launchd 표준 출력 · 오류). 재시도로 성공한 회차는 이렇게 남는다(예시):
+
+```text
+== 2026-10-02 12:30:04 KST 백업 시작
+-- 2026-10-02 12:30:04 KST 시도 1/3
+ssh: connect to host … port 22: Operation timed out
+data01 시각을 읽지 못했습니다
+-- 2026-10-02 12:30:25 KST 시도 1/3 실패 (종료 코드 1) · 180초 뒤 다시 돈다
+-- 2026-10-02 12:33:25 KST 시도 2/3
+시계 차이 (data01 − Mac) +0.214초 · 잰 왕복 0.402초
+복원 시험 (events verdicts actions blocklist): 복원 … · 운영 …
+백업 8.4M …/opsloop-backup/opsloop-20261002-0333.dump · 표 23 개 · 역할 8 개 opsloop-20261002-0333.globals.sql
+원장 사본 … (loki · gate · admin)
+== 2026-10-02 12:33:51 KST 백업 성공 (시도 2/3 · 재시도 뒤 성공)
+```
+
+- `== <시각> KST 백업 시작|성공|실패` 줄은 회차마다 한 번씩이다. 복원 훈련 도구(지금 백업 중인지)와 진입점 감시(마지막 성공)가 이 줄을 읽는다. 시도마다 `-- ` 로 시작하는 줄이 붙는다. 처음 시도에 성공하면 성공 줄 뒤에 괄호가 붙지 않는다.
+- 덤프 이름의 시각은 시계 확인을 마친 뒤 Mac 이 잰 시작 시각(UTC)이다.
+
+```bash
+infra/vmware/scripts/install-backup-agent.sh            # 설치 · 갱신 (다시 실행해도 된다). --now 는 한 번 바로 돌린다 · --remove 로 내린다
+infra/vmware/scripts/install-console-watch.sh           # 오래됨 알림은 진입점 감시 사본이 갱신돼야 돈다
+tail -n 30 ~/opsloop-backup/backup.log
+"$HOME/Library/Application Support/OpsLoop/bin/console-watch.sh" --status   # '백업: 마지막 성공 … · … 전' 줄
+```
+
+- 시험: `python3 infra/vmware/scripts/test_backup_db.py` (가짜 ssh · osascript · launchctl. 재시도 대기 · 백업 창은 환경변수 `BACKUP_RETRY_WAIT` · `BACKUP_WINDOW` 로 줄인다)
 
 ### 백업에 드는 것 · 안 드는 것
 
 | 구분 | 무엇 | 비고 |
 |---|---|---|
-| 든다 | DB 덤프 `~/opsloop-backup/opsloop-<시각>.dump` | `pg_dump -Fc opsloop`, DB 하나. 표 23 · 데이터 · 시퀀스 값 · 함수 7 · 트리거 4 · 뷰 3 · 참조 키 15 · 표 · 열 · 함수 권한(2026-09-27 기준). 계정 해시 · 노드 토큰 해시 · 알림 채널 주소가 들어 있어 비밀처럼 다룬다(0600 · 폴더 0700 · 14개 보관) |
-| 든다 | 역할 목록 `opsloop-<시각>.globals.sql` | 덤프와 같은 시각. 역할 7개 · 속성(INHERIT · 접속 한도) · `pg_read_all_data` 멤버십. 비밀번호는 없다(`--no-role-passwords`). 2026-09-27 이전 덤프에는 없다 |
+| 든다 | DB 덤프 `~/opsloop-backup/opsloop-<시각>.dump` | `pg_dump -Fc opsloop`, DB 하나. 표 23 · 데이터 · 시퀀스 값 · 함수 7 · 트리거 4 · 뷰 3 · 참조 키 15 · 표 · 열 · 함수 권한(2026-09-27 기준). 계정 해시 · 노드 토큰 해시 · 알림 채널 주소가 들어 있어 비밀처럼 다룬다(0600 · 폴더 0700 · 21개 보관) |
+| 든다 | 역할 목록 `opsloop-<시각>.globals.sql` | 덤프와 같은 시각. 역할 8개 · 속성(INHERIT · 접속 한도) · `pg_read_all_data` 멤버십. 비밀번호는 없다(`--no-role-passwords`). 2026-09-27 이전 덤프에는 없다. `opsloop_enforcer` 는 #47 설치 뒤 덤프부터 있다 |
 | 든다 | 원장 사본 `~/opsloop-backup/ledger/` (loki · gate · admin) | rsync 로 따라 맞춘 사본 하나다. 쓰는 중에 복사하므로 한 시점으로 맞는다는 보장이 없고, 이 사본으로 되돌려 본 적이 없다 |
 | 안 든다 | 역할 비밀번호 · `/etc/opsloop` 의 파일 9개(`*.env` 8개 · `gap-ack.json`) · compose `.env`(`POSTGRES_PASSWORD`) · 콘솔 `~/opsloop/.env`(`SESSION_SECRET` · 콘솔 DB 비밀번호) | VM 안에만 있다. DB 만 되돌릴 때는 호스트에 남은 파일을 그대로 쓴다 |
 | 안 든다 | S3 읽기 키(`s3-pull.env`) · CTI 쓰기 키(`s3-cti.env`) | Mac 에서 파이프로 넣었고 Terraform 밖이다. 잃으면 다시 발급한다 |
@@ -499,7 +544,7 @@ grep -B2 -A2 "$(basename "$D")" ~/opsloop-backup/backup.log     # 그 회차의 
 shasum -a 256 "$D" "$G"                                          # 기록에 남긴다
 docker run --rm -i --pull never --network none --entrypoint pg_restore postgres:16-alpine --list < "$D" | grep 'Archive created'   # T_b (UTC)
 docker run --rm -i --pull never --network none --entrypoint pg_restore postgres:16-alpine --list < "$D" | grep -c 'TABLE DATA'      # 23
-grep -c '^CREATE ROLE ' "$G"; grep -ciE "PASSWORD '|SCRAM-SHA-256\\$" "$G"                                                       # 7 · 0
+grep -c '^CREATE ROLE ' "$G"; grep -ciE "PASSWORD '|SCRAM-SHA-256\\$" "$G"                                                       # 8 · 0
 ```
 
 - 목차는 Mac 의 `postgres:16-alpine`(덤프와 같은 16판)으로 읽는다. DB 에 붙지 않는다. 이미지가 없으면 데이터 노드에서 `d1 'docker exec -i opsloop-db pg_restore --list' < "$D"`.
@@ -538,7 +583,7 @@ grep -vx 'CREATE ROLE opsloop;' "$G" | d1 'docker exec -i opsloop-db psql -U ops
 d1 'docker exec -i opsloop-db psql -U opsloop -d postgres -At' <<'SQL'
 SELECT rolname, rolinherit, rolconnlimit FROM pg_roles WHERE rolname LIKE 'opsloop%' ORDER BY 1;
 SQL
-#    7줄. INHERIT 는 opsloop · opsloop_backup 뿐, 접속 한도 backup 2 · console 30 · cti 2 · detector 5 · gate 10 · ingest 5 (opsloop 는 -1)
+#    8줄. INHERIT 는 opsloop · opsloop_backup 뿐, 접속 한도 backup 2 · console 30 · cti 2 · detector 5 · enforcer 2 · gate 10 · ingest 5 (opsloop 는 -1)
 ```
 
 - 볼륨 사본은 약 200MB 다(2026-09-27 pgdata 201M, 디스크 여유 12G). compose 가 다시 만드는 볼륨 이름은 그대로 `opsloop_pgdata` 다(프로젝트 `opsloop`).
@@ -687,6 +732,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.opsloop.backup-db.
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/local.opsloop.assets.plist
 "$HOME/Library/Application Support/OpsLoop/bin/console-watch.sh" --resume
 VERIFY=restore infra/vmware/scripts/backup-db.sh                    # 되돌린 DB 의 첫 백업 · 복원 시험
+#    손으로 돌린 회차는 backup.log 에 남지 않는다(진입점 감시의 '마지막 성공' 은 그대로다). 다음 정기 회차(04:30 · 12:30 · 20:30)가 남긴다
 ```
 
 - 로그인해 사건 목록 · 상세의 판정 이력 · 차단 목록 · 감사를 보고, 판정 하나가 들어가는지 확인한다. 계정 · 비밀번호는 T_b 의 것이다.
@@ -710,7 +756,7 @@ git show "$C:infra/vmware/compose/data.yml" | ssh -F ~/.ssh/config.opsloop data0
   'cd /home/ops/opsloop && cat > data.yml.new && docker compose -f data.yml.new config -q && cp -p data.yml data.yml.prev && mv data.yml.new data.yml'
 ssh -F ~/.ssh/config.opsloop data01 'grep -c docker-entrypoint-initdb /home/ops/opsloop/data.yml'   # 0
 # 컨테이너를 다시 만들 때. postgres 만 다시 만들고(볼륨 그대로) loki 는 그대로 둔다. 몇 초 동안 콘솔 · 적재가 DB 에 붙지 못한다.
-#   04:30 · 16:30 백업 · 5분 적재 회차와 겹치지 않게. 콘솔 실시간 통보 연결은 다시 붙는다
+#   백업 창(04:25~04:50 · 12:25~12:50 · 20:25~20:50) · 5분 적재 회차와 겹치지 않게. 콘솔 실시간 통보 연결은 다시 붙는다
 ssh -F ~/.ssh/config.opsloop data01 'cd /home/ops/opsloop && docker compose -f data.yml up -d postgres && docker inspect -f "{{range .Mounts}}{{.Destination}} {{end}}" opsloop-db'
 #    /var/lib/postgresql/data 하나
 ```
@@ -754,9 +800,9 @@ python3 infra/vmware/restore-drill/drill.py $R precheck          # 드라이런:
 python3 infra/vmware/restore-drill/drill.py $R precheck --apply  # 단계마다 --apply. ✘ 면 멈추고 고친 뒤 그 단계를 다시 (… 는 참고)
 ```
 
-- 기준: RTO = T0 → S9 ≤ 7200초(Mac 시계)다. 조회 · 판정 재개(S7)는 중간 지표다. 순서는 단계 선행 관계로 본다(S6·S7 과 S8 은 둘 다 S5 뒤, S9 는 둘 다 뒤). RPO 는 DB 시계로만 센다. ① S3 센서와 ② 관제 대상 로그(Loki · 관문 · 관리 원장)는 재생성 대조가 맞으면 0 이다. ③ DB 에만 있는 기록은 설계 RPO = T_f − T_b(목표 43200초)와, (T_b, T_f] 에 생기거나 바뀐 행(지문 차이)으로 적는다. RPO 합격은 설계 RPO 와 재생성 대조로 본다. 보관 덤프 간격 최댓값(실측 최악)은 `backup_gap_ok` 로 따로 적는다. 04:30 · 16:30 두 번이라 몇 초만 밀려도 43200초를 넘는다.
+- 기준: RTO = T0 → S9 ≤ 7200초(Mac 시계)다. 조회 · 판정 재개(S7)는 중간 지표다. 순서는 단계 선행 관계로 본다(S6·S7 과 S8 은 둘 다 S5 뒤, S9 는 둘 다 뒤). RPO 는 DB 시계로만 센다. ① S3 센서와 ② 관제 대상 로그(Loki · 관문 · 관리 원장)는 재생성 대조가 맞으면 0 이다. ③ DB 에만 있는 기록은 설계 RPO = T_f − T_b(목표 43200초)와, (T_b, T_f] 에 생기거나 바뀐 행(지문 차이)으로 적는다. RPO 합격은 설계 RPO 와 재생성 대조로 본다. 보관 덤프 간격 최댓값(실측 최악)은 `backup_gap_ok` 로 따로 적는다. 하루 세 번(8시간 간격)이라도 회차 하나가 재시도까지 모두 실패하면 간격이 16시간으로 벌어져 43200초를 넘는다.
 - `up` · `roles` · `restore` 는 다시 돌릴 수 없다. 실패하면 `cleanup --apply` 뒤 `up` 부터 다시 한다(T0 는 그대로, precheck 는 다시 돌리지 않는다).
-- 04:25~04:40 · 16:25~16:40(백업 · 복원 시험, `opsloop_backup` 접속 한도 2)과 00:05~00:15(CTI 수집)는 피한다. `precheck` · `regen` 이 알린다.
+- 04:25~04:50 · 12:25~12:50 · 20:25~20:50(백업 · 재시도 · 복원 시험, `opsloop_backup` 접속 한도 2)과 00:05~00:15(CTI 수집)는 피한다. 창 밖이어도 `backup.log` 의 마지막 회차가 '백업 시작' 으로 끝나 있으면(잠자기 뒤 늦게 도는 회차) 백업 중으로 본다. `precheck` · `regen` 이 알린다(참고 …).
 - 알려진 한계: 옛 허니팟 호스트(`OPSLOOP_HOSTS` 밖)는 빈 훈련 HOME 이 받지 않는다. T_b 전에 끝난 호스트라 대조 구간에는 영향이 없다. `provenance='fixture'` 행은 대조에서 뺀다.
 - 시험: `python3 infra/vmware/restore-drill/test_restore_drill.py` (가짜 ssh · docker 를 쓴다. 운영에 닿지 않는다)
 
@@ -793,7 +839,7 @@ Mac 의 launchd(`local.opsloop.console-watch`)가 60초마다 진입점 `http://
 ```bash
 infra/vmware/scripts/install-console-watch.sh            # 설치 · 갱신 (다시 실행해도 된다). --uninstall 로 내린다
 S="$HOME/Library/Application Support/OpsLoop/bin/console-watch.sh"
-"$S" --status                                             # 마지막 상태 · 점검 창 · 웹훅 설정 여부 (주소는 내지 않는다)
+"$S" --status                                             # 마지막 상태 · 점검 창 · 마지막 성공 백업 · 웹훅 설정 여부 (주소는 내지 않는다)
 "$S" --test-alert                                         # 알림 경로 시험
 "$S" --pause 120                                          # 점검 창 2시간. --resume 로 없앤다
 ```
@@ -805,6 +851,9 @@ S="$HOME/Library/Application Support/OpsLoop/bin/console-watch.sh"
 - 점검 창(`--pause`)에는 알리지 않고 상태만 적는다. 창 안에서 시작된 DOWN 이 창이 끝난 뒤에도 이어지면 그때 알린다.
   VM 을 일부러 끄거나 장애 주입 시험을 할 때 둔다.
 - Mac 이 잠든 동안은 돌지 않는다(VM 도 함께 멈춘다). 깨어나면 다음 간격에 다시 본다.
+- 백업 오래됨 (이슈 #91): 같은 회차가 `~/opsloop-backup/backup.log`(`OPSLOOP_BACKUP_DIR` 로 바꾼다)의 마지막 `== <시각> KST 백업 성공` 줄을 본다.
+  10시간(`BACKUP_STALE_HOURS`) 넘게 지났으면 'OpsLoop DB 백업 오래됨' 을 한 번 알린다(같은 알림 경로). 새 성공이 보이면 풀리고 다시 오래되면 또 한 번 알린다.
+  점검 창에는 알리지 않고, 창이 끝난 뒤에도 오래돼 있으면 그때 알린다. 기록 파일이나 성공 줄이 없으면 조용히 넘어간다(위 '정기 백업').
 - 시험: `python3 infra/vmware/scripts/test_console_watch.py` (임시 HOME · 가짜 curl · osascript · launchctl, 진짜 curl 은 127.0.0.1 에만)
 
 ## 차단 집행기 설치 (데이터 노드, 이슈 #47)
@@ -1018,7 +1067,7 @@ infra/vmware/scripts/verify.sh        # 7장이 공격자 → web-01 을 '실패
   `puller/install-ingest.sh` 가 parser · detector · puller 를 통째로 바꾸므로 `git diff --stat` 으로 triage.py 말고 바뀐 것이 없는지 먼저 본다.
 - 확인: `infra/vmware/scripts/verify-db-roles.sh` 의 '차단 적용 지점 (이슈 #77. …)' 절(집행 역할 points 읽기 허용 · 갱신 거부, 콘솔 넓히기 허용,
   좁히기 거부 트리거 · 값 제약).
-- 복원 훈련은 20261003 적용 뒤 첫 백업(04:30 · 16:30) 다음에 한다. 그 전 백업은 지문(blocklist · absorbed_blocks 의 points)을 읽지 못해
+- 복원 훈련은 20261003 적용 뒤 첫 백업(04:30 · 12:30 · 20:30) 다음에 한다. 그 전 백업은 지문(blocklist · absorbed_blocks 의 points)을 읽지 못해
   `verify` 가 ✘ 다. 구조 참고값은 #77 뒤(트리거 10 · 함수 19)다.
 
 제한 행(`{fw}`)이 생긴 뒤 되돌리기. 기본은 앞으로 고치기다. 되돌려야 하면 관문 과차단을 받아들이고 제한 행은 풀지 않는다.
@@ -1329,7 +1378,8 @@ scripts/check-shell.sh -f gcc     # 한 줄 꼴. shellcheck 가 없으면 설치
 | `test_data_compose.py` | 위 파일 시험 (initdb 마운트 없음 · 이미지 · 볼륨 · 바인드 주소 · 'DB 복원' 절). `python3 infra/vmware/test_data_compose.py` |
 | `scripts/console-join.sh` | 콘솔 B 합류 · 떼기 단계 (기본 드라이런). 시험 `python3 infra/vmware/scripts/test_console_join.py` (가짜 ssh · 접속 한도 30) |
 | `../../enforcer/` | 차단 집행기(데이터 노드): 차단 목록 → S3 → 관문 보고 대조 → 집행 결과 기록. 시험 `python3 enforcer/test_block_enforcer.py` |
-| `scripts/console-watch.sh` · `scripts/install-console-watch.sh` | Mac 에서 콘솔 진입점 감시(두 대 모두 죽으면 알림). 시험 `python3 infra/vmware/scripts/test_console_watch.py` |
+| `scripts/console-watch.sh` · `scripts/install-console-watch.sh` | Mac 에서 콘솔 진입점 감시(두 대 모두 죽으면 알림) · 백업 오래됨 알림. 시험 `python3 infra/vmware/scripts/test_console_watch.py` |
+| `scripts/backup-db.sh` · `scripts/backup-agent.sh` · `scripts/install-backup-agent.sh` | Mac 으로 DB 백업(하루 세 번 · 덤프 전 시계 확인 · 재시도 · 즉시 알림, 'DB 복원' 의 '정기 백업'). 시험 `python3 infra/vmware/scripts/test_backup_db.py` |
 | `restore-drill/` | 복원 훈련 도구(기본 드라이런 · 훈련 DB 확인 블록 · RTO · RPO · 무결성 · 재생성 대조). 시험 `python3 infra/vmware/restore-drill/test_restore_drill.py` |
 | `failover/` | 장애 주입 시험 도구(요청 · 웹소켓 프로브, 방화벽 통계 수집, T0 기록, 지표 요약). 시험 `python3 infra/vmware/failover/test_failover_tools.py` |
 | `scripts/fw-add-ext-nic.sh` | 운영 중인 방화벽에 외부 역할 세그먼트 랜카드를 붙인다 (기본 계획만, `--apply`) |
