@@ -11,6 +11,9 @@
 # 기록(backup.log): '== <KST 시각> 백업 시작|성공|실패' 줄은 회차마다 한 번씩이다. 복원 훈련 도구(지금 백업 중인지)와
 #   진입점 감시(마지막 성공 백업이 오래됐는지)가 읽으므로 모양을 바꾸지 않는다. 성공 · 실패 줄 뒤 괄호는 덧붙인 설명이다.
 #   시도마다 '-- <KST 시각> 시도 n/3' 줄을, 실패하면 '-- … 시도 n/3 실패 (…)' 줄을 남긴다.
+# 잠자기 방지 (이슈 #95): 회차 동안 caffeinate -i -s -w <실행기 pid> 를 띄우고 회차가 끝나면 끈다. 시작된 뒤 잠드는 경우만
+#   줄인다. 예약 시각 실행은 보장하지 않는다(예약 시각 전에 이미 잠들어 있으면 깨어날 때 돈다). 8시간 간격이라 한 회차를
+#   통째로 놓치면 직전 성공부터 16시간이다. caffeinate 가 없거나 띄우지 못하면 '-- ' 줄 하나를 남기고 백업은 그대로 돈다.
 # 환경변수(시험 · 임시 변경): BACKUP_RETRY_WAIT(재시도 사이 대기 180초) · BACKUP_WINDOW(백업 창 1200초)
 set -uo pipefail
 export PATH=/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin
@@ -48,10 +51,35 @@ notify() {  # $1 제목 · $2 본문. 문구는 AppleScript 소스에 끼우지 
     "$1" "$2" >/dev/null 2>&1 || true
 }
 
+# 잠자기 방지를 띄운다. 시도 묶음(set -m) 밖, 실행기 묶음에서 회차마다 한 번이다. 시도 묶음에 넣으면 창 끝에 시도와 함께
+#   멈춘다. man caffeinate: -i 유휴 잠자기를 막는다 · -s 시스템 잠자기를 막는다(AC 전원일 때만 유효) · -w 그 pid 가 끝나면
+#   풀린다. 시험이 함수로 덮도록 이름으로 부른다
+awake_on() {
+  caffeinate -i -s -w "$$" < /dev/null > /dev/null 2>&1 &
+  CAF=$!
+}
+
+# 띄운 뒤 곧바로 끝났으면(없음 · 실패) '-- ' 줄을 남긴다. 백업은 그대로 돈다
+awake_check() {
+  local rc
+  sleep 0.5
+  kill -0 "$CAF" 2>/dev/null && return 0
+  wait "$CAF"
+  rc=$?
+  CAF=""
+  echo "-- $(stamp) 잠자기 방지를 걸지 못했다 (caffeinate 종료 코드 $rc) · 백업은 그대로 돈다"
+}
+
+# 회차가 끝나면 바로 끈다. 실행기가 매달리지 않게 끝나기를 기다리지 않는다
+awake_off() {
+  [ -z "$CAF" ] || kill -TERM "$CAF" 2>/dev/null
+  CAF=""
+}
+
 START=$(date +%s)
 STOP_AT=$((START + WINDOW - GRACE))   # 이때까지 끝나지 않은 시도는 멈추라고 한다 (TERM)
 END_AT=$((START + WINDOW))            # 이때도 남아 있으면 끊는다 (KILL)
-PID="" DOG="" SLP="" n=0 RC=0 CUT=0
+PID="" DOG="" SLP="" CAF="" n=0 RC=0 CUT=0
 
 # 시도 하나를 지킨다. $1 은 시도의 프로세스 묶음(backup-db.sh 와 그 ssh · 파이프).
 #   끊는 것은 창 끝이다. 잠자기로 창 끝을 넘겨 깨어나 늦게 멈추라고 했으면 그 뒤 GRACE 초는 정리할 틈을 준다
@@ -69,6 +97,7 @@ watchdog() {
 # launchctl bootout 등으로 실행기가 멈추면 돌던 시도도 함께 멈추고 실패 줄을 남긴다.
 #   시도는 따로 묶여 있어 launchd 가 실행기 묶음을 멈춰도 남는다. 기록이 '백업 시작' 으로 끝나 있으면 백업 중으로 보인다
 on_signal() {
+  awake_off
   [ -z "$DOG" ] || kill -TERM -- "-$DOG" 2>/dev/null
   [ -z "$PID" ] || kill -TERM -- "-$PID" 2>/dev/null
   [ -z "$SLP" ] || kill -TERM "$SLP" 2>/dev/null
@@ -76,6 +105,7 @@ on_signal() {
   exit 143
 }
 trap on_signal TERM INT HUP
+trap awake_off EXIT   # 그 밖의 끝에서도 끈다 (-w 와 따로)
 
 # 시도 하나. RC 에 종료 코드, 창 끝에 닿아 멈췄으면 CUT=1
 attempt() {
@@ -96,12 +126,15 @@ attempt() {
 
 # 한 회차. 성공이면 0, 모두 실패면 마지막 시도의 종료 코드
 run_backup() {
+  awake_on
   echo "== $(stamp) 백업 시작"
+  awake_check
   while :; do
     n=$((n + 1))
     echo "-- $(stamp) 시도 $n/$TRIES"
     attempt
     if [ "$RC" -eq 0 ]; then
+      awake_off
       if [ "$n" -eq 1 ]; then
         echo "== $(stamp) 백업 성공"
       else
@@ -130,6 +163,7 @@ run_backup() {
       break
     fi
   done
+  awake_off
   echo "== $(stamp) 백업 실패 ($why · 시도 $n/$TRIES)"
   if [ "$n" -gt 1 ]; then
     notify "OpsLoop DB 백업 실패 · 재시도 모두 실패" "시도 $n/$TRIES 모두 실패 ($why) · $DEST/backup.log 확인"
