@@ -245,9 +245,12 @@ export function AccountsPage() {
         </InfoTip>
         <div className="flex flex-col gap-3 p-4 text-sm">
           <p className="m-0 leading-6">콘솔 노드의 API 컨테이너 안에서 소유자 접속(<code>DATABASE_URL</code>)으로 실행합니다.</p>
-          <dl className="m-0 grid gap-x-4 gap-y-2 sm:grid-cols-[max-content_minmax(0,1fr)]">{CLI.map(([label, command]) => <Fragment key={label}>
-            <dt className="text-ink-muted">{label}</dt><dd className="m-0 min-w-0"><code className="font-mono text-xs break-all">{command}</code></dd>
-          </Fragment>)}</dl>
+          {/* 명령 목록은 접는다(이슈 #94). 실행 위치 첫 줄 · 접속 방법 줄 · ⓘ 는 그대로 둔다 */}
+          <details><summary className="cursor-pointer">명령 {CLI.length}개</summary>
+            <dl className="m-0 mt-2 grid gap-x-4 gap-y-2 sm:grid-cols-[max-content_minmax(0,1fr)]">{CLI.map(([label, command]) => <Fragment key={label}>
+              <dt className="text-ink-muted">{label}</dt><dd className="m-0 min-w-0"><code className="font-mono text-xs break-all">{command}</code></dd>
+            </Fragment>)}</dl>
+          </details>
           <p className="m-0 text-xs leading-5 text-ink-muted">접속 방법은 운영 문서(infra/vmware/README.md)의 '콘솔 계정' 절을 따릅니다.</p>
         </div>
       </Card>

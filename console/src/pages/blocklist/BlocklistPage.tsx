@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useId, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { useBlocklist, type BlockEntry } from '@/api/monitoring'
 import { controlHealthView, useControlHealth } from '@/api/health'
@@ -40,6 +40,8 @@ export function BlocklistPage() {
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(25)
   const [notice, setNotice] = useState<Notice | null>(null)
+  const [allCounts, setAllCounts] = useState(false)
+  const countsId = useId()
   const rows = query.data ?? []
   // 브라우저 시계가 서버와 달라도 만료 판단은 서버 조회 시각부터 경과한 시간으로 계산한다.
   const checked = rows[0]?.checked_at ? Date.parse(rows[0].checked_at) : NaN
@@ -60,6 +62,12 @@ export function BlocklistPage() {
   // 관문을 뺐는데 관문이 뺐다고 확인하기 전인 차단은 미요청이 아니라 관문 빠짐 확인 전으로 따로 둔다(결정 14, 0 이면 없음)
   const gateway = pointCounts(rows, now, 'gateway')
   const fwStalled = health.state === 'ok' && health.alerts.some(item => item.key === 'enforcer:fw') ? '집행기 멈춤' : undefined
+  // 좁은 화면(sm 미만)은 핵심 칸 넷(활성 요청 · 집행 실패 · 불일치 · 내부 방화벽 실패)을 먼저 두고 나머지는 접는다(이슈 #94).
+  // 접힌 주의 칸의 0 보다 큰 값은 접힘 줄에 적는다. sm 이상은 그대로다(칸은 늘 DOM 에 있고 CSS 로만 숨긴다)
+  const core = 'max-sm:order-first'
+  const rest = cn(!allCounts && 'max-sm:hidden')
+  const restCount = 5 + (gateway.unrequested > 0 ? 1 : 0) + (gateway.removing > 0 ? 1 : 0)
+  const foldedWarnings = ([['집행 대기', live.pending], ['내부 방화벽 미확인', fw.unverified]] as const).filter(([, value]) => value > 0)
   const keyword = search.trim().toLowerCase()
   const filtered = groups[tab].filter(entry => `${entry.actor_ip} ${entry.reason ?? ''} ${entry.incident_key ?? ''}`.toLowerCase().includes(keyword))
   const currentPage = Math.min(page, Math.max(1, Math.ceil(filtered.length / pageSize)))
@@ -70,9 +78,12 @@ export function BlocklistPage() {
     <MonitoringStatus updatedAt={query.dataUpdatedAt} error={query.data ? query.error : null} onRetry={() => void query.refetch()} busy={query.isFetching} />
     {notice && <Banner tone={notice.tone} title={notice.message} action={<Button size="sm" onClick={() => setNotice(null)}>닫기</Button>} />}
     {query.isPending ? <LoadingState title="차단 목록을 불러오는 중입니다" /> : !query.data ? <ApiErrorState error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} /> : <>
-      <Card padding="none" className="grid grid-cols-2 divide-x divide-line sm:grid-cols-5">
-        <Count label="활성 요청" value={groups.active.length} /><Count label="집행 확인" value={live.enforced} /><Count label="집행 대기" value={live.pending} warning /><Count label="집행 실패" value={live.failed} warning /><Count label="불일치" value={live.mismatch} warning /><Count label="내부 방화벽 실패" value={fw.failed} warning note={fwStalled} /><Count label="내부 방화벽 미확인" value={fw.unverified} warning note={fwStalled} />{gateway.unrequested > 0 && <Count label="관문 미요청" value={gateway.unrequested} />}{gateway.removing > 0 && <Count label="관문 빠짐 확인 전" value={gateway.removing} />}<Count label="집행 제외" value={live.excluded} /><Count label="24시간 내 만료" value={groups.active.filter(entry => entry.expires_at && Date.parse(entry.expires_at) <= now + 86_400_000).length} />
+      <Card id={countsId} padding="none" className="grid grid-cols-2 divide-x divide-line sm:grid-cols-5">
+        <Count className={core} label="활성 요청" value={groups.active.length} /><Count className={rest} label="집행 확인" value={live.enforced} /><Count className={rest} label="집행 대기" value={live.pending} warning /><Count className={core} label="집행 실패" value={live.failed} warning /><Count className={core} label="불일치" value={live.mismatch} warning /><Count className={core} label="내부 방화벽 실패" value={fw.failed} warning note={fwStalled} /><Count className={rest} label="내부 방화벽 미확인" value={fw.unverified} warning note={fwStalled} />{gateway.unrequested > 0 && <Count className={rest} label="관문 미요청" value={gateway.unrequested} />}{gateway.removing > 0 && <Count className={rest} label="관문 빠짐 확인 전" value={gateway.removing} />}<Count className={rest} label="집행 제외" value={live.excluded} /><Count className={rest} label="24시간 내 만료" value={groups.active.filter(entry => entry.expires_at && Date.parse(entry.expires_at) <= now + 86_400_000).length} />
       </Card>
+      <Button variant="ghost" size="sm" className="h-auto min-h-9 flex-wrap justify-start self-start px-0 text-left whitespace-normal sm:hidden" aria-expanded={allCounts} aria-controls={countsId} onClick={() => setAllCounts(!allCounts)} data-count-fold="">
+        {allCounts ? '나머지 칸 접기' : `나머지 칸 ${restCount}개 보기`}{!allCounts && foldedWarnings.map(([label, value]) => <span key={label} className="text-warning"> · {label} {value.toLocaleString()}건</span>)}
+      </Button>
       <p className="m-0 text-xs text-ink-muted">집행 확인은 요청한 지점이 모두 확인한 것입니다. 내부 방화벽은 실패 · 미확인을 따로 셉니다. <InfoTip label="집행 범위">활성은 만료 · 해제 전 요청입니다. 허니팟 관문은 허니팟 유입(22 · 23 · 8080)을, 내부 방화벽은 web-01 접근을 막습니다. 관문 미요청은 내부 방화벽만 요청한 차단입니다. 관문 빠짐 확인 전은 관문을 뺐지만 관문이 뺐다고 아직 확인하지 못한 차단입니다. 미확인은 대기 · 확인 지연 · 기록 없음입니다.</InfoTip></p>
       <Card padding="none" className="worklist-panel flex min-w-0 flex-col overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-2">
@@ -89,8 +100,8 @@ export function BlocklistPage() {
 }
 
 /** 상단 칸. note 는 값 뒤에 붙는 주의 글자(집행기 멈춤) */
-function Count({ label, value, warning, note }: { label: string; value: number; warning?: boolean; note?: string }) {
-  return <div className="px-4 py-4"><div className="text-xs text-ink-muted">{label}</div><div className={cn('mt-1.5 text-xl font-semibold tabular-nums', warning && value > 0 && 'text-warning')}>{value.toLocaleString()}건{note && <> <span className="text-xs font-medium whitespace-nowrap text-warning">· {note}</span></>}</div></div>
+function Count({ label, value, warning, note, className }: { label: string; value: number; warning?: boolean; note?: string; className?: string }) {
+  return <div className={cn('px-4 py-4', className)}><div className="text-xs text-ink-muted">{label}</div><div className={cn('mt-1.5 text-xl font-semibold tabular-nums', warning && value > 0 && 'text-warning')}>{value.toLocaleString()}건{note && <> <span className="text-xs font-medium whitespace-nowrap text-warning">· {note}</span></>}</div></div>
 }
 
 /** 같은 페이로드 흡수 차단 행(규칙 v3). 근거 사건은 첫 사건이고 행의 출발지는 흡수 출발지다(서버 absorbed_reason_tag) */
