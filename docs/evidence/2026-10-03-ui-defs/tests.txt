@@ -1,0 +1,38 @@
+#94 통합 단계 전체 시험 (2026-10-03, 작업 트리 fix/94-ui-defs · 커밋 전 · 기준 d0e603e). 로컬 실행, 원격 접속 없음.
+
+[콘솔] /Users/hanseongmin/opsloop-repo/console
+npx vitest run (전체)      00:13:25 시작 · 30.35s
+   Test Files  67 passed (67)
+        Tests  1079 passed (1079)
+npm run lint (oxlint)      종료 코드 0 · 경고 · 오류 출력 없음
+npx tsc -b                 종료 코드 0 · 출력 없음
+npx vite build --outDir <스크래치> --emptyOutDir   종료 코드 0 · built in 301ms (app/static 은 건드리지 않음)
+
+[앱 파이썬] ~/opsloop-work/review-followup/pytest.sh (인자 없음 = git 이 추적하는 app/test_*.py 전부, postgres:16-alpine 컨테이너)
+  app/test_absorbed_db.py      종료 0 · Ran 31 tests · OK
+  app/test_accounts.py         종료 0 · Ran 40 tests · OK
+  app/test_accounts_db.py      종료 0 · Ran 11 tests · OK
+  app/test_block_points.py     종료 0 · Ran 18 tests · OK
+  app/test_cti.py              종료 0 · Ran 94 tests · OK
+  app/test_cti_db.py           종료 0 · Ran 19 tests · OK
+  app/test_dashboard_db.py     종료 0 · Ran 12 tests · OK
+  app/test_inputs.py           종료 0 · Ran 21 tests · OK
+  app/test_live.py             종료 0 · Ran 21 tests · OK
+  app/test_live_db.py          종료 0 · Ran 7 tests · OK
+  app/test_node_logs.py        종료 0 · Ran 43 tests · OK
+  app/test_node_logs_db.py     종료 0 · Ran 13 tests · OK
+  app/test_notify.py           종료 0 · Ran 34 tests · OK
+  app/test_notify_db.py        종료 0 · Ran 12 tests · OK
+  app/test_operations.py       종료 0 · Ran 4 tests · OK
+  app/test_operations_db.py    종료 0 · Ran 10 tests · OK
+  app/test_proposals.py        종료 0 · Ran 10 tests · OK
+  app/test_proposals_db.py     종료 0 · Ran 3 tests · OK
+  app/test_reports.py          종료 0 · Ran 19 tests · OK
+  app/test_reports_db.py       종료 0 · Ran 20 tests · OK
+  app/test_sources.py          종료 0 · Ran 31 tests · OK
+  app/test_sources_db.py       종료 0 · Ran 27 tests · OK
+  app/test_targets.py          종료 0 · Ran 104 tests · OK
+  app/test_targets_db.py       종료 0 · Ran 38 tests · OK
+  app/test_web.py              종료 0 · Ran 85 tests · OK
+  pytest rc=0
+  합계 25개 파일 · 727건 OK
