@@ -1,0 +1,9 @@
+== cleanup · Mac 콘솔 · 터널 · 훈련 컨테이너 · 볼륨 · 폴더 지우기 · 운영 확인 · 실제로 돌린다
+  ✔ Mac 비밀 폴더 지움 · /Users/hanseongmin/.config/opsloop/drill
+  ✔ 훈련 컨테이너 · 볼륨 · 폴더 지움 · opsloop-drill-db · opsloop_drill_pgdata · /var/lib/opsloop-drill
+  ✔ 운영 DB 컨테이너 돌고 있음 · true
+  ✔ 운영 적재 · 다리 마지막 실행 성공 · opsloop-ingest.service success Sat 2026-10-03 03:14:33 KST · opsloop-agents.service success 
+  ✔ 운영 알림 채널 켜짐 · 주소 그대로 · 켜짐 1|1
+  ✔ 운영 events 가 계속 는다 · 431754 → 432060
+  ✔ 운영 탐지 실행이 계속된다 · 2026-10-02T18:03:36.215613+00:00 → 2026-10-02T18:17:31.024591+00:00
+끝: cleanup · 성공

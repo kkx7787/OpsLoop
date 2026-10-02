@@ -1,0 +1,805 @@
+
+  - heading "보고서" [level=1]
+  - paragraph: 기간과 구역을 골라 한 장으로 모으고 브라우저 인쇄로 PDF 를 저장합니다.
+  - button "인쇄 · PDF 저장"
+  - form "보고서 조건":
+    - group "기간":
+      - generic: 기간
+      - radio "최근 24시간"
+      - text: 최근 24시간
+      - radio "최근 7일" [checked]
+      - text: 최근 7일
+      - radio "최근 14일"
+      - text: 최근 14일
+      - radio "최근 30일"
+      - text: 최근 30일
+      - button "기간 설명":
+    - group "실을 구역":
+      - generic: 실을 구역
+      - checkbox "요약 · 운영 부담" [checked]
+      - text: 요약 · 운영 부담
+      - checkbox "규칙별 판정 · 비조치율" [checked]
+      - text: 규칙별 판정 · 비조치율
+      - checkbox "차단 · 집행" [checked]
+      - text: 차단 · 집행
+      - checkbox "관제 대상 · 수집" [checked]
+      - text: 관제 대상 · 수집
+      - checkbox "취약점 · CVE" [checked]
+      - text: 취약점 · CVE
+      - checkbox "운영 기록" [checked]
+      - text: 운영 기록
+    - button "보고서 만들기"
+    - button "보고서 만들기 설명":
+  - region "보고서 머리":
+    - term: 기간 (KST)
+    - definition:
+      - time: 2026-09-26 03:00:31
+      - text: ~
+      - time: 2026-10-03 03:00:31 KST
+      - text: · 최근 7일 · 끝 시각 제외
+    - term: 출력 시각
+    - definition:
+      - time: 2026-10-03 03:00:31 KST
+    - term: 출력자
+    - definition:
+      - generic: han
+  - region "요약 · 운영 부담":
+    - heading "요약 · 운영 부담" [level=2]
+    - generic: 기간 집계 · 출력 시점 값
+    - heading "기간 사건 (발생 시각 기준)" [level=3]
+    - table "기간 사건 (발생 시각 기준)":
+      - rowgroup:
+        - row "합계 critical high medium low 시험 출발지 (따로)":
+          - columnheader "합계"
+          - columnheader "critical"
+          - columnheader "high"
+          - columnheader "medium"
+          - columnheader "low"
+          - columnheader "시험 출발지 (따로)"
+      - rowgroup:
+        - row "19 6 8 2 3 8":
+          - cell "19"
+          - cell "6"
+          - cell "8"
+          - cell "2"
+          - cell "3"
+          - cell "8"
+    - heading "발생원별 사건 (규칙 번호 기준)" [level=3]
+    - table "발생원별 사건 (규칙 번호 기준)":
+      - rowgroup:
+        - row "R0xx 허니팟 R1xx 웹 · 로그인 규칙 R2xx 관제 자기 탐지 R3xx 인프라 기타":
+          - columnheader "R0xx 허니팟"
+          - columnheader "R1xx 웹 · 로그인 규칙"
+          - columnheader "R2xx 관제 자기 탐지"
+          - columnheader "R3xx 인프라"
+          - columnheader "기타"
+      - rowgroup:
+        - row "14 4 1 0 0":
+          - cell "14"
+          - cell "4"
+          - cell "1"
+          - cell "0"
+          - cell "0"
+    - heading "기간 판정 (판정 시각 기준)" [level=3]
+    - table "기간 판정 (판정 시각 기준)":
+      - rowgroup:
+        - row "합계 실제 위협 무시 가능 오탐 양성 정탐 미결(판단 유보) 시험 출발지 (따로)":
+          - columnheader "합계"
+          - columnheader "실제 위협"
+          - columnheader "무시 가능"
+          - columnheader "오탐"
+          - columnheader "양성 정탐"
+          - columnheader "미결(판단 유보)"
+          - columnheader "시험 출발지 (따로)"
+      - rowgroup:
+        - row "143 132 10 0 1 0 8":
+          - cell "143"
+          - cell "132"
+          - cell "10"
+          - cell "0"
+          - cell "1"
+          - cell "0"
+          - cell "8"
+    - heading "미판정 잔량 (출력 시점)" [level=3]
+    - table "미판정 잔량 (출력 시점)":
+      - rowgroup:
+        - row "판정 없음 미결(사람) 시스템 전환 처리 판정 목표 초과 목표 임박 가장 오래된 미판정":
+          - columnheader "판정 없음"
+          - columnheader "미결(사람)"
+          - columnheader "시스템 전환 처리"
+          - columnheader "판정 목표 초과"
+          - columnheader "목표 임박"
+          - columnheader "가장 오래된 미판정"
+      - rowgroup:
+        - row "11 0 778 11 0 3일 15시간":
+          - cell "11"
+          - cell "0"
+          - cell "778"
+          - cell "11"
+          - cell "0"
+          - cell "3일 15시간"
+    - heading "운영 부담" [level=3]
+    - table "운영 부담":
+      - rowgroup:
+        - row "지표 표본 중앙값 90분위":
+          - columnheader "지표"
+          - columnheader "표본"
+          - columnheader "중앙값"
+          - columnheader "90분위"
+      - rowgroup:
+        - row "판정 대기 (사건 생성 → 첫 판정) 8 생성 19건 중 판정 1일 8시간 2일 6시간":
+          - cell "판정 대기 (사건 생성 → 첫 판정)"
+          - cell "8 생성 19건 중 판정":
+            - text: "8"
+            - generic: 생성 19건 중 판정
+          - cell "1일 8시간"
+          - cell "2일 6시간"
+        - row "판정 입력 시간 (도구 계측) 12 9초 16초":
+          - cell "판정 입력 시간 (도구 계측)"
+          - cell "12"
+          - cell "9초"
+          - cell "16초"
+    - heading "날짜별 생성 · 판정 (KST)" [level=3]
+    - table "날짜별 생성 · 판정 (KST)":
+      - rowgroup:
+        - row "날짜 생성 판정":
+          - columnheader "날짜"
+          - columnheader "생성"
+          - columnheader "판정"
+      - rowgroup:
+        - row "2026-09-26 4 0":
+          - cell "2026-09-26"
+          - cell "4"
+          - cell "0"
+        - row "2026-09-27 0 0":
+          - cell "2026-09-27"
+          - cell "0"
+          - cell "0"
+        - row "2026-09-28 1 140":
+          - cell "2026-09-28"
+          - cell "1"
+          - cell "140"
+        - row "2026-09-29 4 2":
+          - cell "2026-09-29"
+          - cell "4"
+          - cell "2"
+        - row "2026-09-30 1 0":
+          - cell "2026-09-30"
+          - cell "1"
+          - cell "0"
+        - row "2026-10-01 7 1":
+          - cell "2026-10-01"
+          - cell "7"
+          - cell "1"
+        - row "2026-10-02 2 0":
+          - cell "2026-10-02"
+          - cell "2"
+          - cell "0"
+        - row "2026-10-03 0 0":
+          - cell "2026-10-03"
+          - cell "0"
+          - cell "0"
+    - heading "상위 출발지 상위 5 · 전체 16곳 중 · 시험 대역 제외" [level=3]:
+      - text: 상위 출발지
+      - generic: 상위 5 · 전체 16곳 중 · 시험 대역 제외
+    - table "상위 출발지":
+      - rowgroup:
+        - row "출발지 사건 최고 심각도 마지막 사건 (KST)":
+          - columnheader "출발지"
+          - columnheader "사건"
+          - columnheader "최고 심각도"
+          - columnheader "마지막 사건 (KST)"
+      - rowgroup:
+        - row "45.79.123.76 2 medium 2026-09-26 07:38":
+          - cell "45.79.123.76":
+            - link "45.79.123.76":
+              - /url: /sources/detail?ip=45.79.123.76
+              - generic: 45.79.123.76
+          - cell "2"
+          - cell "medium":
+            - generic: medium
+          - cell "2026-09-26 07:38":
+            - time: 2026-09-26 07:38
+        - row "92.118.39.77 2 high 2026-10-01 01:40":
+          - cell "92.118.39.77":
+            - link "92.118.39.77":
+              - /url: /sources/detail?ip=92.118.39.77
+              - generic: 92.118.39.77
+          - cell "2"
+          - cell "high":
+            - generic: high
+          - cell "2026-10-01 01:40":
+            - time: 2026-10-01 01:40
+        - row "38.248.12.122 1 critical 2026-10-02 15:33":
+          - cell "38.248.12.122":
+            - link "38.248.12.122":
+              - /url: /sources/detail?ip=38.248.12.122
+              - generic: 38.248.12.122
+          - cell "1"
+          - cell "critical":
+            - generic: critical
+          - cell "2026-10-02 15:33":
+            - time: 2026-10-02 15:33
+        - row "103.47.192.51 1 high 2026-10-01 08:50":
+          - cell "103.47.192.51":
+            - link "103.47.192.51":
+              - /url: /sources/detail?ip=103.47.192.51
+              - generic: 103.47.192.51
+          - cell "1"
+          - cell "high":
+            - generic: high
+          - cell "2026-10-01 08:50":
+            - time: 2026-10-01 08:50
+        - row "103.165.78.71 1 high 2026-09-28 00:30":
+          - cell "103.165.78.71":
+            - link "103.165.78.71":
+              - /url: /sources/detail?ip=103.165.78.71
+              - generic: 103.165.78.71
+          - cell "1"
+          - cell "high":
+            - generic: high
+          - cell "2026-09-28 00:30":
+            - time: 2026-09-28 00:30
+    - button "요약 · 운영 부담 기준 보기":
+      - text: 기준 보기
+  - region "규칙별 판정 · 비조치율":
+    - heading "규칙별 판정 · 비조치율" [level=2]
+    - generic: 기간 집계
+    - heading "규칙별 판정 (사건별 마지막 판정)" [level=3]
+    - table "규칙별 판정 (사건별 마지막 판정)":
+      - rowgroup:
+        - row "규칙 · 버전 사건 판정 판정 분포 비조치율 오탐률 흡수 · 억제":
+          - columnheader "규칙 · 버전"
+          - columnheader "사건"
+          - columnheader "판정"
+          - columnheader "판정 분포"
+          - columnheader "비조치율"
+          - columnheader "오탐률"
+          - columnheader "흡수 · 억제"
+      - rowgroup:
+        - row "R002 · v3 7 2 실제 위협 2 · 무시 가능 0 · 오탐 0 · 양성 정탐 0 · 미결 0 0.0% 비조치 0 / 유효 판정 2 순환 규칙 0 · 1":
+          - cell "R002 · v3":
+            - generic: R002 · v3
+          - cell "7"
+          - cell "2"
+          - cell "실제 위협 2 · 무시 가능 0 · 오탐 0 · 양성 정탐 0 · 미결 0"
+          - cell "0.0% 비조치 0 / 유효 판정 2":
+            - text: 0.0%
+            - generic: 비조치 0 / 유효 판정 2
+          - cell "순환 규칙"
+          - cell "0 · 1"
+        - row "R003 · v3 6 1 실제 위협 1 · 무시 가능 0 · 오탐 0 · 양성 정탐 0 · 미결 0 0.0% 비조치 0 / 유효 판정 1 순환 규칙 2 · 0":
+          - cell "R003 · v3":
+            - generic: R003 · v3
+          - cell "6"
+          - cell "1"
+          - cell "실제 위협 1 · 무시 가능 0 · 오탐 0 · 양성 정탐 0 · 미결 0"
+          - cell "0.0% 비조치 0 / 유효 판정 1":
+            - text: 0.0%
+            - generic: 비조치 0 / 유효 판정 1
+          - cell "순환 규칙"
+          - cell "2 · 0"
+        - row "R005 · v3 1 1 실제 위협 0 · 무시 가능 1 · 오탐 0 · 양성 정탐 0 · 미결 0 100.0% 비조치 1 / 유효 판정 1 0.0% 0 · 0":
+          - cell "R005 · v3":
+            - generic: R005 · v3
+          - cell "1"
+          - cell "1"
+          - cell "실제 위협 0 · 무시 가능 1 · 오탐 0 · 양성 정탐 0 · 미결 0"
+          - cell "100.0% 비조치 1 / 유효 판정 1":
+            - text: 100.0%
+            - generic: 비조치 1 / 유효 판정 1
+          - cell "0.0%"
+          - cell "0 · 0"
+        - row "R102 · w2 1 1 실제 위협 0 · 무시 가능 1 · 오탐 0 · 양성 정탐 0 · 미결 0 100.0% 비조치 1 / 유효 판정 1 0.0% 0 · 0":
+          - cell "R102 · w2":
+            - generic: R102 · w2
+          - cell "1"
+          - cell "1"
+          - cell "실제 위협 0 · 무시 가능 1 · 오탐 0 · 양성 정탐 0 · 미결 0"
+          - cell "100.0% 비조치 1 / 유효 판정 1":
+            - text: 100.0%
+            - generic: 비조치 1 / 유효 판정 1
+          - cell "0.0%"
+          - cell "0 · 0"
+        - row "R105 · c1 2 2 실제 위협 0 · 무시 가능 2 · 오탐 0 · 양성 정탐 0 · 미결 0 100.0% 비조치 2 / 유효 판정 2 0.0% 0 · 0":
+          - cell "R105 · c1":
+            - generic: R105 · c1
+          - cell "2"
+          - cell "2"
+          - cell "실제 위협 0 · 무시 가능 2 · 오탐 0 · 양성 정탐 0 · 미결 0"
+          - cell "100.0% 비조치 2 / 유효 판정 2":
+            - text: 100.0%
+            - generic: 비조치 2 / 유효 판정 2
+          - cell "0.0%"
+          - cell "0 · 0"
+        - row "R106 · c1 1 0 실제 위협 0 · 무시 가능 0 · 오탐 0 · 양성 정탐 0 · 미결 0 — — 0 · 0":
+          - cell "R106 · c1":
+            - generic: R106 · c1
+          - cell "1"
+          - cell "0"
+          - cell "실제 위협 0 · 무시 가능 0 · 오탐 0 · 양성 정탐 0 · 미결 0"
+          - cell "—"
+          - cell "—"
+          - cell "0 · 0"
+        - row "R202 · s1 1 1 실제 위협 0 · 무시 가능 0 · 오탐 0 · 양성 정탐 1 · 미결 0 100.0% 비조치 1 / 유효 판정 1 0.0% 0 · 0":
+          - cell "R202 · s1":
+            - generic: R202 · s1
+          - cell "1"
+          - cell "1"
+          - cell "실제 위협 0 · 무시 가능 0 · 오탐 0 · 양성 정탐 1 · 미결 0"
+          - cell "100.0% 비조치 1 / 유효 판정 1":
+            - text: 100.0%
+            - generic: 비조치 1 / 유효 판정 1
+          - cell "0.0%"
+          - cell "0 · 0"
+    - heading "흡수 · 억제 (사건 수에 없음)" [level=3]
+    - table "흡수 · 억제 (사건 수에 없음)":
+      - rowgroup:
+        - row "흡수 억제":
+          - columnheader "흡수"
+          - columnheader "억제"
+      - rowgroup:
+        - row "2 1":
+          - cell "2"
+          - cell "1"
+    - heading "기간 중 만든 규칙 버전" [level=3]
+    - table "기간 중 만든 규칙 버전":
+      - rowgroup:
+        - row "버전 만든 시각 (KST) 규칙 사유":
+          - columnheader "버전"
+          - columnheader "만든 시각 (KST)"
+          - columnheader "규칙"
+          - columnheader "사유"
+      - rowgroup:
+        - 'row "sg1 2026-09-28 23:53 R107 공개 탐지 규칙(SigmaHQ) 가운데 웹 서버 로그 규칙을 요청 경로 서명(url_signature)으로 옮긴 규칙 (이슈 #54). 원본은 SigmaHQ/sigma 커밋 07ec293a51695cb1131a2e05260247872b31e1e1 이고 규칙 라이선스는 Detection …"':
+          - cell "sg1":
+            - generic: sg1
+          - cell "2026-09-28 23:53":
+            - time: 2026-09-28 23:53
+          - cell "R107":
+            - generic: R107
+          - 'cell "공개 탐지 규칙(SigmaHQ) 가운데 웹 서버 로그 규칙을 요청 경로 서명(url_signature)으로 옮긴 규칙 (이슈 #54). 원본은 SigmaHQ/sigma 커밋 07ec293a51695cb1131a2e05260247872b31e1e1 이고 규칙 라이선스는 Detection …"':
+            - generic: "공개 탐지 규칙(SigmaHQ) 가운데 웹 서버 로그 규칙을 요청 경로 서명(url_signature)으로 옮긴 규칙 (이슈 #54). 원본은 SigmaHQ/sigma 커밋 07ec293a51695cb1131a2e05260247872b31e1e1 이고 규칙 라이선스는 Detection …"
+    - button "규칙별 판정 · 비조치율 기준 보기":
+      - text: 기준 보기
+  - region "차단 · 집행":
+    - heading "차단 · 집행" [level=2]
+    - generic: 기간 집계 · 출력 시점 값
+    - heading "기간 조치 (사건 조치 기록)" [level=3]
+    - table "기간 조치 (사건 조치 기록)":
+      - rowgroup:
+        - row "차단 요청 차단 해제":
+          - columnheader "차단 요청"
+          - columnheader "차단 해제"
+      - rowgroup:
+        - row "22 7":
+          - cell "22"
+          - cell "7"
+    - heading "새 차단 요청의 요청자 (감사 기록)" [level=3]
+    - table "새 차단 요청의 요청자 (감사 기록)":
+      - rowgroup:
+        - row "합계 콘솔 사용자 triage system 미기록":
+          - columnheader "합계"
+          - columnheader "콘솔 사용자"
+          - columnheader "triage"
+          - columnheader "system"
+          - columnheader "미기록"
+      - rowgroup:
+        - row "19 8 11 0 0":
+          - cell "19"
+          - cell "8"
+          - cell "11"
+          - cell "0"
+          - cell "0"
+    - heading "기간 차단 감사 이벤트 종류별 수" [level=3]:
+      - text: 기간 차단 감사 이벤트
+      - generic: 종류별 수
+    - table "기간 차단 감사 이벤트":
+      - rowgroup:
+        - row "종류 건수":
+          - columnheader "종류"
+          - columnheader "건수"
+      - rowgroup:
+        - row "차단 요청 15":
+          - cell "차단 요청"
+          - cell "15"
+        - row "차단 재요청 4":
+          - cell "차단 재요청"
+          - cell "4"
+        - row "차단 연장 1":
+          - cell "차단 연장"
+          - cell "1"
+        - row "차단 만료 단축 0":
+          - cell "차단 만료 단축"
+          - cell "0"
+        - row "차단 지점 넓힘 0":
+          - cell "차단 지점 넓힘"
+          - cell "0"
+        - row "차단 해제 7":
+          - cell "차단 해제"
+          - cell "7"
+        - row "차단 만료 13":
+          - cell "차단 만료"
+          - cell "13"
+        - row "관문 집행 확인 44":
+          - cell "관문 집행 확인"
+          - cell "44"
+        - row "관문 집행 해제 16":
+          - cell "관문 집행 해제"
+          - cell "16"
+    - heading "관문 반영 지연 (관문 요청 → 관문 반영) 평균 · 중앙값 · 최대에서 제외 0건" [level=3]:
+      - text: 관문 반영 지연 (관문 요청 → 관문 반영)
+      - generic: 평균 · 중앙값 · 최대에서 제외 0건
+    - table "관문 반영 지연 (관문 요청 → 관문 반영)":
+      - rowgroup:
+        - row "관문 요청 관문 반영 확인 기존 차단 유지 연속성 확인 불가 평균 중앙값 최대":
+          - columnheader "관문 요청"
+          - columnheader "관문 반영 확인"
+          - columnheader "기존 차단 유지"
+          - columnheader "연속성 확인 불가"
+          - columnheader "평균"
+          - columnheader "중앙값"
+          - columnheader "최대"
+      - rowgroup:
+        - row "16 16 0 0 47초 38초 1분 40초":
+          - cell "16"
+          - cell "16"
+          - cell "0"
+          - cell "0"
+          - cell "47초"
+          - cell "38초"
+          - cell "1분 40초"
+    - heading "차단 집행 상태 (출력 시점)" [level=3]
+    - table "차단 집행 상태 (출력 시점)":
+      - rowgroup:
+        - row "살아 있는 요청 집행 확인 집행 대기 집행 실패 불일치 집행 제외":
+          - columnheader "살아 있는 요청"
+          - columnheader "집행 확인"
+          - columnheader "집행 대기"
+          - columnheader "집행 실패"
+          - columnheader "불일치"
+          - columnheader "집행 제외"
+      - rowgroup:
+        - row "12 0 0 0 0 12":
+          - cell "12"
+          - cell "0"
+          - cell "0"
+          - cell "0"
+          - cell "0"
+          - cell "12"
+    - button "차단 · 집행 기준 보기":
+      - text: 기준 보기
+  - region "관제 대상 · 수집":
+    - heading "관제 대상 · 수집" [level=2]
+    - generic: 기간 집계 · 출력 시점 값
+    - heading "대상 상태 (출력 시점)" [level=3]
+    - table "대상 상태 (출력 시점)":
+      - rowgroup:
+        - row "대상 수집 대응":
+          - columnheader "대상"
+          - columnheader "수집"
+          - columnheader "대응"
+      - rowgroup:
+        - row "허니팟 센서 요청 없음 업로더 생존 신호 5분 전 · 적재기 확인 3분 전 · 최근 1시간 요청 없음 · 관문 기록 신호 5분 전 허니팟 관문 집행 대상 차단 없음":
+          - cell "허니팟 센서":
+            - generic: 허니팟 센서
+          - cell "요청 없음 업로더 생존 신호 5분 전 · 적재기 확인 3분 전 · 최근 1시간 요청 없음 · 관문 기록 신호 5분 전":
+            - generic: 요청 없음
+            - generic: 업로더 생존 신호 5분 전 · 적재기 확인 3분 전 · 최근 1시간 요청 없음 · 관문 기록 신호 5분 전
+          - cell "허니팟 관문 집행 대상 차단 없음"
+        - row "web-01 요청 없음 노드 수신 방금 · 최근 1시간 요청 없음 내부 방화벽 집행 대상 차단 없음":
+          - cell "web-01":
+            - generic: web-01
+          - cell "요청 없음 노드 수신 방금 · 최근 1시간 요청 없음":
+            - generic: 요청 없음
+            - generic: 노드 수신 방금 · 최근 1시간 요청 없음
+          - cell "내부 방화벽 집행 대상 차단 없음"
+        - 'row "관제 콘솔 응답 중 출력 시각의 DB 연결: 콘솔 A 있음 · 콘솔 B 없음(평소 꺼 두는 예비) 차단 적용 여부 미확인"':
+          - cell "관제 콘솔":
+            - generic: 관제 콘솔
+          - 'cell "응답 중 출력 시각의 DB 연결: 콘솔 A 있음 · 콘솔 B 없음(평소 꺼 두는 예비)"':
+            - generic: 응답 중
+            - generic: "출력 시각의 DB 연결: 콘솔 A 있음 · 콘솔 B 없음(평소 꺼 두는 예비)"
+          - cell "차단 적용 여부 미확인"
+        - row "데이터 노드 정상 마지막 탐지 실행 방금 차단 적용 여부 미확인":
+          - cell "데이터 노드":
+            - generic: 데이터 노드
+          - cell "정상 마지막 탐지 실행 방금":
+            - generic: 정상
+            - generic: 마지막 탐지 실행 방금
+          - cell "차단 적용 여부 미확인"
+    - heading "센서별 이벤트 (기간)" [level=3]
+    - table "센서별 이벤트 (기간)":
+      - rowgroup:
+        - row "센서 이벤트":
+          - columnheader "센서"
+          - columnheader "이벤트"
+      - rowgroup:
+        - row "audit 104":
+          - cell "audit":
+            - generic: audit
+          - cell "104"
+        - row "collector 4":
+          - cell "collector":
+            - generic: collector
+          - cell "4"
+        - row "console 15":
+          - cell "console":
+            - generic: console
+          - cell "15"
+        - row "cowrie 153,656":
+          - cell "cowrie":
+            - generic: cowrie
+          - cell "153,656"
+        - row "decoy 952":
+          - cell "decoy":
+            - generic: decoy
+          - cell "952"
+        - row "gateway 201,694":
+          - cell "gateway":
+            - generic: gateway
+          - cell "201,694"
+        - row "web-01 174":
+          - cell "web-01":
+            - generic: web-01
+          - cell "174"
+    - heading "탐지 실행 (기간)" [level=3]
+    - table "탐지 실행 (기간)":
+      - rowgroup:
+        - row "실행 실행 사이 최대 공백":
+          - columnheader "실행"
+          - columnheader "실행 사이 최대 공백"
+      - rowgroup:
+        - row "36,803 13시간 36분":
+          - cell "36,803"
+          - cell "13시간 36분"
+    - heading "web-01 자원 (기간 최대)" [level=3]
+    - table "web-01 자원 (기간 최대)":
+      - rowgroup:
+        - row "CPU 메모리 디스크 표본 지표 최대 공백":
+          - columnheader "CPU"
+          - columnheader "메모리"
+          - columnheader "디스크"
+          - columnheader "표본"
+          - columnheader "지표 최대 공백"
+      - rowgroup:
+        - row "15% 43% 26% 6,919 13시간 37분":
+          - cell "15%"
+          - cell "43%"
+          - cell "26%"
+          - cell "6,919"
+          - cell "13시간 37분"
+    - button "관제 대상 · 수집 기준 보기":
+      - text: 기준 보기
+  - region "취약점 · CVE":
+    - heading "취약점 · CVE" [level=2]
+    - generic: 기간 집계 · 출력 시점 값
+    - heading "자산별 취약점 (출력 시점)" [level=3]
+    - table "자산별 취약점 (출력 시점)":
+      - rowgroup:
+        - row "자산 취약점 KEV 수정판 있음 수정 여부 미확인 재부팅 대기 자산 수집 (KST)":
+          - columnheader "자산"
+          - columnheader "취약점"
+          - columnheader "KEV"
+          - columnheader "수정판 있음"
+          - columnheader "수정 여부 미확인"
+          - columnheader "재부팅 대기"
+          - columnheader "자산 수집 (KST)"
+      - rowgroup:
+        - row "web-01 4,267 2 20 3,852 0 2026-10-01 05:10":
+          - cell "web-01":
+            - generic: web-01
+          - cell "4,267"
+          - cell "2"
+          - cell "20"
+          - cell "3,852"
+          - cell "0"
+          - cell "2026-10-01 05:10":
+            - time: 2026-10-01 05:10
+        - row "console-a 4,275 2 19 3,852 0 2026-10-01 05:10":
+          - cell "console-a":
+            - generic: console-a
+          - cell "4,275"
+          - cell "2"
+          - cell "19"
+          - cell "3,852"
+          - cell "0"
+          - cell "2026-10-01 05:10":
+            - time: 2026-10-01 05:10
+        - row "console-b 4,256 2 0 3,852 0 2026-10-02 17:27":
+          - cell "console-b":
+            - generic: console-b
+          - cell "4,256"
+          - cell "2"
+          - cell "0"
+          - cell "3,852"
+          - cell "0"
+          - cell "2026-10-02 17:27":
+            - time: 2026-10-02 17:27
+        - row "data-01 4,275 2 19 3,852 0 2026-10-01 05:10":
+          - cell "data-01":
+            - generic: data-01
+          - cell "4,275"
+          - cell "2"
+          - cell "19"
+          - cell "3,852"
+          - cell "0"
+          - cell "2026-10-01 05:10":
+            - time: 2026-10-01 05:10
+        - row "fw 4,259 2 12 3,852 0 2026-10-01 05:10":
+          - cell "fw":
+            - generic: fw
+          - cell "4,259"
+          - cell "2"
+          - cell "12"
+          - cell "3,852"
+          - cell "0"
+          - cell "2026-10-01 05:10":
+            - time: 2026-10-01 05:10
+        - row "gateway 3,943 0 14 3,564 0 2026-09-28 05:18 오래됨":
+          - cell "gateway":
+            - generic: gateway
+          - cell "3,943"
+          - cell "0"
+          - cell "14"
+          - cell "3,564"
+          - cell "0"
+          - cell "2026-09-28 05:18 오래됨":
+            - time: 2026-09-28 05:18
+            - generic: 오래됨
+        - row "honeypot-dmz 4,071 0 32 3,665 0 2026-09-28 05:18 오래됨":
+          - cell "honeypot-dmz":
+            - generic: honeypot-dmz
+          - cell "4,071"
+          - cell "0"
+          - cell "32"
+          - cell "3,665"
+          - cell "0"
+          - cell "2026-09-28 05:18 오래됨":
+            - time: 2026-09-28 05:18
+            - generic: 오래됨
+    - 'heading "주목 CVE (출력 시점) 해당: CVE-2026-53266" [level=3]':
+      - text: 주목 CVE (출력 시점)
+      - generic: "해당: CVE-2026-53266"
+    - table "주목 CVE (출력 시점)":
+      - rowgroup:
+        - row "전체 해당 비해당 미확인":
+          - columnheader "전체"
+          - columnheader "해당"
+          - columnheader "비해당"
+          - columnheader "미확인"
+      - rowgroup:
+        - row "7 1 6 0":
+          - cell "7"
+          - cell "1"
+          - cell "6"
+          - cell "0"
+    - heading "기간 중 KEV 등재 · 우리 자산 해당 기간 등재 5건 중 0건" [level=3]:
+      - text: 기간 중 KEV 등재 · 우리 자산 해당
+      - generic: 기간 등재 5건 중 0건
+    - table "기간 중 KEV 등재 · 우리 자산 해당":
+      - rowgroup:
+        - row "CVE 이름 KEV 등재일 해당 자산":
+          - columnheader "CVE"
+          - columnheader "이름"
+          - columnheader "KEV 등재일"
+          - columnheader "해당 자산"
+      - rowgroup
+    - paragraph: 해당 없음
+    - heading "신선도" [level=3]
+    - table "신선도":
+      - rowgroup:
+        - row "출처 마지막 수집 (KST) 상태":
+          - columnheader "출처"
+          - columnheader "마지막 수집 (KST)"
+          - columnheader "상태"
+      - rowgroup:
+        - row "KEV 2026-10-02 17:44 최신":
+          - cell "KEV"
+          - cell "2026-10-02 17:44":
+            - time: 2026-10-02 17:44
+          - cell "최신"
+        - row "EPSS 2026-10-02 17:44 최신":
+          - cell "EPSS"
+          - cell "2026-10-02 17:44":
+            - time: 2026-10-02 17:44
+          - cell "최신"
+        - row "배포판 대조 (OSV) 2026-10-02 17:45 최신":
+          - cell "배포판 대조 (OSV)"
+          - cell "2026-10-02 17:45":
+            - time: 2026-10-02 17:45
+          - cell "최신"
+        - row "자산 조사 (가장 오래된 수집) 2026-09-28 05:18 오래됨 gateway, honeypot-dmz":
+          - cell "자산 조사 (가장 오래된 수집)"
+          - cell "2026-09-28 05:18":
+            - time: 2026-09-28 05:18
+          - cell "오래됨 gateway, honeypot-dmz":
+            - generic: 오래됨
+            - generic: gateway, honeypot-dmz
+    - button "취약점 · CVE 기준 보기":
+      - text: 기준 보기
+  - region "운영 기록":
+    - heading "운영 기록" [level=2]
+    - generic: 기간 집계
+    - heading "감사 이벤트 (기간) 종류별 수" [level=3]:
+      - text: 감사 이벤트 (기간)
+      - generic: 종류별 수
+    - table "감사 이벤트 (기간)":
+      - rowgroup:
+        - row "종류 건수":
+          - columnheader "종류"
+          - columnheader "건수"
+      - rowgroup:
+        - row "console.account.created 1":
+          - cell "console.account.created":
+            - generic: console.account.created
+          - cell "1"
+        - row "console.account.disabled 1":
+          - cell "console.account.disabled":
+            - generic: console.account.disabled
+          - cell "1"
+        - row "차단 요청 15":
+          - cell "차단 요청"
+          - cell "15"
+        - row "관문 집행 확인 44":
+          - cell "관문 집행 확인"
+          - cell "44"
+        - row "차단 만료 13":
+          - cell "차단 만료"
+          - cell "13"
+        - row "차단 연장 1":
+          - cell "차단 연장"
+          - cell "1"
+        - row "차단 재요청 4":
+          - cell "차단 재요청"
+          - cell "4"
+        - row "차단 해제 7":
+          - cell "차단 해제"
+          - cell "7"
+        - row "관문 집행 해제 16":
+          - cell "관문 집행 해제"
+          - cell "16"
+        - row "알림 채널 변경 2":
+          - cell "알림 채널 변경"
+          - cell "2"
+    - heading "로그인 · 알림 발송 (기간)" [level=3]
+    - table "로그인 · 알림 발송 (기간)":
+      - rowgroup:
+        - row "콘솔 로그인 실패 알림 발송 발송 실패 발송 지연 중앙값":
+          - columnheader "콘솔 로그인 실패"
+          - columnheader "알림 발송"
+          - columnheader "발송 실패"
+          - columnheader "발송 지연 중앙값"
+      - rowgroup:
+        - row "1 59 7 5분 8초":
+          - cell "1"
+          - cell "59"
+          - cell "7"
+          - cell "5분 8초"
+    - heading "알림 발송 (기간 · 시험 발송 제외)" [level=3]
+    - table "알림 발송 (기간 · 시험 발송 제외)":
+      - rowgroup:
+        - row "사건 종류 상태 건수":
+          - columnheader "사건 종류"
+          - columnheader "상태"
+          - columnheader "건수"
+      - rowgroup:
+        - row "새 인시던트 성공 14":
+          - cell "새 인시던트"
+          - cell "성공"
+          - cell "14"
+        - row "노드 수신 끊김 실패 7":
+          - cell "노드 수신 끊김"
+          - cell "실패"
+          - cell "7"
+        - row "노드 수신 끊김 성공 25":
+          - cell "노드 수신 끊김"
+          - cell "성공"
+          - cell "25"
+        - row "판정 지연 성공 13":
+          - cell "판정 지연"
+          - cell "성공"
+          - cell "13"
+    - button "운영 기록 기준 보기":
+      - text: 기준 보기
+- list

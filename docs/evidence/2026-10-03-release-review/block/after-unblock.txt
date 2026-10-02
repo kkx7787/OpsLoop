@@ -1,0 +1,3 @@
+$ attacker → web-01:80 GET /
+HTTP 200
+종료 코드 0

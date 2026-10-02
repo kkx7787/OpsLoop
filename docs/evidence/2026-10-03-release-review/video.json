@@ -1,0 +1,13 @@
+{
+  "duration_seconds": 410.0,
+  "width": 1920,
+  "height": 1080,
+  "fps": 30,
+  "audio": false,
+  "format": "H.264 mp4",
+  "filename": "OpsLoop-demo-final.mp4",
+  "local_path": "/Users/hanseongmin/opsloop-repo/output/release-review-20261003/video/OpsLoop-demo-final.mp4",
+  "size_bytes": 13864684,
+  "sha256": "2f941a079b83b1064a74b3e8b32afd790a08612978bd4ba06330c00fc16a97e1",
+  "source_scope": "10/02 detection and failover footage; 10/03 node onboarding, internal firewall block/release, isolated restore use. Functional filming is not a new RTO or latency measurement."
+}

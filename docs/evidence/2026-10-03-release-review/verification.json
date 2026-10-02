@@ -1,0 +1,33 @@
+{
+  "review_commit": "4fb9949538210e5b34d975ebd7e999e3cd0cfb02",
+  "provenance": "Extracted from the prior review artifact-manifest.json; not a complete raw test log",
+  "source_manifest_sha256": "584d1db9373eac91d2c48daa36e1f7d6231bd5100dd79415491a37c916d6a3c6",
+  "verification": {
+    "frontend": {
+      "files": 67,
+      "tests": 1079,
+      "status": "passed",
+      "build": "passed",
+      "lint": "passed"
+    },
+    "backend": {
+      "files": 25,
+      "tests": 729,
+      "first_run_passed": 606,
+      "retry_passed": 123,
+      "single_uninterrupted_run": false,
+      "interruption": "Docker storage I/O error"
+    },
+    "backup_tests": 29,
+    "web02_postcheck": {
+      "passed": 18,
+      "failed": 0
+    },
+    "restore_filming": "Functional verification; not RTO retest",
+    "block_filming": "Existing test-source incident, internal firewall only; released after filming; no new latency measurement"
+  },
+  "limitations": [
+    "Backend total is combined from two executions, not a single uninterrupted run.",
+    "Complete raw output for the initial 606 backend tests was not preserved in this evidence folder."
+  ]
+}
