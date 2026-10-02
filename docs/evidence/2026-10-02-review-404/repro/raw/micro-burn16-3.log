@@ -1,0 +1,10 @@
+
+ RUN  v5.0.1 /Users/hanseongmin/opsloop-repo/console
+
+···
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  23:33:22
+   Duration  3.07s (transform 42%, environment 28%, tests 20%, import 6%, setup 4%)
+

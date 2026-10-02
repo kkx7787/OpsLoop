@@ -1,0 +1,5 @@
+
+> console@0.0.0 test
+> vitest run --reporter=json --outputFile=/tmp/opsloop-review-20261002/vitest.json
+
+JSON report written to /tmp/opsloop-review-20261002/vitest.json

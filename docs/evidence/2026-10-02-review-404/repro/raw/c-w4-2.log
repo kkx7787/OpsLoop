@@ -1,0 +1,22 @@
+
+> console@0.0.0 test
+> vitest run --maxWorkers=4 --reporter=dot --reporter=json --outputFile.json=/Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-review-404/repro/raw/c-w4-2.json
+
+
+ RUN  v5.0.1 /Users/hanseongmin/opsloop-repo/console
+
+·················································································································································································································································································································stderr | src/pages/incident-detail/IncidentDetailPage.test.tsx > IncidentDetailPage · 차단 적용 지점(#77) > 기본값 그대로 보내면 내부 방화벽만, 관문을 더하면 경고 한 줄과 두 지점이 가고, 다시 열면 기본값이다
+Encountered two children with the same key, `action-4`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+
+························································································································································································································································································································································································································································································································································································································································································································································································
+
+ Test Files  66 passed (66)
+      Tests  1065 passed (1065)
+   Start at  23:25:49
+   Duration  33.23s (tests 46%, environment 41%, setup 7%, import 3%, transform 3%)
+
+Environment  jsdom was created 66 times · 50.59s total, 41% of tracked time
+             create it once per worker with pool: 'vmThreads' (keeps per-file isolation) or isolate: false (shares it across files)
+             learn more: https://vitest.dev/guide/improving-performance#test-environments
+
+JSON report written to /Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-review-404/repro/raw/c-w4-2.json

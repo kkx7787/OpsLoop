@@ -1,0 +1,14 @@
+
+> console@0.0.0 test
+> vitest run src/app/router.test.tsx --reporter=dot
+
+
+ RUN  v5.0.1 /Users/hanseongmin/opsloop-repo/console
+
+················
+
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+   Start at  17:13:54
+   Duration  2.31s (tests 39%, environment 25%, transform 24%, import 7%, setup 5%)
+

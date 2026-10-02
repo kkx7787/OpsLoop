@@ -1,0 +1,15 @@
+
+> console@0.0.0 test
+> vitest run src/app/router.test.tsx --reporter=dot --reporter=json --outputFile.json=/Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-review-404/repro/raw/a-file-02.json
+
+
+ RUN  v5.0.1 /Users/hanseongmin/opsloop-repo/console
+
+················
+
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+   Start at  23:22:08
+   Duration  1.76s (tests 52%, transform 21%, environment 18%, import 5%, setup 3%)
+
+JSON report written to /Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-review-404/repro/raw/a-file-02.json

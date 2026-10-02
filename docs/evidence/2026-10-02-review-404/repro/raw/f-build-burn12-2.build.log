@@ -1,0 +1,41 @@
+
+> console@0.0.0 build
+> tsc -b && vite build --outDir /private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/***/scratchpad/build/f-build-burn12-2 --emptyOutDir
+
+vite v8.3.0 building client environment for production...
+transforming...
+✓ 241 modules transformed.
+rendering chunks...
+computing gzip size...
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/favicon-CPAYERcy.svg              0.35 kB │ gzip:   0.25 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/index.html                               1.45 kB │ gzip:   0.61 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/style-Boe36MqN.css               49.96 kB │ gzip:  10.07 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/Select-DgTDuoto.js                0.23 kB │ gzip:   0.20 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/Badge-BevLxOXN.js                 0.29 kB │ gzip:   0.24 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/interval-Bj3hulVJ.js              0.32 kB │ gzip:   0.27 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/Label-CtJTNCOm.js                 0.40 kB │ gzip:   0.27 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/Input-PLZpoSRT.js                 0.63 kB │ gzip:   0.39 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/Card-CrWz6YJt.js                  0.68 kB │ gzip:   0.41 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/Switch-Bq2ZfMtL.js                1.03 kB │ gzip:   0.53 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/notify-DX-QO4OM.js                1.46 kB │ gzip:   0.84 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/UntrustedText-0_1Zpps8.js         1.53 kB │ gzip:   0.90 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/AuditPage-Cnl7O3Cn.js             5.88 kB │ gzip:   2.35 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/SourceBlock-BhfsB0QD.js           6.58 kB │ gzip:   2.70 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/NodesPage-6W1SYFXP.js             6.75 kB │ gzip:   3.00 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/incidents-DfAKVYCh.js             7.59 kB │ gzip:   2.52 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/NodeEnrollmentPage-CkGzJ9pN.js    8.30 kB │ gzip:   3.37 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/VerdictBadge-B0JbfFpD.js          8.33 kB │ gzip:   3.42 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/RulesPage-QtEqut2O.js            10.90 kB │ gzip:   3.64 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/SourceDetailPage-CRTEnmbP.js     11.78 kB │ gzip:   3.39 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/DeviceLogsPage-CpDVLRFq.js       15.23 kB │ gzip:   5.09 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/SourcesPage-Oilmmurw.js          15.94 kB │ gzip:   5.56 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/log-format-Ia4qW8nl.js           16.00 kB │ gzip:   6.12 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/AccountsPage-B5Z_GG30.js         16.64 kB │ gzip:   5.74 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/ReportsPage-Df6hpivH.js          23.90 kB │ gzip:   7.33 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/AlertsPage-xEwwxTrV.js           24.27 kB │ gzip:   8.38 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/AssetsPage-b7f9k_kr.js           26.38 kB │ gzip:   6.76 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/PageHeader-DApZH0Ha.js           87.81 kB │ gzip:  29.98 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/chunk-OB3PAWPO-fVjhgcJS.js       92.73 kB │ gzip:  30.76 kB
+../../../../private/tmp/claude-501/-Users-hanseongmin-opsloop-repo/93fd3a54-b0c0-474c-835b-87453a8c0a28/scratchpad/build/f-build-burn12-2/assets/index-C7WasDHl.js               388.18 kB │ gzip: 115.68 kB
+
+✓ built in 998ms

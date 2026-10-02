@@ -1,0 +1,23 @@
+# 검토 실행(10/02 17:09 ~ 17:17) 파일 시각. 10/02 23:46 에 stat 으로 읽었다.
+# /private/tmp/opsloop-review-20261002/ 원본의 생성(birth) 시각과 마지막 수정 시각. 저장소로 옮긴 사본은 생성 시각이 수정 시각으로 바뀌어 쓸 수 없다.
+# 형식: 생성 | 수정 | 크기 | 파일
+17:09:10 | 17:10:00 | 170 | vitest.log
+17:09:11 | 17:09:12 | 32 | lint.log
+17:09:12 | 17:09:12 | 0 | tsc.log
+17:09:50 | 17:09:51 | 3616 | build.log
+17:09:51 | 17:09:51 | 1456 | build/index.html
+17:10:00 | 17:10:00 | 424802 | vitest.json
+17:10:37 | 17:11:56 | 5151 | python-summary.log
+17:13:53 | 17:13:56 | 325 | vitest-router-retry.log
+17:17:08 | 17:17:33 | 197 | vitest-retry.log
+17:17:33 | 17:17:33 | 414041 | vitest-retry.json
+
+# console/node_modules/.tmp 의 tsc -b 빌드 정보(tsc -b 가 끝날 때 쓴다). 재현 전 시각이며, 재현 뒤 백업으로 되돌렸다.
+09:26:14 | 17:09:48 | 12145 | node_modules/.tmp/tsconfig.app.tsbuildinfo
+09:26:14 | 17:09:49 | 51 | node_modules/.tmp/tsconfig.node.tsbuildinfo
+
+# vitest.json · vitest-retry.json 의 startTime(KST)
+vitest.json 시작 17:09:11.767 · router.test.tsx 17:09:32.501 ~ 17:09:39.118 · 마지막 파일 끝 17:10:00.197
+vitest-retry.json 시작 17:17:08.919 · router.test.tsx 17:17:24.532 ~ 17:17:25.782 · 마지막 파일 끝 17:17:33.543
+
+# 추가 부하 없이 지금 잰 tsc -b 소요(23:20, 같은 Mac): 빌드 정보 있음 5.93초 · --force 4.69초
