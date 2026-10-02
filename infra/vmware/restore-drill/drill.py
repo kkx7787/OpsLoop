@@ -34,7 +34,8 @@
   up · roles · restore 는 이미 있는 컨테이너 · 역할 · 표 때문에 다시 돌릴 수 없다. cleanup --apply 뒤 up 부터 다시 한다(T0 는 그대로).
   verify 를 다시 돌리면 훈련 쪽 지문은 그 복원 뒤 처음 뜬 것을 쓴다(첫 verify 의 알림 끄기가 훈련 DB 를 이미 바꿨다).
   console(S6 · S7)과 regen(S8)은 둘 다 verify 뒤라 어느 쪽을 먼저 해도 RTO 순서는 맞다. done 은 둘 다 끝나야 한다.
-  운영 읽기는 opsloop_backup(접속 한도 2)을 쓴다. 04:30 · 16:30 백업 · 00:10 CTI 수집과 겹치지 않게 한다(precheck · regen 이 알린다).
+  운영 읽기는 opsloop_backup(접속 한도 2)을 쓴다. 04:30 · 12:30 · 20:30 백업 · 00:10 CTI 수집과 겹치지 않게 한다(precheck · regen 이
+  알린다. 백업 기록이 '백업 시작' 으로 끝나 있으면 창 밖이어도 백업 중으로 알린다 · 잠자기 뒤 늦게 도는 회차).
 
 비밀값
   훈련 DB 슈퍼유저 · 역할 비밀번호는 data01 에서 openssl 로 만들어 /var/lib/opsloop-drill/env/*.env(0600)에만 둔다.
@@ -96,9 +97,11 @@ INGEST_BIN = "/usr/local/bin/opsloop-ingest"
 PULL_LOKI = "/opt/opsloop/app/collector/pull_loki.py"
 PULL_USER = "opsloop-pull"
 BOOTSTRAP_ROLE = "opsloop"
-# opsloop_enforcer(차단 집행, 이슈 #47)는 enforcer/install-enforcer.sh 로 만든 뒤에 뜬 백업부터 들어 있다
+# 지금 역할 8개. backup-db.sh 의 필수 역할과 같은 목록이다 (이슈 #91)
+#   opsloop_cti(CVE · KEV 수집)는 cti/install-cti.sh, opsloop_enforcer(차단 집행, 이슈 #47)는 enforcer/install-enforcer.sh 로
+#   만든 뒤에 뜬 백업부터 들어 있다
 REQUIRED_ROLES = ("opsloop", "opsloop_gate", "opsloop_ingest", "opsloop_detector", "opsloop_console", "opsloop_backup",
-                  "opsloop_enforcer")
+                  "opsloop_cti", "opsloop_enforcer")
 PULL_ROLES = ("opsloop_ingest", "opsloop_detector")        # env 파일을 opsloop-pull 이 읽는다
 BACKUP_DIR = os.path.join("~", "opsloop-backup")
 VERIFY_ROLES_SH = os.path.join(ROOT, "infra", "vmware", "scripts", "verify-db-roles.sh")
@@ -138,18 +141,46 @@ PREREQ = {"precheck": (), "t0": ("precheck",), "up": ("t0",), "roles": ("up",), 
           "compare": ("regen",), "done": ("compare", "console-confirm"), "cleanup": ("precheck",),
           "report": ("t0",)}
 KST = timezone(timedelta(hours=9))
-# 겹치지 않게 피하는 운영 작업 창 (KST). 백업은 opsloop_backup 접속 한도 2 를 이 도구의 운영 읽기와 나눠 쓴다
-BUSY = ((0, 5, 0, 15, "CTI 수집(opsloop-cti.timer)"), (4, 25, 4, 40, "04:30 백업 · 복원 시험"),
-        (16, 25, 16, 40, "16:30 백업 · 복원 시험"))
+# 겹치지 않게 피하는 운영 작업 창 (KST). 백업은 opsloop_backup 접속 한도 2 를 이 도구의 운영 읽기와 나눠 쓴다.
+# 백업 창은 시작 5분 전부터 회차가 끝나야 하는 때(시작 뒤 20분, backup-agent.sh 의 BACKUP_WINDOW)까지다
+BUSY = ((0, 5, 0, 15, "CTI 수집(opsloop-cti.timer)"), (4, 25, 4, 50, "04:30 백업 · 복원 시험"),
+        (12, 25, 12, 50, "12:30 백업 · 복원 시험"), (20, 25, 20, 50, "20:30 백업 · 복원 시험"))
+BUSY_TEXT = " · ".join("%02d:%02d~%02d:%02d" % w[:4] for w in BUSY) + " KST"
+# backup-agent.sh 가 회차마다 남기는 표시 줄. 시도 줄('-- …')은 보지 않는다
+BACKUP_MARK = re.compile(r"^== (\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) (\S+) 백업 (시작|성공|실패)")
 
 
-def busy_window(now=None):
-    """지금(KST)이 운영 작업 창 안이면 그 이름, 아니면 None."""
+def backup_running(log_path):
+    """백업 기록의 마지막 회차 표시가 '백업 시작' 이면(끝 줄이 아직 없다 · 지금 백업 중) 그 시각 문자열, 아니면 None.
+    기록이 없거나 읽지 못하면 None. 끝부분 64KiB 만 읽는다(한 회차는 몇 KiB 다)."""
+    try:
+        with open(log_path, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            f.seek(max(0, f.tell() - 65536))
+            tail = f.read().decode("utf-8", "replace")
+    except OSError:
+        return None
+    last = None
+    for line in tail.splitlines():
+        m = BACKUP_MARK.match(line)
+        if m:
+            last = m
+    if last and last.group(3) == "시작":
+        return "%s %s" % (last.group(1), last.group(2))
+    return None
+
+
+def busy_window(now=None, backup_log=None):
+    """지금(KST)이 운영 작업 창 안이면 그 이름. 창 밖이어도 백업 기록(backup_log)의 마지막 회차가 '백업 시작' 으로
+    끝나 있으면(잠자기 뒤 늦게 도는 회차) 백업 중으로 본다. 둘 다 아니면 None."""
     t = (now or datetime.now(KST)).astimezone(KST)
     m = t.hour * 60 + t.minute
     for h1, m1, h2, m2, name in BUSY:
         if h1 * 60 + m1 <= m <= h2 * 60 + m2:
             return name
+    started = backup_running(backup_log) if backup_log else None
+    if started:
+        return "백업 진행 중 (backup.log 마지막 회차가 %s 백업 시작 · 끝 줄 없음)" % started
     return None
 
 
@@ -596,7 +627,7 @@ def compute_rpo(tb, tf, loss, drill_verdict_max, prod_verdict_max_tf, regen, gap
         "db_only": {"design_s": design, "lost_rows": lost, "after_tf_rows": after, "verdict_loss_s": verdict_loss},
     }
     # 합격은 이번 복원의 설계 RPO(T_f − T_b)와 재생성 두 줄로 본다. 보관 덤프 간격 최댓값(실측 최악)은 backup_gap_ok 로
-    # 따로 적는다. 04:30 · 16:30 백업은 덤프 시각이 몇 초만 밀려도 간격이 43200 초를 넘으므로, 합격에 섞으면
+    # 따로 적는다. 회차가 실패하거나 잠자기로 밀리면 간격이 43200 초를 넘을 수 있는데, 합격에 섞으면
     # 설계 RPO 가 목표 안이어도 'RPO 설계 … 불합격' 으로 찍힌다
     passed = (design is not None and 0 <= design <= target
               and lines["s3_sensor"]["match"] is not False and lines["monitored_logs"]["match"] is not False)
@@ -1299,8 +1330,8 @@ def step_precheck(ctx):
         ctx.check("backup.log 에 이 덤프 기록", log_line is not None, log_line or "없음", warn=True)
         ctx.check("백업 간격 최댓값 ≤ %d초" % RPO_TARGET_S,
                   (pre["backup_gaps"]["max_gap_s"] or 0) <= RPO_TARGET_S, pre["backup_gaps"]["max_gap_s"], warn=True)
-    busy = busy_window()
-    ctx.check("운영 작업 창 밖 (00:05~00:15 · 04:25~04:40 · 16:25~16:40 KST)", busy is None, busy or "", warn=True)
+    busy = busy_window(backup_log=os.path.join(bdir, "backup.log"))
+    ctx.check("운영 작업 창 밖 (%s) · 백업 진행 중 아님" % BUSY_TEXT, busy is None, busy or "", warn=True)
     r = ctx.run("pmset", ["pmset", "-g", "assertions"], ok=(0, 1))
     if not r.dry:
         awake = re.search(r"PreventUserIdleSystemSleep\s+1", r.out) is not None
@@ -1432,7 +1463,7 @@ def step_roles(ctx):
         g = {"sql": "-- q:roles_apply\n<역할 목록(%s)의 CREATE ROLE · ALTER ROLE … WITH … · GRANT … 줄>"
              % (os.path.basename(path) if path else "<globals.sql>"),
              "roles": {"opsloop_%s" % n: {"login": True}
-                       for n in ("backup", "console", "cti", "detector", "gate", "ingest")}}
+                       for n in ("backup", "console", "cti", "detector", "enforcer", "gate", "ingest")}}
     specs = login_specs(g["roles"])
     ctx.drill("roles_apply", g["sql"])
     r = ctx.sh("passwords", DATA_HOST, script_passwords(specs))
@@ -1762,8 +1793,9 @@ def step_console_confirm(ctx):
 def step_regen(ctx):
     tb = from_iso(ctx.state.get("precheck", "backup", "archive_created_utc"))
     since = (tb - timedelta(seconds=REGEN_BEFORE_S)).strftime("%Y-%m-%dT%H:%M:%SZ") if tb else "<T_b−1시간>"
-    busy = busy_window()
-    ctx.check("운영 작업 창 밖 (재적재는 메모리를 쓴다 · data01 스왑 0)", busy is None, busy or "", warn=True)
+    bdir = ctx.state.get("precheck", "backup_dir") or os.path.expanduser(ctx.args.backup_dir)
+    busy = busy_window(backup_log=os.path.join(bdir, "backup.log"))
+    ctx.check("운영 작업 창 밖 · 백업 진행 중 아님 (재적재는 메모리를 쓴다 · data01 스왑 0)", busy is None, busy or "", warn=True)
     r = ctx.sh("regen_check", DATA_HOST, script_regen_check(), ok=(0, 1))
     mem = None
     if not r.dry:

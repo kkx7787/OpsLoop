@@ -17,6 +17,8 @@
                  운영 볼륨 · 주소는 나오지 않는다 · 지우기 · 만들기 명령은 훈련 이름만 · 운영에 보내는 SQL 은 읽기뿐
   - 확인 블록    훈련 DB 에 가는 SQL 은 모두 cluster_name 확인 블록으로 시작한다 · 원격 스크립트의 psql 은 drill_psql 뿐
   - 지표         RTO · RPO · 백업 간격 · 덤프 머리 · 역할 목록 · 목차 · 지문 차이 · 재생성 대조 · 역할 판정 · 가림
+  - 작업 창      04:30 · 12:30 · 20:30 백업 창(시작 5분 전 ~ 시작 뒤 20분) · CTI · 백업 기록이 '백업 시작' 으로 끝나면 창 밖이어도
+                 백업 중(precheck · regen 이 알린다) · 필요한 역할 8개(cti · enforcer 포함)
   - 문법         원격 스크립트 bash -n · 안에 든 파이썬 compile · 파이썬 3.9 문법
 """
 import hashlib
@@ -369,7 +371,7 @@ class Env:
             f.write(GLOBALS)
         with open(os.path.join(bdir, "backup.log"), "w") as f:
             f.write("복원 시험 (events verdicts actions blocklist): 복원 1 1 1 1 · 운영 1 1 1 1\n"
-                    "백업 7.2M %s · 표 23 개 · 역할 7 개\n" % self.dump)
+                    "백업 7.2M %s · 표 23 개 · 역할 8 개\n" % self.dump)
         self.resp = self.responses()
         self.save_resp()
 
@@ -520,6 +522,19 @@ class DryRun(unittest.TestCase):
             self.assertIn('"${RUN[@]}" /usr/bin/choom -n 1000 -- /usr/bin/time -v /usr/local/bin/opsloop-ingest --full', out)
             self.assertIn('"${RUN[@]}" /usr/bin/choom -n 1000 -- /usr/bin/time -v python3 ', out)
             self.assertNotIn("systemd-run ", out.replace("systemd-run 은 쓰지 않는다", ""))
+        finally:
+            e.close()
+
+    def test_드라이런_역할_자리표시는_로그인_역할_7개(self):
+        # 지금 역할 8개 가운데 초기 슈퍼유저(opsloop)를 뺀 로그인 역할마다 훈련 전용 비밀번호를 만든다
+        e = Env()
+        try:
+            _rc, out, _ = e.tool(e.run, "roles")
+            words = ["%s:%s:%s" % (r, r[len("opsloop_"):], "opsloop-pull" if r in D.PULL_ROLES else "self")
+                     for r in sorted(D.REQUIRED_ROLES) if r != D.BOOTSTRAP_ROLE]
+            self.assertEqual(len(words), 7)
+            for w in words:
+                self.assertIn(w, out)
         finally:
             e.close()
 
@@ -772,6 +787,25 @@ class Order(unittest.TestCase):
         finally:
             e.close()
 
+    def test_백업_중이면_precheck_와_regen_이_알린다(self):
+        # 백업 기록이 '백업 시작' 으로 끝나 있다 (잠자기 뒤 늦게 도는 회차). 참고(…)라 멈추지는 않는다
+        e = Env()
+        try:
+            with open(os.path.join(e.home, "opsloop-backup", "backup.log"), "a", encoding="utf-8") as f:
+                f.write("== 2026-09-27 09:58:02 KST 백업 시작\n-- 2026-09-27 09:58:02 KST 시도 1/3\n")
+            # 지금이 마침 작업 창 안이면 창 이름이 먼저 나온다
+            want = D.busy_window() or "백업 진행 중 (backup.log 마지막 회차가 2026-09-27 09:58:02 KST 백업 시작"
+            rc, out, _ = e.tool(e.run, "precheck", "--apply")
+            self.assertEqual(rc, 0, out[-800:])
+            self.assertIn("… 운영 작업 창 밖 (%s) · 백업 진행 중 아님 · %s" % (D.BUSY_TEXT, want), out)
+            for step in ("t0", "up", "roles", "restore", "verify"):
+                self.assertEqual(e.tool(e.run, step, "--apply")[0], 0, step)
+            rc, out, _ = e.tool(e.run, "regen", "--apply")
+            self.assertEqual(rc, 0, out[-800:])
+            self.assertIn("… 운영 작업 창 밖 · 백업 진행 중 아님 (재적재는 메모리를 쓴다 · data01 스왑 0) · %s" % want, out)
+        finally:
+            e.close()
+
     def test_역할_목록에_비밀번호가_있으면_멈춘다(self):
         e = Env()
         try:
@@ -929,7 +963,7 @@ class Metrics(unittest.TestCase):
         self.assertEqual(r["lines"]["monitored_logs"]["sensors"], ["web-01"])
         # 합격은 설계 RPO(7시간) · 재생성으로 본다. 실측 백업 간격 12h03m15s 는 12시간을 넘으므로 따로 적는다
         self.assertEqual((r["pass"], r["backup_gap_ok"], r["backup_gap_max_s"]), (True, False, 43395.0))
-        # 04:30 · 16:30 백업이 3초 밀린 것만으로 설계 RPO 6시간이 불합격이 되지 않는다
+        # 보관 간격이 목표를 3초 넘은 것만으로 설계 RPO 6시간이 불합격이 되지 않는다
         g = D.backup_gaps([tb - timedelta(hours=12, seconds=3), tb])
         r = D.compute_rpo(tb, tb + timedelta(hours=6), {}, None, None, regen, g)
         self.assertEqual((r["pass"], r["backup_gap_ok"]), (True, False))
@@ -983,6 +1017,16 @@ class Metrics(unittest.TestCase):
         specs = D.login_specs(g["roles"])
         self.assertEqual([s[0] for s in specs], ["opsloop_backup", "opsloop_console", "opsloop_cti", "opsloop_detector",
                                                  "opsloop_enforcer", "opsloop_gate", "opsloop_ingest"])
+        # 지금 역할 8개 (이슈 #91). backup-db.sh 의 필수 역할 반복과 같은 목록이다
+        self.assertEqual(sorted(D.REQUIRED_ROLES), sorted(ROLES))
+        with open(os.path.join(D.ROOT, "infra", "vmware", "scripts", "backup-db.sh"), encoding="utf-8") as f:
+            loop = re.search(r"^for r in ([a-z_ ]+); do$", f.read(), re.M)
+        self.assertEqual(sorted(loop.group(1).split()), sorted(D.REQUIRED_ROLES))
+        for role in ("opsloop_cti", "opsloop_enforcer"):
+            with self.subTest(빠진_역할=role):
+                text = "\n".join(l for l in GLOBALS.splitlines() if not re.match(r"^(CREATE|ALTER) ROLE %s[; ]" % role, l))
+                with self.assertRaisesRegex(ValueError, role):
+                    D.parse_globals(text)
         self.assertEqual(dict((s[0], s[2]) for s in specs)["opsloop_ingest"], "opsloop-pull")
         self.assertEqual(dict((s[0], s[2]) for s in specs)["opsloop_console"], "self")
         for bad in ("ALTER ROLE opsloop_gate WITH LOGIN PASSWORD 'SCRAM-SHA-256$4096:x';",
@@ -1102,10 +1146,48 @@ class Metrics(unittest.TestCase):
     def test_운영_작업_창(self):
         k = lambda h, m: datetime(2026, 9, 27, h, m, tzinfo=D.KST)
         self.assertIsNone(D.busy_window(k(10, 0)))
-        self.assertIn("04:30", D.busy_window(k(4, 30)))
         self.assertIn("CTI", D.busy_window(k(0, 11)))
-        self.assertIn("16:30", D.busy_window(datetime(2026, 9, 27, 7, 35, tzinfo=UTC)))
-        self.assertIsNone(D.busy_window(k(4, 41)))
+        # 백업은 04:30 · 12:30 · 20:30. 창은 시작 5분 전부터 회차가 끝나야 하는 때(시작 뒤 20분)까지다
+        for h in (4, 12, 20):
+            with self.subTest(h=h):
+                self.assertIsNone(D.busy_window(k(h, 24)))
+                self.assertIn("%02d:30" % h, D.busy_window(k(h, 25)))
+                self.assertIn("%02d:30" % h, D.busy_window(k(h, 50)))
+                self.assertIsNone(D.busy_window(k(h, 51)))
+        self.assertIn("12:30", D.busy_window(datetime(2026, 9, 27, 3, 35, tzinfo=UTC)), "UTC 로 줘도 KST 로 본다")
+        self.assertIsNone(D.busy_window(k(16, 30)), "옛 16:30 회차는 없다")
+        self.assertEqual(D.BUSY_TEXT, "00:05~00:15 · 04:25~04:50 · 12:25~12:50 · 20:25~20:50 KST")
+
+    def test_백업_기록이_시작으로_끝나면_창_밖이어도_백업_중(self):
+        k = lambda h, m: datetime(2026, 9, 27, h, m, tzinfo=D.KST)
+        d = tempfile.mkdtemp(prefix="drill91-")
+        self.addCleanup(shutil.rmtree, d)
+        log = os.path.join(d, "backup.log")
+        self.assertIsNone(D.busy_window(k(10, 0), backup_log=log), "기록이 없으면 창만 본다")
+        done = ("== 2026-09-27 04:30:04 KST 백업 시작\n-- 2026-09-27 04:30:04 KST 시도 1/3\n"
+                "시계 차이 (data01 − Mac) +0.120초 · 잰 왕복 0.300초\n"
+                "참고: 덤프 뒤에 판정 · 조치가 늘었다 (복원 2/3 · 운영 6/3)\n"
+                "== 2026-09-27 04:30:40 KST 백업 성공\n")
+        # 잠자기 뒤 늦게 도는 회차: 창 밖(09:58)에 시작해 아직 끝 줄이 없다. 시도 줄('-- …')은 표시가 아니다
+        late = ("== 2026-09-27 09:58:02 KST 백업 시작\n-- 2026-09-27 09:58:02 KST 시도 1/3\n"
+                "-- 2026-09-27 09:58:20 KST 시도 1/3 실패 (종료 코드 255) · 180초 뒤 다시 돈다\n"
+                "-- 2026-09-27 10:01:20 KST 시도 2/3\n")
+        for text, want in ((done, None), (done + late, "2026-09-27 09:58:02 KST"),
+                           (done + late + "== 2026-09-27 10:01:31 KST 백업 성공 (시도 2/3 · 재시도 뒤 성공)\n", None),
+                           (done + late + "== 2026-09-27 10:05:02 KST 백업 실패 (종료 코드 255 · 시도 3/3)\n", None),
+                           ("x" * 70000 + "\n" + late, "2026-09-27 09:58:02 KST")):
+            with self.subTest(tail=text[-60:]):
+                with open(log, "w", encoding="utf-8") as f:
+                    f.write(text)
+                busy = D.busy_window(k(10, 2), backup_log=log)
+                if want is None:
+                    self.assertIsNone(busy)
+                else:
+                    self.assertIn("백업 진행 중", busy)
+                    self.assertIn(want, busy)
+        with open(log, "w", encoding="utf-8") as f:
+            f.write(done + late)
+        self.assertIn("04:30 백업", D.busy_window(k(4, 30), backup_log=log), "창 안이면 창 이름이 먼저다")
 
     def test_콘솔_컨테이너_인자(self):
         argv = D.console_run_argv("/x/console.env", ["uvicorn", "main:app"])
