@@ -1,0 +1,61 @@
+{
+ "as_of": "2026-10-02T00:40:08.827471+00:00",
+ "blocks": {
+  "total": 12,
+  "enforced": 0,
+  "pending": 0,
+  "excluded": 12,
+  "mismatch": 0,
+  "failed": 0
+ },
+ "blocks_by_point": [
+  {
+   "point": "gateway",
+   "label": "허니팟 관문",
+   "applied": 0,
+   "failed": 0,
+   "unverified": 0,
+   "stale": 0,
+   "checking": 0,
+   "delayed": 0,
+   "unrequested": 0,
+   "removing": 0,
+   "stalled": null,
+   "unreadable": false
+  },
+  {
+   "point": "fw",
+   "label": "내부 방화벽",
+   "applied": 0,
+   "failed": 0,
+   "unverified": 0,
+   "stale": 0,
+   "checking": 0,
+   "delayed": 0,
+   "unrequested": 0,
+   "removing": 0,
+   "stalled": null,
+   "unreadable": false
+  }
+ ],
+ "block_reports": [
+  {
+   "source": "block:fw",
+   "seen_at": "2026-10-02T00:38:34+00:00",
+   "checked_at": "2026-10-02T00:39:34.294477+00:00",
+   "problem": null
+  },
+  {
+   "source": "block:gateway",
+   "seen_at": "2026-10-02T00:38:49+00:00",
+   "checked_at": "2026-10-02T00:39:34.294477+00:00",
+   "problem": null
+  }
+ ],
+ "live": [],
+ "want": {
+  "gateway": [],
+  "fw": []
+ },
+ "monitor": []
+}

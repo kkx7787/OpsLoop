@@ -1,0 +1,34 @@
+NEXT                            LEFT LAST                              PASSED UNIT                   ACTIVATES
+Fri 2026-10-02 09:17:13 KST       9s Fri 2026-10-02 09:16:13 KST      51s ago opsloop-agents.timer   opsloop-agents.service
+Fri 2026-10-02 09:17:13 KST       9s Fri 2026-10-02 09:16:13 KST      51s ago opsloop-enforcer.timer opsloop-enforcer.service
+Fri 2026-10-02 09:20:15 KST 3min 10s Fri 2026-10-02 09:15:08 KST 1min 56s ago opsloop-ingest.timer   opsloop-ingest.service
+
+3 timers listed.
+Pass --all to see loaded but inactive timers, too.
+active
+NEXT                        LEFT LAST                         PASSED UNIT                     ACTIVATES
+Fri 2026-10-02 09:17:18 KST  13s Fri 2026-10-02 09:16:18 KST 46s ago opsloop-block-sync.timer opsloop-block-sync.service
+
+1 timers listed.
+Pass --all to see loaded but inactive timers, too.
+1
+# be_id be_name srv_id srv_name srv_addr srv_op_state srv_admin_state srv_uweight srv_iweight srv_time_since_last_change srv_check_status srv_check_result srv_check_health srv_check_state srv_agent_state bk_f_forced_id srv_f_forced_id srv_fqdn srv_port srvrecord srv_use_ssl srv_check_port srv_check_addr srv_agent_addr srv_agent_port
+2 consoles 1 console-a 192.168.50.11 2 0 1 1 29077 15 3 5 6 0 0 0 - 8000 - 0 0 - - 0
+2 consoles 2 console-b 192.168.50.12 0 0 1 1 29074 7 0 0 7 0 0 0 - 8000 - 0 0 - - 0
+
+== fw
+Reference ID    : 0327B041 (3.39.176.65)
+System time     : 0.002950090 seconds slow of NTP time
+Leap status     : Normal
+== data01
+Reference ID    : C0A83C01 (192.168.60.1)
+System time     : 0.003475570 seconds slow of NTP time
+Leap status     : Normal
+== web01
+Reference ID    : C0A83201 (192.168.50.1)
+System time     : 0.003563400 seconds slow of NTP time
+Leap status     : Normal
+== attacker
+Reference ID    : CB007101 (203.0.113.1)
+System time     : 0.002692054 seconds slow of NTP time
+Leap status     : Normal

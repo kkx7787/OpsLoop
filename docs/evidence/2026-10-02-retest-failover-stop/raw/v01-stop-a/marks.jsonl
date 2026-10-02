@@ -1,0 +1,2 @@
+{"run":"v01-stop-a","kind":"inject","scenario":"stop","target":"console-a","host":"console-a","t_local_ns":1790902626816953000,"t_local_before_ns":1790902626173587000,"t_remote_ns":1790902626813894439,"rtt_ms":643.366,"offset_ms":318.625,"note":null}
+{"run":"v01-stop-a","kind":"recover","scenario":"stop","target":"console-a","host":"console-a","t_local_ns":1790902778556698000,"t_local_before_ns":1790902777929285000,"t_remote_ns":1790902778558099568,"rtt_ms":627.413,"offset_ms":315.108,"note":null}

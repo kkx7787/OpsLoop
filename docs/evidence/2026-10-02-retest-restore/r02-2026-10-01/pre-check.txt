@@ -1,0 +1,48 @@
+0d09fc7
+0d09fc7
+main
+HEAD 트리 = origin/main 트리
+도구 파일 변경 위 줄뿐
+Ran 45 tests in 19.795s
+
+OK
+29.7.2 arm64
+Mac opsloop-api 이미지 수 0
+lsof rc=1
+ls: /Users/hanseongmin/.config/opsloop/drill: No such file or directory
+ls: /Users/hanseongmin/opsloop-drill/r02: No such file or directory
+Mem:            1956         635         244         141        1313        1320
+/dev/mapper/ubuntu--vg-ubuntu--lv          17345  5111     11387      31% /
+154M	/var/lib/opsloop/raw
+0
+ls: cannot access '/var/lib/opsloop-drill': No such file or directory
+NEXT                            LEFT LAST                              PASSED UNIT                   ACTIVATES
+Thu 2026-10-01 16:42:16 KST      39s Thu 2026-10-01 16:41:16 KST      20s ago opsloop-agents.timer   opsloop-agents.service
+Thu 2026-10-01 16:42:16 KST      39s Thu 2026-10-01 16:41:16 KST      20s ago opsloop-enforcer.timer opsloop-enforcer.service
+Thu 2026-10-01 16:44:09 KST 2min 32s Thu 2026-10-01 16:38:51 KST 2min 45s ago opsloop-ingest.timer   opsloop-ingest.service
+Fri 2026-10-02 15:50:51 KST      23h Thu 2026-10-01 15:23:51 KST 1h 17min ago opsloop-cti.timer      opsloop-cti.service
+
+4 timers listed.
+Pass --all to see loaded but inactive timers, too.
+sha256:912730eb4be3e2c33b5108e00022b72f31ca2ce1b7805c05dc1333e5b3439046
+sha256:912730eb4be3e2c33b5108e00022b72f31ca2ce1b7805c05dc1333e5b3439046
+now 2026-10-01 07:41:37.937787+00
+tables 26
+fk 15
+triggers 10
+functions 19
+views 3
+points_constraints absorbed_blocks_points_valid,blocklist_points_valid
+blocklist_points {fw}:2 {gateway,fw}:26
+exempt_gateway_note 허니팟 관문 EIP
+verdicts_max 2026-10-01 04:29:26.756472+00
+channels_enabled_total 1/1
+active_accounts admin:1
+restore_test_db 0
+backup_sessions 0
+precheck {'at': '2026-10-01T07:43:30.993055+00:00', 'ok': True, 'rc': 0, 'seconds': 3.383}
+덤프 opsloop-20261001-0730.dump T_b 2026-10-01T07:30:07+00:00 간격 최대 86401.0
+운영 구조 표 26 FK 15 트리거 10 함수 19 뷰 3 시퀀스 7
+운영 알림 채널 1|1
+data01 {'mem_avail_mb': '1304', 'disk_free_mb': '11387', 'port_listen': '0'} 시계 {'data01_offset_s': -2.5555e-05, 'fw_offset_s': -0.000182625}
+T0 권장(T_b+46분, KST 이후) 17:16:07

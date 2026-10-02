@@ -1,0 +1,13 @@
+== v04-kill-a 문턱 2026-10-02 10:15:49 KST · 대상 console-a · kill
+console-a 운영 2 관리 0
+console-b 운영 2 관리 0
+consoles,console-a,UP
+consoles,console-b,UP
+consoles,BACKEND,UP
+1790903747.256	app opsloop-console-a=4 opsloop-console-b=6 | peer 192.168.50.11=4 192.168.50.12=6  
+상태: UP (2026-10-02 08:58 부터 · 1시간 17분째)
+점검 창: 2026-10-02 12:55 까지 (알리지 않는다)
+-- client_addr (조회: console-b)
+기준 2026-10-02T01:15:50.070682+00:00 · 조회한 콘솔 opsloop-console-b
+192.168.50.11	opsloop-console-a	idle	4
+192.168.50.12	opsloop-console-b	idle	6

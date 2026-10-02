@@ -1,0 +1,21 @@
+== 끝 상태 2026-10-02 10:42:09 KST
+console-a 운영 2 관리 0
+console-b 운영 0 관리 1
+consoles,console-a,UP
+consoles,console-b,MAINT
+consoles,BACKEND,UP
+Total running VMs: 5
+/Users/hanseongmin/Virtual Machines.localized/opsloop-attacker.vmwarevm/opsloop-attacker.vmx
+/Users/hanseongmin/Virtual Machines.localized/opsloop-web-01.vmwarevm/opsloop-web-01.vmx
+/Users/hanseongmin/Virtual Machines.localized/opsloop-fw.vmwarevm/opsloop-fw.vmx
+/Users/hanseongmin/Virtual Machines.localized/opsloop-console-a.vmwarevm/opsloop-console-a.vmx
+/Users/hanseongmin/Virtual Machines.localized/opsloop-data-01.vmwarevm/opsloop-data-01.vmx
+942454d1ca4c5e72b1f0e6fa9cf4a76da7209d9337b35fa1b80daad7410982ac  /etc/haproxy/haproxy.cfg
+running always 2026-10-02T01:29:41.063905578Z
+-- client_addr (조회: console-a)
+기준 2026-10-02T01:42:10.930500+00:00 · 조회한 콘솔 opsloop-console-a
+192.168.50.11	opsloop-console-a	idle	5
+-- 표본 마지막 3줄
+1790905304.592	app opsloop-console-a=5 | peer 192.168.50.11=5  
+1790905315.371	app opsloop-console-a=5 | peer 192.168.50.11=5  
+1790905326.285	app opsloop-console-a=5 | peer 192.168.50.11=5  

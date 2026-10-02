@@ -1,0 +1,130 @@
+== precheck · 읽기 점검 · 덤프 · 역할 목록 고르기 · 운영 기준값 · 실제로 돌린다
+  고른 백업: opsloop-20261001-1935.dump · opsloop-20261001-1935.globals.sql
+  ✔ 덤프 머리 PGDMP · pg_dump 16 · db opsloop · 16.15 · 판 1.15.0
+  ✔ T_b (Archive created, data01 시계) · 2026-10-01T18:35:27+00:00
+  ✔ 역할 목록: 필요한 역할 7개 · 비밀번호 없음 · 역할 8 · 멤버십 1
+  ✔ backup.log 에 이 덤프 기록 · 백업  25M /Users/hanseongmin/opsloop-backup/opsloop-20261001-1935.dump · 표 26 개 · 역할 8 개 opsloop-20261001-1935.globals.sql
+  … 백업 간격 최댓값 ≤ 43200초 · 86401.0
+  ✔ 운영 작업 창 밖 (00:05~00:15 · 04:25~04:40 · 16:25~16:40 KST)
+  ✔ Mac 잠자기 막힘 (caffeinate -dims 를 켜 둔다)
+  ✔ Mac 포트 15433 · 18000 비어 있음
+  ✔ Mac Docker · 29.7.2 arm64
+  ✔ data01 시계 (chrony) · -0.016686393
+  ✔ data01 가용 메모리 ≥ 600MB · 1337
+  ✔ data01 디스크 여유 ≥ 2GB · 11364
+  ✔ 127.0.0.1:5433 비어 있음
+  ✔ 이미지 postgres:16-alpine 있음 · sha256:3c5c8892d184
+  ✔ 운영 DB 와 같은 이미지
+  ✔ 훈련 컨테이너 · 볼륨 · 폴더 없음 · opsloop-drill-db · opsloop_drill_pgdata · /var/lib/opsloop-drill
+  ✔ opsloop-pull 사용자 · opsloop-ingest · pull_loki.py
+  ✔ /etc/default/opsloop-ingest 에 OPSLOOP_HOME 있음 · DATABASE_URL 없음
+  ✔ sudo -n · /usr/bin/time · /usr/bin/choom · docker 그룹
+  ✔ console-a 콘솔 이미지 · sha256:912730eb4be3
+  ✔ 운영 조회가 읽기 전용
+  ✔ 운영 cluster_name 이 훈련 이름이 아님 · (빈 값)
+  ✔ 운영 표 26개 건수
+  ✔ 운영 구조 (참고 FK 15 · 트리거 10 · 함수 19 · 뷰 3) · 표 26 · FK 15
+끝: precheck · 성공
+== t0 · rto:T0 장애 선언 · 운영 now() = T_f · 실제로 돌린다
+표시: note · 대상 - · 로컬 2026-10-02T00:08:01.842437+00:00 · data01 2026-10-02T00:08:01.824019+00:00 (왕복 606ms)
+  T_f (운영 DB 시계) 2026-10-02T00:08:02.154833+00:00
+끝: t0 · 성공
+== up · rto:S1 백업 선택 · 훈련 DB 컨테이너 · rto:S2 · 실제로 돌린다
+표시: note · 대상 - · 로컬 2026-10-02T00:08:02.967177+00:00 · data01 2026-10-02T00:08:02.949042+00:00 (왕복 265ms)
+  ✔ 준비 (init 끝 · pg_isready)
+  ✔ cluster_name = opsloop-drill · opsloop-drill
+  ✔ 게시 127.0.0.1:5433 만 · 127.0.0.1:5433
+  ✔ 메모리 한도 256m · 268435456
+  ✔ OOM 점수 조정 1000 (호스트 메모리가 모자라면 훈련 DB 가 먼저) · 1000
+  ✔ 운영과 같은 이미지 · sha256:3c5c8892d184
+  ✔ POSTGRES_PASSWORD 가 환경에 없음 (파일로만)
+  ✔ initdb 마운트 없음
+표시: note · 대상 - · 로컬 2026-10-02T00:08:06.010839+00:00 · data01 2026-10-02T00:08:05.992409+00:00 (왕복 264ms)
+끝: up · 성공
+== roles · 역할 · 속성 · 멤버십 · 훈련 전용 비밀번호 · rto:S3 · 실제로 돌린다
+  ✔ 로그인 역할 7개 훈련 전용 비밀번호 · env 파일
+  ✔ env 파일 DSN = 127.0.0.1:5433 · 접속 · cluster_name · 7/7
+  ✔ env 파일 0600 · 적재 · 탐지 몫만 opsloop-pull 소유 · backup.env 600 ops · console.env 600 ops · cti.env 600 ops · detector.env 600 opsloop-pull · enforcer.env 600 ops · gate.env 600 ops · ingest.env 600 opsloop-pull
+  ✔ 역할 속성(LOGIN · INHERIT · 접속 한도) · 멤버십이 역할 목록과 같음 · 역할 8 · 멤버십 1
+  ✔ opsloop_console 접속 한도 ≥ 30 · 30
+표시: note · 대상 - · 로컬 2026-10-02T00:08:08.114566+00:00 · data01 2026-10-02T00:08:08.096020+00:00 (왕복 266ms)
+끝: roles · 성공
+== restore · pg_restore · 26개 표 건수 · 목차 대조 · rto:S4 · 실제로 돌린다
+  ✔ pg_restore --no-owner --exit-on-error 종료 0 · 0
+  ✔ 목차: 데이터 표 26개 = 운영 표 목록 · 26
+  ✔ 목차 Archive created = 덤프 머리 (T_b) · 2026-10-01 18:35:27 UTC
+  ✔ 표 26개 건수
+  ✔ 카탈로그 = 목차 (표 · FK · 시퀀스) · tables 26/26 · fk 15/15 · sequences 7/7
+  ✔ 카탈로그 = 목차 (함수 · 트리거 · 뷰) · 함수 19 · 트리거 10 · 뷰 3
+  ✔ 복원 건수 ≤ 사전 점검 때 운영 건수 (참고) · 모두
+  ✔ T_b 하한: 복원 DB 의 마지막 탐지 실행 ≤ T_b (+10초) · 2026-10-01T16:46:24.766778+00:00 ≤ 2026-10-01T18:35:27+00:00
+표시: note · 대상 - · 로컬 2026-10-02T00:08:14.208093+00:00 · data01 2026-10-02T00:08:14.189418+00:00 (왕복 371ms)
+끝: restore · 성공
+== verify · 지문 · 무결성 · 구조 · 역할별 허용 · 거부 · 알림 끄기 · rto:S5 · 실제로 돌린다
+  ✔ 훈련 쪽 지문 (verdicts · actions · blocklist · absorbed_blocks · nodes · node_enrollments · console_users · notify_channels · notify_deliveries · audit) · actions 177 · audit 137 · blocklist 28 · console_users 1 · node_enrollments 3 · nodes 3 · notify_channels 1 · notify_deliveries 60 · verdicts 1035
+  ✔ 무결성 19개 모두 0 · 19개
+  ✔ 기준값 (판정 있는데 비resolved · 판정자 계정 없음 · 해제 차단 · 해제 감사) = 사전 점검 운영값 · judged_not_resolved 139 · released_audit 7 · released_blocks 3 · verdict_operator_missing 810
+  ✔ 구조 = 운영 (표 · FK · 트리거 켜짐 · 함수 · 뷰 · 시퀀스 · 확장) · 표 26 · FK 15
+  ✔ 구조 수치 = 계약 참고값 (fk 15 · functions 19 · tables 26 · triggers 10 · views 3) · fk 15 · functions 19 · tables 26 · triggers 10 · views 3
+  ✔ 시퀀스 마지막 값 ≥ 최대 id · 7개
+  ✔ 역할별 허용 · 거부 152줄 (verify-db-roles.sh) · 모두
+  ✔ 알림 채널 켜짐 0 · url 무효 · 채널 1
+표시: note · 대상 - · 로컬 2026-10-02T00:08:18.065405+00:00 · data01 2026-10-02T00:08:18.045854+00:00 (왕복 279ms)
+끝: verify · 성공
+== console · Mac 콘솔 · 터널 · rto:S6 (--confirm: 판정 반영 확인 · rto:S7) · 실제로 돌린다
+  ✔ 콘솔 이미지 ID = console-a · sha256:912730eb4be3
+  ✔ 콘솔 http://127.0.0.1:18000/health 200 · 200
+표시: note · 대상 - · 로컬 2026-10-02T00:08:23.690443+00:00 · data01 2026-10-02T00:08:23.671479+00:00 (왕복 731ms)
+
+  다음은 사람이 한다: 브라우저로 http://127.0.0.1:18000 에 복원된 계정으로 로그인 → 사건 목록 · 상세의 판정 이력 · 차단 목록 · 감사 확인 →
+  미판정 시험 사건 1건에 판정(undetermined · 사유 '복원 훈련')을 남긴다. 화면에 바로 반영되는지 본다.
+    후보 R003|v3|121.224.5.228|2026-10-01T06:36:03.772883+00:00|R003|critical
+    후보 R003|v3|125.91.106.241|2026-10-01T04:50:17.498019+00:00|R003|critical
+    후보 R003|v3|111.79.189.13|2026-10-01T02:27:41.538811+00:00|R003|critical
+  확인했으면: drill.py /Users/hanseongmin/opsloop-drill/r03 console --confirm --apply  (→ rto:S7)
+끝: console · 성공
+== console-confirm · Mac 콘솔 · 터널 · rto:S6 (--confirm: 판정 반영 확인 · rto:S7) · 실제로 돌린다
+  ✔ 콘솔에서 남긴 판정이 훈련 DB 에 있음 (id > 1041) · 1건
+  ✔ 그 사건 status = resolved · R003|v3|106.13.167.239|2026-09-29T02:06:30.453699+00:00 resolved
+표시: note · 대상 - · 로컬 2026-10-02T00:09:45.002637+00:00 · data01 2026-10-02T00:09:44.976906+00:00 (왕복 311ms)
+끝: console-confirm · 성공
+== regen · opsloop-ingest --full · pull_loki --since (훈련 HOME · env) · rto:S8 · 실제로 돌린다
+  ✔ 운영 작업 창 밖 (재적재는 메모리를 쓴다 · data01 스왑 0)
+  ✔ data01 가용 메모리 ≥ 600MB (훈련 DB 가 뜬 뒤 · 스왑 0) · 1244
+  ✔ 재적재 환경: 훈련 HOME · 훈련 env 두 개 · 127.0.0.1:5433 · opsloop-drill · ok
+  ✔ opsloop-ingest --full 종료 0 · 11 · 0 · 최대 RSS 60452 kB · 274.41초
+  ✔ pull_loki --node web-01 --since 2026-10-01T17:35:27Z --ledgers-from-start 종료 0 · 0 · 최대 RSS 31192 kB · 2.27초
+표시: note · 대상 - · 로컬 2026-10-02T00:14:32.939845+00:00 · data01 2026-10-02T00:14:32.921388+00:00 (왕복 485ms)
+끝: regen · 성공
+== compare · 따라잡기 · 재생성 대조 (운영 읽기 전용) · 실제로 돌린다
+  ✔ 따라잡기 적재 종료 0 · 11 · 0
+  ✔ 따라잡기 pull_loki 종료 0 · 0
+  ✔ 대조 창이 T_b 뒤를 900초 이상 덮음 (창 끝 = T_r − 30분) · 18559.0초 · 창 2026-10-01T17:35:27+00:00 ~ 2026-10-01T23:44:46+00:00
+  ✔ events cowrie 건수 · 지문 · 훈련 47 · 운영 47
+  ✔ events decoy 건수 · 지문 · 훈련 28 · 운영 28
+  ✔ events gateway 건수 · 지문 · 훈련 8995 · 운영 8995
+  ✔ events web-01 건수 · 지문 · 훈련 1 · 운영 1
+  ✔ sessions 건수 · 지문 · 훈련 30 · 운영 30
+  ✔ node_metrics 노드별 건수 · 지문 · web-01 4/4
+  ✔ 사건 키 집합 (참고 · 탐지 시점 차이로 갈릴 수 있다)
+  참고: 운영 미러에만 있는 호스트 (OPSLOOP_HOSTS 밖이라 훈련 HOME 은 받지 않음): sensor=cowrie/host=i-058726c1a0671fe1d · sensor=decoy/host=i-058726c1a0671fe1d
+끝: compare · 성공
+== done · 무결성 재확인 · 지문 대조 · RPO · rto:S9 · 실제로 돌린다
+  ✔ 무결성 19개 모두 0 (재적재 · 재탐지 뒤) · 19개
+  ✔ 지문: 판정 · 조치 · 감사는 복원 행이 운영과 같음 (운영에만 있는 행 = T_b 뒤 손실) · notify_deliveries +1
+  ✔ T_b 하한: 복원 DB 마지막 탐지 실행 ≤ T_b (+10초) · 2026-10-01T16:46:24.766778+00:00 ≤ 2026-10-01T18:35:27+00:00
+  ✔ T_b 상한 (참고: 운영 다음 실행 ≥ T_b) · 2026-10-01T20:36:57.333992+00:00
+  ✔ 재생성 대조 일치 (compare)
+  RPO 설계 (T_f − T_b) 19955.155초 (합격) · 백업 간격 최대 86401.0초 (목표 초과) · 판정 손실 0.0초 · (T_b, T_f] DB 전용 행 notify_deliveries 1
+표시: note · 대상 - · 로컬 2026-10-02T00:14:53.168133+00:00 · data01 2026-10-02T00:14:53.150399+00:00 (왕복 495ms)
+  RTO (T0 → S9) 411.326초 · 서비스 재개 (T0 → S7) 103.16초 · 기준 7200초 · 합격
+끝: done · 성공
+== cleanup · Mac 콘솔 · 터널 · 훈련 컨테이너 · 볼륨 · 폴더 지우기 · 운영 확인 · 실제로 돌린다
+  ✔ Mac 비밀 폴더 지움 · /Users/hanseongmin/.config/opsloop/drill
+  ✔ 훈련 컨테이너 · 볼륨 · 폴더 지움 · opsloop-drill-db · opsloop_drill_pgdata · /var/lib/opsloop-drill
+  ✔ 운영 DB 컨테이너 돌고 있음 · true
+  ✔ 운영 적재 · 다리 마지막 실행 성공 · opsloop-ingest.service success Fri 2026-10-02 09:15:13 KST · opsloop-agents.service success Fri 2026-10-02 09:15:10 KST
+  ✔ 운영 알림 채널 켜짐 · 주소 그대로 · 켜짐 1|1
+  ✔ 운영 events 가 계속 는다 · 406535 → 406819
+  ✔ 운영 탐지 실행이 계속된다 · 2026-10-02T00:06:46.572301+00:00 → 2026-10-02T00:15:12.623190+00:00
+끝: cleanup · 성공

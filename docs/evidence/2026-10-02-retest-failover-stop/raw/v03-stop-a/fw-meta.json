@@ -1,0 +1,13 @@
+{
+  "host": "fw",
+  "log": "/var/log/haproxy.log",
+  "period": 0.5,
+  "t_local_start": "1790903426.756866",
+  "t_fw_start": "1790903426.757350273",
+  "log_offset": 2853129,
+  "log_inode": 1178,
+  "samples": 1800,
+  "stats_errors": 0,
+  "t_local_end": "1790903726.621535",
+  "clock_offset_ms": 3.777
+}

@@ -1,0 +1,21 @@
+== 2026-10-02 09:50:32 KST 저장소 0d09fc7 파일 해시
+d78b53875d780e62a6faa6535a8c42bfa84da3013f887988420aabd3a76d5fe2  /app/live.py
+f6d66f07980f7dbd0081afaa5ec7048208dcfebf76bf26d59348d85d5929fb0c  /app/targets.py
+56f1b69fee48014021cc33c7a90f2a0ae7b0c2afa1a8dffdd60801ed9d1732c9  /app/main.py
+94977c84931d6a387ebef251d16a2aab3784e3d325eebfa8ccb3d0ad305cc4a9  /app/auth.py
+== console-a
+sha256:912730eb4be3e2c33b5108e00022b72f31ca2ce1b7805c05dc1333e5b3439046
+running always 2026-10-01T06:34:27.201618419Z
+opsloop-console-a
+d78b53875d780e62a6faa6535a8c42bfa84da3013f887988420aabd3a76d5fe2  /app/live.py
+f6d66f07980f7dbd0081afaa5ec7048208dcfebf76bf26d59348d85d5929fb0c  /app/targets.py
+56f1b69fee48014021cc33c7a90f2a0ae7b0c2afa1a8dffdd60801ed9d1732c9  /app/main.py
+94977c84931d6a387ebef251d16a2aab3784e3d325eebfa8ccb3d0ad305cc4a9  /app/auth.py
+1
+== DB 쪽 5432 소켓
+0      0      172.18.0.2:5432 192.168.50.11:42274 timer:(keepalive,13sec,0)
+0      0      172.18.0.2:5432 192.168.50.11:52066 timer:(keepalive,14sec,0)
+0      0      172.18.0.2:5432 192.168.50.11:52074 timer:(keepalive,14sec,0)
+== client_addr (조회: console-a)
+기준 2026-10-02T00:50:34.799764+00:00 · 조회한 콘솔 opsloop-console-a
+192.168.50.11	opsloop-console-a	idle	3

@@ -1,0 +1,12 @@
+시나리오      n  합격  감지(중앙/최대)  실패구간끝      전환            전환완료        p99ms           좀비 최대/미감지  재연결      401
+kill          3  3/3  5.069/5.556     -/-             5.069/5.556     0.406/0.419     40.392/43.156   0.346/0           1.074       0
+stop          3  3/3  5.701/5.923     5.663/5.663     5.701/5.923     0.484/0.49      31.441/33.117   0.451/0           1.085       0
+(* 합격선 밖 · 참고. 초 단위, 지연은 밀리초)
+  v01-stop-a #0 stop console-a: 합격
+  v02-stop-b #0 stop console-b: 합격
+  v03-stop-a #0 stop console-a: 합격
+  v04-kill-a #0 kill console-a: 합격
+  v05-kill-b #0 kill console-b: 합격
+  v06-kill-a #0 kill console-a: 합격
+→ /Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-retest-failover-stop/results.json
+종료 코드 0

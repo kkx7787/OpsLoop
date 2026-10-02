@@ -1,0 +1,13 @@
+== v01-stop-a 문턱 2026-10-02 09:56:34 KST · 대상 console-a · stop
+console-a 운영 2 관리 0
+console-b 운영 2 관리 0
+consoles,console-a,UP
+consoles,console-b,UP
+consoles,BACKEND,UP
+1790902592.095	app opsloop-console-a=3 opsloop-console-b=4 | peer 192.168.50.11=3 192.168.50.12=4  
+상태: UP (2026-10-02 08:58 부터 · 57분째)
+점검 창: 2026-10-02 12:55 까지 (알리지 않는다)
+-- client_addr (조회: console-b)
+기준 2026-10-02T00:56:35.862949+00:00 · 조회한 콘솔 opsloop-console-b
+192.168.50.11	opsloop-console-a	idle	3
+192.168.50.12	opsloop-console-b	idle	4

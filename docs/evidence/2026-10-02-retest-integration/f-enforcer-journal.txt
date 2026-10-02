@@ -1,0 +1,96 @@
+2026-10-02T09:17:15.636665+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:17:16.087409+09:00 opsloop-data-01 python3[309193]: 행 14 · 목록 관문 0 · 내부 방화벽 0 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:16:24Z 목록 4f53cda1 · 내부 방화벽 nft 2026-10-02T00:16:18Z 목록 4f53cda1: exclude 12 · expired 2
+2026-10-02T09:17:16.141625+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:17:16.142145+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).
+2026-10-02T09:18:15.736582+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:18:16.202410+09:00 opsloop-data-01 python3[309577]: 행 14 · 목록 관문 0 · 내부 방화벽 0 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:17:29Z 목록 4f53cda1 · 내부 방화벽 nft 2026-10-02T00:17:18Z 목록 4f53cda1: exclude 12 · expired 2
+2026-10-02T09:18:16.273180+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:18:16.273707+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).
+2026-10-02T09:19:18.874834+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:19:19.376959+09:00 opsloop-data-01 python3[309794]: 목록을 올렸다: 관문 0개 digest 4f53cda1 · 내부 방화벽 0개 digest 4f53cda1 (그대로 · 생존 표시)
+2026-10-02T09:19:19.429285+09:00 opsloop-data-01 python3[309794]: 행 14 · 목록 관문 0 · 내부 방화벽 0 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:18:34Z 목록 4f53cda1 · 내부 방화벽 nft 2026-10-02T00:18:19Z 목록 4f53cda1: exclude 12 · expired 2
+2026-10-02T09:19:19.480739+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:19:19.480952+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).
+2026-10-02T09:20:18.898551+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:20:19.485753+09:00 opsloop-data-01 python3[310102]: 행 14 · 목록 관문 0 · 내부 방화벽 0 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:19:39Z 목록 4f53cda1 · 내부 방화벽 nft 2026-10-02T00:19:24Z 목록 4f53cda1: exclude 12 · expired 2
+2026-10-02T09:20:19.534673+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:20:19.536556+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).
+2026-10-02T09:21:23.876710+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:21:24.332596+09:00 opsloop-data-01 python3[310302]: 행 14 · 목록 관문 0 · 내부 방화벽 0 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:20:44Z 목록 4f53cda1 · 내부 방화벽 nft 2026-10-02T00:20:29Z 목록 4f53cda1: exclude 12 · expired 2
+2026-10-02T09:21:24.379137+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:21:24.379488+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).
+2026-10-02T09:22:28.870178+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:22:29.296285+09:00 opsloop-data-01 python3[310534]: 행 14 · 목록 관문 0 · 내부 방화벽 0 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:21:49Z 목록 4f53cda1 · 내부 방화벽 nft 2026-10-02T00:21:34Z 목록 4f53cda1: exclude 12 · expired 2
+2026-10-02T09:22:29.348480+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:22:29.348705+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).
+2026-10-02T09:23:33.877765+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:23:34.305906+09:00 opsloop-data-01 python3[310698]: 행 14 · 목록 관문 0 · 내부 방화벽 0 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:22:54Z 목록 4f53cda1 · 내부 방화벽 nft 2026-10-02T00:22:39Z 목록 4f53cda1: exclude 12 · expired 2
+2026-10-02T09:23:34.358863+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:23:34.359115+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).
+2026-10-02T09:24:38.881201+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:24:39.407887+09:00 opsloop-data-01 python3[310850]: 행 14 · 목록 관문 0 · 내부 방화벽 0 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:23:59Z 목록 4f53cda1 · 내부 방화벽 nft 2026-10-02T00:23:44Z 목록 4f53cda1: exclude 12 · expired 2
+2026-10-02T09:24:39.463746+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:24:39.463987+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).
+2026-10-02T09:25:39.185409+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:25:39.695794+09:00 opsloop-data-01 python3[311083]: 행 14 · 목록 관문 0 · 내부 방화벽 0 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:24:59Z 목록 4f53cda1 · 내부 방화벽 nft 2026-10-02T00:24:49Z 목록 4f53cda1: exclude 12 · expired 2
+2026-10-02T09:25:39.783020+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:25:39.783322+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).
+2026-10-02T09:26:43.873757+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:26:44.330428+09:00 opsloop-data-01 python3[311332]: 행 14 · 목록 관문 0 · 내부 방화벽 0 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:25:59Z 목록 4f53cda1 · 내부 방화벽 nft 2026-10-02T00:25:49Z 목록 4f53cda1: exclude 12 · expired 2
+2026-10-02T09:26:44.399909+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:26:44.400205+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).
+2026-10-02T09:27:48.888716+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:27:49.392268+09:00 opsloop-data-01 python3[311499]: 목록을 올렸다: 관문 1개 digest b64f4abb · 내부 방화벽 1개 digest b64f4abb
+2026-10-02T09:27:49.426433+09:00 opsloop-data-01 python3[311499]: 집행 기록 1/1행을 고쳤다
+2026-10-02T09:27:49.428180+09:00 opsloop-data-01 python3[311499]: 행 15 · 목록 관문 1 · 내부 방화벽 1 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:27:04Z 목록 4f53cda1 · 내부 방화벽 nft 2026-10-02T00:26:54Z 목록 4f53cda1: exclude 12 · expired 2 · pending 1
+2026-10-02T09:27:49.476531+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:27:49.476799+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).
+2026-10-02T09:28:53.899825+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:28:54.391775+09:00 opsloop-data-01 python3[311647]: 집행 기록 1/1행을 고쳤다
+2026-10-02T09:28:54.396361+09:00 opsloop-data-01 python3[311647]: 행 15 · 목록 관문 1 · 내부 방화벽 1 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:28:09Z 목록 b64f4abb · 내부 방화벽 nft 2026-10-02T00:27:59Z 목록 b64f4abb: confirm 1 · exclude 12 · expired 2
+2026-10-02T09:28:54.447702+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:28:54.447958+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).
+2026-10-02T09:29:58.884717+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:29:59.313966+09:00 opsloop-data-01 python3[312041]: 행 15 · 목록 관문 1 · 내부 방화벽 1 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:29:14Z 목록 b64f4abb · 내부 방화벽 nft 2026-10-02T00:29:01Z 목록 b64f4abb: confirm 1 · exclude 12 · expired 2
+2026-10-02T09:29:59.365922+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:29:59.366330+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).
+2026-10-02T09:30:58.896544+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:30:59.501535+09:00 opsloop-data-01 python3[312358]: 행 15 · 목록 관문 1 · 내부 방화벽 1 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:30:16Z 목록 b64f4abb · 내부 방화벽 nft 2026-10-02T00:30:02Z 목록 b64f4abb: confirm 1 · exclude 12 · expired 2
+2026-10-02T09:30:59.549814+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:30:59.550078+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).
+2026-10-02T09:32:03.892762+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:32:04.535395+09:00 opsloop-data-01 python3[312667]: 행 15 · 목록 관문 1 · 내부 방화벽 1 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:31:19Z 목록 b64f4abb · 내부 방화벽 nft 2026-10-02T00:31:03Z 목록 b64f4abb: confirm 1 · exclude 12 · expired 2
+2026-10-02T09:32:04.583464+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:32:04.583969+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).
+2026-10-02T09:33:08.879996+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:33:09.536557+09:00 opsloop-data-01 python3[312830]: 행 15 · 목록 관문 1 · 내부 방화벽 1 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:32:24Z 목록 b64f4abb · 내부 방화벽 nft 2026-10-02T00:32:07Z 목록 b64f4abb: confirm 1 · exclude 12 · expired 2
+2026-10-02T09:33:09.609176+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:33:09.609482+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).
+2026-10-02T09:34:13.881771+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:34:14.785232+09:00 opsloop-data-01 python3[312979]: 행 15 · 목록 관문 1 · 내부 방화벽 1 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:33:24Z 목록 b64f4abb · 내부 방화벽 nft 2026-10-02T00:33:09Z 목록 b64f4abb: confirm 1 · exclude 12 · expired 2
+2026-10-02T09:34:14.846180+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:34:14.846718+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).
+2026-10-02T09:35:18.889825+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:35:19.354352+09:00 opsloop-data-01 python3[313155]: 행 15 · 목록 관문 1 · 내부 방화벽 1 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:34:29Z 목록 b64f4abb · 내부 방화벽 nft 2026-10-02T00:34:14Z 목록 b64f4abb: confirm 1 · exclude 12 · expired 2
+2026-10-02T09:35:19.402583+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:35:19.402792+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).
+2026-10-02T09:36:18.899118+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:36:19.447903+09:00 opsloop-data-01 python3[313301]: 행 15 · 목록 관문 1 · 내부 방화벽 1 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:35:35Z 목록 b64f4abb · 내부 방화벽 nft 2026-10-02T00:35:19Z 목록 b64f4abb: confirm 1 · exclude 12 · expired 2
+2026-10-02T09:36:19.495261+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:36:19.495531+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).
+2026-10-02T09:37:23.874663+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:37:24.437306+09:00 opsloop-data-01 python3[313471]: 목록을 올렸다: 관문 1개 digest b64f4abb · 내부 방화벽 1개 digest b64f4abb (그대로 · 생존 표시)
+2026-10-02T09:37:24.490359+09:00 opsloop-data-01 python3[313471]: 행 15 · 목록 관문 1 · 내부 방화벽 1 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:36:39Z 목록 b64f4abb · 내부 방화벽 nft 2026-10-02T00:36:24Z 목록 b64f4abb: confirm 1 · exclude 12 · expired 2
+2026-10-02T09:37:24.555247+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:37:24.555631+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).
+2026-10-02T09:38:28.884819+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:38:29.367660+09:00 opsloop-data-01 python3[313641]: 목록을 올렸다: 관문 0개 digest 4f53cda1 · 내부 방화벽 0개 digest 4f53cda1
+2026-10-02T09:38:29.487280+09:00 opsloop-data-01 python3[313641]: 집행 기록 1/1행을 고쳤다
+2026-10-02T09:38:29.489438+09:00 opsloop-data-01 python3[313641]: 행 15 · 목록 관문 0 · 내부 방화벽 0 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:37:44Z 목록 b64f4abb · 내부 방화벽 nft 2026-10-02T00:37:29Z 목록 b64f4abb: exclude 12 · expired 2 · released 1
+2026-10-02T09:38:29.539173+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:38:29.540627+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).
+2026-10-02T09:39:33.882810+09:00 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+2026-10-02T09:39:34.293981+09:00 opsloop-data-01 python3[313787]: 집행 기록 1/1행을 고쳤다
+2026-10-02T09:39:34.296826+09:00 opsloop-data-01 python3[313787]: 행 15 · 목록 관문 0 · 내부 방화벽 0 (관문 목록 지점별) · 관문 fail2ban 2026-10-02T00:38:49Z 목록 4f53cda1 · 내부 방화벽 nft 2026-10-02T00:38:34Z 목록 4f53cda1: exclude 12 · expired 2 · released+unenforce 1
+2026-10-02T09:39:34.351815+09:00 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+2026-10-02T09:39:34.352127+09:00 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).

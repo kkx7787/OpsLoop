@@ -1,0 +1,54 @@
+2026-10-02T09:17:15.627092+09:00 opsloop-data-01 systemd[1]: Starting opsloop-agents.service - OpsLoop 관제 대상 로그 다리 (Loki · 관문 원장 → events, 자기 탐지)...
+2026-10-02T09:17:15.812835+09:00 opsloop-data-01 python3[309192]: probe-01: 2026-10-02T00:11:04.050873+00:00 ~ 2026-10-02T00:17:05.797587+00:00 조회 1회 · 줄 0 · 신규 0
+2026-10-02T09:17:15.821369+09:00 opsloop-data-01 python3[309192]: probe-02: 2026-10-02T00:11:04.050873+00:00 ~ 2026-10-02T00:17:05.797587+00:00 조회 1회 · 줄 0 · 신규 0
+2026-10-02T09:17:15.834691+09:00 opsloop-data-01 python3[309192]: web-01: 2026-10-02T00:11:04.050873+00:00 ~ 2026-10-02T00:17:05.797587+00:00 조회 1회 · 줄 3 · 신규 1 · 건너뜀 unmatched 2
+2026-10-02T09:17:16.587554+09:00 opsloop-data-01 systemd[1]: opsloop-agents.service: Deactivated successfully.
+2026-10-02T09:17:16.587748+09:00 opsloop-data-01 systemd[1]: Finished opsloop-agents.service - OpsLoop 관제 대상 로그 다리 (Loki · 관문 원장 → events, 자기 탐지).
+2026-10-02T09:18:15.734532+09:00 opsloop-data-01 systemd[1]: Starting opsloop-agents.service - OpsLoop 관제 대상 로그 다리 (Loki · 관문 원장 → events, 자기 탐지)...
+2026-10-02T09:18:15.890737+09:00 opsloop-data-01 python3[309576]: probe-01: 2026-10-02T00:12:05.797587+00:00 ~ 2026-10-02T00:18:05.863546+00:00 조회 1회 · 줄 0 · 신규 0
+2026-10-02T09:18:15.898774+09:00 opsloop-data-01 python3[309576]: probe-02: 2026-10-02T00:12:05.797587+00:00 ~ 2026-10-02T00:18:05.863546+00:00 조회 1회 · 줄 0 · 신규 0
+2026-10-02T09:18:15.915120+09:00 opsloop-data-01 python3[309576]: web-01: 2026-10-02T00:12:05.797587+00:00 ~ 2026-10-02T00:18:05.863546+00:00 조회 1회 · 줄 8 · 신규 2 · 건너뜀 unmatched 6
+2026-10-02T09:18:16.619581+09:00 opsloop-data-01 systemd[1]: opsloop-agents.service: Deactivated successfully.
+2026-10-02T09:18:16.619834+09:00 opsloop-data-01 systemd[1]: Finished opsloop-agents.service - OpsLoop 관제 대상 로그 다리 (Loki · 관문 원장 → events, 자기 탐지).
+2026-10-02T09:19:18.870900+09:00 opsloop-data-01 systemd[1]: Starting opsloop-agents.service - OpsLoop 관제 대상 로그 다리 (Loki · 관문 원장 → events, 자기 탐지)...
+2026-10-02T09:19:19.022846+09:00 opsloop-data-01 python3[309793]: probe-01: 2026-10-02T00:13:05.863546+00:00 ~ 2026-10-02T00:19:09.006127+00:00 조회 1회 · 줄 0 · 신규 0
+2026-10-02T09:19:19.030358+09:00 opsloop-data-01 python3[309793]: probe-02: 2026-10-02T00:13:05.863546+00:00 ~ 2026-10-02T00:19:09.006127+00:00 조회 1회 · 줄 0 · 신규 0
+2026-10-02T09:19:19.048431+09:00 opsloop-data-01 python3[309793]: web-01: 2026-10-02T00:13:05.863546+00:00 ~ 2026-10-02T00:19:09.006127+00:00 조회 1회 · 줄 55 · 신규 10 · 건너뜀 unmatched 45
+2026-10-02T09:19:19.751239+09:00 opsloop-data-01 systemd[1]: opsloop-agents.service: Deactivated successfully.
+2026-10-02T09:19:19.751453+09:00 opsloop-data-01 systemd[1]: Finished opsloop-agents.service - OpsLoop 관제 대상 로그 다리 (Loki · 관문 원장 → events, 자기 탐지).
+2026-10-02T09:20:18.892702+09:00 opsloop-data-01 systemd[1]: Starting opsloop-agents.service - OpsLoop 관제 대상 로그 다리 (Loki · 관문 원장 → events, 자기 탐지)...
+2026-10-02T09:20:19.144179+09:00 opsloop-data-01 python3[310101]: probe-01: 2026-10-02T00:14:09.006127+00:00 ~ 2026-10-02T00:20:09.119048+00:00 조회 1회 · 줄 0 · 신규 0
+2026-10-02T09:20:19.157055+09:00 opsloop-data-01 python3[310101]: probe-02: 2026-10-02T00:14:09.006127+00:00 ~ 2026-10-02T00:20:09.119048+00:00 조회 1회 · 줄 0 · 신규 0
+2026-10-02T09:20:19.187745+09:00 opsloop-data-01 python3[310101]: web-01: 2026-10-02T00:14:09.006127+00:00 ~ 2026-10-02T00:20:09.119048+00:00 조회 1회 · 줄 18 · 신규 3 · 건너뜀 unmatched 15
+2026-10-02T09:20:19.895142+09:00 opsloop-data-01 systemd[1]: opsloop-agents.service: Deactivated successfully.
+2026-10-02T09:20:19.895329+09:00 opsloop-data-01 systemd[1]: Finished opsloop-agents.service - OpsLoop 관제 대상 로그 다리 (Loki · 관문 원장 → events, 자기 탐지).
+2026-10-02T09:21:23.861951+09:00 opsloop-data-01 systemd[1]: Starting opsloop-agents.service - OpsLoop 관제 대상 로그 다리 (Loki · 관문 원장 → events, 자기 탐지)...
+2026-10-02T09:21:24.024266+09:00 opsloop-data-01 python3[310301]: probe-01: 2026-10-02T00:15:09.119048+00:00 ~ 2026-10-02T00:21:13.993767+00:00 조회 1회 · 줄 0 · 신규 0
+2026-10-02T09:21:24.033357+09:00 opsloop-data-01 python3[310301]: probe-02: 2026-10-02T00:15:09.119048+00:00 ~ 2026-10-02T00:21:13.993767+00:00 조회 1회 · 줄 0 · 신규 0
+2026-10-02T09:21:24.049149+09:00 opsloop-data-01 python3[310301]: web-01: 2026-10-02T00:15:09.119048+00:00 ~ 2026-10-02T00:21:13.993767+00:00 조회 1회 · 줄 8 · 신규 2 · 건너뜀 unmatched 6
+2026-10-02T09:21:24.753754+09:00 opsloop-data-01 systemd[1]: opsloop-agents.service: Deactivated successfully.
+2026-10-02T09:21:24.753987+09:00 opsloop-data-01 systemd[1]: Finished opsloop-agents.service - OpsLoop 관제 대상 로그 다리 (Loki · 관문 원장 → events, 자기 탐지).
+2026-10-02T09:22:28.866841+09:00 opsloop-data-01 systemd[1]: Starting opsloop-agents.service - OpsLoop 관제 대상 로그 다리 (Loki · 관문 원장 → events, 자기 탐지)...
+2026-10-02T09:22:29.006248+09:00 opsloop-data-01 python3[310533]: probe-01: 2026-10-02T00:16:13.993767+00:00 ~ 2026-10-02T00:22:18.993099+00:00 조회 1회 · 줄 0 · 신규 0
+2026-10-02T09:22:29.014392+09:00 opsloop-data-01 python3[310533]: probe-02: 2026-10-02T00:16:13.993767+00:00 ~ 2026-10-02T00:22:18.993099+00:00 조회 1회 · 줄 0 · 신규 0
+2026-10-02T09:22:29.034974+09:00 opsloop-data-01 python3[310533]: web-01: 2026-10-02T00:16:13.993767+00:00 ~ 2026-10-02T00:22:18.993099+00:00 조회 1회 · 줄 1 · 신규 1
+2026-10-02T09:22:29.693103+09:00 opsloop-data-01 systemd[1]: opsloop-agents.service: Deactivated successfully.
+2026-10-02T09:22:29.693316+09:00 opsloop-data-01 systemd[1]: Finished opsloop-agents.service - OpsLoop 관제 대상 로그 다리 (Loki · 관문 원장 → events, 자기 탐지).
+2026-10-02T09:23:33.867183+09:00 opsloop-data-01 systemd[1]: Starting opsloop-agents.service - OpsLoop 관제 대상 로그 다리 (Loki · 관문 원장 → events, 자기 탐지)...
+2026-10-02T09:23:34.018812+09:00 opsloop-data-01 python3[310697]: probe-01: 2026-10-02T00:17:18.993099+00:00 ~ 2026-10-02T00:23:24.002529+00:00 조회 1회 · 줄 0 · 신규 0
+2026-10-02T09:23:34.042358+09:00 opsloop-data-01 python3[310697]: probe-02: 2026-10-02T00:17:18.993099+00:00 ~ 2026-10-02T00:23:24.002529+00:00 조회 1회 · 줄 0 · 신규 0
+2026-10-02T09:23:34.067073+09:00 opsloop-data-01 python3[310697]: web-01: 2026-10-02T00:17:18.993099+00:00 ~ 2026-10-02T00:23:24.002529+00:00 조회 1회 · 줄 1 · 신규 1
+2026-10-02T09:23:34.773556+09:00 opsloop-data-01 systemd[1]: opsloop-agents.service: Deactivated successfully.
+2026-10-02T09:23:34.773805+09:00 opsloop-data-01 systemd[1]: Finished opsloop-agents.service - OpsLoop 관제 대상 로그 다리 (Loki · 관문 원장 → events, 자기 탐지).
+2026-10-02T09:24:38.876852+09:00 opsloop-data-01 systemd[1]: Starting opsloop-agents.service - OpsLoop 관제 대상 로그 다리 (Loki · 관문 원장 → events, 자기 탐지)...
+2026-10-02T09:24:39.050195+09:00 opsloop-data-01 python3[310849]: probe-01: 2026-10-02T00:18:24.002529+00:00 ~ 2026-10-02T00:24:29.025882+00:00 조회 1회 · 줄 0 · 신규 0
+2026-10-02T09:24:39.058360+09:00 opsloop-data-01 python3[310849]: probe-02: 2026-10-02T00:18:24.002529+00:00 ~ 2026-10-02T00:24:29.025882+00:00 조회 1회 · 줄 0 · 신규 0
+2026-10-02T09:24:39.081634+09:00 opsloop-data-01 python3[310849]: web-01: 2026-10-02T00:18:24.002529+00:00 ~ 2026-10-02T00:24:29.025882+00:00 조회 1회 · 줄 1 · 신규 1
+2026-10-02T09:24:39.839945+09:00 opsloop-data-01 systemd[1]: opsloop-agents.service: Deactivated successfully.
+2026-10-02T09:24:39.840199+09:00 opsloop-data-01 systemd[1]: Finished opsloop-agents.service - OpsLoop 관제 대상 로그 다리 (Loki · 관문 원장 → events, 자기 탐지).
+2026-10-02T09:25:39.180744+09:00 opsloop-data-01 systemd[1]: Starting opsloop-agents.service - OpsLoop 관제 대상 로그 다리 (Loki · 관문 원장 → events, 자기 탐지)...
+2026-10-02T09:25:39.360381+09:00 opsloop-data-01 python3[311082]: probe-01: 2026-10-02T00:19:29.025882+00:00 ~ 2026-10-02T00:25:29.333713+00:00 조회 1회 · 줄 0 · 신규 0
+2026-10-02T09:25:39.368806+09:00 opsloop-data-01 python3[311082]: probe-02: 2026-10-02T00:19:29.025882+00:00 ~ 2026-10-02T00:25:29.333713+00:00 조회 1회 · 줄 0 · 신규 0
+2026-10-02T09:25:39.402350+09:00 opsloop-data-01 python3[311082]: web-01: 2026-10-02T00:19:29.025882+00:00 ~ 2026-10-02T00:25:29.333713+00:00 조회 1회 · 줄 12 · 신규 10 · 건너뜀 unmatched 2
+2026-10-02T09:25:40.170749+09:00 opsloop-data-01 systemd[1]: opsloop-agents.service: Deactivated successfully.
+2026-10-02T09:25:40.170933+09:00 opsloop-data-01 systemd[1]: Finished opsloop-agents.service - OpsLoop 관제 대상 로그 다리 (Loki · 관문 원장 → events, 자기 탐지).

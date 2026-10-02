@@ -1,0 +1,16 @@
+== 2026-10-01 16:30:05 KST 백업 시작
+NOTICE:  database "opsloop_restore_test" does not exist, skipping
+복원 시험 (events verdicts actions blocklist): 복원 383477 1035 177 28 · 운영 383477 1035 177 28
+백업  24M /Users/hanseongmin/opsloop-backup/opsloop-20261001-0730.dump · 표 26 개 · 역할 8 개 opsloop-20261001-0730.globals.sql
+원장 사본 3.0M /Users/hanseongmin/opsloop-backup/ledger (loki · gate · admin)
+== 2026-10-01 16:30:18 KST 백업 성공
+opsloop-20261001-0730.dump
+opsloop-20261001-0730.globals.sql
+opsloop-20261001-0730.dump T_b 2026-10-01T07:30:07+00:00 pg_dump 16.15 bytes 25206325 sha256 c72b89671719 역할 8 로그인 7 멤버십 1
+간격 {'count': 14, 'first': '2026-09-24T19:30:06+00:00', 'last': '2026-10-01T07:30:07+00:00', 'max_gap_s': 86401.0, 'between': ['2026-09-29T07:30:06+00:00', '2026-09-30T07:30:07+00:00']}
+== precheck · 읽기 점검 · 덤프 · 역할 목록 고르기 · 운영 기준값 · 드라이런 (명령 · SQL 만 찍는다. 원격 · docker 에 아무것도 하지 않는다)
+  고른 백업: opsloop-20261001-0730.dump · opsloop-20261001-0730.globals.sql
+ls: /Users/hanseongmin/opsloop-drill/r02: No such file or directory
+now 2026-10-01 07:41:38.589276+00
+restore_test_db 0
+backup_sessions 0

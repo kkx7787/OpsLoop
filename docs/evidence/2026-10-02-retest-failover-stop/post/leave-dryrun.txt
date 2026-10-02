@@ -1,0 +1,18 @@
+콘솔 B 떼기 · 드라이런 (명령만 찍는다. 원격 · VM 에 아무것도 하지 않는다)
+== drain · HAProxy console-b → drain · 연결 0 대기
+  $ ssh fw 'echo "@1 set server consoles/console-b state drain" | sudo -n nc -N -U /run/haproxy-master.sock'
+  기다림: console-b 연결 0 (웹소켓은 남을 수 있다. 컨테이너를 멈추면 끊기고 화면이 A 로 다시 붙는다) (최대 30번 · 2초 간격)
+== maint · HAProxy console-b → maint
+  $ ssh fw 'echo "@1 set server consoles/console-b state maint" | sudo -n nc -N -U /run/haproxy-master.sock'
+  기다림: console-b 관리 상태 maint (최대 5번 · 2초 간격)
+== stop · 컨테이너 restart=no · 멈춤
+  확인: console-b 가 maint 다 (아니면 멈춘다)
+  $ ssh console-b 'docker update --restart=no opsloop-api >/dev/null && docker stop -t 10 opsloop-api >/dev/null && echo "  컨테이너: restart=no · 멈춤"'
+  확인: 컨테이너가 멈췄고 restart=no
+== vm-stop · VM 끄기
+  확인: console-b 가 maint 다 (아니면 멈춘다)
+  $ /Applications/VMware Fusion.app/Contents/Library/vmrun stop /Users/hanseongmin/Virtual Machines.localized/opsloop-console-b.vmwarevm/opsloop-console-b.vmx soft
+  기다림: VM 꺼짐 (최대 60번 · 2초 간격)
+== state · HAProxy 상태 읽기
+  $ ssh fw 'echo "@1 show servers state consoles" | sudo -n nc -N -U /run/haproxy-master.sock'
+드라이런이다. 실제로 돌리려면 --apply

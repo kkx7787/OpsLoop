@@ -1,0 +1,2 @@
+{"run":"v05-kill-b","kind":"inject","scenario":"kill","target":"console-b","host":"console-b","t_local_ns":1790904105267327000,"t_local_before_ns":1790904104855644000,"t_remote_ns":1790904105265882836,"rtt_ms":411.683,"offset_ms":204.397,"note":null}
+{"run":"v05-kill-b","kind":"recover","scenario":"kill","target":"console-b","host":"console-b","t_local_ns":1790904256818950000,"t_local_before_ns":1790904256051225000,"t_remote_ns":1790904256817449710,"rtt_ms":767.725,"offset_ms":382.362,"note":null}
