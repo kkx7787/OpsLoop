@@ -107,7 +107,15 @@ describe('관제 이상 판정(#72)', () => {
     expect(controlHealthView({ data: controlHealth(), isError: false })).toEqual({ state: 'ok', alerts: [], unknowns: [] })
     // 마지막으로 끝난 조회가 실패면(다시 조회 중이라 isError 가 꺼져도) 확인 불가, 그 뒤 받으면 받은 값
     expect(controlHealthView({ data: undefined, isError: false, errorUpdatedAt: 5, dataUpdatedAt: 0 })).toEqual({ state: 'error' })
-    expect(controlHealthView({ data, isError: false, errorUpdatedAt: 5, dataUpdatedAt: 9 })).toEqual({ state: 'ok', alerts: [MONITOR.loader], unknowns: [MONITOR.nodes] })
+    expect(controlHealthView({ data, isError: false, errorUpdatedAt: 5, dataUpdatedAt: 9 }, 10)).toEqual({ state: 'ok', alerts: [MONITOR.loader], unknowns: [MONITOR.nodes] })
+  })
+
+  it('정상 응답도 마지막 수신 후 90초를 넘으면 갱신 지연이고 새 성공 뒤에만 정상이다', () => {
+    const data = controlHealth()
+    expect(controlHealthView({ data, isError: false, dataUpdatedAt: 1000 }, 91000).state).toBe('ok')
+    expect(controlHealthView({ data, isError: false, dataUpdatedAt: 1000 }, 91001).state).toBe('stale')
+    expect(controlHealthView({ data, isError: false, dataUpdatedAt: 92000, errorUpdatedAt: 91500 }, 92000).state).toBe('ok')
+    expect(controlHealthView({ data, isError: true, dataUpdatedAt: 1000 }, 92000).state).toBe('error')
   })
 
   it('항목 글은 까닭, 없으면 건수', () => {

@@ -1,8 +1,8 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import type { RouteObject } from 'react-router'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ctiKeys, incidentCtiPath } from '@/api/cti'
-import { incidentPath, type AbsorbedInfo, type BlockPointsInfo, type EvidenceSample, type IncidentDetail, type IncidentDevice } from '@/api/incidents'
+import { incidentKeys, incidentPath, type AbsorbedInfo, type BlockPointsInfo, type EvidenceSample, type IncidentDetail, type IncidentDevice } from '@/api/incidents'
 import { ACTION_STATUS } from '@/lib/domain'
 import { revealHidden } from '@/lib/untrusted'
 import { ctiBadgeText } from '@/components/molecules/cti-badge-format'
@@ -101,6 +101,7 @@ function isDetail(body: unknown): body is IncidentDetail {
  */
 function stubApi({ role = 'operator', body = detail(), status = 200, cti = { as_of: '2026-09-18T08:00:00Z', incident_key: KEY, applicable: false }, ctiStatus = 200, actionError }: StubOptions = {}) {
   let state = body
+  let actionId = isDetail(state) ? Math.max(3, ...state.actions.map((action) => action.id)) : 3
   const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
     const method = init?.method ?? 'GET'
@@ -116,7 +117,7 @@ function stubApi({ role = 'operator', body = detail(), status = 200, cti = { as_
     if (url === `${incidentPath(KEY)}/actions` && method === 'POST') {
       if (actionError) return json({ detail: actionError.detail }, actionError.status)
       const sent = JSON.parse(String(init?.body)) as Record<string, unknown>
-      const created = { id: 4, note: null, ...sent, operator: 'han', created_at: '2026-09-18T08:00:00+00:00', incident_key: KEY,
+      const created = { id: ++actionId, note: null, ...sent, operator: 'han', created_at: '2026-09-18T08:00:00+00:00', incident_key: KEY,
         ...(sent.include_absorbed ? { absorbed: sent.action === 'block_ip' ? { blocked: 2, kept: 0 } : { released: 3 } } : {}) }
       if (isDetail(state)) {
         const next = ACTION_STATUS[sent.action as keyof typeof ACTION_STATUS] ?? state.status
@@ -220,6 +221,62 @@ describe('IncidentDetailPage', () => {
     renderRoutes(routes(), PATH)
     expect(await screen.findByText('test:acceptance')).toBeInTheDocument()
     expect(screen.getAllByText('4.4.66.84').length).toBeGreaterThan(0)
+  })
+
+  it('503 재조회 실패에서 작성 중인 판정을 유지하고 저장을 막으며 복구 뒤 그대로 제출한다(#100)', async () => {
+    const fetch = stubApi()
+    const serve = fetch.getMockImplementation()!
+    let fail = false
+    fetch.mockImplementation((input, init) => fail && input === incidentPath(KEY) && (!init?.method || init.method === 'GET')
+      ? Promise.resolve(json({ detail: '일시적인 조회 실패' }, 503)) : serve(input, init))
+    const client = noRetryClient()
+    renderRoutes(routes(), PATH, client)
+    const { panel } = await readyPanel()
+    fireEvent.click(panel.getByRole('radio', { name: /^실제 위협/ }))
+    fireEvent.change(panel.getByLabelText('사유'), { target: { value: '검토 중인 근거 보존' } })
+    fail = true
+    await act(async () => { await client.refetchQueries({ queryKey: incidentKeys.detail(KEY) }) })
+    expect(await screen.findByText('데이터를 갱신하지 못했습니다')).toBeInTheDocument()
+    expect(panel.getByLabelText('사유')).toHaveValue('검토 중인 근거 보존')
+    expect(panel.getByRole('button', { name: '판정 기록' })).toBeDisabled()
+    expect(panel.getByRole('button', { name: /^확인$/ })).toBeDisabled()
+    fireEvent.submit(panel.getByRole('button', { name: '판정 기록' }).closest('form')!)
+    expect(sentBody(fetch, `${incidentPath(KEY)}/verdict`, 'POST')).toBeUndefined()
+    fail = false
+    fireEvent.click(screen.getByRole('button', { name: /^다시 조회$/ }))
+    await waitFor(() => expect(panel.getByRole('button', { name: '판정 기록' })).toBeEnabled())
+    expect(panel.getByLabelText('사유')).toHaveValue('검토 중인 근거 보존')
+    fireEvent.click(panel.getByRole('button', { name: '판정 기록' }))
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/verdict`, 'POST')?.reason).toBe('검토 중인 근거 보존'))
+  })
+
+  it('재조회가 403이면 이전 사건 근거와 입력 폼을 숨긴다(#100)', async () => {
+    const fetch = stubApi()
+    const serve = fetch.getMockImplementation()!
+    const client = noRetryClient()
+    renderRoutes(routes(), PATH, client)
+    await readyPanel()
+    fetch.mockImplementation((input, init) => input === incidentPath(KEY)
+      ? Promise.resolve(json({ detail: '권한이 없습니다' }, 403)) : serve(input, init))
+    await act(async () => { await client.refetchQueries({ queryKey: incidentKeys.detail(KEY) }) })
+    await waitFor(() => expect(screen.queryByRole('region', { name: '조치와 판정' })).toBeNull())
+    expect(screen.queryByRole('region', { name: '규칙이 본 것' })).toBeNull()
+  })
+
+  it('필터를 걸었던 목록에서 들어오면 관련 사건을 거쳐도 그 목록으로 돌아간다(#100)', async () => {
+    stubApi()
+    const { router } = renderRoutes(routes(), '/incidents?device=web-01&sort=severity&page=3')
+    const back = router.state.location.pathname + router.state.location.search
+    await act(async () => { await router.navigate(PATH, { state: { returnTo: back } }) })
+    await readyPanel()
+    expect(screen.getByRole('link', { name: '← 인시던트 목록으로' })).toHaveAttribute('href', back)
+    const section = screen.getByRole('region', { name: '조치와 판정' })
+    section.scrollIntoView = vi.fn<HTMLElement['scrollIntoView']>()
+    fireEvent.click(screen.getByRole('button', { name: '조치와 판정으로 이동 ↓' }))
+    expect(section).toHaveFocus()
+    expect(router.state.location.state).toEqual({ returnTo: back })
+    fireEvent.click(screen.getByRole('link', { name: /^R001$/ }))
+    await waitFor(() => expect(router.state.location.state).toEqual({ returnTo: back }))
   })
 
   it('판정을 제출하면 판정값 · 사유 · 관측값 · 소요 초가 가고, 이력과 상태가 바뀐다', async () => {

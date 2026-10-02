@@ -1,5 +1,5 @@
 import { QueryClientProvider, type InfiniteData } from '@tanstack/react-query'
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { createElement, type ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { noRetryClient } from '@/test/render'
@@ -341,5 +341,23 @@ describe('useVerdictMutation · useActionMutation', () => {
     const { result } = renderHook(() => useVerdictMutation(KEY), { wrapper })
     await expect(result.current.mutateAsync({ verdict: 'threat' })).rejects.toMatchObject({ status: 403, detail: '권한이 없습니다 (viewer)' })
     expect(client.getQueryData<IncidentDetail>(incidentKeys.detail(KEY))?.status).toBe('open')
+  })
+})
+
+
+describe('사건 상세 주기 조회(#100)', () => {
+  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals() })
+  it('실시간 통보가 없어도 30초 뒤 상태를 다시 받는다', async () => {
+    vi.useFakeTimers()
+    let fresh = false
+    const fetch = stubFetch(url => url === incidentPath(KEY) ? json(detail({ status: fresh ? 'resolved' : 'open' })) : undefined)
+    const { result, unmount } = renderHook(() => useIncident(KEY), { wrapper: withClient().wrapper })
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(result.current.data?.status).toBe('open')
+    fresh = true
+    await act(async () => { await vi.advanceTimersByTimeAsync(30_000) })
+    expect(result.current.data?.status).toBe('resolved')
+    expect(fetch).toHaveBeenCalledTimes(2)
+    unmount()
   })
 })

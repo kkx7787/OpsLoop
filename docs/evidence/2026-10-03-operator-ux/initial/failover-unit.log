@@ -1,0 +1,237 @@
+...................E.E/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/unittest/case.py:668: ResourceWarning: unclosed <socket.socket fd=3, family=2, type=1, proto=0, laddr=('0.0.0.0', 0)>
+  with outcome.testPartExecutor(self):
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.EEEEEEEEEEEEEE...................
+======================================================================
+ERROR: test_5xx_and_401 (test_failover_tools.ProbeHttpTest.test_5xx_and_401)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 981, in test_5xx_and_401
+    srv = FakeConsole(make_token(salt=b"other"))       # 서버가 다른 비밀을 쓴다 → 401
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 731, in __init__
+    super().__init__(("127.0.0.1", 0), Handler)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 457, in __init__
+    self.server_bind()
+    ~~~~~~~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 148, in server_bind
+    socketserver.TCPServer.server_bind(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 478, in server_bind
+    self.socket.bind(self.server_address)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_connect_refused (test_failover_tools.ProbeHttpTest.test_connect_refused)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 994, in test_connect_refused
+    s.bind(("127.0.0.1", 0))
+    ~~~~~~^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_fd_hard_limit_lowers_inflight (test_failover_tools.ProbeHttpTest.test_fd_hard_limit_lowers_inflight)
+hard 한도가 모자라면 동시 요청 한도를 낮추고 알린다. 넘친 회차는 EMFILE 이 아니라 'in-flight 한도' 로 남는다.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 1076, in test_fd_hard_limit_lowers_inflight
+    p, recs = self._hold("ulimit -n 160")
+              ~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 1053, in _hold
+    raw = RawServer("accept-hold")
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 779, in __init__
+    self.sock.bind(("127.0.0.1", 0))
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_fd_soft_limit_raised (test_failover_tools.ProbeHttpTest.test_fd_soft_limit_raised)
+macOS 터미널 기본 soft 한도(256)여도 걸린 요청이 300 개를 넘게 쌓일 때 새 요청이 EMFILE 로 실패하지 않는다.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 1069, in test_fd_soft_limit_raised
+    p, recs = self._hold("ulimit -S -n 256")
+              ~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 1053, in _hold
+    raw = RawServer("accept-hold")
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 779, in __init__
+    self.sock.bind(("127.0.0.1", 0))
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_fields_streams_cookie_origin_console (test_failover_tools.ProbeHttpTest.test_fields_streams_cookie_origin_console)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 946, in test_fields_streams_cookie_origin_console
+    srv = FakeConsole(self.token)
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 731, in __init__
+    super().__init__(("127.0.0.1", 0), Handler)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 457, in __init__
+    self.server_bind()
+    ~~~~~~~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 148, in server_bind
+    socketserver.TCPServer.server_bind(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 478, in server_bind
+    self.socket.bind(self.server_address)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_health_only_needs_no_cookie (test_failover_tools.ProbeHttpTest.test_health_only_needs_no_cookie)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 1111, in test_health_only_needs_no_cookie
+    srv = FakeConsole(self.token)
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 731, in __init__
+    super().__init__(("127.0.0.1", 0), Handler)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 457, in __init__
+    self.server_bind()
+    ~~~~~~~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 148, in server_bind
+    socketserver.TCPServer.server_bind(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 478, in server_bind
+    self.socket.bind(self.server_address)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_rerun_continues_seq (test_failover_tools.ProbeHttpTest.test_rerun_continues_seq)
+같은 회차 폴더에 다시 띄우면 번호를 이어 간다. health 의 p 가 HAProxy 로그에서 겹치지 않는다.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 1031, in test_rerun_continues_seq
+    srv = FakeConsole(self.token)
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 731, in __init__
+    super().__init__(("127.0.0.1", 0), Handler)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 457, in __init__
+    self.server_bind()
+    ~~~~~~~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 148, in server_bind
+    socketserver.TCPServer.server_bind(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 478, in server_bind
+    self.socket.bind(self.server_address)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_reset (test_failover_tools.ProbeHttpTest.test_reset)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 1018, in test_reset
+    raw = RawServer("reset")
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 779, in __init__
+    self.sock.bind(("127.0.0.1", 0))
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_stops_on_signal_even_if_sigint_ignored (test_failover_tools.ProbeHttpTest.test_stops_on_signal_even_if_sigint_ignored)
+백그라운드(&)처럼 SIGINT 가 무시된 채 떠도 Ctrl-C · kill 에 걸린 요청을 기다렸다 끝낸다.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 1121, in test_stops_on_signal_even_if_sigint_ignored
+    srv = FakeConsole(self.token)
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 731, in __init__
+    super().__init__(("127.0.0.1", 0), Handler)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 457, in __init__
+    self.server_bind()
+    ~~~~~~~~~~~~~~~~^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/server.py", line 148, in server_bind
+    socketserver.TCPServer.server_bind(self)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/Library/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 478, in server_bind
+    self.socket.bind(self.server_address)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_timeout (test_failover_tools.ProbeHttpTest.test_timeout)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 1004, in test_timeout
+    raw = RawServer("hold")
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 779, in __init__
+    self.sock.bind(("127.0.0.1", 0))
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_browser_reconnect_after_server_close (test_failover_tools.ProbeWsTest.test_browser_reconnect_after_server_close)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 1166, in test_browser_reconnect_after_server_close
+    srv = FakeWs(self.token, ["close1012", "stay"])
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 820, in __init__
+    self.sock.bind(("127.0.0.1", 0))
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_browser_stops_on_1008 (test_failover_tools.ProbeWsTest.test_browser_stops_on_1008)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 1195, in test_browser_stops_on_1008
+    srv = FakeWs(self.token, ["stay"])
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 820, in __init__
+    self.sock.bind(("127.0.0.1", 0))
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_conns_and_cookie_required (test_failover_tools.ProbeWsTest.test_conns_and_cookie_required)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 1261, in test_conns_and_cookie_required
+    srv = FakeWs(self.token, ["stay"])
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 820, in __init__
+    self.sock.bind(("127.0.0.1", 0))
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_handshake_rejected_is_1006 (test_failover_tools.ProbeWsTest.test_handshake_rejected_is_1006)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 1209, in test_handshake_rejected_is_1006
+    srv = FakeWs(self.token, ["403"])
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 820, in __init__
+    self.sock.bind(("127.0.0.1", 0))
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_net_mode_detects_missing_pong (test_failover_tools.ProbeWsTest.test_net_mode_detects_missing_pong)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 1225, in test_net_mode_detects_missing_pong
+    srv = FakeWs(self.token, ["zombie", "stay"])
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 820, in __init__
+    self.sock.bind(("127.0.0.1", 0))
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+======================================================================
+ERROR: test_sigterm_ends_cleanly (test_failover_tools.ProbeWsTest.test_sigterm_ends_cleanly)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 1244, in test_sigterm_ends_cleanly
+    srv = FakeWs(self.token, ["stay"])
+  File "/Users/hanseongmin/opsloop-repo/infra/vmware/failover/test_failover_tools.py", line 820, in __init__
+    self.sock.bind(("127.0.0.1", 0))
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+PermissionError: [Errno 1] Operation not permitted
+
+----------------------------------------------------------------------
+Ran 56 tests in 14.108s
+
+FAILED (errors=16)

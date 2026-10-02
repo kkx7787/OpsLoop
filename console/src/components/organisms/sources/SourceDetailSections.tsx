@@ -1,5 +1,6 @@
 import { useId, type ReactNode } from 'react'
 import { Link } from 'react-router'
+import { useReturnTo } from '@/lib/returnTo'
 import { FINGERPRINT_KINDS, FINGERPRINT_LABEL, type SourceDetail } from '@/api/sources'
 import { actionLabel } from '@/lib/domain'
 import { revealHidden } from '@/lib/untrusted'
@@ -75,6 +76,7 @@ export function SourceSummarySection({ detail, className }: SectionProps) {
 
 /** ② 사건 흐름: 첫 시각 순. 규칙을 누르면 사건 상세. 장비는 사건 목록과 같은 배지다(요약 '노린 대상' 과 기준이 다르다) */
 export function SourceIncidentsSection({ detail, className }: SectionProps) {
+  const origin = useReturnTo('/sources')
   const { incidents, incidents_total: total } = detail
   return (
     <DetailSection number="②" title="사건 흐름" padding="none" aside={`첫 시각 순 · ${total.toLocaleString('ko-KR')}건`} className={className}>
@@ -94,7 +96,7 @@ export function SourceIncidentsSection({ detail, className }: SectionProps) {
               {incidents.map((row) => (
                 <tr key={row.incident_key}>
                   <td className={TABLE.td}>
-                    <Link to={incidentHref(row.incident_key)} className="font-mono font-medium" title={revealHidden(row.incident_key)}>{row.rule_id}</Link>
+                    <Link to={incidentHref(row.incident_key)} state={{ returnTo: origin.href }} className="font-mono font-medium" title={revealHidden(row.incident_key)}>{row.rule_id}</Link>
                     <span className="ml-1 font-mono text-xs text-ink-muted"><UntrustedText value={row.rule_version} max={16} clip /></span>
                     <span className="ml-1.5 text-ink-muted"><UntrustedText value={row.rule_name} max={64} clip /></span>
                   </td>
@@ -218,6 +220,7 @@ export function SourceBlockSection({ detail, className }: SectionProps) {
 
 /** ⑥ 조치 이력: 이 주소 사건들의 차단 · 해제 요청(최근 50건). 누가 풀고 걸었는지는 사건의 조치 이력과 같다 */
 export function SourceActionsSection({ detail, className }: SectionProps) {
+  const origin = useReturnTo('/sources')
   const rows = detail.actions
   return (
     <DetailSection number="⑥" title="조치 이력" padding="none" aside="차단 · 해제 · 최근 50건" className={className}>
@@ -241,7 +244,7 @@ export function SourceActionsSection({ detail, className }: SectionProps) {
                   <td data-label="요청자" className={TABLE.td}><UntrustedText value={row.operator} max={64} fallback="미기록" /></td>
                   <td data-label="메모" className={TABLE.td}><UntrustedText value={row.note} max={160} fallback="—" /></td>
                   <td data-label="사건" className={TABLE.td}>
-                    <Link to={incidentHref(row.incident_key)} className="font-mono" title={revealHidden(row.incident_key)}>{row.incident_key.split('|')[0]}</Link>
+                    <Link to={incidentHref(row.incident_key)} state={{ returnTo: origin.href }} className="font-mono" title={revealHidden(row.incident_key)}>{row.incident_key.split('|')[0]}</Link>
                   </td>
                 </tr>
               ))}

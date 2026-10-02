@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import type { CtiBadge as CtiBadgeValue } from '@/api/cti'
 import type { Incident } from '@/api/incidents'
 import { cn } from '@/lib/cn'
+import { useReturnTo } from '@/lib/returnTo'
 import { revealHidden } from '@/lib/untrusted'
 import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { UntrustedText } from '../../atoms/UntrustedText'
@@ -23,10 +24,12 @@ export interface IncidentCardProps extends Omit<ComponentProps<'li'>, 'children'
 
 /** 모바일 카드: 경과·심각도·규칙·출발지·관련 장비와 판정·처리 상태. 카드 전체가 링크다. */
 export function IncidentCard({ incident, elapsedSeconds, cti, className, ...rest }: IncidentCardProps) {
+  const origin = useReturnTo()
   return (
     <li data-incident-key={incident.incident_key} className={cn('list-none', className)} {...rest}>
       <Link
         to={incidentHref(incident.incident_key)}
+        state={{ returnTo: origin.href }}
         className="flex flex-col gap-1.5 bg-surface px-3 py-3 text-ink hover:bg-primary-soft/50 hover:text-ink"
       >
         <div className="flex items-center justify-between gap-3">

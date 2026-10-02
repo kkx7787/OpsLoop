@@ -1,0 +1,274 @@
+
+> console@0.0.0 test
+> vitest run --reporter=dot
+
+
+ RUN  v5.0.1 /Users/hanseongmin/opsloop-repo/console
+
+····································································································································································································x···················xxx····························x··x·································································stderr | src/pages/incident-detail/IncidentDetailPage.test.tsx > IncidentDetailPage · 차단 적용 지점(#77) > 기본값 그대로 보내면 내부 방화벽만, 관문을 더하면 경고 한 줄과 두 지점이 가고, 다시 열면 기본값이다
+Encountered two children with the same key, `action-4`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+
+·······························································x······················x··························································································································································································································x·······························x································································································································································x········································································································································································································································································
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 11 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/api/health.test.ts > 관제 이상 판정(#72) > controlHealthView: 실패를 받은 값보다 먼저 본다(이전 항목이 있어도 확인 불가)
+AssertionError: expected { state: 'stale' } to deeply equal { state: 'ok', …(2) }
+
+- Expected
++ Received
+
+  {
+-   "alerts": [
+-     {
+-       "at": "2026-09-23T07:15:00Z",
+-       "count": null,
+-       "key": "loader",
+-       "label": "적재기",
+-       "level": "alert",
+-       "reason": "적재기 확인 중단 · 마지막 45분 전",
+-     },
+-   ],
+-   "state": "ok",
+-   "unknowns": [
+-     {
+-       "at": null,
+-       "count": null,
+-       "key": "nodes",
+-       "label": "노드 수신",
+-       "level": "unknown",
+-       "reason": "노드 표를 읽을 수 없음",
+-     },
+-   ],
++   "state": "stale",
+  }
+
+ ❯ src/api/health.test.ts:110:94
+    108|     // 마지막으로 끝난 조회가 실패면(다시 조회 중이라 isError 가 꺼져도) 확인 불가, 그 뒤 받으면 받은 값
+    109|     expect(controlHealthView({ data: undefined, isError: false, errorU…
+    110|     expect(controlHealthView({ data, isError: false, errorUpdatedAt: 5…
+       |                                                                                              ^
+    111|   })
+    112|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/11]⎯
+
+ FAIL  src/components/organisms/LiveIndicator.test.tsx > LiveIndicator > 이어져 있음은 웹소켓 연결만 뜻하므로 점은 정상 색이 아닌 idle 이다. 끊김 · 로그인 필요는 그대로 눈에 띈다
+AssertionError: expected 'ok' to be 'idle' // Object.is equality
+
+Expected: "idle"
+Received: "ok"
+
+ ❯ src/components/organisms/LiveIndicator.test.tsx:29:33
+     27|     }
+     28|     expect(signal('connecting')).toBe('idle')
+     29|     expect(signal('connected')).toBe('idle')
+       |                                 ^
+     30|     expect(signal('reconnecting')).toBe('warn')
+     31|     expect(signal('closed')).toBe('bad')
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/11]⎯
+
+ FAIL  src/pages/dashboard/DashboardPage.test.tsx > 대시보드 · 관제 이상 띠(#72) > 항목 글에 섞인 비신뢰 문자열은 표식으로 보이고 실행되지 않는다
+AssertionError: expected [ '#pending-incidents' ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "#pending-incidents",
++ ]
+
+ ❯ expectInertDom src/test/hostile-fixtures.ts:61:62
+     59|   expect(onAttrs).toEqual([])
+     60|   const hrefs = [...root.querySelectorAll('[href]')].map((el) => el.ge…
+     61|   expect(hrefs.filter((href) => !/^\/(?![/\\])/.test(href))).toEqual([…
+       |                                                              ^
+     62|   const styles = [...root.querySelectorAll('[style]')].map((el) => el.…
+     63|   expect(styles.filter((style) => style.includes('attacker'))).toEqual…
+ ❯ src/pages/dashboard/DashboardPage.test.tsx:677:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/11]⎯
+
+ FAIL  src/pages/dashboard/DashboardPage.test.tsx > 대시보드 · 판정 대기 사건(#72 · #83) > 등록 노드 이름(hostname)이 장비 배지에 오면 표식으로 보이고 실행되지 않는다
+AssertionError: expected [ '#pending-incidents' ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "#pending-incidents",
++ ]
+
+ ❯ expectInertDom src/test/hostile-fixtures.ts:61:62
+     59|   expect(onAttrs).toEqual([])
+     60|   const hrefs = [...root.querySelectorAll('[href]')].map((el) => el.ge…
+     61|   expect(hrefs.filter((href) => !/^\/(?![/\\])/.test(href))).toEqual([…
+       |                                                              ^
+     62|   const styles = [...root.querySelectorAll('[style]')].map((el) => el.…
+     63|   expect(styles.filter((style) => style.includes('attacker'))).toEqual…
+ ❯ src/pages/dashboard/DashboardPage.test.tsx:781:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/11]⎯
+
+ FAIL  src/pages/dashboard/DashboardPage.test.tsx > 대시보드 · 비신뢰 문자열(#41) > 먼저 처리할 사건의 대상은 표식으로 바꾼 뒤 한 줄로 자르고 링크 안에 단추를 두지 않는다
+AssertionError: expected [ '#pending-incidents' ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "#pending-incidents",
++ ]
+
+ ❯ expectInertDom src/test/hostile-fixtures.ts:61:62
+     59|   expect(onAttrs).toEqual([])
+     60|   const hrefs = [...root.querySelectorAll('[href]')].map((el) => el.ge…
+     61|   expect(hrefs.filter((href) => !/^\/(?![/\\])/.test(href))).toEqual([…
+       |                                                              ^
+     62|   const styles = [...root.querySelectorAll('[style]')].map((el) => el.…
+     63|   expect(styles.filter((style) => style.includes('attacker'))).toEqual…
+ ❯ src/pages/dashboard/DashboardPage.test.tsx:797:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/11]⎯
+
+ FAIL  src/pages/dashboard/DashboardPage.test.tsx > 대시보드 · 비신뢰 문자열(#41) > queue 의 대상 · 규칙 이름도 같게 자르고 전체는 말풍선으로 본다
+AssertionError: expected [ '#pending-incidents' ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "#pending-incidents",
++ ]
+
+ ❯ expectInertDom src/test/hostile-fixtures.ts:61:62
+     59|   expect(onAttrs).toEqual([])
+     60|   const hrefs = [...root.querySelectorAll('[href]')].map((el) => el.ge…
+     61|   expect(hrefs.filter((href) => !/^\/(?![/\\])/.test(href))).toEqual([…
+       |                                                              ^
+     62|   const styles = [...root.querySelectorAll('[style]')].map((el) => el.…
+     63|   expect(styles.filter((style) => style.includes('attacker'))).toEqual…
+ ❯ src/pages/dashboard/DashboardPage.test.tsx:815:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/11]⎯
+
+ FAIL  src/pages/dashboard/DashboardPage.test.tsx > 대시보드 · 등록 노드 카드(#64) > 악성 hostname 은 카드 · 접힌 줄 모두 표식으로 보이고 실행 · 외부 요청을 만들지 않는다
+AssertionError: expected [ '#pending-incidents' ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "#pending-incidents",
++ ]
+
+ ❯ expectInertDom src/test/hostile-fixtures.ts:61:62
+     59|   expect(onAttrs).toEqual([])
+     60|   const hrefs = [...root.querySelectorAll('[href]')].map((el) => el.ge…
+     61|   expect(hrefs.filter((href) => !/^\/(?![/\\])/.test(href))).toEqual([…
+       |                                                              ^
+     62|   const styles = [...root.querySelectorAll('[style]')].map((el) => el.…
+     63|   expect(styles.filter((style) => style.includes('attacker'))).toEqual…
+ ❯ src/pages/dashboard/DashboardPage.test.tsx:901:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/11]⎯
+
+ FAIL  src/pages/dashboard/DashboardPage.test.tsx > 대시보드 · 등록 노드 카드(#64) > 짧은 악성 hostname 은 자르지 않고 모든 표식을 보인다
+AssertionError: expected [ '#pending-incidents' ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "#pending-incidents",
++ ]
+
+ ❯ expectInertDom src/test/hostile-fixtures.ts:61:62
+     59|   expect(onAttrs).toEqual([])
+     60|   const hrefs = [...root.querySelectorAll('[href]')].map((el) => el.ge…
+     61|   expect(hrefs.filter((href) => !/^\/(?![/\\])/.test(href))).toEqual([…
+       |                                                              ^
+     62|   const styles = [...root.querySelectorAll('[style]')].map((el) => el.…
+     63|   expect(styles.filter((style) => style.includes('attacker'))).toEqual…
+ ❯ src/pages/dashboard/DashboardPage.test.tsx:924:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/11]⎯
+
+ FAIL  src/pages/incident-detail/IncidentDetailPage.test.tsx > IncidentDetailPage · 비신뢰 문자열(#41) > 악성 표본을 글자로만 그리고 숨은 문자는 표식 · 줄바꿈은 ↵ 로 보이며 2만 자는 접는다
+AssertionError: expected [ '#incident-response' ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "#incident-response",
++ ]
+
+ ❯ expectInertDom src/test/hostile-fixtures.ts:61:62
+     59|   expect(onAttrs).toEqual([])
+     60|   const hrefs = [...root.querySelectorAll('[href]')].map((el) => el.ge…
+     61|   expect(hrefs.filter((href) => !/^\/(?![/\\])/.test(href))).toEqual([…
+       |                                                              ^
+     62|   const styles = [...root.querySelectorAll('[style]')].map((el) => el.…
+     63|   expect(styles.filter((style) => style.includes('attacker'))).toEqual…
+ ❯ src/pages/incident-detail/IncidentDetailPage.test.tsx:1166:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/11]⎯
+
+ FAIL  src/pages/incident-detail/IncidentDetailPage.test.tsx > IncidentDetailPage · 관련 장비(#72) > 추정 장비가 등록 노드면 이름(hostname)을 비신뢰 글자로 그린다
+AssertionError: expected [ '#incident-response' ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "#incident-response",
++ ]
+
+ ❯ expectInertDom src/test/hostile-fixtures.ts:61:62
+     59|   expect(onAttrs).toEqual([])
+     60|   const hrefs = [...root.querySelectorAll('[href]')].map((el) => el.ge…
+     61|   expect(hrefs.filter((href) => !/^\/(?![/\\])/.test(href))).toEqual([…
+       |                                                              ^
+     62|   const styles = [...root.querySelectorAll('[style]')].map((el) => el.…
+     63|   expect(styles.filter((style) => style.includes('attacker'))).toEqual…
+ ❯ src/pages/incident-detail/IncidentDetailPage.test.tsx:1316:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/11]⎯
+
+ FAIL  src/components/organisms/nav/OpsSummary.test.tsx > OpsSummary > 이상 없음: 보통 · 짧은 글과 점 색
+Error: expect(element).toHaveAttribute("data-signal", "idle") // element.getAttribute("data-signal") === "idle"
+
+Expected the element to have attribute:
+  data-signal="idle"
+Received:
+  data-signal="ok"
+ ❯ src/components/organisms/nav/OpsSummary.test.tsx:30:23
+     28|     const full = renderView(view)
+     29|     expect(full.link).toHaveTextContent(text)
+     30|     expect(full.link).toHaveAttribute('data-signal', signal)
+       |                       ^
+     31|     expect(full.link.querySelector('[data-signal]')).toHaveAttribute('…
+     32|     full.unmount()
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/11]⎯
+
+
+ Test Files  5 failed | 62 passed (67)
+      Tests  11 failed | 1068 passed (1079)
+   Start at  04:28:01
+   Duration  20.27s (tests 43%, environment 36%, transform 10%, setup 7%, import 4%)
+
+Environment  jsdom was created 67 times · 47.24s total, 36% of tracked time
+             create it once per worker with pool: 'vmThreads' (keeps per-file isolation) or isolate: false (shares it across files)
+             learn more: https://vitest.dev/guide/improving-performance#test-environments
+

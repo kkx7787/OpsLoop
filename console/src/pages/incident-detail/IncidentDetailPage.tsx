@@ -3,6 +3,8 @@ import { useIncidentCti } from '@/api/cti'
 import { isApiError } from '@/api/errors'
 import { useIncident } from '@/api/incidents'
 import { useNow } from '@/lib/useNow'
+import { useReturnTo } from '@/lib/returnTo'
+import { MonitoringStatus } from '@/components/organisms/MonitoringStatus'
 import { buttonClasses } from '@/components/atoms/button-styles'
 import { UntrustedText } from '@/components/atoms/UntrustedText'
 import { ApiErrorState } from '@/components/organisms/states/ApiErrorState'
@@ -42,12 +44,15 @@ function IncidentDetailView({ incidentKey }: IncidentDetailViewProps) {
   const query = useIncident(incidentKey)
   // 상세와 함께(조기 반환 앞에서) 받는다. 구역은 그리기만 한다.
   const cti = useIncidentCti(incidentKey)
+  const origin = useReturnTo()
 
   if (query.isPending) {
     return <LoadingState size="page" titleAs="h1" title="인시던트를 불러오는 중입니다" description={<UntrustedText value={incidentKey} className="font-mono" />} lines={4} />
   }
 
-  if (query.isError) {
+  // 일시적인 재조회 실패는 폼을 언마운트하지 않는다. 권한·삭제 오류는 이전 내용을 보이지 않는다.
+  const terminal = isApiError(query.error) && [401, 403, 404].includes(query.error.status)
+  if (query.isError && (!query.data || terminal)) {
     const error = query.error
     if (isApiError(error) && error.status === 404) {
       // 서버 설명이 제목과 같으면(없는 사건) 되풀이하지 않는다. 다르면(없는 경로 등) 앞에 붙인다
@@ -67,8 +72,8 @@ function IncidentDetailView({ incidentKey }: IncidentDetailViewProps) {
             </>
           }
           actions={
-            <Link to="/incidents" className={buttonClasses({ size: 'lg' })}>
-              인시던트 목록으로
+            <Link to={origin.href} className={buttonClasses({ size: 'lg' })}>
+              {origin.label}
             </Link>
           }
         />
@@ -80,6 +85,15 @@ function IncidentDetailView({ incidentKey }: IncidentDetailViewProps) {
   const detail = query.data
   return (
     <div className="flex flex-col gap-3">
+      <nav aria-label="사건 탐색" className="flex flex-wrap items-center justify-between gap-2 text-sm">
+        <Link to={origin.href}>← {origin.label}</Link>
+        <button type="button" className="cursor-pointer text-primary hover:underline xl:hidden" onClick={() => {
+          const section = document.getElementById('incident-response')
+          section?.scrollIntoView({ block: 'start' })
+          section?.focus({ preventScroll: true })
+        }}>조치와 판정으로 이동 ↓</button>
+      </nav>
+      <MonitoringStatus updatedAt={query.dataUpdatedAt} error={query.error} onRetry={() => void query.refetch()} busy={query.isFetching} />
       <IncidentHeader detail={detail} />
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px] xl:items-start">
         <div className="flex min-w-0 flex-col gap-3">
@@ -89,7 +103,7 @@ function IncidentDetailView({ incidentKey }: IncidentDetailViewProps) {
           <RawLogSection raw={detail.raw} />
           <VulnLinkPanel data={cti.data} pending={cti.isPending} fetching={cti.isFetching} error={cti.error} onRetry={() => void cti.refetch()} />
         </div>
-        <ResponseSection detail={detail} openedAt={openedAt} className="min-w-0" />
+        <ResponseSection detail={detail} openedAt={openedAt} blocked={query.isError} className="min-w-0" />
       </div>
     </div>
   )

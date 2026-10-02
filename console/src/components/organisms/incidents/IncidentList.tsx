@@ -30,7 +30,7 @@ export function IncidentList({ items, total, now, dataUpdatedAt, offset = 0, lay
   return (
     // 키보드로도 목록 내부를 스크롤할 수 있게 초점을 제공한다.
     // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex
-    <div role="region" aria-label="사건 목록 스크롤" tabIndex={0} className={cn('relative max-h-[62vh] overflow-auto overscroll-contain focus-visible:outline-2 focus-visible:outline-primary', className)}>
+    <div role="region" aria-label="사건 목록 스크롤" tabIndex={0} className={cn('relative md:max-h-[62vh] md:overflow-auto md:overscroll-contain focus-visible:outline-2 focus-visible:outline-primary', className)}>
       {table ? (
         <div role="table" aria-label="인시던트 목록" aria-rowcount={total + 1} className="min-w-[740px]">
           <div role="rowgroup" className="sticky top-0 z-10 bg-canvas shadow-hairline">

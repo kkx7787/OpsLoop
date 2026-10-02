@@ -1,4 +1,5 @@
 import { Link, useSearchParams } from 'react-router'
+import { useReturnTo } from '@/lib/returnTo'
 import { isApiError } from '@/api/errors'
 import { isIpAddress, useSourceDetail } from '@/api/sources'
 import { buttonClasses } from '@/components/atoms/button-styles'
@@ -28,6 +29,7 @@ import { NotFoundState } from '@/components/organisms/states/NotFoundState'
  */
 export function SourceDetailPage() {
   const [searchParams] = useSearchParams()
+  const origin = useReturnTo('/sources')
   const raw = searchParams.get('ip')?.trim() ?? ''
   const valid = isIpAddress(raw)
   const query = useSourceDetail(valid ? raw : '')
@@ -62,7 +64,7 @@ export function SourceDetailPage() {
         description="판정 · 조치는 사건에서 합니다."
         aside={<>
           {detail.incidents_total > 0 && <Link to={incidentsOfHref(detail.ip)} className={buttonClasses({ variant: 'primary', size: 'sm' })}>사건 목록에서 보기</Link>}
-          <Link to="/sources" className={buttonClasses({ size: 'sm' })}>출발지 목록</Link>
+          <Link to={origin.href} className={buttonClasses({ size: 'sm' })}>출발지 목록</Link>
         </>}
       />
       <MonitoringStatus updatedAt={query.dataUpdatedAt} error={query.error} onRetry={() => void query.refetch()} busy={query.isFetching} />

@@ -17,6 +17,7 @@ import { ackPermission } from './permissions'
 
 export interface ActionBarProps {
   detail: IncidentDetail
+  blocked?: boolean
   className?: string
 }
 
@@ -42,7 +43,7 @@ type Confirmable = Exclude<IncidentAction, 'acknowledge'>
  * 확인 양식은 무엇을 하는지 한 문장과 안전 경고(집행 제외 · 대량 해제 알림 · 넣지 않을 곳)만 본문에 두고,
  * 처리 과정 · 예외 · 사용 지침은 문장 끝 도움말(ⓘ)에 둔다.
  */
-export function ActionBar({ detail, className }: ActionBarProps) {
+export function ActionBar({ detail, blocked = false, className }: ActionBarProps) {
   const mutation = useActionMutation(detail.incident_key)
   const me = useMe()
   const ack = ackPermission(me.data?.role)
@@ -97,6 +98,7 @@ export function ActionBar({ detail, className }: ActionBarProps) {
   }
 
   function send(input: ActionInput) {
+    if (blocked) return
     mutation.mutate(input, { onSuccess: close })
   }
 

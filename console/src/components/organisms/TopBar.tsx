@@ -85,7 +85,7 @@ export function TopBar({
           <span className="hidden text-sm text-ink-muted md:block">OpsLoop</span>
         )}
       </div>
-      <div className="flex shrink-0 items-center gap-3.5 text-xs text-ink-muted">
+      <div className="flex shrink-0 items-center gap-2 text-xs text-ink-muted md:gap-3.5">
         {live !== undefined && live}
         {ops !== undefined && <span className="md:hidden">{ops}</span>}
         {status !== undefined && <span className="hidden md:inline">{status}</span>}
@@ -96,7 +96,7 @@ export function TopBar({
             onClick={onRefresh}
             disabled={refreshing}
             disabledReason="새로고침 중"
-            className="hidden text-ink md:inline-flex"
+            className="text-ink"
           >
             <IconRefresh size={14} className={cn(refreshing && 'animate-spin')} />
           </Button>

@@ -1,7 +1,7 @@
 import { useId, useState, type FormEvent } from 'react'
 import { Link, useSearchParams } from 'react-router'
 import { useBlocklist, type BlockEntry } from '@/api/monitoring'
-import { controlHealthView, useControlHealth } from '@/api/health'
+import { useControlHealthView, useControlHealth } from '@/api/health'
 import { useActionMutation } from '@/api/incidents'
 import { describeError } from '@/api/errors'
 import { usePermission } from '@/auth/useMe'
@@ -31,7 +31,7 @@ type Notice = { tone: 'success' | 'danger'; message: string }
 export function BlocklistPage() {
   const query = useBlocklist()
   // 관제 상태는 틀(AppLayout)이 받아 둔 캐시만 읽는다(따로 묻지 않는다). 확인 불가면 멈춤을 붙이지 않는다
-  const health = controlHealthView(useControlHealth(false))
+  const health = useControlHealthView(useControlHealth(false))
   const permission = usePermission('block.release')
   const clock = useNow(1_000)
   const [params, setParams] = useSearchParams()

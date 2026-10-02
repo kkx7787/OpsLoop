@@ -30,6 +30,7 @@ export interface VerdictPanelProps {
   detail: IncidentDetail
   /** 이 사건 화면을 연 시각(ms). 제출까지 걸린 초가 decision_seconds 로 남는다(화면 설계 6.3) */
   openedAt: number
+  blocked?: boolean
   className?: string
 }
 
@@ -43,7 +44,7 @@ export interface VerdictPanelProps {
  * 권한(incident.verdict)이 없으면 패널을 숨기지 않고 흐리게 둔다. 까닭 글은 조치 바의 조회 전용 안내 한 곳에 두고,
  * 여기서는 마우스 올림 · 낭독(Gated 기본)으로만 알린다.
  */
-export function VerdictPanel({ detail, openedAt, className }: VerdictPanelProps) {
+export function VerdictPanel({ detail, openedAt, blocked = false, className }: VerdictPanelProps) {
   const gate = usePermission('incident.verdict')
   const mutation = useVerdictMutation(detail.incident_key)
   const [verdict, setVerdict] = useState<Verdict | null>(null)
@@ -64,6 +65,7 @@ export function VerdictPanel({ detail, openedAt, className }: VerdictPanelProps)
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (blocked) return
     if (!verdict) {
       setMissing(true)
       return

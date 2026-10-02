@@ -12,6 +12,7 @@ import { LoadingState } from '@/components/organisms/states/LoadingState'
 import { revealHidden } from '@/lib/untrusted'
 import { DeliveryStatusBadge } from './ChannelTable'
 import { deliveryProblemParts } from './problem'
+import { DeliverySubject } from './DeliverySubject'
 
 const HEAD = ['만든 시각 (KST)', '채널 · 종류', '대상', '발송 결과', '보낸 시각 · 다음 시도 (KST)']
 const cell = 'px-4 py-3 align-top'
@@ -60,7 +61,7 @@ export function DeliveryTable({ channels, filters, onFilters, data, pending, fet
               return <tr key={r.id}>
                 <td className={`${cell} whitespace-nowrap`}><Time value={r.created_at} format="short" /></td>
                 <td data-label="채널 · 종류" className={cell}><UntrustedText value={r.channel_name} max={120} /><div className="mt-1 text-xs text-ink-muted">{DELIVERY_EVENT_LABEL[r.event] ?? r.event}</div></td>
-                <td data-label="대상" className={`${cell} max-w-xs break-all font-mono text-xs`}><UntrustedText value={r.subject_key} /></td>
+                <td data-label="대상" className={`${cell} max-w-xs break-words`}><DeliverySubject delivery={r} /></td>
                 <td data-label="발송 결과" className={cell}><DeliveryStatusBadge status={r.status} /><div className="mt-1 text-xs text-ink-muted">시도 {r.attempts}회 · {r.response_code ?? '응답 없음'}</div>{problem.cause && <div className="mt-1 text-xs text-danger"><UntrustedText value={problem.cause} />{problem.action && <> <InfoTip label="실패 조치">{problem.action}</InfoTip></>}</div>}</td>
                 <td data-label="보낸 시각 · 다음 시도" className={`${cell} text-xs`}>{r.status === 'sent' ? <Time value={r.sent_at} format="short" /> : r.status === 'queued' ? <>다음 <Time value={r.next_attempt_at} format="short" /></> : '—'}</td>
               </tr>

@@ -530,7 +530,9 @@ export function useIncident(key: string) {
   return useQuery({
     queryKey: incidentKeys.detail(key),
     queryFn: ({ signal }) => fetchIncident(key, signal),
-    staleTime: 60_000,
+    staleTime: 30_000,
+    // 웹소켓이 끊겨도 집행 결과를 다시 받는다. 백그라운드 탭에서는 기본 정책대로 멈춘다.
+    refetchInterval: 30_000,
     enabled: key !== '',
   })
 }

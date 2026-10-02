@@ -18,7 +18,7 @@ describe('LiveIndicator', () => {
     expect(consoleTag(root)).toBeNull()
   })
 
-  it('이어져 있음은 웹소켓 연결만 뜻하므로 점은 정상 색이 아닌 idle 이다. 끊김 · 로그인 필요는 그대로 눈에 띈다', () => {
+  it('연결은 초록으로, 연결 전은 중립으로, 끊김 · 로그인 필요는 경고로 구분한다', () => {
     const signal = (status: 'connecting' | 'connected' | 'reconnecting' | 'closed') => {
       const { container, unmount } = render(<LiveIndicator live={{ status, retries: 0 }} />)
       const value = container.querySelector('[data-signal]')?.getAttribute('data-signal')
@@ -26,7 +26,7 @@ describe('LiveIndicator', () => {
       return value
     }
     expect(signal('connecting')).toBe('idle')
-    expect(signal('connected')).toBe('idle')
+    expect(signal('connected')).toBe('ok')
     expect(signal('reconnecting')).toBe('warn')
     expect(signal('closed')).toBe('bad')
   })
