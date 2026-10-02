@@ -31,6 +31,8 @@ const DEVICE_NOTE = '기존 근거(대상 열 · 근거 발생원 · 탐지와 �
 export function IncidentHeader({ detail, className }: IncidentHeaderProps) {
   const sensor = sensorOf(detail.rule_id)
   const last = detail.verdicts[detail.verdicts.length - 1]
+  // 배지는 최근 판정, 시계 끝점은 첫 판정이다(#94). 판정은 기록 순서로 온다
+  const first = detail.verdicts[0]
   const devices = deviceView(detail)
   // 장비 미확인일 때만 규칙상 추정 장비를 ⓘ 에 적는다. 배지에는 쓰지 않는다
   const guessed = devices.unknown ? devices.fallback : []
@@ -43,7 +45,7 @@ export function IncidentHeader({ detail, className }: IncidentHeaderProps) {
           <StatusBadge status={detail.status} />
           {last && <VerdictBadge verdict={last.verdict} title="최근 판정" />}
         </>}
-        aside={<ElapsedClock severity={detail.severity} ruleId={detail.rule_id} firstTs={detail.first_ts} judgedAt={last?.created_at ?? null} />}
+        aside={<ElapsedClock severity={detail.severity} ruleId={detail.rule_id} firstTs={detail.first_ts} judgedAt={first?.created_at ?? null} />}
       />
       <div className="flex flex-col gap-2 border-y border-line py-3">
         <dl className="m-0 flex flex-wrap gap-x-8 gap-y-2 text-xs">

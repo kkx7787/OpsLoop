@@ -9,6 +9,7 @@ export {
   FILTER_PARAMS,
   filtersFromSearch,
   isSort,
+  quickViewFilters,
   ruleOptionsOf,
   searchFromFilters,
   SORT_LABEL,

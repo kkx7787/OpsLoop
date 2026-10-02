@@ -8,7 +8,7 @@ export interface ElapsedClockProps {
   ruleId: string
   /** 발생 시각. 시계는 여기서부터 세고 교대할 때 초기화하지 않는다 */
   firstTs: string
-  /** 판정된 시각. 있으면 시계를 멈추고 판정까지 걸린 시간을 보인다 */
+  /** 첫 판정 시각. 있으면 시계를 멈추고 '발생 → 판정' 을 보인다. 재판정은 시계를 늘리지 않는다 */
   judgedAt?: string | null
   className?: string
 }
@@ -28,6 +28,7 @@ const TONE_LABEL: Record<ElapsedTone, string> = {
 /**
  * 경과 시간과 판정 목표(화면 설계 3장 표). 목표 임박과 초과는 시간 경고색으로 표시한다.
  * 관제 자기 탐지(R2xx) 사건은 심각도와 관계없이 critical 목표를 따른다(verdictTargetSeconds).
+ * 판정 전은 발생부터 지금까지('경과'), 판정 뒤는 발생부터 첫 판정까지('발생 → 판정')다. 목표 색도 같은 값으로 정한다.
  */
 export function ElapsedClock({ severity, ruleId, firstTs, judgedAt, className }: ElapsedClockProps) {
   const judged = toDate(judgedAt)
@@ -38,7 +39,7 @@ export function ElapsedClock({ severity, ruleId, firstTs, judgedAt, className }:
   return (
     <div className={cn('flex flex-col items-start gap-0.5 md:items-end', className)} data-elapsed-tone={tone}>
       <span className={cn('text-base font-medium tracking-heading tabular-nums', TONE_CLASS[tone])}>
-        {judged ? '판정까지 ' : '경과 '}
+        {judged ? '발생 → 판정 ' : '경과 '}
         {formatDuration(seconds * 1000)}
       </span>
       <span className="text-xs text-ink-muted">

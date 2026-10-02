@@ -38,19 +38,20 @@ export const INCIDENT_STATUS_LABEL: Record<IncidentStatus, string> = {
 }
 
 /**
- * 발생원. 규칙 번호대로 도출한다(규칙 정의의 번호 체계).
+ * 발생원. 규칙 번호대로 도출한다(규칙 정의의 번호 체계). 규칙 번호 분류이며 장비가 아니다(장비는 devices).
  * 정상이 없는 환경(허니팟)과 있는 환경(웹 노드 · 관제 시스템)의 수치를 섞어 보지 않으려고 화면에 따로 보인다(화면 설계 4장).
- *  R0xx 허니팟 · R1xx 웹 노드 · R2xx 관제 자기 탐지 · R3xx 인프라 · 그 밖은 기타
+ *  R0xx 허니팟 / R1xx 웹 · 로그인 규칙 / R2xx 관제 자기 탐지 / R3xx 인프라 / 그 밖은 기타
+ * R1xx 는 web-01 · 웹 디코이 · 콘솔 이벤트를 함께 보는 규칙이라 장비 이름('웹 노드')으로 적지 않는다(#94).
  * R2xx 는 관제 시스템 자신을 보는 규칙이다(detector/rules_audit.json a1 · rules_self.json s1). R201 은 콘솔 관리 행위의
  * 감사 기록, R202(미등록 에이전트)는 데이터 노드의 수집 관문 · 적재기 거부 기록이라 '콘솔' 로 묶지 않는다
  * (상태판 app/targets.py 도 R202 를 data-node 에 둔다). 화면 표기일 뿐 주소창 조건 · 서버 인자로 쓰지 않는다.
  */
-export const SENSORS = ['허니팟', '웹 노드', '관제 자기 탐지', '인프라', '기타'] as const
+export const SENSORS = ['허니팟', '웹 · 로그인 규칙', '관제 자기 탐지', '인프라', '기타'] as const
 export type Sensor = (typeof SENSORS)[number]
 
 const SENSOR_BY_HUNDREDS: Record<string, Sensor> = {
   '0': '허니팟',
-  '1': '웹 노드',
+  '1': '웹 · 로그인 규칙',
   '2': '관제 자기 탐지',
   '3': '인프라',
 }

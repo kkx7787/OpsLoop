@@ -19,7 +19,9 @@ describe('sensorOf', () => {
   it('규칙 번호대로 발생원을 가른다', () => {
     expect(sensorOf('R001')).toBe('허니팟')
     expect(sensorOf('R005')).toBe('허니팟')
-    expect(sensorOf('R101')).toBe('웹 노드')
+    // R1xx 는 web-01 · 웹 디코이 · 콘솔 이벤트를 함께 보는 규칙이다. 장비 이름으로 적지 않는다(#94)
+    expect(sensorOf('R101')).toBe('웹 · 로그인 규칙')
+    expect(sensorOf('R103')).toBe('웹 · 로그인 규칙')
     expect(sensorOf('R201')).toBe('관제 자기 탐지')
     // R202 는 데이터 노드의 수집 관문 · 적재기 기록이지만 같은 자기 탐지다(콘솔로 묶지 않는다)
     expect(sensorOf('R202')).toBe('관제 자기 탐지')

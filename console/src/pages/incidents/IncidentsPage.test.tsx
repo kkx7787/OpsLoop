@@ -295,15 +295,43 @@ describe('IncidentsPage', () => {
     expect(listUrls(fetch)).toEqual(['/api/incidents?undetermined=true&device=web-02&limit=25&offset=0'])
     expect(screen.getByRole('combobox', { name: '판정' })).toHaveValue('undetermined')
     expect(within(screen.getByRole('table')).getByText('미결')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: '미결' }))
-    await waitFor(() => expect(router.state.location.search).toBe('?undetermined=true'))
-    await waitFor(() => expect(listUrls(fetch)).toContain('/api/incidents?undetermined=true&limit=25&offset=0'))
+    // 선택 표시는 장비를 뺀 조건으로 정한다(#94). 빠른 보기를 눌러도 장비는 남는다
     expect(screen.getByRole('button', { name: '미결' })).toHaveAttribute('aria-pressed', 'true')
+    fireEvent.click(screen.getByRole('button', { name: '조치중' }))
+    await waitFor(() => expect(router.state.location.search).toBe('?status=in_progress&device=web-02'))
+    fireEvent.click(screen.getByRole('button', { name: '미결' }))
+    await waitFor(() => expect(router.state.location.search).toBe('?undetermined=true&device=web-02'))
+    await waitFor(() => expect(screen.getByRole('button', { name: '미결' })).toHaveAttribute('aria-pressed', 'true'))
     // 판정 칸에서 미판정을 고르면 미결 조건은 빠진다
     fireEvent.change(screen.getByRole('combobox', { name: '판정' }), { target: { value: 'false' } })
-    await waitFor(() => expect(router.state.location.search).toBe('?judged=false'))
+    await waitFor(() => expect(router.state.location.search).toBe('?judged=false&device=web-02'))
     fireEvent.change(screen.getByRole('combobox', { name: '판정' }), { target: { value: 'undetermined' } })
-    await waitFor(() => expect(router.state.location.search).toBe('?undetermined=true'))
+    await waitFor(() => expect(router.state.location.search).toBe('?undetermined=true&device=web-02'))
+  })
+
+  it('빠른 보기 다섯은 장비 · 정렬을 남기고 나머지 조건만 바꾼다(#94). 조건 초기화는 장비도 비운다', async () => {
+    const fetch = stubApi((url) => json(page(0, url.searchParams.get('status') === 'resolved' ? [] : [incident(84)], 1)))
+    const { router } = renderRoutes(routes(), '/incidents?status=open&rule_id=R003&actor_ip=203.0.113.5&device=web-01&sort=recent&page=2', noRetryClient())
+    await screen.findByRole('table')
+    const views: Array<[string, string]> = [
+      ['미판정만', '?judged=false&device=web-01&sort=recent'],
+      ['critical 미판정', '?severity=critical&judged=false&device=web-01&sort=recent'],
+      ['미결', '?undetermined=true&device=web-01&sort=recent'],
+      ['조치중', '?status=in_progress&device=web-01&sort=recent'],
+      ['전체 사건', '?device=web-01&sort=recent'],
+    ]
+    for (const [label, search] of views) {
+      fireEvent.click(screen.getByRole('button', { name: label }))
+      await waitFor(() => expect(router.state.location.search).toBe(search))
+      await waitFor(() => expect(screen.getByRole('button', { name: label })).toHaveAttribute('aria-pressed', 'true'))
+    }
+    // '전체 사건' 은 그 장비의 전체다. 정렬도 그대로 간다
+    await waitFor(() => expect(listUrls(fetch)).toContain('/api/incidents?device=web-01&sort=recent&limit=25&offset=0'))
+    expect(screen.getByRole('combobox', { name: '장비' })).toHaveValue('web-01')
+    // 조건 초기화(빈 목록)는 지금처럼 정렬만 남긴다
+    fireEvent.change(screen.getByRole('combobox', { name: '상태' }), { target: { value: 'resolved' } })
+    fireEvent.click(await screen.findByRole('button', { name: '조건 초기화' }))
+    await waitFor(() => expect(router.state.location.search).toBe('?sort=recent'))
   })
 
   it('실시간 판정으로 마지막 쪽이 사라지면 유효한 마지막 쪽으로 이동한다', async () => {
@@ -547,7 +575,8 @@ describe('IncidentsPage · 관련 장비(#72)', () => {
     await waitFor(() => expect(optionTexts()).toEqual(['전체', 'web-01', 'web02.lab', '허니팟 센서', '관제 콘솔', '데이터 노드', '장비 미확인']))
     // 장비 선택지를 따로 묻지 않는다(목록 요청과 그 쪽의 CVE 배지 요청뿐)
     expect(calledUrls(fetch).every((url) => url.startsWith('/api/incidents?') || url.startsWith('/api/cti/badges?'))).toBe(true)
-    expect(screen.getByRole('button', { name: '미판정만' })).toHaveAttribute('aria-pressed', 'false')
+    // 장비는 빠른 보기 선택 표시에 세지 않는다(#94). 장비를 고른 채 미판정만이다
+    expect(screen.getByRole('button', { name: '미판정만' })).toHaveAttribute('aria-pressed', 'true')
   })
 
   it('장비를 바꾸면 쪽이 빠지고 다시 묻는다. 전체로 돌리면 주소에서도 빠진다', async () => {
