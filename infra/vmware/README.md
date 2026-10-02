@@ -220,7 +220,7 @@ ssh -F ~/.ssh/config.opsloop console-a 'docker exec opsloop-api printenv FORWARD
 
 - 단계는 `scripts/console-join.sh` 가 함수로 갖고 있다. 기본은 드라이런(명령만 찍고 원격 · VM 에 아무것도 하지 않는다)이고 `--apply` 로 돌린다. `--step <이름>` 은 한 단계만, `--from <이름>` 은 그 단계부터 끝까지. 실패한 단계에서 멈춘다.
 - HAProxy 상태는 방화벽의 master 소켓(`/run/haproxy-master.sock`, systemd 단위의 `-S`)으로 바꾼다. `@1` 은 지금 작업 프로세스다.
-- **reload 하면 maint · drain 이 풀린다.** 런타임 상태를 파일로 남기지 않으므로 reload 뒤 console-b 는 헬스체크만 보고 다시 들어온다. 합류 · 떼기 중에는 `systemctl reload haproxy` 를 하지 않는다. 했으면 상태를 다시 읽고 maint 를 다시 건다.
+- **reload 하면 maint · drain 이 풀린다.** 런타임 상태를 파일로 남기지 않으므로 reload 뒤 console-b 는 헬스체크만 보고 다시 들어온다. 합류 · 떼기 중에는 `systemctl reload haproxy` 를 하지 않는다. 했으면 상태를 다시 읽고 maint 를 다시 건다. 방화벽 VM 재부팅 · HAProxy 재시작도 같다(아래 '재부팅 · 재시작 뒤 maint 다시 걸기').
 - 떼기에서 컨테이너를 `restart=no` 로 멈춰 두므로, VM 만 켜져도 콘솔이 뜨지 않아 헬스체크에서 빠진다. 합류의 `stop-old` 는 그렇지 않은 옛 컨테이너(restart: always 라 부팅과 함께 뜬다)를 멈춘다.
 - B 가 켜져 서비스 중일 때 `db-console-role.sh` 를 돌리면 비밀번호가 바뀐다. 그때는 `console-a console-b` 둘 다 적는다.
 
@@ -232,6 +232,19 @@ ssh -F ~/.ssh/config.opsloop fw 'echo "@1 show servers state consoles" | sudo -n
 #   maint 와 drain 은 서로를 푼다(HAProxy 2.8 srv_adm_set_maint · srv_adm_set_drain). drain 을 걸면 maint 가 풀리고 헬스체크가 다시 돈다
 ssh -F ~/.ssh/config.opsloop fw 'echo "@1 set server consoles/console-b state maint" | sudo -n nc -N -U /run/haproxy-master.sock'
 #   state ready · state drain 도 같은 꼴. 성공하면 빈 줄만 돌아온다
+```
+
+**재부팅 · 재시작 뒤 maint 다시 걸기.** HAProxy 는 런타임 maint 를 파일에 남기지 않는다(`haproxy/haproxy.cfg` 에 서버 상태 파일 설정이 없다).
+그래서 방화벽 VM 재부팅 · HAProxy 재시작(reload 포함) 뒤 새로 뜬 HAProxy 에서 console-b 는 maint 가 아니라 DOWN(운영 0 · 관리 0)이다(B 가 꺼져 있을 때).
+요청이 가지 않는 것은 헬스체크가 실패해서일 뿐이라, B 의 `/health` 가 답하면 설정상(`rise 3`) 연속 정상 3회 뒤 분배에 들어간다(실측하지 않았다).
+최종 상태 재시험 때 실제로 이 상태였다(`docs/2026-09-29-테스트-결과서.md` 12.5 시작 상태).
+B 가 꺼져 있거나(평시) 합류 · 떼기 중이면 재부팅 · 재시작 · reload 뒤 maint 를 다시 걸고 확인한다. 합류의 `vm-start` · `up`, 떼기의 `stop` · `vm-stop` 도 maint 가 아니면 멈춘다.
+B 를 합류시켜 분배 중이면 걸지 않는다. 걸면 B 가 분배에서 빠진다. 그때는 console-b 가 헬스체크로 다시 동작(6번째 열 2)하는지만 본다.
+
+```bash
+ssh -F ~/.ssh/config.opsloop fw 'echo "@1 show servers state consoles" | sudo -n nc -N -U /run/haproxy-master.sock'   # console-b 7번째 열이 0 이면 풀린 것
+infra/vmware/scripts/console-join.sh --step maint --apply      # maint 를 걸고 관리 상태가 maint 가 될 때까지 기다린다 (위 set server … state maint 와 같다)
+ssh -F ~/.ssh/config.opsloop fw 'echo "@1 show servers state consoles" | sudo -n nc -N -U /run/haproxy-master.sock'   # console-b 운영 0 · 관리 1
 ```
 
 켜는 절차 (Mac, 저장소 루트. 첫 열은 `console-join.sh` 단계 이름):
@@ -439,6 +452,8 @@ infra/vmware/scripts/verify-db-roles.sh
 #    삭제 · 비밀번호 요청은 없는 주소다. roundrobin 이라 요청의 절반), 3번 뒤 같은 이미지로 다시 넣는다. up 은 maint 를 요구하고 분배 복귀는 ready 단계다
 infra/vmware/scripts/console-join.sh --step maint --apply     # 3번 전
 infra/vmware/scripts/console-join.sh --from image --apply     # 3번 뒤: image · env · up · verify · ready · assets
+#    두 줄은 B VM 이 켜져 있을 때만 맞다. --from image 는 VM 켜기를 건너뛰고 image 단계가 B 에 ssh 로 docker load 한다.
+#    B 가 꺼져 있으면 두 줄을 쓰지 않는다. 다음에 켤 때 전체 합류(console-join.sh --apply)의 image 단계가 새 이미지를 옮긴다
 ```
 
 - `20260923_console_ops.sql` · `20260924_notify.sql` 을 다시 적용하면 감사 조회 뷰와 보호 트리거가 계정 조건 없이 다시 만들어진다(계정 감사가 감사 화면에서 빠지고 지울 수 있게 된다). 그때는 `20261001_console_accounts.sql` 도 다시 적용한다. 역할 블록(`20260924_db_roles.sql`)은 표 권한만 거두므로 다시 적용해도 함수 실행 권한은 남는다. `20261002_console_accounts_manage.sql` 은 이것들을 다시 적용한 뒤에도 다시 할 필요가 없다. 콘솔 역할이 없을 때 적용했으면 역할을 만든 뒤 다시 적용한다(역할이 있을 때만 실행 권한을 준다).
@@ -481,7 +496,7 @@ data01 시각을 읽지 못했습니다
 -- 2026-10-02 12:33:25 KST 시도 2/3
 시계 차이 (data01 − Mac) +0.214초 · 잰 왕복 0.402초
 복원 시험 (events verdicts actions blocklist): 복원 … · 운영 …
-백업 8.4M …/opsloop-backup/opsloop-20261002-0333.dump · 표 23 개 · 역할 8 개 opsloop-20261002-0333.globals.sql
+백업 26M …/opsloop-backup/opsloop-20261002-0333.dump · 표 26 개 · 역할 8 개 opsloop-20261002-0333.globals.sql
 원장 사본 … (loki · gate · admin)
 == 2026-10-02 12:33:51 KST 백업 성공 (시도 2/3 · 재시도 뒤 성공)
 ```
@@ -502,7 +517,7 @@ tail -n 30 ~/opsloop-backup/backup.log
 
 | 구분 | 무엇 | 비고 |
 |---|---|---|
-| 든다 | DB 덤프 `~/opsloop-backup/opsloop-<시각>.dump` | `pg_dump -Fc opsloop`, DB 하나. 표 23 · 데이터 · 시퀀스 값 · 함수 7 · 트리거 4 · 뷰 3 · 참조 키 15 · 표 · 열 · 함수 권한(2026-09-27 기준). 계정 해시 · 노드 토큰 해시 · 알림 채널 주소가 들어 있어 비밀처럼 다룬다(0600 · 폴더 0700 · 21개 보관) |
+| 든다 | DB 덤프 `~/opsloop-backup/opsloop-<시각>.dump` | `pg_dump -Fc opsloop`, DB 하나. 표 26 · 데이터 · 시퀀스 7 · 시퀀스 값 · 참조 키 15 · 트리거 10 · 함수 19 · 뷰 3 · 표 · 열 · 함수 권한(2026-10-02 복원 훈련 r03 의 restore · verify 기준, `docs/evidence/2026-10-02-retest-restore/run.log`). 계정 해시 · 노드 토큰 해시 · 알림 채널 주소가 들어 있어 비밀처럼 다룬다(0600 · 폴더 0700 · 21개 보관) |
 | 든다 | 역할 목록 `opsloop-<시각>.globals.sql` | 덤프와 같은 시각. 역할 8개 · 속성(INHERIT · 접속 한도) · `pg_read_all_data` 멤버십. 비밀번호는 없다(`--no-role-passwords`). 2026-09-27 이전 덤프에는 없다. `opsloop_enforcer` 는 #47 설치 뒤 덤프부터 있다 |
 | 든다 | 원장 사본 `~/opsloop-backup/ledger/` (loki · gate · admin) | rsync 로 따라 맞춘 사본 하나다. 쓰는 중에 복사하므로 한 시점으로 맞는다는 보장이 없고, 이 사본으로 되돌려 본 적이 없다 |
 | 안 든다 | 역할 비밀번호 · `/etc/opsloop` 의 파일 9개(`*.env` 8개 · `gap-ack.json`) · compose `.env`(`POSTGRES_PASSWORD`) · 콘솔 `~/opsloop/.env`(`SESSION_SECRET` · 콘솔 DB 비밀번호) | VM 안에만 있다. DB 만 되돌릴 때는 호스트에 남은 파일을 그대로 쓴다 |
@@ -543,7 +558,7 @@ D=~/opsloop-backup/opsloop-<시각>.dump; G=${D%.dump}.globals.sql
 grep -B2 -A2 "$(basename "$D")" ~/opsloop-backup/backup.log     # 그 회차의 '복원 시험' 건수 · 성공 (판정 · 조치가 늘었으면 '참고' 줄이 사이에 낀다)
 shasum -a 256 "$D" "$G"                                          # 기록에 남긴다
 docker run --rm -i --pull never --network none --entrypoint pg_restore postgres:16-alpine --list < "$D" | grep 'Archive created'   # T_b (UTC)
-docker run --rm -i --pull never --network none --entrypoint pg_restore postgres:16-alpine --list < "$D" | grep -c 'TABLE DATA'      # 23
+docker run --rm -i --pull never --network none --entrypoint pg_restore postgres:16-alpine --list < "$D" | grep -c 'TABLE DATA'      # 26
 grep -c '^CREATE ROLE ' "$G"; grep -ciE "PASSWORD '|SCRAM-SHA-256\\$" "$G"                                                       # 8 · 0
 ```
 
@@ -694,7 +709,10 @@ SELECT (SELECT count(*) FROM pg_tables WHERE schemaname = 'public') AS 표,
        (SELECT count(*) FROM pg_views WHERE schemaname = 'public') AS 뷰,
        (SELECT count(*) FROM pg_sequences WHERE schemaname = 'public') AS 시퀀스;
 SQL
-#    앞의 일곱 줄은 모두 0. 마지막 줄 23 | 15 | 4 | 7 | 3 | 7 (2026-09-27 운영 값. 이 쿼리는 그날 운영에서 읽기 전용으로 돌려 확인했다)
+#    앞의 일곱 줄은 모두 0. 마지막 줄(표 | 참조_키 | 켜진_트리거 | 함수 | 뷰 | 시퀀스)은 지금 구조로 26 | 15 | 10 | 19 | 3 | 7
+#      근거: 2026-10-02 복원 훈련 r03 의 restore · verify(docs/evidence/2026-10-02-retest-restore/run.log). 표 26 · FK 15 · 시퀀스 7 ·
+#      함수 19 · 트리거 10 · 뷰 3 이 운영 구조와 같고 꺼진 트리거는 0 이다(무결성 19개 0).
+#      이 쿼리 자체는 2026-09-27 운영에서 읽기 전용으로 돌려 확인했다(그때 23 | 15 | 4 | 7 | 3 | 7)
 ```
 
 - T_b 뒤에 잃은 것과 되살아난 것을 본다. (가) 는 옛 DB 가 남아 있으므로 거기서 T_b 뒤 판정 · 감사 행을 뽑는다. 잃은 판정은 콘솔에서 다시 남기고, 차단 해제 · 노드 폐기(`nodes.py`) · 계정 변경(`auth.py`)은 다시 한다.
@@ -1010,9 +1028,11 @@ infra/vmware/scripts/verify.sh        # 7장이 공격자 → web-01 을 '실패
   ```bash
   ssh -F ~/.ssh/config.opsloop attacker 'exec 3<>/dev/tcp/192.168.50.21/80; for i in $(seq 1 10); do printf "GET / HTTP/1.1\r\nHost: w\r\n\r\n" >&3; head -1 <&3; sleep 30; done'
   ```
-- **해제 · 만료 뒤 복구:** 콘솔에서 해제하면 2분 안에 요청했던 지점의 집합에서 빠지고(지점 칸 '빠짐 확인 전' → '빠짐') 공격자 VM 의 요청이
-  다시 통과한다. 감사는 released 한 줄이고 관문을 요청하지 않은 행에는 unenforced 가 없다. 만료는 원소 timeout 이 목록의
-  until 과 같아 저절로 빠진다(`nft list set` 의 `expires`).
+- **해제 · 만료 뒤 복구:** 콘솔에서 해제하면 요청했던 지점의 집합에서 빠지고 공격자 VM 의 요청이 다시 통과한다. 집합에서 빠지는 것은
+  보통 2분 안이다(집행기 · 동기화 1분 타이머의 위상에 따라 다르다). 화면 지점 칸이 '빠짐 확인 전' → '빠짐' 으로 바뀌는 것은 그 뒤
+  집행기가 다음 회차에 두 지점 보고를 읽고서다. 그래서 집합에서 빠진 것보다 늦고 2분을 넘을 수 있다(최종 상태 재시험 한 회차 122.8초,
+  `docs/2026-09-29-테스트-결과서.md` 12.4). 이 반영 시점은 그대로다(집행기 코드는 바꾸지 않았다). 감사는 released 한 줄이고 관문을
+  요청하지 않은 행에는 unenforced 가 없다. 만료는 원소 timeout 이 목록의 until 과 같아 저절로 빠진다(`nft list set` 의 `expires`).
 - **동기화 중단:** 아래로 멈춘 뒤 관문을 요청한 새 차단만 관문에 들어가고(내부 방화벽만 요청한 차단은 어디에도 들지 않는다), 5분 뒤 내부
   방화벽 지점이 '확인 지연' 이 된다. 이미 들어간 원소는 만료까지 남는다. 다시 켜면 한 회차 안에 맞춰진다.
 
@@ -1062,9 +1082,45 @@ infra/vmware/scripts/verify.sh        # 7장이 공격자 → web-01 을 '실패
   관문 반영 지연(평균 · 중앙값 · 최대)에서 뺀다. 관문 빠짐 확인 전 행(관문 없이 다시 건 행 · 관리자 관문 빼기 뒤)을 같은 회차 안에 풀고
   다시 걸거나 확인 전에 상태 파일을 잃어도 다시 걸기 전의 확인은 이어받지 않는다. 집행기가 해제 · 만료를 보기 전(같은 회차 안)에 다른
   만료로 다시 걸면 다음 회차까지(최대 1분) 옛 확인이 '집행 확인' 으로 보인다(감사 · 보고서에는 남지 않는다).
-- 반영 순서: DB(20261003 만 psql) → 집행기(설치기, 27 → 29 → 30 → 77) → 내부 방화벽 동기화(위 5번의 파일 교체) → 콘솔 A · triage.
-  콘솔 B 는 꺼 둔 채 새 이미지로만 합류한다(`console-join.sh --from image`, 옛 이미지의 재차단은 `{fw}` 를 남긴다). triage 는
-  `puller/install-ingest.sh` 가 parser · detector · puller 를 통째로 바꾸므로 `git diff --stat` 으로 triage.py 말고 바뀐 것이 없는지 먼저 본다.
+- 반영 순서: DB(20261003 만 psql) → 집행기(설치기, 27 → 29 → 30 → 77) → 내부 방화벽 동기화(아래 '동기화 갱신') → 콘솔 A · triage.
+  콘솔 B 는 새 이미지로만 합류한다(옛 이미지의 재차단은 `{fw}` 를 남긴다). B 가 꺼져 있으면(평소) 꺼 둔 채 두고, 켤 때 전체 합류
+  (`console-join.sh --apply`)를 쓴다. 그 image 단계가 A 의 새 이미지를 옮긴다. `--from image --apply` 는 B VM 이 켜져 있을 때만 맞다
+  (VM 켜기를 건너뛰고 image 단계가 B 에 ssh 로 `docker load` 한다). 켜진 B 는 `--step maint --apply` 뒤 `--from image --apply` 다(`up` 이 maint 를 요구한다).
+  triage 는 `puller/install-ingest.sh` 가 parser · detector · puller 를 통째로 바꾸므로 `git diff --stat` 으로 triage.py 말고 바뀐 것이 없는지 먼저 본다.
+- 동기화 갱신: 위 '내부 방화벽 차단 집행' 5번은 첫 설치다. 이미 도는 동기화의 파일만 바꿀 때는 타이머를 멈추고, 돌던 회차가 끝나기를
+  기다려 파일을 바꾸고, 새 판을 첫 설치 5번처럼 시험한(계획 · 자가 시험 · 한 회차) 뒤 맞을 때만 타이머를 다시 켠다. 설정 `/etc/default/opsloop-block-sync` · 키 `/etc/opsloop/block-sync.env` 는 그대로 둔다.
+  동기화 단위는 oneshot 이라 회차가 도는 동안 `systemctl is-active` 가 `active` 가 아니라 `activating`(막 시작하는 중. 회차가 끝날 때까지
+  이 상태다)을 돌려준다. `active` 만 기다리면 도는 회차를 놓치므로 둘 다 기다린다. 기다림은 120초까지다.
+
+  ```bash
+  C=$(git rev-parse --short HEAD)       # 커밋된 판만 올린다
+  # 1. 타이머 멈춤 → 돌던 회차가 끝나기를 기다림 → 파일 교체. 120초 안에 끝나지 않으면 파일을 바꾸지 않고 타이머만 다시 켠다
+  git archive "$C" infra/aws/gateway/block-sync.py infra/aws/gateway/opsloop-block-sync.service infra/aws/gateway/opsloop-block-sync.timer \
+    | ssh -F ~/.ssh/config.opsloop fw 'set -e; rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && cd /tmp/ol/infra/aws/gateway
+    sudo -n systemctl stop opsloop-block-sync.timer
+    for i in $(seq 120); do
+      s=$(systemctl is-active opsloop-block-sync.service || true)
+      case $s in active|activating) sleep 1 ;; *) break ;; esac
+    done
+    case $s in active|activating)
+      sudo -n systemctl start opsloop-block-sync.timer
+      echo "120초 안에 회차가 끝나지 않았다 ($s). 파일을 바꾸지 않고 타이머만 다시 켰다" >&2; exit 1 ;;
+    esac
+    echo "돌던 회차 없음 ($s) · 파일을 바꾼다"
+    sudo -n install -m 0755 block-sync.py /usr/local/lib/opsloop/
+    sudo -n install -m 0644 opsloop-block-sync.service opsloop-block-sync.timer /etc/systemd/system/
+    sudo -n systemctl daemon-reload'
+  # 2. 새 판을 시험한다. 첫 설치 5번과 같이 계획만(--dry-run) · 자가 시험(--selftest, 시험 뒤 한 회차 돈다) · 서비스로 한 회차
+  ssh -F ~/.ssh/config.opsloop fw 'sudo -n sh -c "set -a; . /etc/default/opsloop-block-sync; . /etc/opsloop/block-sync.env; set +a; python3 /usr/local/lib/opsloop/block-sync.py --dry-run"'
+  ssh -F ~/.ssh/config.opsloop fw 'sudo -n sh -c "set -a; . /etc/default/opsloop-block-sync; . /etc/opsloop/block-sync.env; set +a; python3 /usr/local/lib/opsloop/block-sync.py --selftest"'
+  ssh -F ~/.ssh/config.opsloop fw 'sudo -n systemctl start opsloop-block-sync.service; sudo -n journalctl -u opsloop-block-sync -n 10 --no-pager'
+  #    자가 시험 'ok' · 한 회차 요약 'nft · 목록 fw 확인 · …' 이어야 한다.
+  #    요약이 기대와 다르거나 start 가 실패하면 타이머를 켜지 말고 옛 판으로 되돌린다(C 에 옛 판 커밋을 넣고 1번부터 다시 한다)
+  # 3. 2번 확인이 맞을 때만 타이머를 다시 켠다
+  ssh -F ~/.ssh/config.opsloop fw 'sudo -n systemctl start opsloop-block-sync.timer; systemctl is-active opsloop-block-sync.timer'
+  #    타이머 active.
+  #    1번이 파일 교체 도중에 멈추면 타이머는 멈춘 채다. 까닭을 고쳐 1번을 다시 돌리고 2 · 3번으로 켠다(멈춘 채 두면 5분 뒤 내부 방화벽 지점이 '확인 지연')
+  ```
 - 확인: `infra/vmware/scripts/verify-db-roles.sh` 의 '차단 적용 지점 (이슈 #77. …)' 절(집행 역할 points 읽기 허용 · 갱신 거부, 콘솔 넓히기 허용,
   좁히기 거부 트리거 · 값 제약).
 - 복원 훈련은 20261003 적용 뒤 첫 백업(04:30 · 12:30 · 20:30) 다음에 한다. 그 전 백업은 지문(blocklist · absorbed_blocks 의 points)을 읽지 못해
@@ -1217,8 +1273,11 @@ C=$(git rev-parse --short HEAD)
 ssh -F ~/.ssh/config.opsloop data01 'sudo -n docker exec -i opsloop-db psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -q' \
   < infra/migrations/20261004_honeypot_names.sql
 # 2. 콘솔 이미지: 화면(npm run build → app/static)과 API 를 콘솔 A 에 올린다 (이슈 #47 과 같은 절차 · 백업 먼저)
-# 3. 콘솔 B 는 꺼 둔 채 새 이미지로만 합류한다. 옛 B 이미지는 이름표가 없어 켜져 있어도 '콘솔 B 없음' 이다
-infra/vmware/scripts/console-join.sh --from image --apply     # B 를 켤 때: image · env · up · verify · ready · assets
+# 3. 콘솔 B 는 새 이미지로만 합류한다. 옛 B 이미지는 이름표가 없어 켜져 있어도 '콘솔 B 없음' 이다.
+#    B 가 꺼져 있으면(평소) 꺼 둔 채 두고, 켤 때 전체 합류를 쓴다. 그 image 단계가 A 의 새 이미지를 옮긴다
+infra/vmware/scripts/console-join.sh --apply                  # B 를 켤 때 (꺼져 있던 B)
+#    B 가 이미 켜져 있을 때만 --step maint --apply 뒤 --from image --apply (image · env · up · verify · ready · assets).
+#    --from image 는 VM 켜기를 건너뛰고 image 단계가 B 에 ssh 하므로 꺼진 B 에는 맞지 않는다
 # 4. triage.py(데이터 노드, 출력 이름만 바뀐다). install-ingest.sh 가 parser · detector · puller 를 통째로 바꾸므로
 #    git diff --stat 으로 triage.py 말고는 주석 · 시험만 바뀌었는지 먼저 본다
 git archive "$C" parser detector puller | ssh -F ~/.ssh/config.opsloop data01 \
