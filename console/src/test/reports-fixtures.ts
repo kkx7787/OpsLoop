@@ -7,7 +7,8 @@ export const OVERVIEW_SECTION: OverviewSection = {
   available: true, basis: 'mixed', notes: ['사건 수 · 상위 출발지: 발생 시각이 기간 안인 사건', '잔량 · 목표 초과: 출력 시각 기준. 목표 시간은 발생 시각부터 잰다'],
   incidents: { total: 120, by_severity: { critical: 3, high: 20, medium: 60, low: 37 }, by_origin: { R0xx: 90, R1xx: 25, R2xx: 5, R3xx: 0, other: 0 }, test_source: 4 },
   verdicts: { total: 80, by_verdict: { threat: 10, non_actionable: 50, false_positive: 5, benign_positive: 3, undetermined: 12 }, test_source: 1 },
-  backlog: { unjudged: 40, undetermined: 12, overdue: 7, warning: 2, oldest_seconds: 93_600 },
+  // 판단 유보 12 = 미결(사람) 9 + 시스템 전환 처리 3(#94)
+  backlog: { unjudged: 40, undetermined: 12, undetermined_human: 9, undetermined_system: 3, overdue: 7, warning: 2, oldest_seconds: 93_600 },
   wait: { incidents: 90, judged: 68, p50_seconds: 5_400, p90_seconds: 86_400 },
   decision: { n: 0, p50_seconds: null, p90_seconds: null },
   daily: [{ date: '2026-09-22', created: 10, judged: 4 }, { date: '2026-09-23', created: 20, judged: 16 }],
@@ -48,7 +49,7 @@ export const TARGETS_SECTION: TargetsSection = {
 
 export const CTI_SECTION: CtiSection = {
   available: true, basis: 'mixed', notes: ['자산별 취약점 · 주목 CVE: 출력 시각의 대조 결과'],
-  assets: [{ asset_id: 'web-01', role: 'target', vuln_total: 14, vuln_kev: 1, vuln_fix_available: 6, vuln_reboot_pending: 1, collected_at: '2026-09-29T00:00:00Z', stale: false }],
+  assets: [{ asset_id: 'web-01', role: 'target', vuln_total: 14, vuln_kev: 1, vuln_fix_available: 6, vuln_fix_unknown: 2, vuln_reboot_pending: 1, checked_at: '2026-09-29T00:05:00Z', collected_at: '2026-09-29T00:00:00Z', stale: false }],
   watch: { total: 3, affected: 1, unknown: 1, not_affected: 1, affected_cves: ['CVE-2024-6387'] },
   kev_added: { total: 4, ours: [{ cve_id: 'CVE-2026-0001', name: 'OpenSSH 예시 취약점', date_added: '2026-09-25', assets: ['web-01'] }] },
   freshness: {
