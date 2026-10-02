@@ -1,0 +1,14 @@
+
+ RUN  v5.0.1 /Users/hanseongmin/opsloop-repo/console
+
+···
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  23:34:00
+   Duration  6.77s (transform 35%, environment 31%, tests 25%, setup 5%, import 4%)
+
+  Transform  transforming modules took 2.32s · 35% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+

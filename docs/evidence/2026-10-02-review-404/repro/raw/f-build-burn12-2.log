@@ -1,0 +1,745 @@
+
+> console@0.0.0 test
+> vitest run --reporter=dot --reporter=json --outputFile.json=/Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-review-404/repro/raw/f-build-burn12-2.json
+
+
+ RUN  v5.0.1 /Users/hanseongmin/opsloop-repo/console
+
+··································································································································································x·································································································································································stderr | src/pages/incident-detail/IncidentDetailPage.test.tsx > IncidentDetailPage · 차단 적용 지점(#77) > 기본값 그대로 보내면 내부 방화벽만, 관문을 더하면 경고 한 줄과 두 지점이 가고, 다시 열면 기본값이다
+Encountered two children with the same key, `action-4`. Keys should be unique so that components maintain their identity across updates. Non-unique keys may cause children to be duplicated and/or omitted — the behavior is unsupported and could change in a future version.
+
+·····································································································································································································································································································································································································································································································································································································································································································································································
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/pages/incidents/IncidentsPage.test.tsx > IncidentsPage > 목록 API의 전체 규칙 선택지를 써서 아직 로드하지 않은 규칙도 필터링한다
+TestingLibraryElementError: Unable to find role="option" and name `/R301.*자원 경보/`
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"flex flex-col gap-3 md:h-[calc(100dvh-80px)] md:min-h-[480px]"[39m
+    [36m>[39m
+      [36m<header[39m
+        [33mclass[39m=[32m"flex flex-col gap-2 shrink-0"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex flex-col gap-3 md:flex-row md:items-start md:justify-between"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex min-w-0 flex-col gap-1.5"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"flex min-w-0 flex-wrap items-center gap-2.5"[39m
+            [36m>[39m
+              [36m<h1[39m
+                [33mclass[39m=[32m"m-0 text-xl font-semibold tracking-tight md:text-[24px] md:leading-8"[39m
+              [36m>[39m
+                [0m인시던트[0m
+              [36m</h1>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+      [36m</header>[39m
+      [36m<section[39m
+        [33maria-label[39m=[32m"사건 탐색"[39m
+        [33mclass[39m=[32m"flex shrink-0 flex-col rounded-card bg-surface shadow-card"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex flex-wrap items-center justify-between gap-2 border-b border-line px-3"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33maria-label[39m=[32m"빠른 보기"[39m
+            [33mclass[39m=[32m"flex flex-wrap gap-4"[39m
+            [33mrole[39m=[32m"group"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33maria-pressed[39m=[32m"true"[39m
+              [33mclass[39m=[32m"min-h-10 cursor-pointer border-b-2 px-0.5 text-sm transition-colors border-primary font-semibold text-primary"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m전체 사건[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"min-h-10 cursor-pointer border-b-2 px-0.5 text-sm transition-colors border-transparent text-ink-muted hover:text-ink"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m미판정만[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"min-h-10 cursor-pointer border-b-2 px-0.5 text-sm transition-colors border-transparent text-ink-muted hover:text-ink"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0mcritical 미판정[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"min-h-10 cursor-pointer border-b-2 px-0.5 text-sm transition-colors border-transparent text-ink-muted hover:text-ink"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m미결[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"min-h-10 cursor-pointer border-b-2 px-0.5 text-sm transition-colors border-transparent text-ink-muted hover:text-ink"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m조치중[0m
+            [36m</button>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33maria-label[39m=[32m"목록 조건"[39m
+          [33mclass[39m=[32m"flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2"[39m
+          [33mrole[39m=[32m"group"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex items-center gap-1.5"[39m
+          [36m>[39m
+            [36m<label[39m
+              [33mclass[39m=[32m"text-xs font-normal text-ink-muted"[39m
+              [33mfor[39m=[32m"_r_0_-status"[39m
+            [36m>[39m
+              [0m상태[0m
+            [36m</label>[39m
+            [36m<select[39m
+              [33mclass[39m=[32m"min-w-0 rounded-control border-0 bg-surface px-3 text-sm text-ink shadow-field outline-none placeholder:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-primary aria-invalid:shadow-[0_0_0_1px_var(--color-danger)] aria-invalid:focus-visible:outline-danger disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-muted h-8 cursor-pointer pr-8 w-auto"[39m
+              [33mid[39m=[32m"_r_0_-status"[39m
+            [36m>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m""[39m
+              [36m>[39m
+                [0m전체[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"open"[39m
+              [36m>[39m
+                [0m신규[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"acknowledged"[39m
+              [36m>[39m
+                [0m확인[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"in_progress"[39m
+              [36m>[39m
+                [0m조치중[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"resolved"[39m
+              [36m>[39m
+                [0m종결[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"suppressed"[39m
+              [36m>[39m
+                [0m억제[0m
+              [36m</option>[39m
+            [36m</select>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex items-center gap-1.5"[39m
+          [36m>[39m
+            [36m<label[39m
+              [33mclass[39m=[32m"text-xs font-normal text-ink-muted"[39m
+              [33mfor[39m=[32m"_r_0_-severity"[39m
+            [36m>[39m
+              [0m심각도[0m
+            [36m</label>[39m
+            [36m<select[39m
+              [33mclass[39m=[32m"min-w-0 rounded-control border-0 bg-surface px-3 text-sm text-ink shadow-field outline-none placeholder:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-primary aria-invalid:shadow-[0_0_0_1px_var(--color-danger)] aria-invalid:focus-visible:outline-danger disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-muted h-8 cursor-pointer pr-8 w-auto"[39m
+              [33mid[39m=[32m"_r_0_-severity"[39m
+            [36m>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m""[39m
+              [36m>[39m
+                [0m전체[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"critical"[39m
+              [36m>[39m
+                [0mcritical[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"high"[39m
+              [36m>[39m
+                [0mhigh[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"medium"[39m
+              [36m>[39m
+                [0mmedium[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"low"[39m
+              [36m>[39m
+                [0mlow[0m
+              [36m</option>[39m
+            [36m</select>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex items-center gap-1.5"[39m
+          [36m>[39m
+            [36m<label[39m
+              [33mclass[39m=[32m"text-xs font-normal text-ink-muted"[39m
+              [33mfor[39m=[32m"_r_0_-rule"[39m
+            [36m>[39m
+              [0m규칙[0m
+            [36m</label>[39m
+            [36m<select[39m
+              [33mclass[39m=[32m"min-w-0 rounded-control border-0 bg-surface px-3 text-sm text-ink shadow-field outline-none placeholder:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-primary aria-invalid:shadow-[0_0_0_1px_var(--color-danger)] aria-invalid:focus-visible:outline-danger disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-muted h-8 cursor-pointer pr-8 w-auto max-w-[240px]"[39m
+              [33mid[39m=[32m"_r_0_-rule"[39m
+            [36m>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m""[39m
+              [36m>[39m
+                [0m전체[0m
+              [36m</option>[39m
+            [36m</select>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex items-center gap-1.5"[39m
+          [36m>[39m
+            [36m<label[39m
+              [33mclass[39m=[32m"text-xs font-normal text-ink-muted"[39m
+              [33mfor[39m=[32m"_r_0_-device"[39m
+            [36m>[39m
+              [0m장비[0m
+            [36m</label>[39m
+            [36m<select[39m
+              [33mclass[39m=[32m"min-w-0 rounded-control border-0 bg-surface px-3 text-sm text-ink shadow-field outline-none placeholder:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-primary aria-invalid:shadow-[0_0_0_1px_var(--color-danger)] aria-invalid:focus-visible:outline-danger disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-muted h-8 cursor-pointer pr-8 w-auto max-w-[200px]"[39m
+              [33mid[39m=[32m"_r_0_-device"[39m
+            [36m>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m""[39m
+              [36m>[39m
+                [0m전체[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"_unconfirmed"[39m
+              [36m>[39m
+                [0m장비 미확인[0m
+              [36m</option>[39m
+            [36m</select>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex items-center gap-1.5"[39m
+          [36m>[39m
+            [36m<label[39m
+              [33mclass[39m=[32m"text-xs font-normal text-ink-muted"[39m
+              [33mfor[39m=[32m"_r_0_-judged"[39m
+            [36m>[39m
+              [0m판정[0m
+            [36m</label>[39m
+            [36m<select[39m
+              [33mclass[39m=[32m"min-w-0 rounded-control border-0 bg-surface px-3 text-sm text-ink shadow-field outline-none placeholder:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-primary aria-invalid:shadow-[0_0_0_1px_var(--color-danger)] aria-invalid:focus-visible:outline-danger disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-muted h-8 cursor-pointer pr-8 w-auto"[39m
+              [33mid[39m=[32m"_r_0_-judged"[39m
+            [36m>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m""[39m
+              [36m>[39m
+                [0m전체[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"false"[39m
+              [36m>[39m
+                [0m미판정[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"true"[39m
+              [36m>[39m
+                [0m판정됨[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"undetermined"[39m
+              [36m>[39m
+                [0m미결[0m
+              [36m</option>[39m
+            [36m</select>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+      [36m</section>[39m
+      [36m<section[39m
+        [33maria-label[39m=[32m"조회 결과"[39m
+        [33mclass[39m=[32m"flex min-h-0 min-w-0 flex-col overflow-hidden rounded-card bg-surface shadow-card md:flex-1"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-line px-3 py-2 text-xs"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33maria-live[39m=[32m"polite"[39m
+          [36m>[39m
+            [0m목록 조회 중[0m
+          [36m</span>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex flex-wrap items-center gap-2"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"text-xs text-ink-muted"[39m
+            [36m>[39m
+              [0m갱신 중…[0m
+            [36m</span>[39m
+            [36m<div[39m
+              [33maria-label[39m=[32m"정렬"[39m
+              [33mclass[39m=[32m"inline-flex flex-wrap items-center gap-0.5 text-xs"[39m
+              [33mrole[39m=[32m"group"[39m
+            [36m>[39m
+              [36m<button[39m
+                [33maria-pressed[39m=[32m"true"[39m
+                [33mclass[39m=[32m"cursor-pointer rounded-control px-2.5 py-1 whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50 bg-primary-soft font-semibold text-primary"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0m미판정 우선[0m
+              [36m</button>[39m
+              [36m<button[39m
+                [33maria-pressed[39m=[32m"false"[39m
+                [33mclass[39m=[32m"cursor-pointer rounded-control px-2.5 py-1 whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50 text-muted hover:text-ink"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0m심각도순[0m
+              [36m</button>[39m
+              [36m<button[39m
+                [33maria-pressed[39m=[32m"false"[39m
+                [33mclass[39m=[32m"cursor-pointer rounded-control px-2.5 py-1 whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50 text-muted hover:text-ink"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0m최신순[0m
+              [36m</button>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"min-h-0 overflow-auto md:flex-1"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"min-h-[280px]"[39m
+          [36m>[39m
+            [36m<section[39m
+              [33maria-busy[39m=[32m"true"[39m
+              [33maria-labelledby[39m=[32m"_r_1_"[39m
+              [33maria-live[39m=[32m"polite"[39m
+              [33mclass[39m=[32m"flex flex-col items-start rounded-card bg-surface shadow-card gap-2.5 p-5"[39m
+              [33mdata-state-tone[39m=[32m"info"[39m
+              [33mrole[39m=[32m"status"[39m
+            [36m>[39m
+              [36m<h2[39m
+                [33mclass[39m=[32m"m-0 text-lg font-semibold tracking-heading"[39m
+                [33mid[39m=[32m"_r_1_"[39m
+              [36m>[39m
+                [0m인시던트를 불러오는 중입니다[0m
+              [36m</h2>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"flex w-full flex-col gap-2.5 py-1"[39m
+              [36m>[39m
+                [36m<span[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"block h-3 rounded-md bg-skeleton motion-safe:animate-pulse w-full"[39m
+                [36m/>[39m
+                [36m<span[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"block h-3 rounded-md bg-skeleton motion-safe:animate-pulse w-full"[39m
+                [36m/>[39m
+                [36m<span[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"block h-3 rounded-md bg-skeleton motion-safe:animate-pulse w-full"[39m
+                [36m/>[39m
+                [36m<span[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"block h-3 rounded-md bg-skeleton motion-safe:animate-pulse w-full"[39m
+                [36m/>[39m
+                [36m<span[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"block h-3 rounded-md bg-skeleton motion-safe:animate-pulse w-full"[39m
+                [36m/>[39m
+                [36m<span[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"block h-3 rounded-md bg-skeleton motion-safe:animate-pulse w-2/3"[39m
+                [36m/>[39m
+              [36m</div>[39m
+            [36m</section>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+      [36m</section>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"flex flex-col gap-3 md:h-[calc(100dvh-80px)] md:min-h-[480px]"[39m
+    [36m>[39m
+      [36m<header[39m
+        [33mclass[39m=[32m"flex flex-col gap-2 shrink-0"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex flex-col gap-3 md:flex-row md:items-start md:justify-between"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex min-w-0 flex-col gap-1.5"[39m
+          [36m>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"flex min-w-0 flex-wrap items-center gap-2.5"[39m
+            [36m>[39m
+              [36m<h1[39m
+                [33mclass[39m=[32m"m-0 text-xl font-semibold tracking-tight md:text-[24px] md:leading-8"[39m
+              [36m>[39m
+                [0m인시던트[0m
+              [36m</h1>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+      [36m</header>[39m
+      [36m<section[39m
+        [33maria-label[39m=[32m"사건 탐색"[39m
+        [33mclass[39m=[32m"flex shrink-0 flex-col rounded-card bg-surface shadow-card"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex flex-wrap items-center justify-between gap-2 border-b border-line px-3"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33maria-label[39m=[32m"빠른 보기"[39m
+            [33mclass[39m=[32m"flex flex-wrap gap-4"[39m
+            [33mrole[39m=[32m"group"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33maria-pressed[39m=[32m"true"[39m
+              [33mclass[39m=[32m"min-h-10 cursor-pointer border-b-2 px-0.5 text-sm transition-colors border-primary font-semibold text-primary"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m전체 사건[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"min-h-10 cursor-pointer border-b-2 px-0.5 text-sm transition-colors border-transparent text-ink-muted hover:text-ink"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m미판정만[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"min-h-10 cursor-pointer border-b-2 px-0.5 text-sm transition-colors border-transparent text-ink-muted hover:text-ink"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0mcritical 미판정[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"min-h-10 cursor-pointer border-b-2 px-0.5 text-sm transition-colors border-transparent text-ink-muted hover:text-ink"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m미결[0m
+            [36m</button>[39m
+            [36m<button[39m
+              [33maria-pressed[39m=[32m"false"[39m
+              [33mclass[39m=[32m"min-h-10 cursor-pointer border-b-2 px-0.5 text-sm transition-colors border-transparent text-ink-muted hover:text-ink"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [0m조치중[0m
+            [36m</button>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33maria-label[39m=[32m"목록 조건"[39m
+          [33mclass[39m=[32m"flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2"[39m
+          [33mrole[39m=[32m"group"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex items-center gap-1.5"[39m
+          [36m>[39m
+            [36m<label[39m
+              [33mclass[39m=[32m"text-xs font-normal text-ink-muted"[39m
+              [33mfor[39m=[32m"_r_0_-status"[39m
+            [36m>[39m
+              [0m상태[0m
+            [36m</label>[39m
+            [36m<select[39m
+              [33mclass[39m=[32m"min-w-0 rounded-control border-0 bg-surface px-3 text-sm text-ink shadow-field outline-none placeholder:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-primary aria-invalid:shadow-[0_0_0_1px_var(--color-danger)] aria-invalid:focus-visible:outline-danger disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-muted h-8 cursor-pointer pr-8 w-auto"[39m
+              [33mid[39m=[32m"_r_0_-status"[39m
+            [36m>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m""[39m
+              [36m>[39m
+                [0m전체[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"open"[39m
+              [36m>[39m
+                [0m신규[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"acknowledged"[39m
+              [36m>[39m
+                [0m확인[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"in_progress"[39m
+              [36m>[39m
+                [0m조치중[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"resolved"[39m
+              [36m>[39m
+                [0m종결[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"suppressed"[39m
+              [36m>[39m
+                [0m억제[0m
+              [36m</option>[39m
+            [36m</select>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex items-center gap-1.5"[39m
+          [36m>[39m
+            [36m<label[39m
+              [33mclass[39m=[32m"text-xs font-normal text-ink-muted"[39m
+              [33mfor[39m=[32m"_r_0_-severity"[39m
+            [36m>[39m
+              [0m심각도[0m
+            [36m</label>[39m
+            [36m<select[39m
+              [33mclass[39m=[32m"min-w-0 rounded-control border-0 bg-surface px-3 text-sm text-ink shadow-field outline-none placeholder:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-primary aria-invalid:shadow-[0_0_0_1px_var(--color-danger)] aria-invalid:focus-visible:outline-danger disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-muted h-8 cursor-pointer pr-8 w-auto"[39m
+              [33mid[39m=[32m"_r_0_-severity"[39m
+            [36m>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m""[39m
+              [36m>[39m
+                [0m전체[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"critical"[39m
+              [36m>[39m
+                [0mcritical[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"high"[39m
+              [36m>[39m
+                [0mhigh[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"medium"[39m
+              [36m>[39m
+                [0mmedium[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"low"[39m
+              [36m>[39m
+                [0mlow[0m
+              [36m</option>[39m
+            [36m</select>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex items-center gap-1.5"[39m
+          [36m>[39m
+            [36m<label[39m
+              [33mclass[39m=[32m"text-xs font-normal text-ink-muted"[39m
+              [33mfor[39m=[32m"_r_0_-rule"[39m
+            [36m>[39m
+              [0m규칙[0m
+            [36m</label>[39m
+            [36m<select[39m
+              [33mclass[39m=[32m"min-w-0 rounded-control border-0 bg-surface px-3 text-sm text-ink shadow-field outline-none placeholder:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-primary aria-invalid:shadow-[0_0_0_1px_var(--color-danger)] aria-invalid:focus-visible:outline-danger disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-muted h-8 cursor-pointer pr-8 w-auto max-w-[240px]"[39m
+              [33mid[39m=[32m"_r_0_-rule"[39m
+            [36m>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m""[39m
+              [36m>[39m
+                [0m전체[0m
+              [36m</option>[39m
+            [36m</select>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex items-center gap-1.5"[39m
+          [36m>[39m
+            [36m<label[39m
+              [33mclass[39m=[32m"text-xs font-normal text-ink-muted"[39m
+              [33mfor[39m=[32m"_r_0_-device"[39m
+            [36m>[39m
+              [0m장비[0m
+            [36m</label>[39m
+            [36m<select[39m
+              [33mclass[39m=[32m"min-w-0 rounded-control border-0 bg-surface px-3 text-sm text-ink shadow-field outline-none placeholder:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-primary aria-invalid:shadow-[0_0_0_1px_var(--color-danger)] aria-invalid:focus-visible:outline-danger disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-muted h-8 cursor-pointer pr-8 w-auto max-w-[200px]"[39m
+              [33mid[39m=[32m"_r_0_-device"[39m
+            [36m>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m""[39m
+              [36m>[39m
+                [0m전체[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"_unconfirmed"[39m
+              [36m>[39m
+                [0m장비 미확인[0m
+              [36m</option>[39m
+            [36m</select>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex items-center gap-1.5"[39m
+          [36m>[39m
+            [36m<label[39m
+              [33mclass[39m=[32m"text-xs font-normal text-ink-muted"[39m
+              [33mfor[39m=[32m"_r_0_-judged"[39m
+            [36m>[39m
+              [0m판정[0m
+            [36m</label>[39m
+            [36m<select[39m
+              [33mclass[39m=[32m"min-w-0 rounded-control border-0 bg-surface px-3 text-sm text-ink shadow-field outline-none placeholder:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-primary aria-invalid:shadow-[0_0_0_1px_var(--color-danger)] aria-invalid:focus-visible:outline-danger disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-muted h-8 cursor-pointer pr-8 w-auto"[39m
+              [33mid[39m=[32m"_r_0_-judged"[39m
+            [36m>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m""[39m
+              [36m>[39m
+                [0m전체[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"false"[39m
+              [36m>[39m
+                [0m미판정[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"true"[39m
+              [36m>[39m
+                [0m판정됨[0m
+              [36m</option>[39m
+              [36m<option[39m
+                [33mvalue[39m=[32m"undetermined"[39m
+              [36m>[39m
+                [0m미결[0m
+              [36m</option>[39m
+            [36m</select>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+      [36m</section>[39m
+      [36m<section[39m
+        [33maria-label[39m=[32m"조회 결과"[39m
+        [33mclass[39m=[32m"flex min-h-0 min-w-0 flex-col overflow-hidden rounded-card bg-surface shadow-card md:flex-1"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-line px-3 py-2 text-xs"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33maria-live[39m=[32m"polite"[39m
+          [36m>[39m
+            [0m목록 조회 중[0m
+          [36m</span>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex flex-wrap items-center gap-2"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"text-xs text-ink-muted"[39m
+            [36m>[39m
+              [0m갱신 중…[0m
+            [36m</span>[39m
+            [36m<div[39m
+              [33maria-label[39m=[32m"정렬"[39m
+              [33mclass[39m=[32m"inline-flex flex-wrap items-center gap-0.5 text-xs"[39m
+              [33mrole[39m=[32m"group"[39m
+            [36m>[39m
+              [36m<button[39m
+                [33maria-pressed[39m=[32m"true"[39m
+                [33mclass[39m=[32m"cursor-pointer rounded-control px-2.5 py-1 whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50 bg-primary-soft font-semibold text-primary"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0m미판정 우선[0m
+              [36m</button>[39m
+              [36m<button[39m
+                [33maria-pressed[39m=[32m"false"[39m
+                [33mclass[39m=[32m"cursor-pointer rounded-control px-2.5 py-1 whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50 text-muted hover:text-ink"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0m심각도순[0m
+              [36m</button>[39m
+              [36m<button[39m
+                [33maria-pressed[39m=[32m"false"[39m
+                [33mclass[39m=[32m"cursor-pointer rounded-control px-2.5 py-1 whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50 text-muted hover:text-ink"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [0m최신순[0m
+              [36m</button>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"min-h-0 overflow-auto md:flex-1"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"min-h-[280px]"[39m
+          [36m>[39m
+            [36m<section[39m
+              [33maria-busy[39m=[32m"true"[39m
+              [33maria-labelledby[39m=[32m"_r_1_"[39m
+              [33maria-live[39m=[32m"polite"[39m
+              [33mclass[39m=[32m"flex flex-col items-start rounded-card bg-surface shadow-card gap-2.5 p-5"[39m
+              [33mdata-state-tone[39m=[32m"info"[39m
+              [33mrole[39m=[32m"status"[39m
+            [36m>[39m
+              [36m<h2[39m
+                [33mclass[39m=[32m"m-0 text-lg font-semibold tracking-heading"[39m
+                [33mid[39m=[32m"_r_1_"[39m
+              [36m>[39m
+                [0m인시던트를 불러오는 중입니다[0m
+              [36m</h2>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"flex w-full flex-col gap-2.5 py-1"[39m
+              [36m>[39m
+                [36m<span[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"block h-3 rounded-md bg-skeleton motion-safe:animate-pulse w-full"[39m
+                [36m/>[39m
+                [36m<span[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"block h-3 rounded-md bg-skeleton motion-safe:animate-pulse w-full"[39m
+                [36m/>[39m
+                [36m<span[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"block h-3 rounded-md bg-skeleton motion-safe:animate-pulse w-full"[39m
+                [36m/>[39m
+                [36m<span[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"block h-3 rounded-md bg-skeleton motion-safe:animate-pulse w-full"[39m
+                [36m/>[39m
+                [36m<span[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"block h-3 rounded-md bg-skeleton motion-safe:animate-pulse w-full"[39m
+                [36m/>[39m
+                [36m<span[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"block h-3 rounded-md bg-skeleton motion-safe:animate-pulse w-2/3"[39m
+                [36m/>[39m
+              [36m</div>[39m
+            [36m</section>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+      [36m</section>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+ ❯ waitForWrapper node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ src/pages/incidents/IncidentsPage.test.tsx:91:33
+     89|     const fetch = stubApi(() => json({ ...page(0, [incident(84)], 80),…
+     90|     renderRoutes(routes(), '/incidents')
+     91|     const option = await screen.findByRole('option', { name: /R301.*자원…
+       |                                 ^
+     92|     expect(option).toBeInTheDocument()
+     93|     fireEvent.change(screen.getByRole('combobox', { name: '규칙' }), { t…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 65 passed (66)
+      Tests  1 failed | 1064 passed (1065)
+   Start at  23:43:39
+   Duration  74.33s (tests 49%, environment 38%, setup 6%, transform 4%, import 2%)
+
+Environment  jsdom was created 66 times · 188.18s total, 38% of tracked time
+             create it once per worker with pool: 'vmThreads' (keeps per-file isolation) or isolate: false (shares it across files)
+             learn more: https://vitest.dev/guide/improving-performance#test-environments
+
+JSON report written to /Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-review-404/repro/raw/f-build-burn12-2.json

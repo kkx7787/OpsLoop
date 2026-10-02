@@ -1,0 +1,1546 @@
+
+> console@0.0.0 test
+> vitest run src/app/router.test.tsx --reporter=dot --reporter=json --outputFile.json=/Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-review-404/repro/raw/e-file-burn64-4.json
+
+
+ RUN  v5.0.1 /Users/hanseongmin/opsloop-repo/console
+
+·x··············
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/app/router.test.tsx > 경로표 > 없는 주소는 틀 안에서 404 화면: 주소 표시 · 대시보드 링크
+TestingLibraryElementError: Unable to find role="heading" and name "페이지를 찾을 수 없습니다"
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"flex min-h-screen"[39m
+    [36m>[39m
+      [36m<a[39m
+        [33mclass[39m=[32m"sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-control focus:bg-surface focus:px-3 focus:py-2 focus:shadow-card print:hidden"[39m
+        [33mhref[39m=[32m"#main"[39m
+      [36m>[39m
+        [0m본문으로 건너뛰기[0m
+      [36m</a>[39m
+      [36m<aside[39m
+        [33maria-label[39m=[32m"사이드바"[39m
+        [33mclass[39m=[32m"w-[208px] shrink-0 flex-col bg-sidebar px-3 shadow-sidebar sticky top-0 hidden h-screen overflow-y-auto md:flex print:hidden"[39m
+      [36m>[39m
+        [36m<a[39m
+          [33mclass[39m=[32m"flex h-[68px] items-center gap-2.5 px-2 text-ink hover:text-ink"[39m
+          [33mdata-discover[39m=[32m"true"[39m
+          [33mhref[39m=[32m"/"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33maria-hidden[39m=[32m"true"[39m
+            [33mclass[39m=[32m"flex size-7 items-center justify-center text-primary"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mfocusable[39m=[32m"false"[39m
+              [33mheight[39m=[32m"26"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"2.2"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [33mwidth[39m=[32m"26"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M4.5 12a7.5 7.5 0 0 1 13.2-4.9M19.5 12a7.5 7.5 0 0 1-13.2 4.9"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M18 3.5v4h-4M6 20.5v-4h4"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"text-[19px] font-semibold tracking-heading"[39m
+          [36m>[39m
+            [0mOpsLoop[0m
+          [36m</span>[39m
+        [36m</a>[39m
+        [36m<nav[39m
+          [33maria-label[39m=[32m"주 메뉴"[39m
+          [33mclass[39m=[32m"flex flex-col"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33maria-labelledby[39m=[32m"_r_0_-0"[39m
+            [33mclass[39m=[32m"flex flex-col"[39m
+            [33mrole[39m=[32m"group"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"px-2.5 pt-4 pb-1 text-2xs font-semibold text-ink-muted"[39m
+              [33mid[39m=[32m"_r_0_-0"[39m
+            [36m>[39m
+              [0m관제[0m
+            [36m</span>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"18"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.8"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"18"[39m
+              [36m>[39m
+                [36m<rect[39m
+                  [33mheight[39m=[32m"7"[39m
+                  [33mrx[39m=[32m"2"[39m
+                  [33mwidth[39m=[32m"7"[39m
+                  [33mx[39m=[32m"3.5"[39m
+                  [33my[39m=[32m"3.5"[39m
+                [36m/>[39m
+                [36m<rect[39m
+                  [33mheight[39m=[32m"7"[39m
+                  [33mrx[39m=[32m"2"[39m
+                  [33mwidth[39m=[32m"7"[39m
+                  [33mx[39m=[32m"13.5"[39m
+                  [33my[39m=[32m"3.5"[39m
+                [36m/>[39m
+                [36m<rect[39m
+                  [33mheight[39m=[32m"7"[39m
+                  [33mrx[39m=[32m"2"[39m
+                  [33mwidth[39m=[32m"7"[39m
+                  [33mx[39m=[32m"3.5"[39m
+                  [33my[39m=[32m"13.5"[39m
+                [36m/>[39m
+                [36m<rect[39m
+                  [33mheight[39m=[32m"7"[39m
+                  [33mrx[39m=[32m"2"[39m
+                  [33mwidth[39m=[32m"7"[39m
+                  [33mx[39m=[32m"13.5"[39m
+                  [33my[39m=[32m"13.5"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0m대시보드[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/incidents"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"18"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.8"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"18"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M6 9a6 6 0 0 1 12 0c0 6 2.5 8 2.5 8h-17S6 15 6 9"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M10.3 20.5a2 2 0 0 0 3.4 0"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0m인시던트[0m
+            [36m</a>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33maria-labelledby[39m=[32m"_r_0_-1"[39m
+            [33mclass[39m=[32m"flex flex-col"[39m
+            [33mrole[39m=[32m"group"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"px-2.5 pt-4 pb-1 text-2xs font-semibold text-ink-muted"[39m
+              [33mid[39m=[32m"_r_0_-1"[39m
+            [36m>[39m
+              [0m대응[0m
+            [36m</span>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/blocklist"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"18"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.8"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"18"[39m
+              [36m>[39m
+                [36m<circle[39m
+                  [33mcx[39m=[32m"12"[39m
+                  [33mcy[39m=[32m"12"[39m
+                  [33mr[39m=[32m"8.5"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M6 6l12 12"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0m차단[0m
+            [36m</a>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33maria-labelledby[39m=[32m"_r_0_-2"[39m
+            [33mclass[39m=[32m"flex flex-col"[39m
+            [33mrole[39m=[32m"group"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"px-2.5 pt-4 pb-1 text-2xs font-semibold text-ink-muted"[39m
+              [33mid[39m=[32m"_r_0_-2"[39m
+            [36m>[39m
+              [0m분석[0m
+            [36m</span>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/rules"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"18"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.8"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"18"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"[39m
+                [36m/>[39m
+                [36m<circle[39m
+                  [33mcx[39m=[32m"15"[39m
+                  [33mcy[39m=[32m"7"[39m
+                  [33mr[39m=[32m"2"[39m
+                [36m/>[39m
+                [36m<circle[39m
+                  [33mcx[39m=[32m"9"[39m
+                  [33mcy[39m=[32m"12"[39m
+                  [33mr[39m=[32m"2"[39m
+                [36m/>[39m
+                [36m<circle[39m
+                  [33mcx[39m=[32m"17"[39m
+                  [33mcy[39m=[32m"17"[39m
+                  [33mr[39m=[32m"2"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0m규칙 · 리플레이[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/sources"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"18"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.8"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"18"[39m
+              [36m>[39m
+                [36m<circle[39m
+                  [33mcx[39m=[32m"12"[39m
+                  [33mcy[39m=[32m"12"[39m
+                  [33mr[39m=[32m"8.5"[39m
+                [36m/>[39m
+                [36m<circle[39m
+                  [33mcx[39m=[32m"12"[39m
+                  [33mcy[39m=[32m"12"[39m
+                  [33mr[39m=[32m"4.5"[39m
+                [36m/>[39m
+                [36m<circle[39m
+                  [33mcx[39m=[32m"12"[39m
+                  [33mcy[39m=[32m"12"[39m
+                  [33mr[39m=[32m"1"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0m출발지 분석[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/reports"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"18"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.8"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"18"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M7 3.5h7l4.5 4.5v12.5H7z"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M14 3.5V8h4.5"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M10 17v-3M13 17v-5M16 17v-2"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0m보고서[0m
+            [36m</a>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33maria-labelledby[39m=[32m"_r_0_-3"[39m
+            [33mclass[39m=[32m"flex flex-col"[39m
+            [33mrole[39m=[32m"group"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"px-2.5 pt-4 pb-1 text-2xs font-semibold text-ink-muted"[39m
+              [33mid[39m=[32m"_r_0_-3"[39m
+            [36m>[39m
+              [0m수집[0m
+            [36m</span>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/nodes"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"18"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.8"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"18"[39m
+              [36m>[39m
+                [36m<rect[39m
+                  [33mheight[39m=[32m"7"[39m
+                  [33mrx[39m=[32m"2"[39m
+                  [33mwidth[39m=[32m"17"[39m
+                  [33mx[39m=[32m"3.5"[39m
+                  [33my[39m=[32m"4"[39m
+                [36m/>[39m
+                [36m<rect[39m
+                  [33mheight[39m=[32m"7"[39m
+                  [33mrx[39m=[32m"2"[39m
+                  [33mwidth[39m=[32m"17"[39m
+                  [33mx[39m=[32m"3.5"[39m
+                  [33my[39m=[32m"13"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M7.5 7.5h.01M7.5 16.5h.01"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0m수집 · 관제 상태[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/inventory"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"18"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.8"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"18"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M12 3.5l7.5 4v9L12 20.5l-7.5-4v-9z"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M4.5 7.5L12 11.5l7.5-4M12 11.5v9"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0m자산 · 취약점[0m
+            [36m</a>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33maria-labelledby[39m=[32m"_r_0_-4"[39m
+            [33mclass[39m=[32m"flex flex-col"[39m
+            [33mrole[39m=[32m"group"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"px-2.5 pt-4 pb-1 text-2xs font-semibold text-ink-muted opacity-45"[39m
+              [33mid[39m=[32m"_r_0_-4"[39m
+            [36m>[39m
+              [0m관리[0m
+            [36m</span>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"max-w-full cursor-not-allowed flex-col flex w-full gap-0"[39m
+              [33mdata-gated[39m=[32m"denied"[39m
+              [33mtitle[39m=[32m"권한을 확인하는 중입니다 (알림 설정)"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"pointer-events-none opacity-45 select-none"[39m
+                [33minert[39m=[32m""[39m
+              [36m>[39m
+                [36m<a[39m
+                  [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+                  [33mdata-discover[39m=[32m"true"[39m
+                  [33mhref[39m=[32m"/alerts"[39m
+                [36m>[39m
+                  [36m<svg[39m
+                    [33maria-hidden[39m=[32m"true"[39m
+                    [33mfill[39m=[32m"none"[39m
+                    [33mfocusable[39m=[32m"false"[39m
+                    [33mheight[39m=[32m"18"[39m
+                    [33mstroke[39m=[32m"currentColor"[39m
+                    [33mstroke-linecap[39m=[32m"round"[39m
+                    [33mstroke-linejoin[39m=[32m"round"[39m
+                    [33mstroke-width[39m=[32m"1.8"[39m
+                    [33mviewBox[39m=[32m"0 0 24 24"[39m
+                    [33mwidth[39m=[32m"18"[39m
+                  [36m>[39m
+                    [36m<path[39m
+                      [33md[39m=[32m"M4 12l16-7-5 15-3-6z"[39m
+                    [36m/>[39m
+                    [36m<path[39m
+                      [33md[39m=[32m"M12 14l3-3"[39m
+                    [36m/>[39m
+                  [36m</svg>[39m
+                  [0m알림[0m
+                [36m</a>[39m
+              [36m</div>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"sr-only"[39m
+              [36m>[39m
+                [0m권한을 확인하는 중입니다 (알림 설정)[0m
+              [36m</span>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"max-w-full cursor-not-allowed flex-col flex w-full gap-0"[39m
+              [33mdata-gated[39m=[32m"denied"[39m
+              [33mtitle[39m=[32m"권한을 확인하는 중입니다 (감사 기록 열람)"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"pointer-events-none opacity-45 select-none"[39m
+                [33minert[39m=[32m""[39m
+              [36m>[39m
+                [36m<a[39m
+                  [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+                  [33mdata-discover[39m=[32m"true"[39m
+                  [33mhref[39m=[32m"/audit"[39m
+                [36m>[39m
+                  [36m<svg[39m
+                    [33maria-hidden[39m=[32m"true"[39m
+                    [33mfill[39m=[32m"none"[39m
+                    [33mfocusable[39m=[32m"false"[39m
+                    [33mheight[39m=[32m"18"[39m
+                    [33mstroke[39m=[32m"currentColor"[39m
+                    [33mstroke-linecap[39m=[32m"round"[39m
+                    [33mstroke-linejoin[39m=[32m"round"[39m
+                    [33mstroke-width[39m=[32m"1.8"[39m
+                    [33mviewBox[39m=[32m"0 0 24 24"[39m
+                    [33mwidth[39m=[32m"18"[39m
+                  [36m>[39m
+                    [36m<path[39m
+                      [33md[39m=[32m"M12 3.5l7 3v5c0 4.5-3 7.8-7 9-4-1.2-7-4.5-7-9v-5z"[39m
+                    [36m/>[39m
+                    [36m<path[39m
+                      [33md[39m=[32m"M9 12l2 2 4-4"[39m
+                    [36m/>[39m
+                  [36m</svg>[39m
+                  [0m감사 기록[0m
+                [36m</a>[39m
+              [36m</div>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"sr-only"[39m
+              [36m>[39m
+                [0m권한을 확인하는 중입니다 (감사 기록 열람)[0m
+              [36m</span>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"max-w-full cursor-not-allowed flex-col flex w-full gap-0"[39m
+              [33mdata-gated[39m=[32m"denied"[39m
+              [33mtitle[39m=[32m"권한을 확인하는 중입니다 (계정 관리)"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"pointer-events-none opacity-45 select-none"[39m
+                [33minert[39m=[32m""[39m
+              [36m>[39m
+                [36m<a[39m
+                  [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+                  [33mdata-discover[39m=[32m"true"[39m
+                  [33mhref[39m=[32m"/accounts"[39m
+                [36m>[39m
+                  [36m<svg[39m
+                    [33maria-hidden[39m=[32m"true"[39m
+                    [33mfill[39m=[32m"none"[39m
+                    [33mfocusable[39m=[32m"false"[39m
+                    [33mheight[39m=[32m"18"[39m
+                    [33mstroke[39m=[32m"currentColor"[39m
+                    [33mstroke-linecap[39m=[32m"round"[39m
+                    [33mstroke-linejoin[39m=[32m"round"[39m
+                    [33mstroke-width[39m=[32m"1.8"[39m
+                    [33mviewBox[39m=[32m"0 0 24 24"[39m
+                    [33mwidth[39m=[32m"18"[39m
+                  [36m>[39m
+                    [36m<circle[39m
+                      [33mcx[39m=[32m"9"[39m
+                      [33mcy[39m=[32m"8.5"[39m
+                      [33mr[39m=[32m"3.5"[39m
+                    [36m/>[39m
+                    [36m<path[39m
+                      [33md[39m=[32m"M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"[39m
+                    [36m/>[39m
+                    [36m<path[39m
+                      [33md[39m=[32m"M16 5.5a3.5 3.5 0 0 1 0 6.5M18.5 14.8c1.6.8 2.7 2.6 3 5.2"[39m
+                    [36m/>[39m
+                  [36m</svg>[39m
+                  [0m계정[0m
+                [36m</a>[39m
+              [36m</div>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"sr-only"[39m
+              [36m>[39m
+                [0m권한을 확인하는 중입니다 (계정 관리)[0m
+              [36m</span>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+        [36m</nav>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"mt-auto flex flex-col gap-3 px-1.5 pt-3 pb-4 shadow-hairline-up"[39m
+        [36m>[39m
+          [36m<a[39m
+            [33mclass[39m=[32m"inline-flex min-w-0 items-center gap-2 text-xs text-ink-muted hover:text-ink"[39m
+            [33mdata-discover[39m=[32m"true"[39m
+            [33mdata-ops[39m=[32m"pending"[39m
+            [33mdata-signal[39m=[32m"idle"[39m
+            [33mhref[39m=[32m"/"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"inline-block size-2 shrink-0 rounded-full bg-signal-idle"[39m
+              [33mdata-signal[39m=[32m"idle"[39m
+            [36m/>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"truncate"[39m
+            [36m>[39m
+              [0m관제 상태 조회 전[0m
+            [36m</span>[39m
+          [36m</a>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex items-center gap-2.5"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"flex shrink-0 items-center justify-center text-ink-muted"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"18"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.8"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"18"[39m
+              [36m>[39m
+                [36m<circle[39m
+                  [33mcx[39m=[32m"9"[39m
+                  [33mcy[39m=[32m"8.5"[39m
+                  [33mr[39m=[32m"3.5"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M16 5.5a3.5 3.5 0 0 1 0 6.5M18.5 14.8c1.6.8 2.7 2.6 3 5.2"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"flex min-w-0 flex-col text-sm"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"truncate font-medium"[39m
+              [36m>[39m
+                [0m확인 중[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-xs text-ink-muted"[39m
+              [36m>[39m
+                [0m—[0m
+              [36m</span>[39m
+            [36m</span>[39m
+            [36m<form[39m
+              [33maction[39m=[32m"/logout"[39m
+              [33mclass[39m=[32m"m-0 ml-auto shrink-0 whitespace-nowrap"[39m
+              [33mmethod[39m=[32m"post"[39m
+            [36m>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"cursor-pointer rounded-sm border-0 bg-transparent p-0 text-xs text-primary hover:text-primary-strong"[39m
+                [33mtype[39m=[32m"submit"[39m
+              [36m>[39m
+                [0m로그아웃[0m
+              [36m</button>[39m
+            [36m</form>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+      [36m</aside>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"flex min-w-0 flex-1 flex-col"[39m
+      [36m>[39m
+        [36m<header[39m
+          [33mclass[39m=[32m"sticky top-0 z-20 flex h-12 shrink-0 items-center justify-between gap-3 bg-surface px-4 shadow-hairline md:px-6 print:hidden"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex min-w-0 flex-1 items-center gap-2"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33maria-expanded[39m=[32m"false"[39m
+              [33maria-haspopup[39m=[32m"dialog"[39m
+              [33maria-label[39m=[32m"메뉴 열기"[39m
+              [33mclass[39m=[32m"inline-flex shrink-0 cursor-pointer select-none items-center justify-center gap-1.5 whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary bg-surface text-ink size-7 rounded-control p-0 text-sm hover:bg-canvas shadow-none md:hidden"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"18"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.8"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"18"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M4 7h16M4 12h16M4 17h16"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+            [36m</button>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"text-[16px] font-semibold md:hidden"[39m
+            [36m>[39m
+              [0mOpsLoop[0m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"hidden text-sm text-ink-muted md:block"[39m
+            [36m>[39m
+              [0mOpsLoop[0m
+            [36m</span>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex shrink-0 items-center gap-3.5 text-xs text-ink-muted"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"inline-flex min-w-0 items-center gap-1.5"[39m
+              [33mdata-live[39m=[32m"connecting"[39m
+              [33mtitle[39m=[32m"실시간 연결 중"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mclass[39m=[32m"inline-block size-2 shrink-0 rounded-full bg-signal-idle"[39m
+                [33mdata-signal[39m=[32m"idle"[39m
+              [36m/>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"sr-only md:not-sr-only"[39m
+              [36m>[39m
+                [0m실시간 연결 중[0m
+              [36m</span>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"md:hidden"[39m
+            [36m>[39m
+              [36m<a[39m
+                [33mclass[39m=[32m"inline-flex min-w-0 items-center gap-2 text-xs text-ink-muted hover:text-ink"[39m
+                [33mdata-discover[39m=[32m"true"[39m
+                [33mdata-ops[39m=[32m"pending"[39m
+                [33mdata-signal[39m=[32m"idle"[39m
+                [33mhref[39m=[32m"/"[39m
+              [36m>[39m
+                [36m<span[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"inline-block size-2 shrink-0 rounded-full bg-signal-idle"[39m
+                  [33mdata-signal[39m=[32m"idle"[39m
+                [36m/>[39m
+                [36m<span[39m
+                  [33mclass[39m=[32m"truncate"[39m
+                [36m>[39m
+                  [0m관제 —[0m
+                [36m</span>[39m
+              [36m</a>[39m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"새로고침"[39m
+              [33mclass[39m=[32m"shrink-0 cursor-pointer select-none items-center justify-center gap-1.5 whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary bg-surface shadow-control size-7 rounded-control p-0 text-sm hover:bg-canvas hidden text-ink md:inline-flex"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mclass[39m=[32m""[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"14"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"2"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"14"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M20 11a8 8 0 1 0-2.3 5.7"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M20 4v7h-7"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+            [36m</button>[39m
+          [36m</div>[39m
+        [36m</header>[39m
+        [36m<main[39m
+          [33mclass[39m=[32m"flex flex-1 flex-col gap-3 p-4 outline-none md:px-6 md:py-4 print:p-0"[39m
+          [33mid[39m=[32m"main"[39m
+          [33mtabindex[39m=[32m"-1"[39m
+        [36m>[39m
+          [36m<section[39m
+            [33maria-busy[39m=[32m"true"[39m
+            [33maria-labelledby[39m=[32m"_r_3_"[39m
+            [33maria-live[39m=[32m"polite"[39m
+            [33mclass[39m=[32m"flex flex-col items-start rounded-card bg-surface shadow-card gap-4 px-6 py-10 md:px-11 md:py-12"[39m
+            [33mdata-state-tone[39m=[32m"info"[39m
+            [33mrole[39m=[32m"status"[39m
+          [36m>[39m
+            [36m<h1[39m
+              [33mclass[39m=[32m"m-0 text-2xl font-bold tracking-display"[39m
+              [33mid[39m=[32m"_r_3_"[39m
+            [36m>[39m
+              [0m로그인 정보를 확인하는 중입니다[0m
+            [36m</h1>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"flex w-full flex-col gap-2.5 py-1"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mclass[39m=[32m"block h-3 rounded-md bg-skeleton motion-safe:animate-pulse w-full"[39m
+              [36m/>[39m
+              [36m<span[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mclass[39m=[32m"block h-3 rounded-md bg-skeleton motion-safe:animate-pulse w-2/3"[39m
+              [36m/>[39m
+            [36m</div>[39m
+          [36m</section>[39m
+        [36m</main>[39m
+        [36m<section[39m
+          [33mclass[39m=[32m"fixed right-4 bottom-4 left-4 z-30 sm:left-auto sm:w-96 print:hidden pointer-events-none"[39m
+        [36m>[39m
+          [36m<ol[39m
+            [33maria-live[39m=[32m"polite"[39m
+            [33mclass[39m=[32m"m-0 flex list-none flex-col gap-2 p-0"[39m
+          [36m/>[39m
+        [36m</section>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+
+Ignored nodes: comments, script, style
+[36m<body>[39m
+  [36m<div>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"flex min-h-screen"[39m
+    [36m>[39m
+      [36m<a[39m
+        [33mclass[39m=[32m"sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-control focus:bg-surface focus:px-3 focus:py-2 focus:shadow-card print:hidden"[39m
+        [33mhref[39m=[32m"#main"[39m
+      [36m>[39m
+        [0m본문으로 건너뛰기[0m
+      [36m</a>[39m
+      [36m<aside[39m
+        [33maria-label[39m=[32m"사이드바"[39m
+        [33mclass[39m=[32m"w-[208px] shrink-0 flex-col bg-sidebar px-3 shadow-sidebar sticky top-0 hidden h-screen overflow-y-auto md:flex print:hidden"[39m
+      [36m>[39m
+        [36m<a[39m
+          [33mclass[39m=[32m"flex h-[68px] items-center gap-2.5 px-2 text-ink hover:text-ink"[39m
+          [33mdata-discover[39m=[32m"true"[39m
+          [33mhref[39m=[32m"/"[39m
+        [36m>[39m
+          [36m<span[39m
+            [33maria-hidden[39m=[32m"true"[39m
+            [33mclass[39m=[32m"flex size-7 items-center justify-center text-primary"[39m
+          [36m>[39m
+            [36m<svg[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mfill[39m=[32m"none"[39m
+              [33mfocusable[39m=[32m"false"[39m
+              [33mheight[39m=[32m"26"[39m
+              [33mstroke[39m=[32m"currentColor"[39m
+              [33mstroke-linecap[39m=[32m"round"[39m
+              [33mstroke-linejoin[39m=[32m"round"[39m
+              [33mstroke-width[39m=[32m"2.2"[39m
+              [33mviewBox[39m=[32m"0 0 24 24"[39m
+              [33mwidth[39m=[32m"26"[39m
+            [36m>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M4.5 12a7.5 7.5 0 0 1 13.2-4.9M19.5 12a7.5 7.5 0 0 1-13.2 4.9"[39m
+              [36m/>[39m
+              [36m<path[39m
+                [33md[39m=[32m"M18 3.5v4h-4M6 20.5v-4h4"[39m
+              [36m/>[39m
+            [36m</svg>[39m
+          [36m</span>[39m
+          [36m<span[39m
+            [33mclass[39m=[32m"text-[19px] font-semibold tracking-heading"[39m
+          [36m>[39m
+            [0mOpsLoop[0m
+          [36m</span>[39m
+        [36m</a>[39m
+        [36m<nav[39m
+          [33maria-label[39m=[32m"주 메뉴"[39m
+          [33mclass[39m=[32m"flex flex-col"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33maria-labelledby[39m=[32m"_r_0_-0"[39m
+            [33mclass[39m=[32m"flex flex-col"[39m
+            [33mrole[39m=[32m"group"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"px-2.5 pt-4 pb-1 text-2xs font-semibold text-ink-muted"[39m
+              [33mid[39m=[32m"_r_0_-0"[39m
+            [36m>[39m
+              [0m관제[0m
+            [36m</span>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"18"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.8"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"18"[39m
+              [36m>[39m
+                [36m<rect[39m
+                  [33mheight[39m=[32m"7"[39m
+                  [33mrx[39m=[32m"2"[39m
+                  [33mwidth[39m=[32m"7"[39m
+                  [33mx[39m=[32m"3.5"[39m
+                  [33my[39m=[32m"3.5"[39m
+                [36m/>[39m
+                [36m<rect[39m
+                  [33mheight[39m=[32m"7"[39m
+                  [33mrx[39m=[32m"2"[39m
+                  [33mwidth[39m=[32m"7"[39m
+                  [33mx[39m=[32m"13.5"[39m
+                  [33my[39m=[32m"3.5"[39m
+                [36m/>[39m
+                [36m<rect[39m
+                  [33mheight[39m=[32m"7"[39m
+                  [33mrx[39m=[32m"2"[39m
+                  [33mwidth[39m=[32m"7"[39m
+                  [33mx[39m=[32m"3.5"[39m
+                  [33my[39m=[32m"13.5"[39m
+                [36m/>[39m
+                [36m<rect[39m
+                  [33mheight[39m=[32m"7"[39m
+                  [33mrx[39m=[32m"2"[39m
+                  [33mwidth[39m=[32m"7"[39m
+                  [33mx[39m=[32m"13.5"[39m
+                  [33my[39m=[32m"13.5"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0m대시보드[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/incidents"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"18"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.8"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"18"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M6 9a6 6 0 0 1 12 0c0 6 2.5 8 2.5 8h-17S6 15 6 9"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M10.3 20.5a2 2 0 0 0 3.4 0"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0m인시던트[0m
+            [36m</a>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33maria-labelledby[39m=[32m"_r_0_-1"[39m
+            [33mclass[39m=[32m"flex flex-col"[39m
+            [33mrole[39m=[32m"group"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"px-2.5 pt-4 pb-1 text-2xs font-semibold text-ink-muted"[39m
+              [33mid[39m=[32m"_r_0_-1"[39m
+            [36m>[39m
+              [0m대응[0m
+            [36m</span>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/blocklist"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"18"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.8"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"18"[39m
+              [36m>[39m
+                [36m<circle[39m
+                  [33mcx[39m=[32m"12"[39m
+                  [33mcy[39m=[32m"12"[39m
+                  [33mr[39m=[32m"8.5"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M6 6l12 12"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0m차단[0m
+            [36m</a>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33maria-labelledby[39m=[32m"_r_0_-2"[39m
+            [33mclass[39m=[32m"flex flex-col"[39m
+            [33mrole[39m=[32m"group"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"px-2.5 pt-4 pb-1 text-2xs font-semibold text-ink-muted"[39m
+              [33mid[39m=[32m"_r_0_-2"[39m
+            [36m>[39m
+              [0m분석[0m
+            [36m</span>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/rules"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"18"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.8"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"18"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1"[39m
+                [36m/>[39m
+                [36m<circle[39m
+                  [33mcx[39m=[32m"15"[39m
+                  [33mcy[39m=[32m"7"[39m
+                  [33mr[39m=[32m"2"[39m
+                [36m/>[39m
+                [36m<circle[39m
+                  [33mcx[39m=[32m"9"[39m
+                  [33mcy[39m=[32m"12"[39m
+                  [33mr[39m=[32m"2"[39m
+                [36m/>[39m
+                [36m<circle[39m
+                  [33mcx[39m=[32m"17"[39m
+                  [33mcy[39m=[32m"17"[39m
+                  [33mr[39m=[32m"2"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0m규칙 · 리플레이[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/sources"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"18"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.8"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"18"[39m
+              [36m>[39m
+                [36m<circle[39m
+                  [33mcx[39m=[32m"12"[39m
+                  [33mcy[39m=[32m"12"[39m
+                  [33mr[39m=[32m"8.5"[39m
+                [36m/>[39m
+                [36m<circle[39m
+                  [33mcx[39m=[32m"12"[39m
+                  [33mcy[39m=[32m"12"[39m
+                  [33mr[39m=[32m"4.5"[39m
+                [36m/>[39m
+                [36m<circle[39m
+                  [33mcx[39m=[32m"12"[39m
+                  [33mcy[39m=[32m"12"[39m
+                  [33mr[39m=[32m"1"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0m출발지 분석[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/reports"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"18"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.8"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"18"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M7 3.5h7l4.5 4.5v12.5H7z"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M14 3.5V8h4.5"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M10 17v-3M13 17v-5M16 17v-2"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0m보고서[0m
+            [36m</a>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33maria-labelledby[39m=[32m"_r_0_-3"[39m
+            [33mclass[39m=[32m"flex flex-col"[39m
+            [33mrole[39m=[32m"group"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"px-2.5 pt-4 pb-1 text-2xs font-semibold text-ink-muted"[39m
+              [33mid[39m=[32m"_r_0_-3"[39m
+            [36m>[39m
+              [0m수집[0m
+            [36m</span>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/nodes"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"18"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.8"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"18"[39m
+              [36m>[39m
+                [36m<rect[39m
+                  [33mheight[39m=[32m"7"[39m
+                  [33mrx[39m=[32m"2"[39m
+                  [33mwidth[39m=[32m"17"[39m
+                  [33mx[39m=[32m"3.5"[39m
+                  [33my[39m=[32m"4"[39m
+                [36m/>[39m
+                [36m<rect[39m
+                  [33mheight[39m=[32m"7"[39m
+                  [33mrx[39m=[32m"2"[39m
+                  [33mwidth[39m=[32m"17"[39m
+                  [33mx[39m=[32m"3.5"[39m
+                  [33my[39m=[32m"13"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M7.5 7.5h.01M7.5 16.5h.01"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0m수집 · 관제 상태[0m
+            [36m</a>[39m
+            [36m<a[39m
+              [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+              [33mdata-discover[39m=[32m"true"[39m
+              [33mhref[39m=[32m"/inventory"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"18"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.8"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"18"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M12 3.5l7.5 4v9L12 20.5l-7.5-4v-9z"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M4.5 7.5L12 11.5l7.5-4M12 11.5v9"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+              [0m자산 · 취약점[0m
+            [36m</a>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33maria-labelledby[39m=[32m"_r_0_-4"[39m
+            [33mclass[39m=[32m"flex flex-col"[39m
+            [33mrole[39m=[32m"group"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"px-2.5 pt-4 pb-1 text-2xs font-semibold text-ink-muted opacity-45"[39m
+              [33mid[39m=[32m"_r_0_-4"[39m
+            [36m>[39m
+              [0m관리[0m
+            [36m</span>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"max-w-full cursor-not-allowed flex-col flex w-full gap-0"[39m
+              [33mdata-gated[39m=[32m"denied"[39m
+              [33mtitle[39m=[32m"권한을 확인하는 중입니다 (알림 설정)"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"pointer-events-none opacity-45 select-none"[39m
+                [33minert[39m=[32m""[39m
+              [36m>[39m
+                [36m<a[39m
+                  [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+                  [33mdata-discover[39m=[32m"true"[39m
+                  [33mhref[39m=[32m"/alerts"[39m
+                [36m>[39m
+                  [36m<svg[39m
+                    [33maria-hidden[39m=[32m"true"[39m
+                    [33mfill[39m=[32m"none"[39m
+                    [33mfocusable[39m=[32m"false"[39m
+                    [33mheight[39m=[32m"18"[39m
+                    [33mstroke[39m=[32m"currentColor"[39m
+                    [33mstroke-linecap[39m=[32m"round"[39m
+                    [33mstroke-linejoin[39m=[32m"round"[39m
+                    [33mstroke-width[39m=[32m"1.8"[39m
+                    [33mviewBox[39m=[32m"0 0 24 24"[39m
+                    [33mwidth[39m=[32m"18"[39m
+                  [36m>[39m
+                    [36m<path[39m
+                      [33md[39m=[32m"M4 12l16-7-5 15-3-6z"[39m
+                    [36m/>[39m
+                    [36m<path[39m
+                      [33md[39m=[32m"M12 14l3-3"[39m
+                    [36m/>[39m
+                  [36m</svg>[39m
+                  [0m알림[0m
+                [36m</a>[39m
+              [36m</div>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"sr-only"[39m
+              [36m>[39m
+                [0m권한을 확인하는 중입니다 (알림 설정)[0m
+              [36m</span>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"max-w-full cursor-not-allowed flex-col flex w-full gap-0"[39m
+              [33mdata-gated[39m=[32m"denied"[39m
+              [33mtitle[39m=[32m"권한을 확인하는 중입니다 (감사 기록 열람)"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"pointer-events-none opacity-45 select-none"[39m
+                [33minert[39m=[32m""[39m
+              [36m>[39m
+                [36m<a[39m
+                  [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+                  [33mdata-discover[39m=[32m"true"[39m
+                  [33mhref[39m=[32m"/audit"[39m
+                [36m>[39m
+                  [36m<svg[39m
+                    [33maria-hidden[39m=[32m"true"[39m
+                    [33mfill[39m=[32m"none"[39m
+                    [33mfocusable[39m=[32m"false"[39m
+                    [33mheight[39m=[32m"18"[39m
+                    [33mstroke[39m=[32m"currentColor"[39m
+                    [33mstroke-linecap[39m=[32m"round"[39m
+                    [33mstroke-linejoin[39m=[32m"round"[39m
+                    [33mstroke-width[39m=[32m"1.8"[39m
+                    [33mviewBox[39m=[32m"0 0 24 24"[39m
+                    [33mwidth[39m=[32m"18"[39m
+                  [36m>[39m
+                    [36m<path[39m
+                      [33md[39m=[32m"M12 3.5l7 3v5c0 4.5-3 7.8-7 9-4-1.2-7-4.5-7-9v-5z"[39m
+                    [36m/>[39m
+                    [36m<path[39m
+                      [33md[39m=[32m"M9 12l2 2 4-4"[39m
+                    [36m/>[39m
+                  [36m</svg>[39m
+                  [0m감사 기록[0m
+                [36m</a>[39m
+              [36m</div>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"sr-only"[39m
+              [36m>[39m
+                [0m권한을 확인하는 중입니다 (감사 기록 열람)[0m
+              [36m</span>[39m
+            [36m</div>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"max-w-full cursor-not-allowed flex-col flex w-full gap-0"[39m
+              [33mdata-gated[39m=[32m"denied"[39m
+              [33mtitle[39m=[32m"권한을 확인하는 중입니다 (계정 관리)"[39m
+            [36m>[39m
+              [36m<div[39m
+                [33mclass[39m=[32m"pointer-events-none opacity-45 select-none"[39m
+                [33minert[39m=[32m""[39m
+              [36m>[39m
+                [36m<a[39m
+                  [33mclass[39m=[32m"flex items-center gap-2.5 rounded-control border-l-2 border-transparent px-2 py-1.5 text-sm text-ink transition-colors hover:bg-black/4 hover:text-ink [&>svg]:shrink-0 [&>svg]:text-ink-muted"[39m
+                  [33mdata-discover[39m=[32m"true"[39m
+                  [33mhref[39m=[32m"/accounts"[39m
+                [36m>[39m
+                  [36m<svg[39m
+                    [33maria-hidden[39m=[32m"true"[39m
+                    [33mfill[39m=[32m"none"[39m
+                    [33mfocusable[39m=[32m"false"[39m
+                    [33mheight[39m=[32m"18"[39m
+                    [33mstroke[39m=[32m"currentColor"[39m
+                    [33mstroke-linecap[39m=[32m"round"[39m
+                    [33mstroke-linejoin[39m=[32m"round"[39m
+                    [33mstroke-width[39m=[32m"1.8"[39m
+                    [33mviewBox[39m=[32m"0 0 24 24"[39m
+                    [33mwidth[39m=[32m"18"[39m
+                  [36m>[39m
+                    [36m<circle[39m
+                      [33mcx[39m=[32m"9"[39m
+                      [33mcy[39m=[32m"8.5"[39m
+                      [33mr[39m=[32m"3.5"[39m
+                    [36m/>[39m
+                    [36m<path[39m
+                      [33md[39m=[32m"M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"[39m
+                    [36m/>[39m
+                    [36m<path[39m
+                      [33md[39m=[32m"M16 5.5a3.5 3.5 0 0 1 0 6.5M18.5 14.8c1.6.8 2.7 2.6 3 5.2"[39m
+                    [36m/>[39m
+                  [36m</svg>[39m
+                  [0m계정[0m
+                [36m</a>[39m
+              [36m</div>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"sr-only"[39m
+              [36m>[39m
+                [0m권한을 확인하는 중입니다 (계정 관리)[0m
+              [36m</span>[39m
+            [36m</div>[39m
+          [36m</div>[39m
+        [36m</nav>[39m
+        [36m<div[39m
+          [33mclass[39m=[32m"mt-auto flex flex-col gap-3 px-1.5 pt-3 pb-4 shadow-hairline-up"[39m
+        [36m>[39m
+          [36m<a[39m
+            [33mclass[39m=[32m"inline-flex min-w-0 items-center gap-2 text-xs text-ink-muted hover:text-ink"[39m
+            [33mdata-discover[39m=[32m"true"[39m
+            [33mdata-ops[39m=[32m"pending"[39m
+            [33mdata-signal[39m=[32m"idle"[39m
+            [33mhref[39m=[32m"/"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"inline-block size-2 shrink-0 rounded-full bg-signal-idle"[39m
+              [33mdata-signal[39m=[32m"idle"[39m
+            [36m/>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"truncate"[39m
+            [36m>[39m
+              [0m관제 상태 조회 전[0m
+            [36m</span>[39m
+          [36m</a>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex items-center gap-2.5"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33maria-hidden[39m=[32m"true"[39m
+              [33mclass[39m=[32m"flex shrink-0 items-center justify-center text-ink-muted"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"18"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.8"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"18"[39m
+              [36m>[39m
+                [36m<circle[39m
+                  [33mcx[39m=[32m"9"[39m
+                  [33mcy[39m=[32m"8.5"[39m
+                  [33mr[39m=[32m"3.5"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M2.5 20c.8-3.5 3.4-5.5 6.5-5.5s5.7 2 6.5 5.5"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M16 5.5a3.5 3.5 0 0 1 0 6.5M18.5 14.8c1.6.8 2.7 2.6 3 5.2"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"flex min-w-0 flex-col text-sm"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"truncate font-medium"[39m
+              [36m>[39m
+                [0m확인 중[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"text-xs text-ink-muted"[39m
+              [36m>[39m
+                [0m—[0m
+              [36m</span>[39m
+            [36m</span>[39m
+            [36m<form[39m
+              [33maction[39m=[32m"/logout"[39m
+              [33mclass[39m=[32m"m-0 ml-auto shrink-0 whitespace-nowrap"[39m
+              [33mmethod[39m=[32m"post"[39m
+            [36m>[39m
+              [36m<button[39m
+                [33mclass[39m=[32m"cursor-pointer rounded-sm border-0 bg-transparent p-0 text-xs text-primary hover:text-primary-strong"[39m
+                [33mtype[39m=[32m"submit"[39m
+              [36m>[39m
+                [0m로그아웃[0m
+              [36m</button>[39m
+            [36m</form>[39m
+          [36m</div>[39m
+        [36m</div>[39m
+      [36m</aside>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"flex min-w-0 flex-1 flex-col"[39m
+      [36m>[39m
+        [36m<header[39m
+          [33mclass[39m=[32m"sticky top-0 z-20 flex h-12 shrink-0 items-center justify-between gap-3 bg-surface px-4 shadow-hairline md:px-6 print:hidden"[39m
+        [36m>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex min-w-0 flex-1 items-center gap-2"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33maria-expanded[39m=[32m"false"[39m
+              [33maria-haspopup[39m=[32m"dialog"[39m
+              [33maria-label[39m=[32m"메뉴 열기"[39m
+              [33mclass[39m=[32m"inline-flex shrink-0 cursor-pointer select-none items-center justify-center gap-1.5 whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary bg-surface text-ink size-7 rounded-control p-0 text-sm hover:bg-canvas shadow-none md:hidden"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"18"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"1.8"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"18"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M4 7h16M4 12h16M4 17h16"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+            [36m</button>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"text-[16px] font-semibold md:hidden"[39m
+            [36m>[39m
+              [0mOpsLoop[0m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"hidden text-sm text-ink-muted md:block"[39m
+            [36m>[39m
+              [0mOpsLoop[0m
+            [36m</span>[39m
+          [36m</div>[39m
+          [36m<div[39m
+            [33mclass[39m=[32m"flex shrink-0 items-center gap-3.5 text-xs text-ink-muted"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"inline-flex min-w-0 items-center gap-1.5"[39m
+              [33mdata-live[39m=[32m"connecting"[39m
+              [33mtitle[39m=[32m"실시간 연결 중"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mclass[39m=[32m"inline-block size-2 shrink-0 rounded-full bg-signal-idle"[39m
+                [33mdata-signal[39m=[32m"idle"[39m
+              [36m/>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"sr-only md:not-sr-only"[39m
+              [36m>[39m
+                [0m실시간 연결 중[0m
+              [36m</span>[39m
+            [36m</span>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"md:hidden"[39m
+            [36m>[39m
+              [36m<a[39m
+                [33mclass[39m=[32m"inline-flex min-w-0 items-center gap-2 text-xs text-ink-muted hover:text-ink"[39m
+                [33mdata-discover[39m=[32m"true"[39m
+                [33mdata-ops[39m=[32m"pending"[39m
+                [33mdata-signal[39m=[32m"idle"[39m
+                [33mhref[39m=[32m"/"[39m
+              [36m>[39m
+                [36m<span[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mclass[39m=[32m"inline-block size-2 shrink-0 rounded-full bg-signal-idle"[39m
+                  [33mdata-signal[39m=[32m"idle"[39m
+                [36m/>[39m
+                [36m<span[39m
+                  [33mclass[39m=[32m"truncate"[39m
+                [36m>[39m
+                  [0m관제 —[0m
+                [36m</span>[39m
+              [36m</a>[39m
+            [36m</span>[39m
+            [36m<button[39m
+              [33maria-label[39m=[32m"새로고침"[39m
+              [33mclass[39m=[32m"shrink-0 cursor-pointer select-none items-center justify-center gap-1.5 whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary bg-surface shadow-control size-7 rounded-control p-0 text-sm hover:bg-canvas hidden text-ink md:inline-flex"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [36m<svg[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mclass[39m=[32m""[39m
+                [33mfill[39m=[32m"none"[39m
+                [33mfocusable[39m=[32m"false"[39m
+                [33mheight[39m=[32m"14"[39m
+                [33mstroke[39m=[32m"currentColor"[39m
+                [33mstroke-linecap[39m=[32m"round"[39m
+                [33mstroke-linejoin[39m=[32m"round"[39m
+                [33mstroke-width[39m=[32m"2"[39m
+                [33mviewBox[39m=[32m"0 0 24 24"[39m
+                [33mwidth[39m=[32m"14"[39m
+              [36m>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M20 11a8 8 0 1 0-2.3 5.7"[39m
+                [36m/>[39m
+                [36m<path[39m
+                  [33md[39m=[32m"M20 4v7h-7"[39m
+                [36m/>[39m
+              [36m</svg>[39m
+            [36m</button>[39m
+          [36m</div>[39m
+        [36m</header>[39m
+        [36m<main[39m
+          [33mclass[39m=[32m"flex flex-1 flex-col gap-3 p-4 outline-none md:px-6 md:py-4 print:p-0"[39m
+          [33mid[39m=[32m"main"[39m
+          [33mtabindex[39m=[32m"-1"[39m
+        [36m>[39m
+          [36m<section[39m
+            [33maria-busy[39m=[32m"true"[39m
+            [33maria-labelledby[39m=[32m"_r_3_"[39m
+            [33maria-live[39m=[32m"polite"[39m
+            [33mclass[39m=[32m"flex flex-col items-start rounded-card bg-surface shadow-card gap-4 px-6 py-10 md:px-11 md:py-12"[39m
+            [33mdata-state-tone[39m=[32m"info"[39m
+            [33mrole[39m=[32m"status"[39m
+          [36m>[39m
+            [36m<h1[39m
+              [33mclass[39m=[32m"m-0 text-2xl font-bold tracking-display"[39m
+              [33mid[39m=[32m"_r_3_"[39m
+            [36m>[39m
+              [0m로그인 정보를 확인하는 중입니다[0m
+            [36m</h1>[39m
+            [36m<div[39m
+              [33mclass[39m=[32m"flex w-full flex-col gap-2.5 py-1"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mclass[39m=[32m"block h-3 rounded-md bg-skeleton motion-safe:animate-pulse w-full"[39m
+              [36m/>[39m
+              [36m<span[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mclass[39m=[32m"block h-3 rounded-md bg-skeleton motion-safe:animate-pulse w-2/3"[39m
+              [36m/>[39m
+            [36m</div>[39m
+          [36m</section>[39m
+        [36m</main>[39m
+        [36m<section[39m
+          [33mclass[39m=[32m"fixed right-4 bottom-4 left-4 z-30 sm:left-auto sm:w-96 print:hidden pointer-events-none"[39m
+        [36m>[39m
+          [36m<ol[39m
+            [33maria-live[39m=[32m"polite"[39m
+            [33mclass[39m=[32m"m-0 flex list-none flex-col gap-2 p-0"[39m
+          [36m/>[39m
+        [36m</section>[39m
+      [36m</div>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+[36m</body>[39m
+ ❯ waitForWrapper node_modules/@testing-library/dom/dist/wait-for.js:163:27
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:86:33
+ ❯ src/app/router.test.tsx:41:25
+     39|     stubMe({ username: 'han', role: 'operator' })
+     40|     renderRoutes(routes, '/nowhere?x=1')
+     41|     expect(await screen.findByRole('heading', { level: 1, name: '페이지를 …
+       |                         ^
+     42|     expect(screen.getByText('/nowhere?x=1')).toBeInTheDocument()
+     43|     expect(within(screen.getByRole('main')).getByRole('link', { name: …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 15 passed (16)
+   Start at  23:36:58
+   Duration  22.31s (tests 57%, transform 28%, environment 12%, setup 2%, import 1%)
+
+  Transform  transforming modules took 6.02s · 28% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+
+JSON report written to /Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-review-404/repro/raw/e-file-burn64-4.json

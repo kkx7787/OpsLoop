@@ -1,0 +1,15 @@
+
+> console@0.0.0 test
+> vitest run src/app/router.test.tsx -t 없는 주소는 틀 안에서 404 화면 --reporter=dot --reporter=json --outputFile.json=/Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-review-404/repro/raw/a-only-16.json
+
+
+ RUN  v5.0.1 /Users/hanseongmin/opsloop-repo/console
+
+·---------------
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 15 skipped (16)
+   Start at  23:23:15
+   Duration  1.01s (transform 38%, environment 33%, tests 14%, import 9%, setup 5%)
+
+JSON report written to /Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-review-404/repro/raw/a-only-16.json

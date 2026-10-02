@@ -1,0 +1,19 @@
+
+> console@0.0.0 test
+> vitest run src/app/router.test.tsx --reporter=dot --reporter=json --outputFile.json=/Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-review-404/repro/raw/e-file-burn64-1.json
+
+
+ RUN  v5.0.1 /Users/hanseongmin/opsloop-repo/console
+
+················
+
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+   Start at  23:35:42
+   Duration  16.99s (tests 51%, transform 32%, environment 14%, setup 2%, import 2%)
+
+  Transform  transforming modules took 5.25s · 32% of tracked time, re-done on every run
+             persist transforms across runs with fsModuleCache: true
+             learn more: https://vitest.dev/guide/improving-performance#caching-between-reruns
+
+JSON report written to /Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-review-404/repro/raw/e-file-burn64-1.json
