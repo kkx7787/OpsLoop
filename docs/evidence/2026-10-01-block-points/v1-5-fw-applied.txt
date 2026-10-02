@@ -1,0 +1,22 @@
+fw 집합에 들어감 (11:04:25)
+		elements = { 203.0.113.10 timeout 59m7s expires 59m2s392ms }
+	}
+}
+차단 뒤 attacker → web01: 000 (5.002815s)
+curl 종료 28
+{
+ "v": 1,
+ "at": "2026-10-01T02:04:21+00:00",
+ "mode": "nft",
+ "list": "fw",
+ "list_digest": "8887a6179d6ee87f2be81cdf916d1f55ca6d25d96533234de9b49fb3b9f56252",
+ "list_generated_at": "2026-10-01T02:03:38Z",
+ "applied": 1,
+ "set_count": 1,
+		ip saddr @opsloop_block limit rate 10/second burst 5 packets log prefix "fw-block-drop "
+		ip saddr @opsloop_block drop
+지점별 (목록 행): 관문 요청 0 · 확인 0 · 미요청 1 / 내부 방화벽 요청 1 · 확인 0
+관문 보고: 2026-10-01T02:04:19Z · fail2ban · 목록 legacy 4f53cda1 · 적용 0 · 집합 0 · 거부 0 · 오류 0 · 자가 시험 ok
+내부 방화벽 보고: 2026-10-01T02:04:21Z · nft · 목록 fw 8887a617 · 적용 1 · 집합 1 · 거부 0 · 오류 0 · 자가 시험 ok
+
+[exited with code 0]

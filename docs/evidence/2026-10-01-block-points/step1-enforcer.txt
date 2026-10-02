@@ -1,0 +1,13 @@
+total 108
+drwx------ 2 root root  4096 Oct  1 10:52 .
+drwx------ 4 root root  4096 Oct  1 10:52 ..
+-rw-r--r-- 1 root root  7527 Oct  1 10:52 blocks-before.sql
+-rw-r--r-- 1 root root 91620 Oct  1 10:52 schema-before.sql
+마지막 회차 3476 · 올린 목록 0개 digest 4f53cda1 · 올린 시각 2026-10-01T01:50:08.399110Z
+DB (지난 2일 안의 만료 · 집행 기록이 남은 행 포함): 집행 제외 12 · 해제/만료 12
+관문 보고: 2026-10-01T01:53:39Z · fail2ban · 목록 4f53cda1 · 적용 0 · 집합 0 · 거부 0 · 오류 0 · 자가 시험 ok
+내부 방화벽 보고: 2026-10-01T01:52:51Z · nft · 목록 4f53cda1 · 적용 0 · 집합 0 · 거부 0 · 오류 0 · 자가 시험 ok
+Oct 01 10:53:16 opsloop-data-01 systemd[1]: Starting opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록)...
+Oct 01 10:53:17 opsloop-data-01 python3[223087]: 행 24 · 목록 0 · 관문 fail2ban 2026-10-01T01:52:34Z 목록 4f53cda1 · 내부 방화벽 nft 2026-10-01T01:52:51Z 목록 4f53cda1: exclude 12 · expired 12
+Oct 01 10:53:17 opsloop-data-01 systemd[1]: opsloop-enforcer.service: Deactivated successfully.
+Oct 01 10:53:17 opsloop-data-01 systemd[1]: Finished opsloop-enforcer.service - OpsLoop 차단 집행기 (DB 차단 목록 → S3 block/ → 관문, 관문 보고 → DB 집행 기록).

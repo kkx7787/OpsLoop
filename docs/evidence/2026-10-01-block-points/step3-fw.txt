@@ -1,0 +1,19 @@
+-rwxr-xr-x 1 root root 37596 Oct  1 10:57 /usr/local/lib/opsloop/block-sync.py
+-rwxr-xr-x 1 root root 35336 Sep 28 17:31 /usr/local/lib/opsloop/block-sync.py.before-77
+active
+{
+ "v": 1,
+ "at": "2026-10-01T01:57:58+00:00",
+ "mode": "nft",
+ "list_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+ "list_generated_at": "2026-10-01T01:56:02Z",
+ "applied": 0,
+ "set_count": 0,
+ "rejected": [],
+ "errors": [],
+ "selftest": "ok"
+}0
+Oct 01 10:56:57 opsloop-fw python3[39961]:   nft add 0 · replace 0 · del 0
+Oct 01 10:56:57 opsloop-fw python3[39961]: nft · 목록 확인 · 반영 0 · 집합 0 · 거부 0 · 오류 0
+Oct 01 10:57:58 opsloop-fw python3[44030]:   nft add 0 · replace 0 · del 0
+Oct 01 10:57:58 opsloop-fw python3[44030]: nft · 목록 확인 · 반영 0 · 집합 0 · 거부 0 · 오류 0

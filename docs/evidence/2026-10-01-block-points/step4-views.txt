@@ -1,0 +1,21 @@
+관제 이상 []
+aws-sensor {'point': 'gateway', 'applied': 0, 'failed': 0, 'unverified': 0, 'stale': 0, 'unrequested': 0, 'removing': 0, 'stalled': None}
+web-01 {'point': 'fw', 'applied': 0, 'failed': 0, 'unverified': 0, 'stale': 0, 'unrequested': 0, 'removing': 0, 'stalled': None}
+console {'point': None, 'applied': None, 'failed': None, 'unverified': None, 'stale': None, 'unrequested': None, 'removing': None, 'stalled': None}
+data-node {'point': None, 'applied': None, 'failed': None, 'unverified': None, 'stale': None, 'unrequested': None, 'removing': None, 'stalled': None}
+Traceback (most recent call last):
+  File "<stdin>", line 18, in <module>
+  File "/usr/local/lib/python3.12/asyncio/runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/lib/python3.12/asyncio/base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "<stdin>", line 13, in run
+TypeError: dashboard_metrics() missing 1 required positional argument: 'as_of'
+요약 차단 null
+지점별 null
+감사(T0 뒤 차단 요청류) []

@@ -1,0 +1,31 @@
+1ce8742
+/opt/opsloop/enforcer.old
+34aff8b
+마지막 회차 3479 · 올린 목록 관문 0개 digest 4f53cda1 · 내부 방화벽 0개 digest 4f53cda1 · 올린 시각 2026-10-01T01:56:02.544409Z
+관문 목록: 전체 · 내부 방화벽 확인 전
+DB (지난 2일 안의 만료 · 집행 기록이 남은 행 포함): 집행 제외 12 · 해제/만료 12
+지점별 (목록 행): 관문 요청 0 · 확인 0 / 내부 방화벽 요청 0 · 확인 0
+관문 보고: 2026-10-01T01:55:45Z · fail2ban · 목록 legacy 4f53cda1 · 적용 0 · 집합 0 · 거부 0 · 오류 0 · 자가 시험 ok
+내부 방화벽 보고: 2026-10-01T01:55:57Z · nft · 목록 legacy 4f53cda1 · 적용 0 · 집합 0 · 거부 0 · 오류 0 · 자가 시험 ok
+---
+Oct 01 10:51:13 opsloop-data-01 python3[210336]: 행 24 · 목록 0 · 관문 fail2ban 2026-10-01T01:50:24Z 목록 4f53cda1 · 내부 방화벽 nft 2026-10-01T01:50:46Z 목록 4f53cda1: exclude 12 · expired 12
+Oct 01 10:52:14 opsloop-data-01 python3[210874]: 행 24 · 목록 0 · 관문 fail2ban 2026-10-01T01:51:29Z 목록 4f53cda1 · 내부 방화벽 nft 2026-10-01T01:51:51Z 목록 4f53cda1: exclude 12 · expired 12
+Oct 01 10:53:17 opsloop-data-01 python3[223087]: 행 24 · 목록 0 · 관문 fail2ban 2026-10-01T01:52:34Z 목록 4f53cda1 · 내부 방화벽 nft 2026-10-01T01:52:51Z 목록 4f53cda1: exclude 12 · expired 12
+Oct 01 10:54:17 opsloop-data-01 python3[227406]: 행 24 · 목록 0 · 관문 fail2ban 2026-10-01T01:53:39Z 목록 4f53cda1 · 내부 방화벽 nft 2026-10-01T01:53:55Z 목록 4f53cda1: exclude 12 · expired 12
+Oct 01 10:55:21 opsloop-data-01 python3[235622]: 행 24 · 목록 0 · 관문 fail2ban 2026-10-01T01:54:40Z 목록 4f53cda1 · 내부 방화벽 nft 2026-10-01T01:54:56Z 목록 4f53cda1: exclude 12 · expired 12
+Oct 01 10:56:02 opsloop-data-01 python3[236425]: 내부 방화벽 장부를 기존 장부에서 다시 만들었다 (옛 상태 파일 · 옛 집행기가 그 사이 돌았다)
+Oct 01 10:56:02 opsloop-data-01 python3[236425]: 목록을 올렸다: 관문 0개 digest 4f53cda1 · 내부 방화벽 0개 digest 4f53cda1
+Oct 01 10:56:02 opsloop-data-01 python3[236425]: 행 24 · 목록 관문 0 · 내부 방화벽 0 (관문 목록 전체 · 내부 방화벽 확인 전) · 관문 fail2ban 2026-10-01T01:55:45Z 목록 4f53cda1 · 내부 방화벽 nft 2026-10-01T01:55:57Z 목록 4f53cda1: exclude 12 · expired 12
+---
+{
+ "v": 1,
+ "generated_at": "2026-10-01T01:56:20Z",
+ "entries": [],
+ "digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+ "points": {
+  "fw": {
+   "entries": [],
+   "digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  }
+ }
+}

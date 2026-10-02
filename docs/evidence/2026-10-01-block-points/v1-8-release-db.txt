@@ -1,0 +1,3 @@
+행 {'points': ['fw'], 'released_at': datetime.datetime(2026, 10, 1, 2, 5, 18, 366779, tzinfo=datetime.timezone.utc), 'released_by': 'han', 'enforced_at': None, 'enforce_note': None, 'enforcement': '{"fw": {"mode": "nft", "note": null, "since": "2026-10-01T02:04:21Z", "state": "confirmed"}}'}
+02:03:28 console.block.rearmed han
+02:05:18 console.block.released han

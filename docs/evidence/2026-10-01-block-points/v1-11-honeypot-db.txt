@@ -1,0 +1,3 @@
+행 {'ip': '178.128.183.16', 'points': ['fw'], 'created_at': datetime.datetime(2026, 10, 1, 4, 30, 0, 862551, tzinfo=datetime.timezone.utc), 'expires_at': datetime.datetime(2026, 10, 1, 5, 30, 0, 862551, tzinfo=datetime.timezone.utc), 'released_at': None, 'enforced_at': None, 'enforce_note': None, 'enforcement': None, 'requested_by': 'han', 'incident_key': 'R003|v3|178.128.183.16|2026-09-30T21:23:25.665302+00:00'}
+판정 {'verdict': 'threat', 'operator': 'han', 'created_at': datetime.datetime(2026, 10, 1, 4, 29, 26, 756472, tzinfo=datetime.timezone.utc)}
+04:30:00 console.block.created han
