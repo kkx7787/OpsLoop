@@ -1,0 +1,80 @@
+콘솔 B 합류 · 드라이런 (명령만 찍는다. 원격 · VM 에 아무것도 하지 않는다)
+== precheck · 콘솔 A /health · 역할 접속 한도 · HAProxy 상태 · VM 상태
+  확인: 콘솔 A /health 200 (방화벽에서)
+  확인: opsloop_console 접속 한도 30 이상
+  확인: HAProxy master 소켓 읽기
+  $ ssh fw 'echo "@1 show servers state consoles" | sudo -n nc -N -U /run/haproxy-master.sock'
+  $ "/Applications/VMware Fusion.app/Contents/Library/vmrun" list | grep -F '/Users/hanseongmin/Virtual Machines.localized/opsloop-console-b.vmwarevm/opsloop-console-b.vmx'
+== maint · HAProxy console-b → maint
+  $ ssh fw 'echo "@1 set server consoles/console-b state maint" | sudo -n nc -N -U /run/haproxy-master.sock'
+  기다림: console-b 관리 상태 maint (최대 5번 · 2초 간격)
+== vm-start · VM 켜기 · SSH 응답 대기
+  확인: console-b 가 maint 다 (아니면 멈춘다)
+  $ /Applications/VMware Fusion.app/Contents/Library/vmrun start /Users/hanseongmin/Virtual Machines.localized/opsloop-console-b.vmwarevm/opsloop-console-b.vmx nogui
+  기다림: console-b SSH 응답 (최대 90번 · 2초 간격)
+== stop-old · 옛 컨테이너 restart=no · 멈춤
+  $ ssh console-b 'if docker inspect opsloop-api >/dev/null 2>&1; then docker update --restart=no opsloop-api >/dev/null; docker stop -t 10 opsloop-api >/dev/null; echo "  옛 컨테이너: restart=no · 멈춤"; else echo "  옛 컨테이너 없음"; fi'
+  확인: 옛 컨테이너가 멈췄고 restart=no
+== chrony · 방화벽 시간원 · 맞춰질 때까지
+  $ sed 's/__FW__/192.168.50.1/' infra/vmware/netplan/chrony-client.conf.template | ssh console-b 'set -eo pipefail
+cat > /tmp/opsloop-fw.conf
+changed=0
+if grep -qE '^pool ' /etc/chrony/chrony.conf; then sudo -n sed -i -E 's/^(pool .*)/#\1/' /etc/chrony/chrony.conf; changed=1; fi
+if ! sudo -n cmp -s /tmp/opsloop-fw.conf /etc/chrony/conf.d/opsloop-fw.conf; then
+  sudo -n install -m 644 -o root -g root /tmp/opsloop-fw.conf /etc/chrony/conf.d/opsloop-fw.conf; changed=1
+fi
+rm -f /tmp/opsloop-fw.conf
+if [ "$changed" = 1 ]; then sudo -n systemctl restart chrony; echo "  시간원 설정을 바꾸고 chrony 를 다시 띄웠다"; else echo "  시간원 설정은 이미 같다"; fi
+chronyc waitsync 30 1 >/dev/null
+chronyc -n tracking | grep -E '^(Reference ID|System time)' | sed 's/^/    /''
+== upgrade · full-upgrade · 재부팅
+  $ ssh console-b 'set -eo pipefail
+sudo -n apt-get -o DPkg::Lock::Timeout=300 update -q >/dev/null
+sudo -n env DEBIAN_FRONTEND=noninteractive NEEDRESTART_SUSPEND=1 apt-get -o DPkg::Lock::Timeout=300 -y -q \
+  -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold full-upgrade | tail -n 2 | sed 's/^/    /''
+  $ ssh console-b 'sudo -n systemctl reboot'
+  기다림: 재부팅 뒤 SSH (부팅 id 가 바뀜) (최대 90번 · 2초 간격)
+  확인: 옛 컨테이너가 멈춘 채다
+== guard · consoles.yml --limit console-b 두 번
+  $ (cd infra/ansible && ansible-playbook consoles.yml --limit console-b)    # 두 번. 두 번째는 changed=0
+== image · 콘솔 A 이미지 docker save | load
+  $ ssh console-a 'set -o pipefail; docker save opsloop-api:latest | gzip -1' | ssh console-b 'docker load -q'
+  확인: 이미지 ID 가 콘솔 A 와 같다
+== env · .env 동기화 (비밀값은 파이프로만)
+  $ ssh console-a 'grep -E '^(SESSION_SECRET|OPSLOOP_CONSOLE_DB_PASSWORD)=.' ~/opsloop/.env' | ssh console-b 'set -e
+umask 077; mkdir -p ~/opsloop; f=~/opsloop/.env
+new=$(cat)
+n=$(printf '%s\n' "$new" | grep -cE '^(SESSION_SECRET|OPSLOOP_CONSOLE_DB_PASSWORD)=.' || true)
+[ "$n" = 2 ] || { echo "  console-a 에서 두 값을 받지 못했다 ($n/2). .env 를 바꾸지 않는다" >&2; exit 1; }
+{ grep -vE '^(SESSION_SECRET|OPSLOOP_CONSOLE_DB_PASSWORD|OPSLOOP_WORKER)=' "$f" 2>/dev/null || true
+  printf '%s\n' "$new"
+  echo 'OPSLOOP_WORKER=opsloop-console-b'; } > "$f.tmp"
+chmod 600 "$f.tmp"; mv "$f.tmp" "$f"
+echo "  .env 갱신: 비밀값 두 줄은 console-a 에서 받았다 (찍지 않는다) · OPSLOOP_WORKER=opsloop-console-b"'
+  확인: .env 0600 · 비밀값 두 줄 · OPSLOOP_WORKER=opsloop-console-b (값은 찍지 않는다)
+== up · console.yml · compose up · /health
+  확인: console-b 가 maint 다 (아니면 멈춘다)
+  $ ssh console-a 'cat ~/opsloop/console.yml' | ssh console-b 'set -e
+mkdir -p ~/opsloop/app; f=~/opsloop/console.yml
+cat > "$f.tmp"
+if [ ! -s "$f.tmp" ]; then rm -f "$f.tmp"; echo "  콘솔 A 에서 console.yml 을 받지 못했다. 바꾸지 않는다" >&2; exit 1; fi
+if [ -f "$f" ]; then cp -p "$f" "$f.prev"; fi
+mv "$f.tmp" "$f"
+echo "  console.yml 을 콘솔 A 판으로 (이전 판 console.yml.prev)"'
+  $ ssh console-b 'set -o pipefail; cd ~/opsloop && docker compose -f console.yml up -d --no-build --force-recreate 2>&1 | tail -n 2'
+  기다림: B /health 200 (B 안에서) (최대 30번 · 2초 간격)
+== verify · A 와 같은지 · 발송기 이름 · DB 역할 · 방화벽에서 /health
+  확인: 이미지 ID 가 콘솔 A 와 같다
+  확인: console.yml 이 콘솔 A 와 같다
+  확인: 비밀값 두 줄이 콘솔 A 와 같다 (해시를 변수로만 비교한다)
+  확인: B 컨테이너: 재시작 정책 always · 발송기 이름 opsloop-console-b · DB 역할 opsloop_console
+  확인: 방화벽에서 B /health 200
+  확인: opsloop_console 접속 수가 한도 안
+== ready · HAProxy console-b → ready · UP 대기
+  확인: 방화벽에서 B /health 200
+  $ ssh fw 'echo "@1 set server consoles/console-b state ready" | sudo -n nc -N -U /run/haproxy-master.sock'
+  기다림: console-b UP (운영 2 · 관리 0) (최대 30번 · 2초 간격)
+  $ ssh fw 'echo "@1 show servers state consoles" | sudo -n nc -N -U /run/haproxy-master.sock'
+== assets · 자산 조사 --only console-b
+  $ /Users/hanseongmin/opsloop-repo/infra/vmware/scripts/collect-assets.sh --only console-b
+드라이런이다. 실제로 돌리려면 --apply

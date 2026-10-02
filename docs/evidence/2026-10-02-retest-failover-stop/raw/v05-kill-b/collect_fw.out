@@ -1,0 +1,12 @@
+HAProxy 상태 수집: fw · 0.5초 · 300초 → /Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-retest-failover-stop/raw/v05-kill-b/fw.csv
+  10:21:14 console-a → UP
+  10:21:14 console-b → UP
+  10:21:14 BACKEND → UP
+  10:21:46 console-b → UP 2/3
+  10:21:48 console-b → UP 1/3
+  10:21:50 console-b → DOWN
+  10:24:18 console-b → DOWN 1/3
+  10:24:20 console-b → DOWN 2/3
+  10:24:22 console-b → UP
+수집: 서버 행 1800 · 통계 실패 0 → /Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-retest-failover-stop/raw/v05-kill-b/fw.csv
+로그 발췌: 6646줄 → /Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-retest-failover-stop/raw/v05-kill-b/fw-haproxy.log

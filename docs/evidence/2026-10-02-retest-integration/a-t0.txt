@@ -1,0 +1,5 @@
+T0_EPOCH=1790900197
+T0_UTC=2026-10-02T00:16:37Z
+T0_KST=2026-10-02 09:16:37 KST
+HEAD=0d09fc7 origin/main=0d09fc7 원격 main=0d09fc7
+작업 트리 코드 = origin/main

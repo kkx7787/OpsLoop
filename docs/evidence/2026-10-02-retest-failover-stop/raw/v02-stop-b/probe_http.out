@@ -1,0 +1,5 @@
+HTTP 프로브: http://192.168.70.254:8443 · 줄기 health,me · 100ms 간격 · 한도 70s · 동시 2000 · 회차 v02-stop-b → /Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-retest-failover-stop/raw/v02-stop-b/http.jsonl
+발사를 멈췄다. 걸린 요청을 최대 72s 기다린다 (Ctrl-C 로 바로 끝낸다)
+  health: ok 3000
+  me: ok 3000
+  회차 3000번 발사

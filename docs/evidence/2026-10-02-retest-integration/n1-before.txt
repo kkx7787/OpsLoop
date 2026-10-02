@@ -1,0 +1,11 @@
+기준 2026-10-02 00:20:22.836888+00:00 · 범위 시작 2026-10-02 00:16:37+00:00
+== 채널 (주소 제외)
+    {'id': '1', 'name': 'Teams 관제', 'kind': 'teams', 'grade': 'immediate', 'events': "['incident.created', 'node.silent', 'pending.overdue']", 'min_severity': 'high', 'batch_seconds': '300', 'enabled': 'True', 'enabled_at': '2026-09-24 15:36:16.167264+00:00', 'updated_by': 'han', 'updated_at': '2026-09-24 15:36:16.167264+00:00'}
+== 채널별 대기 · 보내는 중 (0 이어야 끈다)
+    (없음)
+== 끄기로 닫힌 대기 행(error ChannelDisabled) 채널별 누계 · 마지막
+    (없음)
+== 범위 안 알림 감사(console.notify.*)
+    (없음)
+== 범위 안 발송 이력
+    (없음)

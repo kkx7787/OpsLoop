@@ -1,0 +1,22 @@
+{
+ "v": 1,
+ "generated_at": "2026-10-02T00:31:26Z",
+ "entries": [
+  {
+   "ip": "203.0.113.10",
+   "until": "2026-10-02T01:27:33Z"
+  }
+ ],
+ "digest": "b64f4abb62576fb9ed9ed3038a8819b9b5cee704e823551602bedd8135d61d0f",
+ "points": {
+  "fw": {
+   "entries": [
+    {
+     "ip": "203.0.113.10",
+     "until": "2026-10-02T01:27:33Z"
+    }
+   ],
+   "digest": "b64f4abb62576fb9ed9ed3038a8819b9b5cee704e823551602bedd8135d61d0f"
+  }
+ }
+}

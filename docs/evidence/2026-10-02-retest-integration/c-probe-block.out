@@ -1,0 +1,19 @@
+T0 2026-10-02T00:27:00.004Z · 출발지 203.0.113.10
+2026-10-02T00:27:00.007Z {"enforce_note": null, "enforced_at": null, "enforcement": null, "expires_at": "2026-10-01T03:03:28.473Z", "method": null, "points": ["fw"], "released_at": "2026-10-01T02:05:18.366Z"}
+2026-10-02T00:27:34.275Z {"enforce_note": null, "enforced_at": null, "enforcement": null, "expires_at": "2026-10-02T01:27:33.475Z", "method": null, "points": ["gateway", "fw"], "released_at": null}
+2026-10-02T00:27:50.373Z {"enforce_note": null, "enforced_at": null, "enforcement": {"fw": {"mode": "nft", "note": null, "since": "2026-10-02T00:27:49Z", "state": "pending"}, "gateway": {"mode": "fail2ban", "note": null, "since": "2026-10-02T00:27:49Z", "state": "pending"}}, "expires_at": "2026-10-02T01:27:33.475Z", "method": null, "points": ["gateway", "fw"], "released_at": null}
+2026-10-02T00:28:54.862Z {"enforce_note": "관문 반영 · b64f4abb · 2026-10-02T00:28:09Z", "enforced_at": "2026-10-02T00:28:09.000Z", "enforcement": {"fw": {"mode": "nft", "note": null, "since": "2026-10-02T00:27:59Z", "state": "confirmed"}, "gateway": {"mode": "fail2ban", "note": null, "since": "2026-10-02T00:28:09Z", "state": "confirmed"}}, "expires_at": "2026-10-02T01:27:33.475Z", "method": "fail2ban", "points": ["gateway", "fw"], "released_at": null}
+2026-10-02T00:37:32.257Z {"enforce_note": "관문 반영 · b64f4abb · 2026-10-02T00:28:09Z", "enforced_at": "2026-10-02T00:28:09.000Z", "enforcement": {"fw": {"mode": "nft", "note": null, "since": "2026-10-02T00:27:59Z", "state": "confirmed"}, "gateway": {"mode": "fail2ban", "note": null, "since": "2026-10-02T00:28:09Z", "state": "confirmed"}}, "expires_at": "2026-10-02T01:27:33.475Z", "method": "fail2ban", "points": ["gateway", "fw"], "released_at": "2026-10-02T00:37:31.539Z"}
+2026-10-02T00:38:29.743Z {"enforce_note": "관문 반영 · b64f4abb · 2026-10-02T00:28:09Z", "enforced_at": "2026-10-02T00:28:09.000Z", "enforcement": {"fw": {"mode": "nft", "note": null, "since": "2026-10-02T00:38:29Z", "state": "removing"}, "gateway": {"mode": "fail2ban", "note": null, "since": "2026-10-02T00:38:29Z", "state": "removing"}}, "expires_at": "2026-10-02T01:27:33.475Z", "method": "fail2ban", "points": ["gateway", "fw"], "released_at": "2026-10-02T00:37:31.539Z"}
+2026-10-02T00:39:35.253Z {"enforce_note": "관문 반영 · b64f4abb · 2026-10-02T00:28:09Z", "enforced_at": null, "enforcement": null, "expires_at": "2026-10-02T01:27:33.475Z", "method": "fail2ban", "points": ["gateway", "fw"], "released_at": "2026-10-02T00:37:31.539Z"}
+== 감사(console.block.*)
+   2026-10-02T00:27:33.493Z console.block.rearmed han by=han ip=203.0.113.10 incident=R102|w2|203.0.113.10|2026-10-02T00:24:56.246000+00:00 expires=2026-10-02 01:27:33.475043+00 points=gateway,fw released_by=han requested_by=han
+   2026-10-02T00:28:54.389Z console.block.enforced db:opsloop_enforcer by=db:opsloop_enforcer ip=203.0.113.10 method=fail2ban at=2026-10-02 00:28:09+00 note=관문 반영 · b64f4abb · 2026-10-02T00:28:09Z
+   2026-10-02T00:37:31.551Z console.block.released han by=han ip=203.0.113.10 incident=R102|w2|203.0.113.10|2026-10-02T00:24:56.246000+00:00 verdict=benign_positive past_expiry=no
+   2026-10-02T00:39:34.291Z console.block.unenforced db:opsloop_enforcer by=db:opsloop_enforcer ip=203.0.113.10 method=fail2ban was=2026-10-02 00:28:09+00 why=released
+== 조치
+   2026-10-02T00:27:33.475Z block_ip han R102|w2|203.0.113.10|2026-10-02T00:24:56.246000+00:00
+   2026-10-02T00:37:31.539Z unblock_ip han R102|w2|203.0.113.10|2026-10-02T00:24:56.246000+00:00
+== 판정
+   2026-10-02T00:27:57.929Z benign_positive han 제안 None R102|w2|203.0.113.10|2026-10-02T00:24:56.246000+00:00
+   2026-10-02T00:28:02.636Z benign_positive han 제안 None R105|c1|203.0.113.10|2026-10-02T00:24:56.246000+00:00

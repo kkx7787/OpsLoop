@@ -1,0 +1,13 @@
+{
+ "v": 1,
+ "at": "2026-10-02T00:31:03+00:00",
+ "mode": "nft",
+ "list": "fw",
+ "list_digest": "b64f4abb62576fb9ed9ed3038a8819b9b5cee704e823551602bedd8135d61d0f",
+ "list_generated_at": "2026-10-02T00:27:49Z",
+ "applied": 1,
+ "set_count": 1,
+ "rejected": [],
+ "errors": [],
+ "selftest": "ok"
+}

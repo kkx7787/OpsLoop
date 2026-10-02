@@ -1,0 +1,21 @@
+cluster|opsloop-drill|ro=on
+points|{fw}|2
+points|{gateway,fw}|26
+constraint|absorbed_blocks_points_valid
+constraint|blocklist_points_valid
+trigger|blocklist_enforcement_guard|O
+trigger|blocklist_guard|O
+trigger|console_users_stamp|O
+trigger|sensor_heartbeats_guard|O
+trigger|trg_audit_console_users|O
+trigger|trg_blocklist_points|O
+function|blocklist_points_change|true
+function|console_account_create|true
+function|console_account_delete|true
+function|console_account_password|true
+function|console_account_set|true
+function|is_test_source|true
+function|note_block_expired|true
+console_users_cols|disabled_at,updated_at
+exempt|허니팟 관문 EIP
+roles|opsloop:-1,opsloop_backup:2,opsloop_console:30,opsloop_cti:2,opsloop_detector:5,opsloop_enforcer:2,opsloop_gate:10,opsloop_ingest:5

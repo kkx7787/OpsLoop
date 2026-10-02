@@ -1,0 +1,6 @@
+now | 2026-10-02 00:50:35.155586+00
+opsloop_console 한도 | 30
+opsloop_console 접속 | opsloop-console-a | 3
+마이그레이션 #59 · #63 · #77 | 2 | 4 | 1
+판정 · 조치 · 차단 · 활성 차단 | 1037 | 179 | 28 | 12
+failover-probe 행 | 0

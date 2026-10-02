@@ -1,0 +1,2 @@
+25 me 200 None opsloop-console-a
+25 me 200 None opsloop-console-b

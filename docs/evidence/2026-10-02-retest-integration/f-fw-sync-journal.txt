@@ -1,0 +1,110 @@
+2026-10-02T09:17:18.565719+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:17:18.946874+09:00 opsloop-fw python3[61724]:   nft add 0 · replace 0 · del 0
+2026-10-02T09:17:18.989831+09:00 opsloop-fw python3[61724]: nft · 목록 fw 확인 · 반영 0 · 집합 0 · 거부 0 · 오류 0
+2026-10-02T09:17:19.035136+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:17:19.035312+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).
+2026-10-02T09:18:19.530425+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:18:19.862031+09:00 opsloop-fw python3[62228]:   nft add 0 · replace 0 · del 0
+2026-10-02T09:18:19.935350+09:00 opsloop-fw python3[62228]: nft · 목록 fw 확인 · 반영 0 · 집합 0 · 거부 0 · 오류 0
+2026-10-02T09:18:19.981504+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:18:19.981670+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).
+2026-10-02T09:19:24.529382+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:19:24.825798+09:00 opsloop-fw python3[62935]:   nft add 0 · replace 0 · del 0
+2026-10-02T09:19:24.907181+09:00 opsloop-fw python3[62935]: nft · 목록 fw 확인 · 반영 0 · 집합 0 · 거부 0 · 오류 0
+2026-10-02T09:19:24.952496+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:19:24.953156+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).
+2026-10-02T09:20:29.534569+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:20:29.837910+09:00 opsloop-fw python3[63998]:   nft add 0 · replace 0 · del 0
+2026-10-02T09:20:29.913800+09:00 opsloop-fw python3[63998]: nft · 목록 fw 확인 · 반영 0 · 집합 0 · 거부 0 · 오류 0
+2026-10-02T09:20:29.954701+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:20:29.954859+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).
+2026-10-02T09:21:34.535911+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:21:34.867900+09:00 opsloop-fw python3[64014]:   nft add 0 · replace 0 · del 0
+2026-10-02T09:21:34.934445+09:00 opsloop-fw python3[64014]: nft · 목록 fw 확인 · 반영 0 · 집합 0 · 거부 0 · 오류 0
+2026-10-02T09:21:34.976176+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:21:34.976400+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).
+2026-10-02T09:22:39.541988+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:22:39.874051+09:00 opsloop-fw python3[64226]:   nft add 0 · replace 0 · del 0
+2026-10-02T09:22:39.926440+09:00 opsloop-fw python3[64226]: nft · 목록 fw 확인 · 반영 0 · 집합 0 · 거부 0 · 오류 0
+2026-10-02T09:22:39.969397+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:22:39.969600+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).
+2026-10-02T09:23:44.539747+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:23:44.874076+09:00 opsloop-fw python3[64233]:   nft add 0 · replace 0 · del 0
+2026-10-02T09:23:44.956738+09:00 opsloop-fw python3[64233]: nft · 목록 fw 확인 · 반영 0 · 집합 0 · 거부 0 · 오류 0
+2026-10-02T09:23:45.002172+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:23:45.002410+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).
+2026-10-02T09:24:48.783071+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:24:49.120280+09:00 opsloop-fw python3[64242]:   nft add 0 · replace 0 · del 0
+2026-10-02T09:24:49.197123+09:00 opsloop-fw python3[64242]: nft · 목록 fw 확인 · 반영 0 · 집합 0 · 거부 0 · 오류 0
+2026-10-02T09:24:49.238588+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:24:49.238996+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).
+2026-10-02T09:25:49.542181+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:25:49.891616+09:00 opsloop-fw python3[64422]:   nft add 0 · replace 0 · del 0
+2026-10-02T09:25:49.943949+09:00 opsloop-fw python3[64422]: nft · 목록 fw 확인 · 반영 0 · 집합 0 · 거부 0 · 오류 0
+2026-10-02T09:25:49.987790+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:25:49.988169+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).
+2026-10-02T09:26:54.533552+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:26:54.902047+09:00 opsloop-fw python3[64545]:   nft add 0 · replace 0 · del 0
+2026-10-02T09:26:54.969100+09:00 opsloop-fw python3[64545]: nft · 목록 fw 확인 · 반영 0 · 집합 0 · 거부 0 · 오류 0
+2026-10-02T09:26:55.014127+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:26:55.014406+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).
+2026-10-02T09:27:59.537953+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:27:59.849804+09:00 opsloop-fw python3[65049]:   nft add 1 · replace 0 · del 0
+2026-10-02T09:27:59.923090+09:00 opsloop-fw python3[65049]: nft · 목록 fw 확인 · 반영 1 · 집합 1 · 거부 0 · 오류 0
+2026-10-02T09:27:59.973426+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:27:59.973669+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).
+2026-10-02T09:29:01.472331+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:29:01.785037+09:00 opsloop-fw python3[65525]:   nft add 0 · replace 0 · del 0
+2026-10-02T09:29:01.835359+09:00 opsloop-fw python3[65525]: nft · 목록 fw 확인 · 반영 1 · 집합 1 · 거부 0 · 오류 0
+2026-10-02T09:29:01.878827+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:29:01.878989+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).
+2026-10-02T09:30:02.404168+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:30:02.720062+09:00 opsloop-fw python3[66745]:   nft add 0 · replace 0 · del 0
+2026-10-02T09:30:02.793678+09:00 opsloop-fw python3[66745]: nft · 목록 fw 확인 · 반영 1 · 집합 1 · 거부 0 · 오류 0
+2026-10-02T09:30:02.838258+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:30:02.838412+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).
+2026-10-02T09:31:03.446436+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:31:03.772323+09:00 opsloop-fw python3[67971]:   nft add 0 · replace 0 · del 0
+2026-10-02T09:31:03.866264+09:00 opsloop-fw python3[67971]: nft · 목록 fw 확인 · 반영 1 · 집합 1 · 거부 0 · 오류 0
+2026-10-02T09:31:03.912408+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:31:03.912616+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).
+2026-10-02T09:32:07.535502+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:32:07.843103+09:00 opsloop-fw python3[68955]:   nft add 0 · replace 0 · del 0
+2026-10-02T09:32:07.913340+09:00 opsloop-fw python3[68955]: nft · 목록 fw 확인 · 반영 1 · 집합 1 · 거부 0 · 오류 0
+2026-10-02T09:32:07.955662+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:32:07.955900+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).
+2026-10-02T09:33:09.527035+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:33:09.863990+09:00 opsloop-fw python3[69329]:   nft add 0 · replace 0 · del 0
+2026-10-02T09:33:10.089456+09:00 opsloop-fw python3[69329]: nft · 목록 fw 확인 · 반영 1 · 집합 1 · 거부 0 · 오류 0
+2026-10-02T09:33:10.143313+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:33:10.143649+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).
+2026-10-02T09:34:14.527270+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:34:14.865095+09:00 opsloop-fw python3[69720]:   nft add 0 · replace 0 · del 0
+2026-10-02T09:34:15.282370+09:00 opsloop-fw python3[69720]: nft · 목록 fw 확인 · 반영 1 · 집합 1 · 거부 0 · 오류 0
+2026-10-02T09:34:15.336491+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:34:15.336909+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).
+2026-10-02T09:35:19.534193+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:35:19.839786+09:00 opsloop-fw python3[70114]:   nft add 0 · replace 0 · del 0
+2026-10-02T09:35:19.911020+09:00 opsloop-fw python3[70114]: nft · 목록 fw 확인 · 반영 1 · 집합 1 · 거부 0 · 오류 0
+2026-10-02T09:35:19.956748+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:35:19.957005+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).
+2026-10-02T09:36:24.539342+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:36:24.838341+09:00 opsloop-fw python3[70499]:   nft add 0 · replace 0 · del 0
+2026-10-02T09:36:24.892248+09:00 opsloop-fw python3[70499]: nft · 목록 fw 확인 · 반영 1 · 집합 1 · 거부 0 · 오류 0
+2026-10-02T09:36:24.941276+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:36:24.941582+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).
+2026-10-02T09:37:29.537320+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:37:29.862076+09:00 opsloop-fw python3[70950]:   nft add 0 · replace 0 · del 0
+2026-10-02T09:37:29.937592+09:00 opsloop-fw python3[70950]: nft · 목록 fw 확인 · 반영 1 · 집합 1 · 거부 0 · 오류 0
+2026-10-02T09:37:29.978993+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:37:29.979259+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).
+2026-10-02T09:38:34.534325+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:38:34.841495+09:00 opsloop-fw python3[71343]:   nft add 0 · replace 0 · del 1
+2026-10-02T09:38:34.912844+09:00 opsloop-fw python3[71343]: nft · 목록 fw 확인 · 반영 0 · 집합 0 · 거부 0 · 오류 0
+2026-10-02T09:38:34.954053+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:38:34.954307+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).
+2026-10-02T09:39:39.540127+09:00 opsloop-fw systemd[1]: Starting opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block)...
+2026-10-02T09:39:39.872952+09:00 opsloop-fw python3[71364]:   nft add 0 · replace 0 · del 0
+2026-10-02T09:39:39.944194+09:00 opsloop-fw python3[71364]: nft · 목록 fw 확인 · 반영 0 · 집합 0 · 거부 0 · 오류 0
+2026-10-02T09:39:39.988945+09:00 opsloop-fw systemd[1]: opsloop-block-sync.service: Deactivated successfully.
+2026-10-02T09:39:39.989210+09:00 opsloop-fw systemd[1]: Finished opsloop-block-sync.service - OpsLoop 관문 · 내부 방화벽 차단 목록 동기화 (S3 목록 → nft 집합 opsloop_block).

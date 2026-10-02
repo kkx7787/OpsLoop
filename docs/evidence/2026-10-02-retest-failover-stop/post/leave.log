@@ -1,0 +1,47 @@
+콘솔 B 떼기 · 실제로 돌린다
+== drain · HAProxy console-b → drain · 연결 0 대기
+  HAProxy consoles/console-b → drain
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+    console-b 연결 1
+  … console-b 연결 0 (웹소켓은 남을 수 있다. 컨테이너를 멈추면 끊기고 화면이 A 로 다시 붙는다): 30번 기다렸다. 그대로 다음으로 간다
+== maint · HAProxy console-b → maint
+  HAProxy consoles/console-b → maint
+  ✔ console-b 관리 상태 maint (1번째)
+== stop · 컨테이너 restart=no · 멈춤
+  컨테이너: restart=no · 멈춤
+    컨테이너: false no
+  ✔ 컨테이너가 멈췄고 restart=no
+== vm-stop · VM 끄기
+  ✔ VM 꺼짐 (1번째)
+== state · HAProxy 상태 읽기
+    console-a  운영 2 · 관리 0
+    console-b  운영 0 · 관리 1
+끝.

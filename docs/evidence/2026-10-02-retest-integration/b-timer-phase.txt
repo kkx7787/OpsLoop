@@ -1,0 +1,5 @@
+NEXT                        LEFT LAST                         PASSED UNIT                 ACTIVATES
+Fri 2026-10-02 09:25:38 KST  49s Fri 2026-10-02 09:24:38 KST 10s ago opsloop-agents.timer opsloop-agents.service
+
+1 timers listed.
+Pass --all to see loaded but inactive timers, too.

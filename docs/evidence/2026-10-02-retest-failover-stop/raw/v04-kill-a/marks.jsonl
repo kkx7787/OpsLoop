@@ -1,0 +1,2 @@
+{"run":"v04-kill-a","kind":"inject","scenario":"kill","target":"console-a","host":"console-a","t_local_ns":1790903781221338000,"t_local_before_ns":1790903780705134000,"t_remote_ns":1790903781219180742,"rtt_ms":516.204,"offset_ms":255.945,"note":null}
+{"run":"v04-kill-a","kind":"recover","scenario":"kill","target":"console-a","host":"console-a","t_local_ns":1790903932587527000,"t_local_before_ns":1790903931802447000,"t_remote_ns":1790903932583784574,"rtt_ms":785.08,"offset_ms":388.797,"note":null}

@@ -1,0 +1,41 @@
+== 시각 2026-10-02 09:50:30 KST (백업 창과 겹치지 않음)
+== 저장소
+0d09fc7e81ca4597efb48e510734930f79fd84b3
+8ef01c8a66a51fbdea230b3898a9109b9e97fea3
+8ef01c8a66a51fbdea230b3898a9109b9e97fea3
+트리 = 0d09fc7
+ infra/vmware/failover/collect_fw.sh          | 1 +
+ infra/vmware/failover/common.py              | 1 +
+ infra/vmware/failover/probe_http.py          | 2 ++
+ infra/vmware/failover/test_failover_tools.py | 1 +
+ 4 files changed, 5 insertions(+)
+== HAProxy 설정 배포본 · 저장소
+942454d1ca4c5e72b1f0e6fa9cf4a76da7209d9337b35fa1b80daad7410982ac  /etc/haproxy/haproxy.cfg
+26:    timeout connect 1s
+50:    option log-health-checks
+53:    option redispatch 1
+58:    default-server inter 2s fall 3 rise 3 slowstart 30s on-marked-down shutdown-sessions
+942454d1ca4c5e72b1f0e6fa9cf4a76da7209d9337b35fa1b80daad7410982ac  infra/vmware/haproxy/haproxy.cfg
+== 서버 상태 (운영 · 관리)
+console-a 운영 2 관리 0
+console-b 운영 0 관리 0
+== 통계
+consoles,console-a,UP
+consoles,console-b,DOWN
+consoles,BACKEND,UP
+== VM
+Total running VMs: 5
+/Users/hanseongmin/Virtual Machines.localized/opsloop-attacker.vmwarevm/opsloop-attacker.vmx
+/Users/hanseongmin/Virtual Machines.localized/opsloop-web-01.vmwarevm/opsloop-web-01.vmx
+/Users/hanseongmin/Virtual Machines.localized/opsloop-fw.vmwarevm/opsloop-fw.vmx
+/Users/hanseongmin/Virtual Machines.localized/opsloop-console-a.vmwarevm/opsloop-console-a.vmx
+/Users/hanseongmin/Virtual Machines.localized/opsloop-data-01.vmwarevm/opsloop-data-01.vmx
+== 겹치는 작업
+훈련 컨테이너 없음
+상태: UP (2026-10-02 08:58 부터 · 51분째)
+마지막 확인: 2026-10-02 09:50 · HTTP 200
+점검 창: 없음
+웹훅: 없음
+감시 주소: http://192.168.70.254:8443/health · 기록: /Users/hanseongmin/Library/Logs/opsloop/console-watch.log
+f118f85579901fba7a050196fcf2eaae8fd3a44fd9eebae2e6655cb1a5139c31  infra/vmware/scripts/console-watch.sh
+f118f85579901fba7a050196fcf2eaae8fd3a44fd9eebae2e6655cb1a5139c31  /Users/hanseongmin/Library/Application Support/OpsLoop/bin/console-watch.sh

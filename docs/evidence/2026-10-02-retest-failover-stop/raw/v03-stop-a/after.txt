@@ -1,0 +1,81 @@
+== v03-stop-a 뒤 2026-10-02 10:15:47 KST
+after.txt
+before.txt
+collect_fw.out
+fw-haproxy.log
+fw-meta.json
+fw.csv
+http.jsonl
+marks.jsonl
+probe_http.out
+probe_ws_browser.out
+probe_ws_net.out
+ws.jsonl
+==> /Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-retest-failover-stop/raw/v03-stop-a/collect_fw.out <==
+수집: 서버 행 1800 · 통계 실패 0 → /Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-retest-failover-stop/raw/v03-stop-a/fw.csv
+로그 발췌: 6647줄 → /Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-retest-failover-stop/raw/v03-stop-a/fw-haproxy.log
+
+==> /Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-retest-failover-stop/raw/v03-stop-a/probe_http.out <==
+  me: ok 2999 · reset 1
+  회차 3000번 발사
+
+==> /Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-retest-failover-stop/raw/v03-stop-a/probe_ws_browser.out <==
+웹소켓 프로브: http://192.168.70.254:8443/ws · browser · 연결 4 · 회차 v03-stop-a → /Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-retest-failover-stop/raw/v03-stop-a/ws.jsonl
+웹소켓 프로브를 멈췄다
+
+==> /Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-retest-failover-stop/raw/v03-stop-a/probe_ws_net.out <==
+웹소켓 프로브: http://192.168.70.254:8443/ws · net · 연결 4 · 회차 v03-stop-a → /Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-retest-failover-stop/raw/v03-stop-a/ws.jsonl
+웹소켓 프로브를 멈췄다
+-- client_addr (조회: console-b)
+기준 2026-10-02T01:15:48.733764+00:00 · 조회한 콘솔 opsloop-console-b
+192.168.50.11	opsloop-console-a	idle	4
+192.168.50.12	opsloop-console-b	idle	6
+console-a 운영 2 관리 0
+console-b 운영 2 관리 0
+상태: UP (2026-10-02 08:58 부터 · 1시간 17분째)
+점검 창: 2026-10-02 12:55 까지 (알리지 않는다)
+시나리오      n  합격  감지(중앙/최대)  실패구간끝      전환            전환완료        p99ms           좀비 최대/미감지  재연결      401
+stop          1  1/1  5.701/5.701     5.663/5.663     5.701/5.701     0.359/0.359     33.117/33.117   0.329/0           1.085       0
+(* 합격선 밖 · 참고. 초 단위, 지연은 밀리초)
+  v03-stop-a #0 stop console-a: 합격
+→ /Users/hanseongmin/opsloop-repo/docs/evidence/2026-10-02-retest-failover-stop/check/v03-stop-a/results.json
+v03-stop-a 대상 연결 4 미감지 0 새 콘솔 ['console-b'] 실패 1 {'reset': 1} 성공 최대 ms 155.977 복귀 UP 6.801
+== v01-stop-a · stop · 대상 콘솔 A(opsloop-console-a · 192.168.50.11)
+   T0 2026-10-02T09:57:06.816+09:00 · 복귀 T0+151.7초 · 표본 31개
+   주입 직전 표본: 이름표 3개 · 상대 주소 3개 · 콘솔 A 있음 · 콘솔 B 있음
+   이름표: T0 뒤 주입 뒤 첫 표본(8.3초)에 이미 0 (3분 기준 안)
+   상대 주소: T0 뒤 주입 뒤 첫 표본(8.3초)에 이미 0 (3분 기준 안)
+   복귀 뒤 이름표 다시 보임: T0+157.3초 (복귀 뒤 5.6초)
+   판정 바뀜 T0-34.7초: DB 연결 확인: 콘솔 A 있음 · 콘솔 B 있음
+   판정 바뀜 T0+8.3초: DB 연결 확인: 콘솔 A 없음 · 콘솔 B 있음
+   판정 바뀜 T0+157.3초: DB 연결 확인: 콘솔 A 있음 · 콘솔 B 있음
+   표본(초 이름표/상대): -35 3/3 -24 3/3 -13 3/3 -2 3/3 8 0/0 19 0/0 30 0/0 40 0/0 51 0/0 61 0/0 72 0/0 83 0/0 93 0/0 104 0/0 115 0/0 125 0/0 136 0/0 147 0/0 157 4/4 168 4/4 178 4/4 189 4/4 200 4/4 211 4/4 222 4/4 233 4/4 243 4/4 254 4/4 265 4/4 275 4/4 286 4/4
+== v02-stop-b · stop · 대상 콘솔 B(opsloop-console-b · 192.168.50.12)
+   T0 2026-10-02T10:04:56.091+09:00 · 복귀 T0+151.4초 · 표본 32개
+   주입 직전 표본: 이름표 5개 · 상대 주소 5개 · 콘솔 A 있음 · 콘솔 B 있음
+   이름표: T0 뒤 0.3 ~ 10.9초 사이에 0 (3분 기준 안)
+   상대 주소: T0 뒤 주입 뒤 첫 표본(0.3초)에 이미 0 (3분 기준 안)
+   복귀 뒤 이름표 다시 보임: T0+160.1초 (복귀 뒤 8.7초)
+   판정 바뀜 T0-42.7초: DB 연결 확인: 콘솔 A 있음 · 콘솔 B 있음
+   판정 바뀜 T0+10.9초: DB 연결 확인: 콘솔 A 있음 · 콘솔 B 없음
+   판정 바뀜 T0+160.1초: DB 연결 확인: 콘솔 A 있음 · 콘솔 B 있음
+   표본(초 이름표/상대): -43 5/5 -32 5/5 -21 5/5 -10 5/5 0 3/0 11 0/0 22 0/0 32 0/0 43 0/0 54 0/0 64 0/0 75 0/0 85 0/0 96 0/0 107 0/0 117 0/0 128 0/0 139 0/0 149 0/0 160 4/4 171 4/4 182 4/4 192 4/4 203 4/4 214 4/4 224 4/4 235 4/4 246 4/4 256 4/4 267 4/4 277 4/4 288 4/4
+== v03-stop-a · stop · 대상 콘솔 A(opsloop-console-a · 192.168.50.11)
+   T0 2026-10-02T10:10:57.567+09:00 · 복귀 T0+151.4초 · 표본 32개
+   주입 직전 표본: 이름표 6개 · 상대 주소 6개 · 콘솔 A 있음 · 콘솔 B 있음
+   이름표: T0 뒤 주입 뒤 첫 표본(2.1초)에 이미 0 (3분 기준 안)
+   상대 주소: T0 뒤 주입 뒤 첫 표본(2.1초)에 이미 0 (3분 기준 안)
+   복귀 뒤 이름표 다시 보임: T0+161.8초 (복귀 뒤 10.4초)
+   판정 바뀜 T0-40.7초: DB 연결 확인: 콘솔 A 있음 · 콘솔 B 있음
+   판정 바뀜 T0+2.1초: DB 연결 확인: 콘솔 A 없음 · 콘솔 B 있음
+   판정 바뀜 T0+161.8초: DB 연결 확인: 콘솔 A 있음 · 콘솔 B 있음
+   표본(초 이름표/상대): -41 6/6 -30 6/6 -19 6/6 -9 6/6 2 0/0 13 0/0 23 0/0 34 0/0 44 0/0 55 0/0 66 0/0 76 0/0 87 0/0 98 0/0 109 0/0 119 0/0 130 0/0 141 0/0 151 0/0 162 4/4 173 4/4 183 4/4 194 4/4 205 4/4 215 4/4 226 4/4 236 4/4 247 4/4 258 4/4 268 4/4 279 4/4 290 4/4
+== 표본 전체 142줄 (오류 0줄) · 'DB 연결 확인' 판정이 바뀐 시각
+   09:50:35 콘솔 A 있음 · 콘솔 B 없음  (이름표 opsloop-console-a=3)
+   09:54:02 콘솔 A 있음 · 콘솔 B 있음  (이름표 opsloop-console-a=3 opsloop-console-b=4)
+   09:57:15 콘솔 A 없음 · 콘솔 B 있음  (이름표 opsloop-console-b=6)
+   09:59:44 콘솔 A 있음 · 콘솔 B 있음  (이름표 opsloop-console-a=4 opsloop-console-b=6)
+   10:05:07 콘솔 A 있음 · 콘솔 B 없음  (이름표 opsloop-console-a=7)
+   10:07:36 콘솔 A 있음 · 콘솔 B 있음  (이름표 opsloop-console-a=7 opsloop-console-b=4)
+   10:10:59 콘솔 A 없음 · 콘솔 B 있음  (이름표 opsloop-console-b=6)
+   10:13:39 콘솔 A 있음 · 콘솔 B 있음  (이름표 opsloop-console-a=4 opsloop-console-b=6)

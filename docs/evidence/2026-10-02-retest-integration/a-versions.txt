@@ -1,0 +1,6 @@
+콘솔 A 코드 = origin/main
+block-sync 저장소 035e03ba538fc120 · fw 035e03ba538fc120
+enforcer 저장소 9940879be89a7549 · data01 9940879be89a7549 · VERSION 1ce8742
+app 0d09fc7 · collector 07db5a0
+0d09fc7: 탐지 · 다리 코드 = origin/main
+07db5a0: 탐지 · 다리 코드 = origin/main
