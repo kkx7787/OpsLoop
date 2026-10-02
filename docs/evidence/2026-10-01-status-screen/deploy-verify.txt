@@ -1,0 +1,33 @@
+#84 운영 반영 확인 (2026-10-01, 읽기 전용, 콘솔 A 0d09fc7 · triage 0d09fc7 · DB 20261004)
+== 상태판 · 띠 · 연결 이름표
+기준 2026-10-01 06:36:18.831512+00:00
+연결 이름표: [{'usename': 'opsloop_console', 'application_name': '', 'n': 1}, {'usename': 'opsloop_console', 'application_name': 'opsloop-console-a', 'n': 7}]
+대상 카드 키: ['as_of', 'heartbeats_available', 'metrics_available', 'queue', 'targets', 'unmapped', 'window_seconds']
+- aws-sensor | None | group=None | role="SSH 허니팟(Cowrie) · 웹 디코이 · 허니팟 관문 (AWS DMZ)"
+    수집 state=ok reason="업로더 생존 신호 6분 전 · 적재기 확인 3분 전 · 최근 1시간 로그 있음 · 관문 기록 신호 5분 전"
+    response={"point": "gateway", "checking": 0, "delayed": 0, "failed": 0, "removing": 0, "stalled": null, "report_issue": null}
+    system state=not_collected
+    logs=['SSH 허니팟(Cowrie)', '웹 디코이', '허니팟 관문 기록']
+- web-01 | None | group=None | role="실서비스 웹 서버 (온프레미스)"
+    수집 state=quiet reason="노드 수신 방금 · 최근 1시간 요청 없음"
+    response={"point": "fw", "checking": 0, "delayed": 0, "failed": 0, "removing": 0, "stalled": null, "report_issue": null}
+    system state=ok
+    logs=['web-01 로그']
+- console | None | group=None | role="콘솔 A · B (HAProxy 뒤)"
+    수집 state=responding reason="DB 연결 확인: 콘솔 A 있음 · 콘솔 B 없음(평소 꺼 두는 예비)"
+    db_links=[{"name": "opsloop-console-a", "label": "콘솔 A", "present": true, "note": null}, {"name": "opsloop-console-b", "label": "콘솔 B", "present": false, "note": "평소 꺼 두는 예비"}]
+    response={"point": null, "checking": null, "delayed": null, "failed": null, "removing": null, "stalled": null, "report_issue": null}
+    system state=not_collected
+    logs=['마지막 로그인 기록']
+- data-node | None | group=None | role="DB · 적재 · 탐지 · 집행 (온프레미스)"
+    수집 state=ok reason="마지막 탐지 실행 방금"
+    response={"point": null, "checking": null, "delayed": null, "failed": null, "removing": null, "stalled": null, "report_issue": null}
+    system state=not_collected
+띠: {"as_of": "2026-10-01T06:36:18.831512+00:00", "items": [], "detect_paths": [{"key": "honeypot", "label": "허니팟 탐지(5분)", "last_at": "2026-10-01T06:32:52.792682+00:00", "stale": false, "reason": null, "versions": [{"rule_version": "v3", "last_at": "2026-10-01T06:32:52.792682+00:00", "stale": false}]}, {"key": "bridge", "label": "노드 · 관제 탐지(1분)", "last_at": "2026-10-01T06:35:41.886882+00:00", "stale": false, "reason": null, "versions": [{"rule_version": "a1", "last_at": "2026-10-01T06:35:41.599589+00:00", "stale": false}, {"rule_version": "c1", "last_at": "2026-10-01T06:35:41.772723+00:00", "stale": false}, {"rule_version": "i2", "last_at": "2026-10-01T06:35:41.663642+00:00", "stale": false}, {"rule_version": "s1", "last_at": "2026-10-01T06:35:41.381864+00:00", "stale": false}, {"rule_version": "sg1", "last_at": "2026-10-01T06:35:41.886882+00:00", "stale": false}, {"rule_version": "w2", "last_at": "2026-10-01T06:35:41.488562+00:00", "stale": false}]}]}
+== 보고서 대상 표
+aws-sensor 허니팟 센서 {"state": "ok", "reason": "업로더 생존 신호 6분 전 · 적재기 확인 3분 전 · 최근 1시간 로그 있음 · 관문 기록 신호 5분 전"} | 지점: 허니팟 관문
+web-01 web-01 {"state": "quiet", "reason": "노드 수신 방금 · 최근 1시간 요청 없음"} | 지점: 내부 방화벽
+console 관제 콘솔 {"state": "responding", "reason": "출력 시각의 DB 연결: 콘솔 A 있음 · 콘솔 B 없음(평소 꺼 두는 예비)"} | 지점: None
+data-node 데이터 노드 {"state": "ok", "reason": "마지막 탐지 실행 방금"} | 지점: None
+== 차단 금지 대역 메모
+15.164.37.49|허니팟 관문 EIP

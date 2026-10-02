@@ -1,0 +1,31 @@
+now 2026-10-01 01:51:23.364579+00:00
+{'ip': '4.4.66.84', 'expires_at': None, 'released_at': datetime.datetime(2026, 9, 29, 0, 41, 35, 999799, tzinfo=datetime.timezone.utc), 'enforced_at': None, 'method': None, 'enforce_note': '집행 제외 · 만료 없음', 'enforcement': None}
+{'ip': '27.79.45.108', 'expires_at': None, 'released_at': None, 'enforced_at': None, 'method': None, 'enforce_note': '집행 제외 · 만료 없음', 'enforcement': None}
+{'ip': '39.175.51.58', 'expires_at': datetime.datetime(2026, 9, 29, 4, 20, 50, 119892, tzinfo=datetime.timezone.utc), 'released_at': None, 'enforced_at': None, 'method': 'fail2ban', 'enforce_note': '관문 반영 · dfb60db6 · 2026-09-29T00:00:35Z', 'enforcement': None}
+{'ip': '47.245.57.72', 'expires_at': datetime.datetime(2026, 9, 29, 4, 20, 50, 287128, tzinfo=datetime.timezone.utc), 'released_at': None, 'enforced_at': None, 'method': 'fail2ban', 'enforce_note': '관문 반영 · dfb60db6 · 2026-09-29T00:00:35Z', 'enforcement': None}
+{'ip': '49.248.197.50', 'expires_at': None, 'released_at': None, 'enforced_at': None, 'method': None, 'enforce_note': '집행 제외 · 만료 없음', 'enforcement': None}
+{'ip': '73.147.19.171', 'expires_at': datetime.datetime(2026, 9, 29, 4, 20, 50, 290903, tzinfo=datetime.timezone.utc), 'released_at': None, 'enforced_at': None, 'method': 'fail2ban', 'enforce_note': '관문 반영 · dfb60db6 · 2026-09-29T00:00:35Z', 'enforcement': None}
+{'ip': '101.96.199.69', 'expires_at': datetime.datetime(2026, 9, 29, 4, 20, 50, 130582, tzinfo=datetime.timezone.utc), 'released_at': None, 'enforced_at': None, 'method': 'fail2ban', 'enforce_note': '관문 반영 · dfb60db6 · 2026-09-29T00:00:35Z', 'enforcement': None}
+{'ip': '103.48.84.200', 'expires_at': None, 'released_at': None, 'enforced_at': None, 'method': None, 'enforce_note': '집행 제외 · 만료 없음', 'enforcement': None}
+{'ip': '103.165.78.71', 'expires_at': datetime.datetime(2026, 9, 29, 4, 20, 50, 295540, tzinfo=datetime.timezone.utc), 'released_at': None, 'enforced_at': None, 'method': 'fail2ban', 'enforce_note': '관문 반영 · dfb60db6 · 2026-09-29T00:00:35Z', 'enforcement': None}
+{'ip': '103.172.20.218', 'expires_at': datetime.datetime(2026, 9, 29, 4, 20, 50, 136510, tzinfo=datetime.timezone.utc), 'released_at': None, 'enforced_at': None, 'method': 'fail2ban', 'enforce_note': '관문 반영 · dfb60db6 · 2026-09-29T00:00:35Z', 'enforcement': None}
+{'ip': '110.43.37.72', 'expires_at': None, 'released_at': None, 'enforced_at': None, 'method': None, 'enforce_note': '집행 제외 · 만료 없음', 'enforcement': None}
+{'ip': '114.217.53.0', 'expires_at': None, 'released_at': None, 'enforced_at': None, 'method': None, 'enforce_note': '집행 제외 · 만료 없음', 'enforcement': None}
+{'ip': '116.74.164.106', 'expires_at': None, 'released_at': None, 'enforced_at': None, 'method': None, 'enforce_note': '집행 제외 · 만료 없음', 'enforcement': None}
+{'ip': '120.48.8.101', 'expires_at': datetime.datetime(2026, 9, 29, 4, 20, 50, 123900, tzinfo=datetime.timezone.utc), 'released_at': None, 'enforced_at': None, 'method': 'fail2ban', 'enforce_note': '관문 반영 · dfb60db6 · 2026-09-29T00:00:35Z', 'enforcement': None}
+{'ip': '120.70.96.125', 'expires_at': None, 'released_at': None, 'enforced_at': None, 'method': None, 'enforce_note': '집행 제외 · 만료 없음', 'enforcement': None}
+{'ip': '120.203.161.202', 'expires_at': None, 'released_at': None, 'enforced_at': None, 'method': None, 'enforce_note': '집행 제외 · 만료 없음', 'enforcement': None}
+{'ip': '125.124.175.173', 'expires_at': None, 'released_at': None, 'enforced_at': None, 'method': None, 'enforce_note': '집행 제외 · 만료 없음', 'enforcement': None}
+{'ip': '143.110.198.145', 'expires_at': None, 'released_at': None, 'enforced_at': None, 'method': None, 'enforce_note': '집행 제외 · 만료 없음', 'enforcement': None}
+{'ip': '143.198.119.3', 'expires_at': None, 'released_at': None, 'enforced_at': None, 'method': None, 'enforce_note': '집행 제외 · 만료 없음', 'enforcement': None}
+{'ip': '159.65.48.197', 'expires_at': None, 'released_at': None, 'enforced_at': None, 'method': None, 'enforce_note': '집행 제외 · 만료 없음', 'enforcement': None}
+{'ip': '168.76.131.178', 'expires_at': datetime.datetime(2026, 9, 29, 4, 20, 50, 133944, tzinfo=datetime.timezone.utc), 'released_at': None, 'enforced_at': None, 'method': 'fail2ban', 'enforce_note': '관문 반영 · dfb60db6 · 2026-09-29T00:00:35Z', 'enforcement': None}
+{'ip': '178.16.54.226', 'expires_at': datetime.datetime(2026, 10, 1, 1, 39, 49, 25373, tzinfo=datetime.timezone.utc), 'released_at': None, 'enforced_at': None, 'method': 'fail2ban', 'enforce_note': '관문 반영 · 83ed53b4 · 2026-10-01T00:01:03Z', 'enforcement': None}
+{'ip': '192.42.116.53', 'expires_at': datetime.datetime(2026, 9, 29, 4, 20, 50, 304206, tzinfo=datetime.timezone.utc), 'released_at': None, 'enforced_at': None, 'method': 'fail2ban', 'enforce_note': '관문 반영 · dfb60db6 · 2026-09-29T00:00:35Z', 'enforcement': None}
+{'ip': '195.178.110.228', 'expires_at': datetime.datetime(2026, 9, 29, 4, 20, 50, 288877, tzinfo=datetime.timezone.utc), 'released_at': None, 'enforced_at': None, 'method': 'fail2ban', 'enforce_note': '관문 반영 · dfb60db6 · 2026-09-29T00:00:35Z', 'enforcement': None}
+{'ip': '203.0.113.10', 'expires_at': datetime.datetime(2026, 9, 30, 6, 41, 50, 760830, tzinfo=datetime.timezone.utc), 'released_at': datetime.datetime(2026, 9, 29, 6, 44, 44, 192271, tzinfo=datetime.timezone.utc), 'enforced_at': None, 'method': 'fail2ban', 'enforce_note': '관문 반영 · 37f3dbb5 · 2026-09-29T06:43:04Z', 'enforcement': None}
+{'ip': '209.99.188.170', 'expires_at': datetime.datetime(2026, 9, 28, 11, 1, 7, 679910, tzinfo=datetime.timezone.utc), 'released_at': datetime.datetime(2026, 9, 27, 11, 18, 41, 263813, tzinfo=datetime.timezone.utc), 'enforced_at': None, 'method': 'fail2ban', 'enforce_note': '관문 반영 · a4a80eaa · 2026-09-27T11:02:34Z', 'enforcement': None}
+{'ip': '223.104.38.76', 'expires_at': datetime.datetime(2026, 9, 29, 4, 20, 50, 284776, tzinfo=datetime.timezone.utc), 'released_at': None, 'enforced_at': None, 'method': 'fail2ban', 'enforce_note': '관문 반영 · dfb60db6 · 2026-09-29T00:00:35Z', 'enforcement': None}
+요약 {'expiring': 0, 'promises': 0, 'live': 0, 'total': 27}
+fw 분포 []
+points 열 0

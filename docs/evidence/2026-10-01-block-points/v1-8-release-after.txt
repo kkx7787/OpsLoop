@@ -1,0 +1,11 @@
+fw 집합에서 빠짐 (11:06:28)
+해제 뒤 attacker → web01: 200 (0.002877s)
+DB (지난 2일 안의 만료 · 집행 기록이 남은 행 포함): 집행 제외 12 · 해제/만료 12
+지점별 (목록 행): 관문 요청 0 · 확인 0 / 내부 방화벽 요청 0 · 확인 0
+관문 보고: 2026-10-01T02:07:34Z · fail2ban · 목록 legacy 4f53cda1 · 적용 0 · 집합 0 · 거부 0 · 오류 0 · 자가 시험 ok
+내부 방화벽 보고: 2026-10-01T02:07:31Z · nft · 목록 fw 4f53cda1 · 적용 0 · 집합 0 · 거부 0 · 오류 0 · 자가 시험 ok
+행 {'points': ['fw'], 'released_at': datetime.datetime(2026, 10, 1, 2, 5, 18, 366779, tzinfo=datetime.timezone.utc), 'enforced_at': None, 'enforce_note': None, 'enforcement': None}
+02:03:28 console.block.rearmed han
+02:05:18 console.block.released han
+
+[exited with code 0]

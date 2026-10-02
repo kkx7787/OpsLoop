@@ -1,0 +1,2 @@
+{'ip': '203.0.113.10', 'points': ['fw'], 'created_at': datetime.datetime(2026, 10, 1, 2, 3, 28, 473552, tzinfo=datetime.timezone.utc), 'expires_at': datetime.datetime(2026, 10, 1, 3, 3, 28, 473552, tzinfo=datetime.timezone.utc), 'released_at': None, 'enforced_at': None, 'method': None, 'enforce_note': None, 'enforcement': '{"fw": {"mode": "nft", "note": null, "since": "2026-10-01T02:03:38Z", "state": "pending"}}', 'requested_by': 'han', 'incident_key': 'R102|w2|203.0.113.10|2026-09-29T06:39:11.444000+00:00'}
+02:03:28 console.block.rearmed han | None

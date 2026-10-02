@@ -1,0 +1,15 @@
+fw 집합에 들어감 (13:31:08)
+		elements = { 178.128.183.16 timeout 58m57s expires 58m52s15ms }
+	}
+== 6분 뒤 확인 13:36:40
+DB (지난 2일 안의 만료 · 집행 기록이 남은 행 포함): 집행 제외 12 · 집행 확인 1 · 해제/만료 1
+지점별 (목록 행): 관문 요청 0 · 확인 0 · 미요청 1 / 내부 방화벽 요청 1 · 확인 1
+관문 보고: 2026-10-01T04:36:24Z · fail2ban · 목록 legacy 4f53cda1 · 적용 0 · 집합 0 · 거부 0 · 오류 0 · 자가 시험 ok
+내부 방화벽 보고: 2026-10-01T04:36:24Z · nft · 목록 fw 49033cf5 · 적용 1 · 집합 1 · 거부 0 · 오류 0 · 자가 시험 ok
+행 {'points': ['fw'], 'enforced_at': None, 'method': None, 'enforce_note': None, 'enforcement': '{"fw": {"mode": "nft", "note": null, "since": "2026-10-01T04:31:03Z", "state": "confirmed"}}'}
+관제 이상 []
+aws-sensor {'point': 'gateway', 'applied': 0, 'unverified': 0, 'stale': 0, 'unrequested': 1, 'removing': 0}
+web-01 {'point': 'fw', 'applied': 1, 'unverified': 0, 'stale': 0, 'unrequested': 0, 'removing': 0}
+차단 뒤 이 출발지의 허니팟 · 관문 기록 수(참고, 필수 아님) 0
+
+[exited with code 0]

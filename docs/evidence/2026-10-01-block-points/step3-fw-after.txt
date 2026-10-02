@@ -1,0 +1,13 @@
+새 판 보고 확인 (10:59:09)
+{
+ "v": 1,
+ "at": "2026-10-01T01:59:03+00:00",
+ "mode": "nft",
+ "list": "fw",
+ "list_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+ "list_generated_at": "2026-10-01T01:56:02Z",
+ "applied": 0,
+Oct 01 10:59:03 opsloop-fw python3[44500]:   nft add 0 · replace 0 · del 0
+Oct 01 10:59:03 opsloop-fw python3[44500]: nft · 목록 fw 확인 · 반영 0 · 집합 0 · 거부 0 · 오류 0
+
+[exited with code 0]
