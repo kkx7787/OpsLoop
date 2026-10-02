@@ -58,7 +58,8 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, stored: str) -> bool:
     try:
         algo, iters, salt_hex, want = stored.split("$")
-        # 반복 수가 터무니없이 크면 계산 한 번에 콘솔이 멈춘다(이벤트 루프 위에서 돈다). DB 함수의 해시 형식과 같은 범위만 받는다
+        # 반복 수가 터무니없이 크면 계산 한 번이 CPU 를 오래 잡는다. 로그인은 별도 스레드에서 계산해(authenticate) 이벤트 루프는
+        #   멈추지 않지만 CPU 는 그대로 쓴다(콘솔 VM 은 vCPU 1개). DB 함수의 해시 형식과 같은 범위만 받는다
         if algo != "pbkdf2_sha256" or not MIN_ITERATIONS <= int(iters) <= MAX_ITERATIONS:
             return False
         dk = hashlib.pbkdf2_hmac("sha256", password.encode(),
@@ -243,10 +244,12 @@ async def form_fields(request) -> dict:
 #  사용자 조회
 # ──────────────────────────────────────────────────────────────
 async def authenticate(pool, username: str, password: str):
+    # 해시 계산 · 확인은 별도 스레드에서 돈다(accounts.hashed 와 같다). 콘솔은 uvicorn 작업자 1개라 이벤트 루프에서 돌리면
+    #   그동안 /health(HAProxy 검사) · /api/me 도 기다린다. 시간 맞추기는 그대로다: 어느 실패든 해시를 한 번 계산한다
     if "\x00" in username:
         # 계정 이름에는 NUL 이 없다(글자 열에 들어가지 못한다). 질의하면 DB 오류로 500 이 나고
         # 실패 기록(console.login.failed)도 빠진다. 없는 계정과 같은 시간을 쓰고 실패로 돌려준다.
-        hash_password(password)
+        await asyncio.to_thread(hash_password, password)
         return None
     async with pool.acquire() as c:
         row = await c.fetchrow(
@@ -255,11 +258,11 @@ async def authenticate(pool, username: str, password: str):
     if row is None:
         # 존재하지 않는 계정도 같은 시간이 걸리도록 한 번 계산한다.
         # 응답 시간 차이로 계정 존재 여부가 드러나는 것을 막는다.
-        hash_password(password)
+        await asyncio.to_thread(hash_password, password)
         return None
     # 비활성 계정도 비밀번호를 끝까지 확인한 뒤 틀린 비밀번호와 같은 실패로 돌려준다(이슈 #59).
     # 응답 · 시간으로 비활성인지(= 계정이 있고 비밀번호가 맞는지) 드러나지 않게 한다. 기록도 같은 console.login.failed 다
-    if not verify_password(password, row["password_hash"]) or row["disabled_at"] is not None:
+    if not await asyncio.to_thread(verify_password, password, row["password_hash"]) or row["disabled_at"] is not None:
         return None
     # 쿠키의 발급 시각(i)은 DB 의 now() 로 준다. 계정 변경 시각(updated_at)도 DB 시각이라 콘솔 시계가 늦어도 새 쿠키가 바로
     # 무효가 되지 않는다. 확인과 이 UPDATE 사이에 계정이 바뀌었으면(비활성 · 역할 · 비밀번호, updated_at 이 다르다) 행이 없어 실패다.
