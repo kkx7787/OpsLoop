@@ -95,7 +95,7 @@ describe('ProtectedCard(#83)', () => {
     expect(card.querySelector('[data-undetermined-link]')).toBeNull()
   })
 
-  it('요청 없음 · 성능 수치(load1 은 말풍선) · 취약점 한 줄(수정판 있음 · KEV · 흐린 미확인 · 조사 오래됨 · 대조 오래됨)', () => {
+  it('요청 없음 · 성능 수치(load1 은 말풍선) · 취약점 한 줄(수정판 있음 · KEV · 흐린 수정 여부 미확인 · 조사 오래됨 · 대조 오래됨)', () => {
     stubLogs()
     const { card } = renderCard(web01())
     expect(card.querySelector('[data-collection-badge]')).toHaveTextContent(/^요청 없음$/)
@@ -103,9 +103,12 @@ describe('ProtectedCard(#83)', () => {
     expect(system).toHaveTextContent(/^CPU 12% · 메모리 42% · 디스크 63%$/)
     expect(system).toHaveAttribute('title', 'load1 0.42')
     const vulns = card.querySelector('[data-vulns]') as HTMLElement
-    expect(vulns).toHaveTextContent(/^취약점 수정판 있음 12 · KEV 0 · 미확인 4 → · 조사 오래됨 · 대조 오래됨$/)
-    expect(within(vulns).getByRole('link', { name: '취약점 수정판 있음 12 · KEV 0 · 미확인 4' })).toHaveAttribute('href', '/inventory?asset=web-01')
-    expect(within(vulns).getByText('미확인 4')).toHaveClass('text-ink-muted')
+    expect(vulns).toHaveTextContent(/^취약점 수정판 있음 12 · KEV 0 · 수정 여부 미확인 4 → · 조사 오래됨 · 대조 오래됨$/)
+    expect(within(vulns).getByRole('link', { name: '취약점 수정판 있음 12 · KEV 0 · 수정 여부 미확인 4' })).toHaveAttribute('href', '/inventory?asset=web-01')
+    const unknown = within(vulns).getByText('수정 여부 미확인 4')
+    expect(unknown).toHaveClass('text-ink-muted')
+    // 뜻은 말풍선(#94): 상세를 조회하지 않는 기록을 포함하고 수정판 없음이 아니다. 수를 사유별로 나누지 않는다
+    expect(unknown).toHaveAttribute('title', expect.stringMatching(/^수정 여부 미확인 4건 — 현재 수집 정책에서 상세 정보를 조회하지 않는 기록\(커널 질의에서만 나온 KEV 밖 기록\)을 포함합니다\. 수정판 없음이라는 뜻은 아닙니다\. 취약점 수는 패키지별 대조 행 수입니다\./))
     expect(vulns.querySelector('[data-vuln-flag="조사 오래됨"]')).toHaveClass('text-warning')
     // 상태 글이 붙으면 좁은 카드에서 잘리지 않게 줄을 바꾼다. 정상은 한 줄 말줄임
     expect(vulns).toHaveClass('break-words')
@@ -117,10 +120,10 @@ describe('ProtectedCard(#83)', () => {
     const asset = { ...web01().vulns.assets[0], stale: false, check_failed: true, check_stale: true }
     // 이전 서버(대조 칸 없음)는 상태 글을 만들지 않는다
     const { card } = renderCard(web01({ vulns: { available: true, assets: [asset] } }))
-    expect(card.querySelector('[data-vulns]')).toHaveTextContent(/^취약점 수정판 있음 12 · KEV 0 · 미확인 4 → · 대조 실패 · 대조 오래됨$/)
+    expect(card.querySelector('[data-vulns]')).toHaveTextContent(/^취약점 수정판 있음 12 · KEV 0 · 수정 여부 미확인 4 → · 대조 실패 · 대조 오래됨$/)
     const legacy = { ...asset, check_failed: undefined, check_stale: undefined }
     const old = renderCard(web01({ vulns: { available: true, assets: [legacy] } }))
-    expect(old.card.querySelector('[data-vulns]')).toHaveTextContent(/^취약점 수정판 있음 12 · KEV 0 · 미확인 4 →$/)
+    expect(old.card.querySelector('[data-vulns]')).toHaveTextContent(/^취약점 수정판 있음 12 · KEV 0 · 수정 여부 미확인 4 →$/)
     expect(old.card.querySelector('[data-vulns]')).toHaveClass('truncate')
   })
 

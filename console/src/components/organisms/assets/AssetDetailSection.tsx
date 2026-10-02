@@ -51,7 +51,7 @@ export interface AssetDetailSectionProps {
 
 /**
  * 자산 한 대의 상세(표시만): 오래됨 · 오류 띠, OS · 커널 · 수집 시각, 주요 패키지, 도는 컨테이너 이미지, 배포판 취약점 표(거르기 · 쪽 넘김).
- * 조회 · 거르기 · 쪽 상태는 페이지가 갖는다. 컨테이너 이미지 안의 패키지는 조사하지 않아 대조에 들어가지 않는다(미확인).
+ * 조회 · 거르기 · 쪽 상태는 페이지가 갖는다. 컨테이너 이미지 안의 패키지는 조사하지 않아 대조에 들어가지 않는다(해당 여부 미확인).
  */
 export function AssetDetailSection({ assetId, data, pending, fetching, error, onRetry, filter, offset, onFilter, onOffset, onClose }: AssetDetailSectionProps) {
   const asset = data?.asset
@@ -107,7 +107,7 @@ function AssetFacts({ asset }: { asset: AssetDetail }) {
     </div>
 
     <div className="flex flex-col gap-1.5">
-      <span className="text-xs text-ink-muted">도는 컨테이너 {asset.images.length}개 · 이미지 안 패키지는 대조 안 함(미확인)</span>
+      <span className="text-xs text-ink-muted">도는 컨테이너 {asset.images.length}개 · 이미지 안 패키지는 대조 안 함(해당 여부 미확인)</span>
       {asset.images.length === 0 ? <span className="text-xs text-ink-muted">없음</span> : (
         <ul className="m-0 flex list-none flex-col gap-1 p-0 text-xs" aria-label="컨테이너 이미지">
           {asset.images.map((img, i) => <li key={`${i}-${img.container}-${img.image}`} className="break-all">

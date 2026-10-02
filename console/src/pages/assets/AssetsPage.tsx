@@ -8,7 +8,7 @@ import { buttonClasses } from '@/components/atoms/button-styles'
 import { Banner } from '@/components/molecules/Banner'
 import { InfoTip } from '@/components/molecules/InfoTip'
 import { PageHeader } from '@/components/molecules/PageHeader'
-import { AssetDetailSection, AssetTable, CtiFreshnessFacts, staleSources, WatchCard } from '@/components/organisms/assets'
+import { AssetDetailSection, AssetTable, CtiFreshnessFacts, fixUnknownNote, staleSources, VULN_ROWS_NOTE, WatchCard } from '@/components/organisms/assets'
 import { ApiErrorState } from '@/components/organisms/states/ApiErrorState'
 import { EmptyState } from '@/components/organisms/states/EmptyState'
 import { LoadingState } from '@/components/organisms/states/LoadingState'
@@ -68,7 +68,9 @@ export function AssetsPage() {
         <div className="mt-3"><CtiFreshnessFacts freshness={data.freshness} /></div>
         <ul className="m-0 mt-3 list-none space-y-0.5 p-0 leading-5">
           <li>48시간 넘게 새로 받지 못하면 오래됨입니다.</li>
-          <li>배포판 대조는 Ubuntu 보안 정보(OSV) 기준이며, 직접 설치한 프로그램은 대조하지 않습니다(미확인).</li>
+          <li>배포판 대조는 Ubuntu 보안 정보(OSV) 기준이며, 직접 설치한 프로그램은 대조하지 않습니다(해당 여부 미확인).</li>
+          <li>{fixUnknownNote()}</li>
+          <li>{VULN_ROWS_NOTE}</li>
         </ul>
       </details>}
       {selected && <div ref={detailRef} tabIndex={-1} className="scroll-mt-16 outline-none"><AssetDetailSection

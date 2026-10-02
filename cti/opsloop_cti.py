@@ -1001,7 +1001,10 @@ def asset_vuln_rows(plan, results, info):
       reboot_pending  커널 기록이 같은 판으로 설치된 가장 높은 커널의 질의 결과에 없다. 재부팅하면 해소 (fixed_version = 그 커널)
       fix_available   배포판 기록에 이 소스 패키지의 수정 버전이 있다 (fixed_version = 그 버전)
       no_fix          상세 기록을 받았는데 수정 버전이 없다
-      unknown         상세 기록을 아직 받지 않았다
+      unknown         상세 기록이 없다. 수정판 없음(no_fix)이 아니다. 행에는 까닭을 남기지 않는다
+                      · 회차 상한(OSV_DETAILS)에 밀렸거나 받지 못했다: 다음 회차에 받는다
+                      · 커널 질의에서만 나온 id 인데 CVE 가 KEV 에 없다: 상세를 받지 않는 정책이라(osv_need_detail)
+                        CVE 가 KEV 에 오르기 전에는 기다려도 unknown 으로 남는다
     """
     eco, ksrc = plan["eco"], plan["kernel"]
     targets = [(pkg, ver, False) for pkg, ver in plan["queries"]]

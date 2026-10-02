@@ -49,7 +49,7 @@ const LOG_NOTE = '로그는 1분 적재 회차로 들어오고, 사건은 그 �
  *  경고    웹 로그 도착 · 적재 없음(#82) · 읽기 문제 · 수신 없음 까닭. 있을 때만 본문 줄이라 높이가 늘어도 된다
  *  성능    CPU · 메모리 · 디스크(오래되면 '오래됨')
  *  최근 로그 '마지막 로그 n분 전'(로그 시각) · 자동 갱신 정지 / 10줄 상자(높이 고정 · 안쪽 스크롤)
- *  취약점  '수정판 있음 N · KEV N · 미확인 N →' 한 줄(상태 글은 수 옆에)
+ *  취약점  '수정판 있음 N · KEV N · 수정 여부 미확인 N →' 한 줄(상태 글은 수 옆에, 미확인의 뜻은 말풍선)
  *  동선    '미판정 N건 → · 미결 N건 → · 사건 보기 → · 로그 더 보기 →'
  * 보안 · 최근 사건 · 대응 구역은 없다(판정 대기 구역 · 차단 화면에 있다). 정상 상태의 줄은 모두 한 줄이라 장비가 늘어도 카드 높이가 같다.
  * 로그는 카드가 보이고 탭이 앞일 때만 10초마다 받는다. 정지는 로그만 멈추고, 상단 새로고침은 정지 중에도 한 번 받는다(정지는 그대로).
@@ -359,7 +359,10 @@ function PendingLink({ target }: { target: Target }) {
   )
 }
 
-/** 취약점 한 줄. 수는 숨기거나 0 으로 바꾸지 않고, 조사 오래됨 · 대조 실패 · 대조 오래됨 · 조회 실패는 수 옆에 주의색 글로 둔다 */
+/**
+ * 취약점 한 줄. 수는 숨기거나 0 으로 바꾸지 않고, 조사 오래됨 · 대조 실패 · 대조 오래됨 · 조회 실패는 수 옆에 주의색 글로 둔다.
+ * 수정 여부 미확인의 뜻은 말풍선(title)으로 단다. 링크 안이라 도움말 단추는 두지 않는다(#94)
+ */
 function VulnLine({ target, stale }: { target: Target; stale: boolean }) {
   const vuln = vulnSummary(target.vulns)
   const flags = stale ? [...vuln.flags, '조회 실패'] : vuln.flags
@@ -369,7 +372,9 @@ function VulnLine({ target, stale }: { target: Target; stale: boolean }) {
       {vuln.unknown && (
         <>
           {' · '}
-          <span className="text-ink-muted tabular-nums">{vuln.unknown}</span>
+          <span className="text-ink-muted tabular-nums" title={vuln.unknownNote}>
+            {vuln.unknown}
+          </span>
         </>
       )}
     </>

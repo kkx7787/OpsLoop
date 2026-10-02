@@ -89,6 +89,25 @@ describe('자산 · 취약점', () => {
     expect(screen.queryByRole('region', { name: /자산 상세$/ })).toBeNull()
   })
 
+  it('안내 문구(#94): 대조하지 않는 프로그램은 해당 여부 미확인, 수정 여부 미확인은 수정판 없음이 아니다(신선도 접힘 · 표의 말풍선)', async () => {
+    setup()
+    const table = await screen.findByRole('region', { name: '자산 표' })
+    const guide = screen.getByText('48시간 넘게 새로 받지 못하면 오래됨입니다.').closest('ul') as HTMLElement
+    expect([...guide.querySelectorAll('li')].map((li) => li.textContent)).toEqual([
+      '48시간 넘게 새로 받지 못하면 오래됨입니다.',
+      '배포판 대조는 Ubuntu 보안 정보(OSV) 기준이며, 직접 설치한 프로그램은 대조하지 않습니다(해당 여부 미확인).',
+      '수정 여부 미확인은 현재 수집 정책에서 상세 정보를 조회하지 않는 기록(커널 질의에서만 나온 KEV 밖 기록)을 포함합니다. 수정판 없음이라는 뜻은 아닙니다.',
+      '취약점 수는 패키지별 대조 행 수입니다. 같은 CVE 가 여러 패키지에 걸리면 여러 번 셉니다.',
+    ])
+    // 접힘 안만으로는 수 옆에서 보이지 않는다. 수가 보이는 칸에 같은 뜻을 말풍선으로 단다(수를 사유별로 나누지 않는다)
+    const unknown = within(table.querySelector('[data-asset="fw"]') as HTMLElement).getByText('· 수정 여부 미확인 2건', { exact: false })
+    expect(unknown).toHaveAttribute(
+      'title',
+      '수정 여부 미확인 2건 — 현재 수집 정책에서 상세 정보를 조회하지 않는 기록(커널 질의에서만 나온 KEV 밖 기록)을 포함합니다. 수정판 없음이라는 뜻은 아닙니다. ' +
+        '취약점 수는 패키지별 대조 행 수입니다. 같은 CVE 가 여러 패키지에 걸리면 여러 번 셉니다.',
+    )
+  })
+
   it('이전 서버(수정 여부 미확인 칸 없음)는 수정판 칸을 지금처럼 보인다', async () => {
     const { vuln_fix_unknown: _unknown, ...old } = assetRow({ asset_id: 'fw', vuln_fix_available: 3, vuln_reboot_pending: 25 })
     setup('/inventory', { list: assetsResult({ rows: [old] }) })
@@ -109,7 +128,7 @@ describe('자산 · 취약점', () => {
     expect(await detail.findByText('openssh-server')).toBeInTheDocument()
     expect(detail.getByText('1:9.6p1-3ubuntu13.19')).toBeInTheDocument()
     expect(detail.getByText('opsloop-console:5adc7de')).toBeInTheDocument()
-    expect(detail.getByText(/이미지 안 패키지는 대조 안 함\(미확인\)/)).toBeInTheDocument()
+    expect(detail.getByText(/이미지 안 패키지는 대조 안 함\(해당 여부 미확인\)/)).toBeInTheDocument()
     expect(detailUrls()).toEqual(['/api/assets/fw?filter=all&limit=50&offset=0'])
 
     const rows = within(detail.getByRole('region', { name: '배포판 취약점 표' })).getAllByRole('row').slice(1)

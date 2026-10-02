@@ -18,6 +18,7 @@ import {
 } from '@/api/targets'
 import { toDate } from '@/lib/time'
 import type { Tone } from '../../atoms/tones'
+import { fixUnknownNote, VULN_ROWS_NOTE } from '../assets/cti-format'
 
 /**
  * 관제 대상 카드(#52)의 값을 글로 바꾸는 규칙. 카드 컴포넌트는 여기 함수만 부르고 판단을 품지 않는다.
@@ -152,7 +153,7 @@ export function assetHref(assetId: string): string {
 /**
  * 보호 대상 카드의 취약점 한 줄(#83).
  *  main    '수정판 있음 N · KEV N'(이전 서버는 '취약점 N · KEV N'). 수가 없으면 까닭 글(자산 정보 없음 · 조사 기록 없음 · 대조 전 …)
- *  unknown '미확인 N'(수정 여부 미확인, 흐린 글로 뒤에 둔다). 이전 서버 · 수가 없으면 null
+ *  unknown '수정 여부 미확인 N'(흐린 글로 뒤에 둔다, 뜻은 말풍선 unknownNote). 이전 서버 · 수가 없으면 null
  *  flags   조사 오래됨(수집 48시간) · 대조 실패(check_error) · 대조 오래됨(대조 48시간). 수를 숨기거나 0 으로 바꾸지 않고 옆에 붙인다
  * 자산이 여럿이면 수를 더하고 자산 화면 목록으로 잇는다(보호 대상은 보통 같은 이름의 자산 하나다)
  */
@@ -161,6 +162,8 @@ export interface VulnSummary {
   /** main 이 수가 아니라 까닭 글이다(흐리게) */
   muted: boolean
   unknown: string | null
+  /** unknown 의 말풍선(#94): 상세를 조회하지 않는 기록을 포함한다 · 수정판 없음이 아니다 · 취약점 수 단위 */
+  unknownNote?: string
   flags: string[]
   href: string | null
 }
@@ -191,7 +194,10 @@ export function vulnSummary(vulns: TargetVulns): VulnSummary {
   const sum = (key: 'vuln_total' | 'vuln_kev' | 'vuln_fix_available' | 'vuln_fix_unknown') => counted.reduce((n, a) => n + (isCount(a[key]) ? a[key] : 0), 0)
   const split = counted.every((a) => isCount(a.vuln_fix_available) && isCount(a.vuln_fix_unknown))
   if (!split) return { main: `취약점 ${count(sum('vuln_total'))} · KEV ${count(sum('vuln_kev'))}`, muted: false, unknown: null, flags, href }
-  return { main: `수정판 있음 ${count(sum('vuln_fix_available'))} · KEV ${count(sum('vuln_kev'))}`, muted: false, unknown: `미확인 ${count(sum('vuln_fix_unknown'))}`, flags, href }
+  const unknown = sum('vuln_fix_unknown')
+  // 0건이면 '0건 — … 포함합니다' 가 어색해 수 없이 뜻만 적는다
+  const unknownNote = `${fixUnknownNote(unknown > 0 ? unknown : undefined)} ${VULN_ROWS_NOTE}`
+  return { main: `수정판 있음 ${count(sum('vuln_fix_available'))} · KEV ${count(sum('vuln_kev'))}`, muted: false, unknown: `수정 여부 미확인 ${count(unknown)}`, unknownNote, flags, href }
 }
 
 /**
