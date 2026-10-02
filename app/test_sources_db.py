@@ -14,7 +14,8 @@ test_dashboard_db 와 같이 무작위 스키마에 둔다. 처리기는 가짜 
     빠지고 긴 UA 는 512자로 잘린다. 지문 조건 목록(fp_kind · fp)은 그 지문을 쓴 출발지 가운데 사건 있는 곳뿐이다
   - 상세: 사건 흐름(첫 시각 순 · 마지막 판정) · 이벤트 종류(실제만) · 지문 · 조치(차단 · 해제만, 최근 순) · 차단 행 · 차단 금지 대역 ·
     흡수 기록 수 · 집행기 확인 · 이벤트만 있는 출발지(요약 null) · 404 · 422 · 감사 기록은 늘 빠지고 콘솔 기록은 사건 있는 주소만 ·
-    감사 · 콘솔 기록만 있는 주소는 조회자에게 404 · 머리의 마지막 관측 · 차단 제외(exempt_flag, 요약이 없어도 목록과 같은 판단)
+    감사 · 콘솔 기록만 있는 주소는 조회자에게 404 · 머리의 마지막 관측 · 차단 제외(exempt_flag, 요약이 없어도 목록과 같은 판단) ·
+    사건 흐름의 장비(확인 · 규칙 범위 · 섞인 규칙 · 장비 미확인)가 사건 목록(main.incident_page)과 같다
   - 표가 없는 DB: 생존 신호 · 흡수 기록 · 차단 금지 표가 없으면 그 값은 null(차단 제외는 코드 상수 대역만 참)
   - main.py 요약 상위 출발지(TOP_ACTORS_SQL): critical + medium 출발지가 critical
 """
@@ -35,6 +36,7 @@ import sources as s
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = (ROOT / "infra" / "schema.sql").read_text()
+RULE_FILES = sorted((ROOT / "detector").glob("rules*.json"))      # 장비 계산이 읽는 규칙 정의(test_targets_db 와 같다)
 
 A, B, C, D, E, F = "198.51.100.7", "192.0.2.10", "203.0.113.5", "10.0.0.5", "2001:db8::1", "198.51.100.99"
 G, H = "198.51.100.200", "192.0.2.77"          # 이벤트만 있는 출발지(사건 없음)
@@ -65,7 +67,7 @@ class Base(unittest.IsolatedAsyncioTestCase):
         import asyncpg
         self.conn = await asyncpg.connect(os.environ["OPSLOOP_TEST_DATABASE_URL"])
         await self.conn.execute("SET search_path TO pg_temp")
-        tables = ["incidents", "verdicts", "actions", "events", "blocklist", "test_ranges"]
+        tables = ["incidents", "verdicts", "actions", "events", "blocklist", "test_ranges", "rule_versions"]
         tables += ["block_exempt"] * self.with_exempt + ["sensor_heartbeats"] * self.with_heartbeats
         tables += ["incident_absorbed"] * self.with_absorbed
         for name in tables:
@@ -78,6 +80,9 @@ class Base(unittest.IsolatedAsyncioTestCase):
             CREATE FUNCTION {self.schema}.is_test_source(ip inet) RETURNS boolean LANGUAGE sql STABLE
                 AS $$ SELECT EXISTS (SELECT 1 FROM pg_temp.test_ranges t WHERE ip <<= t.cidr) $$;
             SET search_path TO {self.schema}, pg_temp;""")
+        for path in RULE_FILES:
+            await self.conn.execute("INSERT INTO rule_versions (rule_version, definition) VALUES ($1, $2::jsonb)",
+                                    json.loads(path.read_text())["rule_version"], path.read_text())
         self.now = await self.conn.fetchval("SELECT now()")
         self.lines = 0
         self.request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(
@@ -392,6 +397,37 @@ class DetailTests(Base):
         self.assertEqual(body["block"], listed["block"])
         self.assertEqual((body["exempt"], body["absorbed"]), (None, 2))
         self.assertEqual(body["checkers"], {"gateway_stale": False, "fw_stale": True})
+
+    async def test_사건_흐름_장비는_사건_목록과_같다(self):
+        import main
+        # a1 · a2: v3 Cowrie 규칙(규칙 범위) · a3: v3 에 없는 규칙(장비 미확인). 아래 셋은 이 시험에서만 더한다
+        #   a4: 근거 발생원 web-01(확인) · a5: 디코이 · 콘솔이 섞인 w2 R104, 디코이 이벤트로 고름(확인) · a6: 같은 규칙, 이벤트 없음(미확인)
+        await self.incident("a4", A, "R102", "high", 150, 140)
+        await self.conn.execute("""UPDATE incidents SET rule_version = 'w2', evidence = '{"sensors": ["web-01"]}'
+            WHERE incident_key = 'a4'""")
+        await self.incident("a5", A, "R104", "high", 120, 110)
+        await self.incident("a6", A, "R104", "medium", 90, 80)
+        await self.conn.execute("UPDATE incidents SET rule_version = 'w2' WHERE incident_key IN ('a5', 'a6')")
+        await self.event(115, "decoy.action.upload", "decoy", A)
+
+        body = await self.detail(A)
+        listed = await main.incident_page(self.conn, actor_ip=A, limit=500)
+        fields = ("devices", "device_state", "device_fallback")
+        self.assertEqual({i["incident_key"]: {f: i[f] for f in fields} for i in body["incidents"]},
+                         {i["incident_key"]: {f: i[f] for f in fields} for i in listed["items"]})
+        flow = {i["incident_key"]: i for i in body["incidents"]}
+        self.assertEqual({k: i["device_state"] for k, i in flow.items()},
+                         {"a1": "rule_scope", "a2": "rule_scope", "a3": "unconfirmed", "a4": "confirmed",
+                          "a5": "confirmed", "a6": "unconfirmed"})
+        self.assertEqual([(d["id"], d["part"], d["basis"]) for d in flow["a1"]["devices"]],
+                         [("aws-sensor", "cowrie", "rule_scope")])
+        self.assertEqual([(d["id"], d["basis"]) for d in flow["a4"]["devices"]], [("web-01", "confirmed")])
+        self.assertEqual([(d["id"], d["part"], d["basis"]) for d in flow["a5"]["devices"]],
+                         [("aws-sensor", "decoy", "confirmed")])
+        self.assertEqual(flow["a6"]["devices"], [])
+        # 근거 열은 목록처럼 싣지 않는다. 요약 '노린 대상'(이벤트 발생원 기준)은 그대로다
+        self.assertTrue(all("sensors" not in i and "sessions" not in i for i in body["incidents"]))
+        self.assertEqual(body["summary"]["targets"], ["aws-sensor"])
 
     async def test_차단_금지_대역(self):
         body = await self.detail(D)

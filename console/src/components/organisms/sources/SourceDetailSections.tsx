@@ -7,6 +7,7 @@ import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { Time } from '../../atoms/Time'
 import { UntrustedText } from '../../atoms/UntrustedText'
 import { VerdictBadge } from '../../atoms/VerdictBadge'
+import { DeviceBadges } from '../../molecules/DeviceBadges'
 import { InfoTip } from '../../molecules/InfoTip'
 import { DetailSection } from '../incident-detail/DetailSection'
 import { incidentHref } from '../incident-detail/format'
@@ -72,7 +73,7 @@ export function SourceSummarySection({ detail, className }: SectionProps) {
   )
 }
 
-/** ② 사건 흐름: 첫 시각 순. 규칙을 누르면 사건 상세 */
+/** ② 사건 흐름: 첫 시각 순. 규칙을 누르면 사건 상세. 장비는 사건 목록과 같은 배지다(요약 '노린 대상' 과 기준이 다르다) */
 export function SourceIncidentsSection({ detail, className }: SectionProps) {
   const { incidents, incidents_total: total } = detail
   return (
@@ -84,7 +85,7 @@ export function SourceIncidentsSection({ detail, className }: SectionProps) {
           <table className={`${TABLE.table} responsive-table`} aria-label="사건 흐름">
             <thead>
               <tr>
-                {['규칙', '심각도', '상태', '판정', '대상', '첫 시각 (KST)', '마지막 (KST)'].map((label) => (
+                {['규칙', '심각도', '상태', '판정', '장비', '첫 시각 (KST)', '마지막 (KST)'].map((label) => (
                   <th key={label} scope="col" className={TABLE.th}>{label}</th>
                 ))}
               </tr>
@@ -100,7 +101,7 @@ export function SourceIncidentsSection({ detail, className }: SectionProps) {
                   <td data-label="심각도" className={TABLE.td}><SeverityBadge severity={row.severity} /></td>
                   <td data-label="상태" className={TABLE.td}><StatusBadge status={row.status} /></td>
                   <td data-label="판정" className={TABLE.td}>{row.verdict ? <VerdictBadge verdict={row.verdict} /> : <span className="text-warning">미판정</span>}</td>
-                  <td data-label="대상" className={TABLE.td}><UntrustedText value={row.target} max={64} fallback="—" /></td>
+                  <td data-label="장비" className={TABLE.td}><DeviceBadges source={row} mode="compact" className="flex-wrap" /></td>
                   <td data-label="첫 시각 (KST)" className={`${TABLE.td} ${TABLE.mono}`}><Time value={row.first_ts} format="datetime" /></td>
                   <td data-label="마지막 (KST)" className={`${TABLE.td} ${TABLE.mono}`}><Time value={row.last_ts} format="datetime" /></td>
                 </tr>
