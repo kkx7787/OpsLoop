@@ -10,7 +10,9 @@
      DB 를 보지 않는다) · Cache-Control no-store · 출처 확인 · 아이디는 매개변수로만
   2. 세션 순수 함수(auth): 쿠키의 발급 시각 i · session_valid(없음 · 비활성 · 변경 전 쿠키 · i 없는 옛 쿠키)
   3. 로그인(auth.authenticate): 비활성 계정은 비밀번호가 맞아도 실패(해시 계산은 같게, 로그인 기록 갱신 없음) ·
-     발급 시각은 UPDATE … RETURNING 의 DB 시각 · 확인과 갱신 사이에 계정이 바뀌면(updated_at 이 다르면) 실패
+     발급 시각은 UPDATE … RETURNING 의 DB 시각 · 확인과 갱신 사이에 계정이 바뀌면(updated_at 이 다르면) 실패 ·
+     해시 · 확인은 어느 길이든(NUL 아이디 · 없는 계정 · 비활성 · 틀린 · 맞는 비밀번호) 한 번, 이벤트 루프 스레드 밖에서 돈다 ·
+     느린 가짜 해시로 로그인하는 동안 /health · /api/me 가 먼저 답한다(main.app 을 httpx ASGITransport 로 부른다)
   4. 계정 조회(auth.lookup): 한 문장 · 옛 연결 오류만 한 번 더 빌린다
   5. 명령줄 인자(auth.build_parser): 아이디 형식 · --by 형식 · 역할 선택지 · 비밀번호는 인자로 받지 않는다
 명령줄 명령의 DB 동작(마지막 관리자 · 감사 행위자)은 app/test_accounts_db.py 가 시험 DB 에서 본다.
@@ -23,6 +25,8 @@ import json
 import os
 import re
 import sys
+import threading
+import time
 import unittest
 from contextlib import asynccontextmanager, redirect_stderr, redirect_stdout
 from datetime import datetime, timezone
@@ -544,7 +548,8 @@ class SessionTest(unittest.TestCase):
 #  3. 로그인 · 4. 계정 조회
 # ──────────────────────────────────────────────────────────────
 class AuthPool:
-    """authenticate · lookup 용 가짜 풀. fetchrow 는 계정 행, fetchval 은 UPDATE … RETURNING 값. fails 번은 옛 연결 오류."""
+    """authenticate · lookup 용 가짜 풀. fetchrow 는 계정 행, fetchval 은 UPDATE … RETURNING 값. fails 번은 옛 연결 오류.
+    execute 는 인증 기록(log_event)이다. /login 을 부를 때 쓴다."""
 
     def __init__(self, account=None, returning=Decimal("1790000123.456789"), fails=0, error=OSError):
         self.account, self.returning, self.fails, self.error = account, returning, fails, error
@@ -566,6 +571,10 @@ class AuthPool:
             async def fetchval(self, sql, *args):
                 pool.calls.append((sql, args))
                 return pool.returning
+
+            async def execute(self, sql, *args):
+                pool.calls.append((sql, args))
+                return "INSERT 0 1"
 
         yield Conn()
 
@@ -616,6 +625,86 @@ class AuthenticateTest(unittest.TestCase):
         pool = AuthPool(self.account(), returning=None)
         self.assertEqual(self.run_auth(pool)[0], None)
         self.assertEqual(len(pool.calls), 2)
+
+    def test_해시와_확인은_이벤트_루프_스레드_밖에서_한_번_돈다(self):
+        # 이벤트 루프에서 계산하면 그동안 다른 요청이 모두 기다린다(콘솔은 작업자 1개). 시간 맞추기도 같이 본다: 어느 길이든 한 번
+        #   계산하고, 계산이 끝난 뒤에 돌려준다(기다리지 않고 먼저 돌려주면 응답 시간으로 계정 유무가 드러난다)
+        real = {name: getattr(auth, name) for name in ("hash_password", "verify_password")}
+        seen = []
+
+        def spy(name):
+            def call(*args):
+                result = real[name](*args)
+                seen.append((name, threading.get_ident()))   # 계산이 끝난 뒤에 적는다
+                return result
+            return call
+
+        async def run(pool, username, password):
+            user = await test_web.REAL_AUTHENTICATE(pool, username, password)
+            return threading.get_ident(), user, list(seen)   # 돌려준 순간까지 끝난 계산
+
+        cases = [("NUL 아이디", "ad\x00min", None, PASSWORD, "hash_password"),
+                 ("없는 계정", "han", None, PASSWORD, "hash_password"),
+                 ("비활성 계정", "han", self.account(disabled_at=T1), PASSWORD, "verify_password"),
+                 ("틀린 비밀번호", "han", self.account(), "wrong-password-123", "verify_password"),
+                 ("맞는 비밀번호", "han", self.account(), PASSWORD, "verify_password")]
+        with patch.object(auth, "hash_password", spy("hash_password")), \
+                patch.object(auth, "verify_password", spy("verify_password")):
+            for why, username, account, password, want in cases:
+                with self.subTest(why=why):
+                    seen.clear()
+                    loop_thread, user, done = asyncio.run(run(AuthPool(account), username, password))
+                    self.assertEqual([name for name, _ in done], [want], "돌려주기 전에 해시를 한 번 계산하지 않았다")
+                    self.assertEqual(seen, done, "돌려준 뒤에 더 계산했다")
+                    self.assertNotEqual(done[0][1], loop_thread, "이벤트 루프 스레드에서 계산했다")
+                    self.assertEqual(user is not None, why == "맞는 비밀번호")
+
+
+class LoginWhileHashingTest(unittest.TestCase):
+    """로그인 해시를 계산하는 동안에도 다른 요청이 답한다. 콘솔은 uvicorn 작업자 1개라 해시가 이벤트 루프를 막으면
+    HAProxy 검사(/health)와 화면(/api/me)이 함께 기다린다. main.app 을 httpx ASGITransport 로 한 이벤트 루프에서 부른다
+    (test_accounts_db.ManagePathTest.http 와 같은 방식). DB 는 가짜다."""
+
+    SLOW = 0.5   # 느린 가짜 해시(초)
+
+    def test_느린_해시로_로그인하는_동안_health_와_api_me_가_먼저_답한다(self):
+        import httpx
+        pool = AuthPool({"username": "han", "password_hash": auth.hash_password(PASSWORD), "role": "operator",
+                         "disabled_at": None, "updated_at": T0})
+        real, started, order = auth.verify_password, threading.Event(), []
+
+        def slow_verify(*args):
+            order.append("해시 시작")
+            started.set()
+            time.sleep(self.SLOW)
+            order.append("해시 끝")
+            return real(*args)
+
+        async def run():
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=main.app),
+                                         base_url="http://testserver") as client:
+                async def call(method, path, **kw):
+                    r = await client.request(method, path, **kw)
+                    order.append(path)
+                    return r
+
+                login = asyncio.create_task(call("POST", "/login", headers=SAME,
+                                                 data={"username": "han", "password": PASSWORD}))
+                # 로그인이 해시에 들어갈 때까지 기다린다. 해시가 루프를 막으면 해시가 끝난 뒤에야 여기로 돌아온다
+                while not started.is_set() and not login.done():
+                    await asyncio.sleep(0.005)
+                health = await call("GET", "/health")
+                # 먼저 로그인해 둔 다른 화면의 세션
+                me = await call("GET", "/api/me", headers={"cookie": f"{auth.COOKIE}={auth.issue('han', 'operator')}"})
+                return await login, health, me
+
+        with patch.object(main.app.state, "pool", pool, create=True), patch.object(auth, "verify_password", slow_verify):
+            login, health, me = asyncio.run(run())
+        self.assertEqual((login.status_code, health.status_code, health.json(), me.status_code, me.json()["username"]),
+                         (302, 200, {"status": "ok"}, 200, "han"))
+        self.assertIn(auth.COOKIE, login.cookies)
+        # 해시를 계산하는 동안 두 요청이 답하고, 로그인은 해시가 끝난 뒤에 답한다
+        self.assertEqual(order, ["해시 시작", "/health", "/api/me", "해시 끝", "/login"])
 
 
 class LookupTest(unittest.TestCase):
