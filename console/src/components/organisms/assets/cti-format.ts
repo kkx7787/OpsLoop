@@ -81,6 +81,19 @@ export function ubuntuPriorityTone(value: string | null | undefined): Tone {
   }
 }
 
+/**
+ * 수정 여부 미확인 설명(#94). 대시보드 카드 말풍선 · 자산 표 말풍선 · 자산 화면 안내가 같이 쓴다.
+ * 수집기는 커널 질의에서만 나온 기록의 상세를 CVE 가 KEV 에 있을 때만 받는다. 그래서 기다려도 미확인으로 남는 기록이 있다.
+ * 지금 자료로는 사유별 수를 나눌 근거가 없어 수를 나누지 않는다. n 이 없으면 수 없이 적는다(자산 화면 안내)
+ */
+export function fixUnknownNote(n?: number): string {
+  const head = n === undefined ? '수정 여부 미확인은' : `수정 여부 미확인 ${n.toLocaleString('ko-KR')}건 —`
+  return `${head} 현재 수집 정책에서 상세 정보를 조회하지 않는 기록(커널 질의에서만 나온 KEV 밖 기록)을 포함합니다. 수정판 없음이라는 뜻은 아닙니다.`
+}
+
+/** 취약점 수의 단위(#94). CVE 수가 아니다 */
+export const VULN_ROWS_NOTE = '취약점 수는 패키지별 대조 행 수입니다. 같은 CVE 가 여러 패키지에 걸리면 여러 번 셉니다.'
+
 /** 신선도 한 줄: 오래된 출처 이름들. 없으면 빈 배열(KEV · EPSS · 배포판 대조 순) */
 export function staleSources(freshness: CtiFreshness | null | undefined): string[] {
   if (!freshness) return []

@@ -835,7 +835,7 @@ describe('대시보드 · 등록 노드 카드(#64)', () => {
   it.each([
     ['2장', ['web-02']],
     ['3장', ['web-02', 'web-03']],
-  ])('보호 대상 카드 %s: 등록 노드는 web-01 뒤에 붙고 격자는 넓으면(lg) 두 열 고정이다(#83)', async (_name, ids) => {
+  ])('보호 대상 카드 %s: 등록 노드는 web-01 뒤에 붙고 격자는 1200px 이상에서 두 열 고정이다(#83 · #94)', async (_name, ids) => {
     stubDashboard({ targets: withNodes(...ids) })
     renderPage()
     const board = await screen.findByRole('region', { name: '보호 대상' })
@@ -844,9 +844,10 @@ describe('대시보드 · 등록 노드 카드(#64)', () => {
     expect(cards.map((c) => c.dataset.target)).toEqual(['web-01', ...ids])
     expect(cards.map((c) => c.dataset.targetKind)).toEqual(['fixed', ...ids.map(() => 'node')])
     // 카드는 모두 한 그리드의 칸이다. 1장이어도 반쪽 폭이라 장비가 늘어도 카드 폭 · 높이가 같다(세 열 없음). jsdom 은 배치를 계산하지 않아 규칙만 본다
+    // 두 열은 1200px 부터다. lg(1024)면 1024 ~ 약 1180 에서 카드가 28rem 보다 좁아 요청 경로가 사라진다(#94)
     const grid = cards[0].parentElement as HTMLElement
-    expect(grid).toHaveClass('grid', 'gap-3', 'grid-cols-1', 'lg:grid-cols-2', 'items-stretch')
-    expect(grid.className).not.toMatch(/auto-fit|grid-cols-3/)
+    expect(grid).toHaveClass('grid', 'gap-3', 'grid-cols-1', 'min-[1200px]:grid-cols-2', 'items-stretch')
+    expect(grid.className).not.toMatch(/auto-fit|grid-cols-3|lg:grid-cols/)
     expect(cards.every((c) => c.parentElement === grid)).toBe(true)
     // 카드마다 최근 로그를 따로 묻는다
     await waitFor(() => expect(cards.every((c) => c.querySelector('[data-log-box] table'))).toBe(true))

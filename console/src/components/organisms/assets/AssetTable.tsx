@@ -5,7 +5,7 @@ import { Card, CardHeader } from '@/components/atoms/Card'
 import { Time } from '@/components/atoms/Time'
 import { UntrustedText } from '@/components/atoms/UntrustedText'
 import { revealHidden } from '@/lib/untrusted'
-import { formatProbability } from './cti-format'
+import { fixUnknownNote, formatProbability, VULN_ROWS_NOTE } from './cti-format'
 
 const HEAD = ['자산', '수집 (KST)', '취약점 · KEV', '수정판 · EPSS', '커널', '조사 상태']
 const cell = 'px-4 py-3 align-top'
@@ -20,6 +20,7 @@ export interface AssetTableProps {
 /**
  * 자산 표(표시만). 조회 · 선택 상태는 페이지가 갖는다. 자산 이름(단추)을 누르면 상세가 열린다.
  * 대조 전인 자산은 취약점 수를 0 으로 보이지 않고 '대조 전'으로 적는다(0건은 '없음'으로 읽히기 때문이다).
+ * 수정 여부 미확인의 뜻(상세를 조회하지 않는 기록 포함 · 수정판 없음 아님)은 그 수의 말풍선으로 단다(#94).
  */
 export function AssetTable({ rows, selected, onSelect }: AssetTableProps) {
   return (
@@ -46,7 +47,7 @@ export function AssetTable({ rows, selected, onSelect }: AssetTableProps) {
                 {checked ? <><span className="font-semibold">{r.vuln_total}건</span><div className="mt-1 text-xs text-ink-muted">KEV {r.vuln_kev > 0 ? <Badge tone="danger">{r.vuln_kev}건</Badge> : '0건'}</div></> : <span className="text-ink-muted">대조 전</span>}
               </td>
               <td data-label="수정판 · EPSS" className={`${cell} text-xs tabular-nums`}>
-                {checked ? <><span>{r.vuln_fix_available}건</span>{r.vuln_reboot_pending > 0 && <span className="text-ink-muted"> · 재부팅 {r.vuln_reboot_pending}건</span>}{(r.vuln_fix_unknown ?? 0) > 0 && <span className="text-ink-muted"> · 수정 여부 미확인 {r.vuln_fix_unknown}건</span>}</> : <span className="text-ink-muted">—</span>}
+                {checked ? <><span>{r.vuln_fix_available}건</span>{r.vuln_reboot_pending > 0 && <span className="text-ink-muted"> · 재부팅 {r.vuln_reboot_pending}건</span>}{(r.vuln_fix_unknown ?? 0) > 0 && <span className="text-ink-muted" title={`${fixUnknownNote(r.vuln_fix_unknown ?? 0)} ${VULN_ROWS_NOTE}`}> · 수정 여부 미확인 {r.vuln_fix_unknown}건</span>}</> : <span className="text-ink-muted">—</span>}
                 <div className="mt-1 text-ink-muted">최고 EPSS <span className="font-mono">{formatProbability(r.max_epss)}</span></div>
               </td>
               <td data-label="커널" className={`${cell} text-xs`}>

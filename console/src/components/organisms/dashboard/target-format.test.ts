@@ -295,8 +295,8 @@ describe('보호 대상 카드 문구(#83)', () => {
     expect(headBadge(nodeTarget()).label).toBe('정상')
   })
 
-  it('취약점 한 줄: 수정판 있음 · KEV 나란히, 미확인은 따로(흐린 글) · 자산 화면으로 잇는다', () => {
-    expect(vulnSummary({ available: true, assets: [asset()] })).toEqual({ main: '수정판 있음 12 · KEV 0', muted: false, unknown: '미확인 4', flags: [], href: '/inventory?asset=web-01' })
+  it('취약점 한 줄: 수정판 있음 · KEV 나란히, 수정 여부 미확인은 따로(흐린 글 · 말풍선) · 자산 화면으로 잇는다', () => {
+    expect(vulnSummary({ available: true, assets: [asset()] })).toMatchObject({ main: '수정판 있음 12 · KEV 0', muted: false, unknown: '수정 여부 미확인 4', flags: [], href: '/inventory?asset=web-01' })
     // 이전 서버(수정 상태별 수 없음)는 총수 · KEV
     expect(vulnSummary({ available: true, assets: [asset({ vuln_fix_available: undefined, vuln_fix_unknown: undefined })] }).main).toBe('취약점 30 · KEV 0')
   })
@@ -304,7 +304,7 @@ describe('보호 대상 카드 문구(#83)', () => {
   it('조사 오래됨 · 대조 실패 · 대조 오래됨은 수를 바꾸지 않고 상태 글로 붙인다', () => {
     const v = vulnSummary({ available: true, assets: [asset({ stale: true, check_failed: true, check_stale: true })] })
     expect(v.main).toBe('수정판 있음 12 · KEV 0')
-    expect(v.unknown).toBe('미확인 4')
+    expect(v.unknown).toBe('수정 여부 미확인 4')
     expect(v.flags).toEqual(['조사 오래됨', '대조 실패', '대조 오래됨'])
   })
 
@@ -319,7 +319,21 @@ describe('보호 대상 카드 문구(#83)', () => {
 
   it('자산이 여럿이면 수를 더하고 자산 목록으로 잇는다', () => {
     const v = vulnSummary(awsSensor().vulns)
-    expect(v).toMatchObject({ main: '수정판 있음 6 · KEV 1', unknown: '미확인 3', href: '/inventory' })
+    expect(v).toMatchObject({ main: '수정판 있음 6 · KEV 1', unknown: '수정 여부 미확인 3', href: '/inventory' })
+    // 말풍선의 수도 더한 값이다
+    expect(v.unknownNote).toMatch(/^수정 여부 미확인 3건 — /)
+  })
+
+  it('수정 여부 미확인 말풍선(#94): 상세를 조회하지 않는 기록 포함 · 수정판 없음 아님 · 취약점 수 단위. 수를 사유별로 나누지 않는다', () => {
+    expect(vulnSummary({ available: true, assets: [asset({ vuln_fix_unknown: 1200 })] }).unknownNote).toBe(
+      '수정 여부 미확인 1,200건 — 현재 수집 정책에서 상세 정보를 조회하지 않는 기록(커널 질의에서만 나온 KEV 밖 기록)을 포함합니다. 수정판 없음이라는 뜻은 아닙니다. ' +
+        '취약점 수는 패키지별 대조 행 수입니다. 같은 CVE 가 여러 패키지에 걸리면 여러 번 셉니다.',
+    )
+    // 0건이면 수 없이 뜻만 적는다
+    expect(vulnSummary({ available: true, assets: [asset({ vuln_fix_unknown: 0 })] }).unknownNote).toMatch(/^수정 여부 미확인은 현재 수집 정책에서 /)
+    // 수가 없으면(이전 서버 · 대조 전) 말풍선도 없다
+    expect(vulnSummary({ available: true, assets: [asset({ vuln_fix_available: undefined, vuln_fix_unknown: undefined })] }).unknownNote).toBeUndefined()
+    expect(vulnSummary({ available: true, assets: [asset({ checked_at: null })] }).unknownNote).toBeUndefined()
   })
 
   it('최근 사건 줄은 최신 판정이 미결이면 판정 기록이 있어도 미결이다', () => {
