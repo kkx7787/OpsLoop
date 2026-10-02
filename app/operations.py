@@ -78,6 +78,7 @@ async def quality(request: Request, details: bool = False,
 @router.get("/api/nodes")
 async def nodes(request: Request):
     async with request.app.state.pool.acquire() as c:
+        # 폐기 노드는 뒤로, 그 안은 이름순이다(이슈 #94). 화면은 이 순서를 그대로 그린다
         rows = await c.fetch("""SELECT n.node_id,n.hostname,n.role,n.sensor,host(n.addr) AS addr,n.logs,
             n.status,n.registered_at,n.last_seen_at,n.first_loaded_at,n.last_loaded_at,
             CASE WHEN n.status='revoked' THEN 'revoked' WHEN n.status='pending' THEN 'waiting'
@@ -85,7 +86,7 @@ async def nodes(request: Request):
                  WHEN n.last_seen_at IS NULL THEN 'waiting' ELSE 'normal' END AS reception,
             (SELECT max(e.expires_at) FROM node_enrollments e WHERE e.node_id=n.node_id
              AND e.used_at IS NULL AND e.canceled_at IS NULL AND e.expires_at>now()) AS enrollment_expires_at,
-            now() AS checked_at FROM nodes n ORDER BY n.node_id""")
+            now() AS checked_at FROM nodes n ORDER BY n.status='revoked', n.node_id""")
         as_of = await c.fetchval("SELECT now()")
     return {"as_of": as_of, "rows": [dict(row) for row in rows]}
 

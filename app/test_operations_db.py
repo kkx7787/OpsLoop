@@ -137,6 +137,14 @@ class OperationsDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({r['node_id']:r['reception'] for r in data['rows']},
             {'test-node':'waiting','normal':'normal','silent':'silent','never':'silent','new':'waiting','revoked':'revoked'})
 
+    async def test_revoked_nodes_last_then_by_name(self):
+        # 폐기 노드는 뒤로, 그 안은 이름순(이슈 #94). 이름순만이면 probe-01 · probe-02(폐기)가 web-01 위에 온다
+        await self.conn.execute("""INSERT INTO nodes(node_id,status,registered_at,last_seen_at) VALUES
+            ('web-01','active',now(),now()),('probe-02','revoked',now(),now()),('probe-01','revoked',now(),now()),
+            ('alpha-01','pending',now(),NULL),('web-02','active',now(),now())""")
+        data=await ops.nodes(self.request)
+        self.assertEqual([r['node_id'] for r in data['rows']],['alpha-01','web-01','web-02','probe-01','probe-02'])
+
     async def test_quality_latest_verdict_default_contract_and_half_open_interval(self):
         await self.conn.execute("""INSERT INTO incidents VALUES
             ('a','R001','v1','2026-09-22'),('b','R001','v1','2026-09-23'),('c','R001','v1','2026-09-23');

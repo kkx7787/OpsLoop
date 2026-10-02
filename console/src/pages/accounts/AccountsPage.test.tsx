@@ -115,8 +115,14 @@ describe('계정', () => {
     expect(within(opsAdmin).queryAllByRole('button')).toHaveLength(0)
     expect(within(root).getByText('본인 계정')).toBeInTheDocument()
     expect(within(root).queryAllByRole('button')).toHaveLength(0)
-    // 명령줄 안내: 비밀값 없이 명령 모양만
+    // 명령줄 안내: 비밀값 없이 명령 모양만. 명령 목록은 접혀 있고 실행 위치 첫 줄은 접히지 않는다(이슈 #94)
     const cli = screen.getByRole('heading', { name: '명령줄에서 하는 일' }).closest('div')?.parentElement as HTMLElement
+    const commands = within(cli).getByText('명령 7개', { selector: 'summary' }).closest('details') as HTMLElement
+    expect(commands).not.toHaveAttribute('open')
+    expect(commands).toContainElement(within(cli).getByText('관리자 계정 추가'))
+    expect(commands).not.toContainElement(within(cli).getByText(/^콘솔 노드의 API 컨테이너 안에서 소유자 접속/))
+    fireEvent.click(within(commands).getByText('명령 7개'))
+    expect(commands).toHaveAttribute('open')
     expect(within(cli).getByText('관리자 계정 추가')).toBeInTheDocument()
     expect(within(cli).getByText('python3 auth.py add <아이디> admin --by <내 이름>')).toBeInTheDocument()
     expect(within(cli).getByText('python3 auth.py role <아이디> admin --by <내 이름>')).toBeInTheDocument()

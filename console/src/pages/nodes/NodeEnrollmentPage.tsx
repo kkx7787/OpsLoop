@@ -72,6 +72,8 @@ function EnrollmentForm({initial,nodes}:{initial?:NodeEntry;nodes:NodeEntry[]}) 
         <label htmlFor="node-field-2" className="grid gap-1 text-sm">노드 IP 주소<Input id="node-field-2" value={form.addr} required maxLength={45} placeholder="192.168.50.21" readOnly={!!initial} disabled={busy || !!issued} onChange={e=>setForm({...form,addr:e.target.value})} /></label>
         <fieldset disabled={busy || !!issued || !!initial} className="m-0 flex flex-wrap gap-4 border-0 p-0 text-sm"><legend className="mb-2">수집 항목</legend>{[['nginx','웹 접근'],['auth','인증'],['metrics','시스템 지표']].map(([value,label])=><label key={value} className="flex items-center gap-2"><input type="checkbox" checked={form.logs.includes(value)} onChange={e=>setForm({...form,logs:e.target.checked?[...form.logs,value]:form.logs.filter(v=>v!==value)})} />{label}</label>)}</fieldset>
         <p className="m-0 text-xs leading-5 text-ink-muted">{initial ? <>등록 토큰은 1시간 · 1회용이며, 다시 발급하면 쓰지 않은 이전 토큰은 취소됩니다. <InfoTip label="재발급">이미 등록된 에이전트의 키는 그대로 둡니다.</InfoTip></> : '등록 토큰은 1시간 · 1회용입니다.'}</p>
+        {/* 내부 방화벽은 web-01 주소만 수집 관문을 허용한다(이슈 #94). 안내만 하고 방화벽은 바꾸지 않는다 */}
+        <p className="m-0 text-xs leading-5 text-ink-muted">설치 전에 내부 방화벽의 수집 허용(이 노드 → 192.168.60.11:3101)이 먼저 있어야 합니다. 운영자가 운영 문서(infra/vmware/README.md)의 '방화벽 설정 올리기 · 되돌리기' 절로 반영합니다.</p>
         {!issued && <Button type="submit" variant="primary" loading={busy}>{initial ? '등록 토큰 다시 발급' : '등록 토큰 발급'}</Button>}
       </form></Card>
       <div className="flex min-w-0 flex-col gap-4">

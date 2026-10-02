@@ -330,4 +330,37 @@ describe('차단 목록 · 비신뢰 문자열(#41)', () => {
     expect(container.textContent).toContain(' · ad⟨U+200B⟩min')
     expectInertDom(container)
   })
+
+  it('좁은 화면은 핵심 칸 넷을 먼저 두고 나머지는 접으며, 접힌 주의 칸의 수를 접힘 줄에 적는다(이슈 #94)', async () => {
+    setup()
+    expect(await screen.findByText('192.0.2.8')).toBeInTheDocument()
+    const cell = (label: string) => screen.getByText(label, { selector: 'div' }).parentElement as HTMLElement
+    const core = ['활성 요청', '집행 실패', '불일치', '내부 방화벽 실패']
+    const rest = ['집행 확인', '집행 대기', '내부 방화벽 미확인', '집행 제외', '24시간 내 만료']
+    // 칸은 늘 DOM 에 있고 sm 미만에서만 CSS 로 숨긴다(sm 이상은 그대로). 핵심 칸은 펼친 뒤에도 앞에 온다
+    for (const label of core) expect(cell(label)).toHaveClass('max-sm:order-first')
+    for (const label of core) expect(cell(label)).not.toHaveClass('max-sm:hidden')
+    for (const label of rest) expect(cell(label)).toHaveClass('max-sm:hidden')
+    // 접힌 주의 칸 중 0 보다 큰 값만 적는다(집행 대기 1 · 내부 방화벽 미확인 1)
+    const fold = screen.getByRole('button', { name: /^나머지 칸/ })
+    expect(fold).toHaveClass('sm:hidden')
+    expect(fold).toHaveAttribute('aria-expanded', 'false')
+    expect(fold.textContent).toBe('나머지 칸 5개 보기 · 집행 대기 1건 · 내부 방화벽 미확인 1건')
+    fireEvent.click(fold)
+    expect(fold).toHaveAttribute('aria-expanded', 'true')
+    expect(fold.textContent).toBe('나머지 칸 접기')
+    for (const label of rest) expect(cell(label)).not.toHaveClass('max-sm:hidden')
+  })
+
+  it('접힌 주의 칸이 모두 0 이면 접힘 줄에 수를 적지 않는다(이슈 #94)', async () => {
+    vi.stubGlobal('fetch', vi.fn<typeof globalThis.fetch>(async (input) => {
+      const url = String(input)
+      if (url === '/api/me') return json({ username: 'tester', role: 'viewer' })
+      if (url.startsWith('/api/blocklist')) return json([blockEntry({ actor_ip: '198.51.100.2', expires_at: null })])
+      return json({}, 404)
+    }))
+    renderRoutes([{ path: '/blocklist', element: <BlocklistPage /> }], '/blocklist', noRetryClient())
+    expect(await screen.findByText('198.51.100.2')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^나머지 칸/ }).textContent).toBe('나머지 칸 5개 보기')
+  })
 })
