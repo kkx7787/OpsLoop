@@ -9,7 +9,7 @@ KST 날짜는 09-27 15:00 UTC 에 바뀐다.
   - 경계: [since, until). since 와 같은 시각은 넣고 until 과 같은 시각은 뺀다(사건 · 판정 · 조치 · 감사 · 흡수 · 버전 · 실행 · 지표 · 알림)
   - KST 날짜: UTC 14:59:59 는 09-27, 15:00 은 09-28 이다(생성 · 판정). 사건 · 판정이 없는 날도 0 으로 낸다
   - 사건 수는 발생 시각, 판정 대기 · 날짜별 생성은 생성 시각 기준이다(다시 만든 사건). 발생원(R0xx … R3xx · other) · 심각도별
-  - 판정 대기 · 판정 소요 백분위(percentile_cont) · 재판정 · 기간 끝 뒤 판정은 대기에 넣지 않음 · 시험 출발지는 빼고 수만 따로
+  - 판정 대기 · 판정 입력 시간 백분위(percentile_cont) · 재판정 · 기간 끝 뒤 판정은 대기에 넣지 않음 · 시험 출발지는 빼고 수만 따로
   - 잔량 · 목표 초과는 대시보드(dashboard_metrics)와 같다 · 상위 출발지의 최고 심각도는 순위(high > medium)
   - 규칙: operations.quality 와 같은 행 · 흡수 · 억제 수(시험 출발지 제외) · 기간 중 규칙 버전
   - 차단: 조치 수 · 새 요청(created · rearmed · 만료 뒤 extended)의 요청자 종류 · extended 도 감사 수에 든다 ·
@@ -18,9 +18,11 @@ KST 날짜는 09-27 15:00 UTC 에 바뀐다.
     지점 넓힘(console.block.points)은 감사 수에만 든다. 지금 차단 상태는 요청 지점이 모두 확인이어야 적용이다. 관문이 뺐다는 보고
     없이 다시 건 요청(짝 확인의 쪽지가 '· 기존 차단 유지' · '· 연속성 확인 불가', 결정 2 · 3)은 따로 세고 지연(평균 포함)에서 뺀다
   - 대상: 상태판에서 추린 행 · 센서별 실제 이벤트 · 탐지 실행 · 지표 최대와 공백(기간 시작 · 끝 포함) · 상태판이 창 밖 미결을
-    읽어도(이슈 #83) 대응 금지 대역 수는 그대로 · 잔량의 판단 유보는 시스템 기록 포함(대시보드 미결은 사람 판정만) ·
+    읽어도(이슈 #83) 대응 금지 대역 수는 그대로 · 잔량의 판단 유보는 미결(사람, 대시보드 미결과 같다)과 시스템 전환 처리로
+    나누고 둘의 합은 판단 유보 전체(이슈 #94) ·
     출력 시각보다 5분 넘게 앞선 줄은 수집 판정에서 뺀다(대시보드 카드와 같다)
-  - CTI: 자산별 취약점 · 주목 CVE · 기간 KST 날짜 안의 KEV 등재 가운데 우리 자산 · 신선도
+  - CTI: 자산별 취약점(수정 여부 미확인 · 대조 시각, 자산 화면과 같은 값) · 주목 CVE · 기간 KST 날짜 안의 KEV 등재 가운데 우리 자산 ·
+    신선도
   - 운영 기록: 감사 종류별 수만 · 로그인 실패(실제만) · 알림 발송(시험 발송 제외) · 행위자 · detail · 알림 주소가 실리지 않음
   - 표가 없거나 읽기 권한이 없으면(시험 안에서 만든 역할): 구역은 available=false 와 빠진 표,
     곁 표(흡수 · 주목 CVE · 알림 · 지표)는 그 부분만 null
@@ -138,7 +140,7 @@ class ReportsDatabaseTests(unittest.IsolatedAsyncioTestCase):
                 ("recreated", "R002", "high", "198.51.100.8", datetime(2026, 9, 20, tzinfo=UTC), at(17 * 3600), None),
                 ("sig", "S01", "low", "198.51.100.9", at(3600), None, None)]:
             await self.incident(*row)
-        # 판정 (키, 판정, 시각, 판정 소요)
+        # 판정 (키, 판정, 시각, 판정 입력 시간)
         for row in [
                 ("edge-since", "threat", at(600), 30),                                         # 대기 600
                 ("before", "non_actionable", at(100), None),                                    # 사건은 기간 밖, 판정은 안
@@ -312,12 +314,19 @@ class ReportsDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((len(days), days[0], days[-1]["date"]), (31, {"date": "2026-08-29", "created": 0, "judged": 0},
                                                                    "2026-09-28"))
 
-    async def test_판정_대기와_판정_소요_백분위(self):
+    async def test_판정_대기와_판정_입력_시간_백분위(self):
         o = (await self.report(["overview"]))["sections"]["overview"]
         # 기간 안에 만든 실제 사건 7건(recreated 포함) 중 판정된 4건의 대기 [600, 1200, 3600, 7200]. 재판정 · until 의 판정은 뺀다
         self.assertEqual(o["wait"], {"incidents": 7, "judged": 4, "p50_seconds": 2400.0, "p90_seconds": 6120.0})
-        # 판정 소요 [30, 50, 90, 100](재판정 포함, 시험 출발지 · until 제외)
+        # 판정 입력 시간 [30, 50, 90, 100](재판정 포함, 시험 출발지 · until 제외)
         self.assertEqual(o["decision"], {"n": 4, "p50_seconds": 70.0, "p90_seconds": 97.0})
+        # 기준 설명은 계산과 같은 말이다(이슈 #94): 도구 계측 · 다시 열면 0부터 · 일괄 · 시스템 처리 제외 · 발생원은 장비가 아니다
+        notes = " ".join(o["notes"])
+        for text in ("판정 입력 시간(도구 계측)", "다시 열면 0부터", "최초 확인 · 조사 시간이 아니다",
+                     "일괄 · 시스템 처리 · 시험 대역은 뺀다", "발생원은 규칙 번호 분류이며 장비가 아니다"):
+            with self.subTest(text=text):
+                self.assertIn(text, notes)
+        self.assertNotIn("판정 소요", notes)
 
     async def test_기간_끝_뒤의_판정은_대기에_넣지_않는다(self):
         await self.verdict("node", "threat", AS_OF + timedelta(minutes=1), 20)
@@ -329,9 +338,11 @@ class ReportsDatabaseTests(unittest.IsolatedAsyncioTestCase):
         o = (await self.report(["overview"]))["sections"]["overview"]
         pending = (await dashboard_metrics(self.conn, AS_OF))["pending"]
         # 판정 없음: node · recreated · sig. recreated(high · 8일) 초과, sig(low · 23시간) 주의
-        self.assertEqual(o["backlog"], {"unjudged": 3, "undetermined": 1, "overdue": 1, "warning": 1,
-                                        "oldest_seconds": float(8 * 86400 + 3 * 3600)})
-        self.assertEqual((o["backlog"]["unjudged"], o["backlog"]["overdue"]), (pending["total"], pending["overdue"]))
+        # 판단 유보: kst-28 (사람). 미결(사람)은 대시보드 미결과 같다
+        self.assertEqual(o["backlog"], {"unjudged": 3, "undetermined": 1, "undetermined_human": 1, "undetermined_system": 0,
+                                        "overdue": 1, "warning": 1, "oldest_seconds": float(8 * 86400 + 3 * 3600)})
+        self.assertEqual((o["backlog"]["unjudged"], o["backlog"]["undetermined_human"], o["backlog"]["overdue"]),
+                         (pending["total"], pending["undetermined"], pending["overdue"]))
         # 192.0.2.1 은 high · medium 이다. 글자 max 면 medium 이 된다. 시험 출발지 · 출발지 없는 사건은 뺀다
         self.assertEqual(o["top_sources"], {"total": 3, "items": [
             {"ip": "192.0.2.1", "incidents": 2, "severity": "high",
@@ -501,12 +512,22 @@ class ReportsDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.report(["targets"]))["sections"]["targets"]["targets"], before)
         web = next(x for x in (await r.targets.targets_view(self.conn, AS_OF))["targets"] if x["id"] == "web-01")
         self.assertEqual((web["security"]["undetermined"], web["response"]["exempt"]), (1, 0))
-        # 잔량의 판단 유보는 시스템 전환 기록을 포함한 수 그대로이고, 대시보드 미결은 사람 판정만 센다(kst-28 · u-old)
+        # 잔량의 판단 유보는 미결(사람)과 시스템 전환 처리로 나눈다(이슈 #94). 미결(사람)은 대시보드 미결과 같고(kst-28 · u-old),
+        #   시스템 전환 기록(recreated)은 시스템 전환 처리다. undetermined 는 둘의 합으로 이전 보고서 값 그대로다
         await self.conn.execute("""INSERT INTO verdicts (incident_key, verdict, operator, created_at)
             VALUES ('recreated', 'undetermined', 'system:v3-cutover', $1)""", at(-3600, AS_OF))
         backlog = (await self.report(["overview"]))["sections"]["overview"]["backlog"]
         self.assertEqual((backlog["undetermined"], (await r.dashboard_metrics(self.conn, AS_OF))["pending"]["undetermined"]),
                          (3, 2))
+        self.assertEqual((backlog["undetermined_human"], backlog["undetermined_system"]), (2, 1))
+        # 시스템 판단 유보 뒤 사람이 판단 유보를 다시 남기면 미결(사람)이고, operator 가 없는 기록도 사람 쪽이다
+        await self.verdict("recreated", "undetermined", at(-1800, AS_OF))
+        await self.conn.execute("""INSERT INTO verdicts (incident_key, verdict, operator, created_at)
+            VALUES ('node', 'undetermined', NULL, $1)""", at(-1800, AS_OF))
+        backlog = (await self.report(["overview"]))["sections"]["overview"]["backlog"]
+        self.assertEqual((backlog["undetermined"], backlog["undetermined_human"], backlog["undetermined_system"]), (4, 4, 0))
+        self.assertEqual(backlog["undetermined_human"],
+                         (await r.dashboard_metrics(self.conn, AS_OF))["pending"]["undetermined"])
 
     async def test_대상_구역의_수집_판정은_출력_시각보다_5분_넘게_앞선_줄을_뺀다(self):
         # 보고서 대상 구역은 상태판(targets_view)을 그대로 쓴다. 앞선 시각 줄 상한(출력 시각 + 5분)도 대시보드 카드와 같다
@@ -529,14 +550,34 @@ class ReportsDatabaseTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_CTI_구역(self):
         section = (await self.report(["cti"]))["sections"]["cti"]
-        self.assertEqual([(a["asset_id"], a["vuln_total"], a["vuln_kev"], a["vuln_fix_available"], a["vuln_reboot_pending"],
-                           a["stale"]) for a in section["assets"]],
-                         [("web-01", 2, 2, 1, 1, False), ("honeypot-dmz", 0, 0, 0, 0, True)])
+        self.assertEqual([(a["asset_id"], a["vuln_total"], a["vuln_kev"], a["vuln_fix_available"], a["vuln_fix_unknown"],
+                           a["vuln_reboot_pending"], a["stale"]) for a in section["assets"]],
+                         [("web-01", 2, 2, 1, 0, 1, False), ("honeypot-dmz", 0, 0, 0, 0, 0, True)])
         self.assertEqual(section["watch"], {"total": 1, "affected": 0, "unknown": 1, "not_affected": 0, "affected_cves": []})
         # 기간의 KST 날짜(09-27 · 09-28) 안 등재 2건, 그중 우리 자산에 걸린 것 1건
         self.assertEqual(section["kev_added"], {"total": 2, "ours": [
             {"cve_id": "CVE-2026-10001", "name": "CVE-2026-10001 시험", "date_added": "2026-09-27", "assets": ["web-01"]}]})
         self.assertEqual(set(section["freshness"]), {"kev", "epss", "osv", "nvd", "assets"})
+
+    async def test_CTI_자산_행은_수정_여부_미확인과_대조_시각을_자산_화면과_같게_싣는다(self):
+        # 이슈 #94: 수정 여부 미확인 수와 대조 시각을 싣는다. 대조 전 자산(checked_at 없음)은 0 이 아니라 대조 전이라 화면이 가른다
+        snap = await self.conn.fetchval("SELECT id FROM cti_snapshots")
+        await self.conn.execute("""INSERT INTO cti_osv (osv_id, cve_id, snapshot_id)
+            VALUES ('UBUNTU-CVE-2026-10003', 'CVE-2026-10003', $1)""", snap)
+        await self.conn.execute("""INSERT INTO asset_vulnerabilities (asset_id, source_package, version, osv_id, cve_id, fix_state,
+            snapshot_id) VALUES ('web-01', 'linux-aws', '1', 'UBUNTU-CVE-2026-10003', 'CVE-2026-10003', 'unknown', $1)""", snap)
+        await self.conn.execute("""INSERT INTO asset_inventory (asset_id, role, method, collected_at)
+            VALUES ('web-02', 'target', 'ssh', $1)""", at(-600, AS_OF))
+        section = (await self.report(["cti"]))["sections"]["cti"]
+        self.assertEqual([(a["asset_id"], a["vuln_total"], a["vuln_fix_unknown"], a["checked_at"]) for a in section["assets"]],
+                         [("web-01", 3, 1, at(-3600, AS_OF).isoformat()), ("web-02", 0, 0, None),
+                          ("honeypot-dmz", 0, 0, at(-49 * 3600, AS_OF).isoformat())])
+        # 자산 화면(/api/assets 의 asset_row)과 같은 값이다
+        screen = [r.cti.asset_row(x, AS_OF) for x in await self.conn.fetch(r.cti.ASSETS_SQL, None)]
+        self.assertEqual(section["assets"], [{k: s[k] for k in a} for a, s in zip(section["assets"], screen)])
+        notes = " ".join(section["notes"])
+        self.assertIn("상세 정보를 조회하지 않는 기록(커널 질의에서만 나온 KEV 밖 기록)을 포함한다. 수정판 없음이라는 뜻은 아니다", notes)
+        self.assertIn("같은 CVE 가 여러 패키지에 걸리면 여러 번 센다", notes)
 
     async def test_운영_기록은_수만_싣는다(self):
         body = await self.report(["blocks", "ops"])

@@ -7,7 +7,7 @@ DB 는 UTC 로 돌아 ::date 로 자르면 UTC 날짜가 된다(UTC 15:00 에 KS
   period  기간 안에 생긴 것만 센다   as_of  출력 시각의 상태다(이력이 없다)   mixed  둘이 섞였다(어느 값이 어느 쪽인지 notes 에 적는다)
 
 구역
-  overview  사건(심각도 · 발생원) · 판정 · 지금 잔량 · 목표 초과 · 판정 대기 · 판정 소요 · KST 날짜별 · 상위 출발지
+  overview  사건(심각도 · 발생원) · 판정 · 지금 잔량 · 목표 초과 · 판정 대기 · 판정 입력 시간 · KST 날짜별 · 상위 출발지
   rules     규칙별 판정(operations.py /api/rules/quality 와 같은 계산) · 흡수 · 억제 · 기간 중 규칙 버전
   blocks    차단 · 해제 조치 · 새 차단 요청의 요청자 종류 · 차단 감사 이벤트 수 · 관문 반영 지연 · 지금 차단 상태
   targets   대상별 수집 · 대응(상태판 targets_view 에서 추림) · 센서별 이벤트 · 탐지 실행 공백 · web-01 자원 최대
@@ -28,7 +28,7 @@ import cti
 import targets
 from access import require_role
 from block_points import BLOCK_STATES_SQL
-from dashboard import dashboard_metrics
+from dashboard import HUMAN_UNDETERMINED, dashboard_metrics
 
 router = APIRouter()
 
@@ -42,7 +42,8 @@ SECTION = Literal["overview", "rules", "blocks", "targets", "cti", "ops"]
 ADMIN_ONLY = ("ops",)       # 감사 · 알림 발송 조회(/api/audit · /api/notify/deliveries)와 같이 관리자만
 SEVERITIES = ("critical", "high", "medium", "low")
 VERDICTS = ("threat", "non_actionable", "false_positive", "benign_positive", "undetermined")
-# 발생원: 규칙 번호 앞자리(R0xx 허니팟 · R1xx 웹 · 관제 대상 · R2xx 감사 · 자체 감시 · R3xx 수집 기반)
+# 발생원: 규칙 번호 앞자리 분류다. 장비가 아니다(R1xx 규칙은 web-01 · 웹 디코이 · 콘솔 이벤트를 함께 본다).
+#   R0xx 허니팟 · R1xx 웹 · 로그인 규칙 · R2xx 감사 · 자체 감시 · R3xx 수집 기반
 ORIGINS = ("R0xx", "R1xx", "R2xx", "R3xx", "other")
 # 차단 감사 이벤트(schema.sql audit_blocklist · note_block_expired · blocklist_points_change). 없는 종류도 0 으로 낸다
 BLOCK_EVENTS = ("console.block.created", "console.block.rearmed", "console.block.extended", "console.block.shortened",
@@ -75,20 +76,27 @@ INCIDENTS_SQL = """
     FROM incidents WHERE first_ts >= $1 AND first_ts < $2
     GROUP BY 1, 2, 3"""
 
-# 기간 안에 기록된 판정(재판정 포함)
+# 기간 안에 기록된 판정(재판정 · 일괄 · 시스템 처리 포함)
 VERDICTS_SQL = """
     SELECT is_test_source(i.actor_ip) AS test, v.verdict, count(*) AS n
     FROM verdicts v JOIN incidents i USING (incident_key)
     WHERE v.created_at >= $1 AND v.created_at < $2
     GROUP BY 1, 2"""
 
-# 지금 최신 판정이 판단 유보인 사건(판정 없음은 dashboard_metrics 가 센다)
-UNDETERMINED_SQL = """
-    SELECT count(*) FROM (SELECT DISTINCT ON (incident_key) verdict FROM verdicts
-                          ORDER BY incident_key, created_at DESC, id DESC) v
+# 지금 최신 판정이 판단 유보인 사건을 기록한 쪽으로 나눈다(판정 없음은 dashboard_metrics 가 센다).
+#   human 은 대시보드 미결(dashboard.UNDETERMINED_COUNT)과 같은 식이고, system 은 그 나머지인 시스템 기록(operator 'system:…',
+#   v3 전환 처리)이다. HUMAN_UNDETERMINED 는 참 · 거짓만 내므로 둘의 합이 판단 유보 사건 전체(total)다.
+#   첫 칸은 전체다(이전 보고서 값. 대시보드 시험이 fetchval 로 읽는다)
+UNDETERMINED_SQL = f"""
+    SELECT count(*) AS total,
+           count(*) FILTER (WHERE {HUMAN_UNDETERMINED.format(v="v")}) AS human,
+           count(*) FILTER (WHERE NOT {HUMAN_UNDETERMINED.format(v="v")}) AS system
+    FROM (SELECT DISTINCT ON (incident_key) verdict, operator FROM verdicts
+          ORDER BY incident_key, created_at DESC, id DESC) v
     WHERE v.verdict = 'undetermined'"""
 
-# 판정 대기: 기간 안에 만들어진(created_at) 사건의 생성 → 첫 판정(기간 끝 전)까지 초. 운영 부담 지표(docs/2026-09-28)의 정의다
+# 판정 대기: 기간 안에 만들어진(created_at) 사건의 생성 → 첫 판정(기간 끝 전)까지 초. 운영 부담 지표(docs/2026-09-28)의 정의다.
+#   첫 판정은 누가 기록했든 센다(일괄 · 시스템 처리 포함)
 WAIT_SQL = """
     WITH q AS (
         SELECT CASE WHEN f.first_at IS NOT NULL      -- greatest 는 NULL 을 건너뛰어 0 이 되므로 판정 없음을 먼저 가른다
@@ -102,7 +110,8 @@ WAIT_SQL = """
            percentile_cont(0.9) WITHIN GROUP (ORDER BY wait) AS p90
     FROM q"""
 
-# 판정 소요: 콘솔 판정 화면이 잰 초(verdicts.decision_seconds). triage · 일괄 판정은 값이 없다
+# 판정 입력 시간(도구 계측, verdicts.decision_seconds). 콘솔은 사건 상세를 이번에 연 때 → '판정 기록' 누름(브라우저 시계),
+#   triage 개별 판정은 근거를 보인 때 → 입력 끝(단조 시계)이다. 일괄 · 시스템 처리는 값이 없어 빠진다
 DECISION_SQL = """
     SELECT count(*) AS n,
            percentile_cont(0.5) WITHIN GROUP (ORDER BY v.decision_seconds) AS p50,
@@ -360,19 +369,28 @@ async def overview(c, since, until, as_of) -> dict:
     wait = await c.fetchrow(WAIT_SQL, since, until)
     decision = await c.fetchrow(DECISION_SQL, since, until)
     top = await c.fetch(TOP_SOURCES_SQL, since, until)
+    undetermined = await c.fetchrow(UNDETERMINED_SQL)
     return {
         "basis": "mixed",
         "notes": ["사건 수 · 상위 출발지: 발생 시각이 기간 안인 사건",
-                  "판정 수 · 날짜별 판정: 기간 안에 기록된 판정(재판정 포함)",
+                  "발생원은 규칙 번호 분류이며 장비가 아니다",
+                  "판정 수 · 날짜별 판정: 기간 안에 기록된 판정(재판정 포함). 일괄 · 시스템 처리(system:…) 판정도 센다",
                   "시험 출발지(시험 대역): 사건 · 판정 수는 따로 세고 다른 값에서는 뺀다. 잔량 · 목표 초과에만 넣는다",
                   "흡수 · 억제로 지워진 알림은 사건 수에 없다",
-                  "판정 대기: 기간 안에 만들어진 사건 대상. 기간 끝까지 판정된 사건만 백분위에 넣는다",
-                  "판정 소요: 콘솔에서 한 판정만. triage · 일괄 판정은 값이 없어 빠진다",
+                  "판정 대기: 기간 안에 만들어진 사건 대상. 기간 끝까지 판정된 사건만 백분위에 넣는다. 첫 판정은 일괄 · "
+                  "시스템 처리 판정도 센다",
+                  "판정 입력 시간(도구 계측): 콘솔은 사건 상세를 이번에 연 때부터 '판정 기록'을 누를 때까지(브라우저 시계, 다시 "
+                  "열면 0부터), triage 개별 판정은 근거를 보인 때부터 입력이 끝날 때까지(단조 시계, 상한 없음). 최초 확인 · 조사 "
+                  "시간이 아니다. 일괄 · 시스템 처리 · 시험 대역은 뺀다. 재판정을 포함한다",
                   "잔량 · 목표 초과: 출력 시각 기준. 목표 시간은 발생 시각부터 잰다",
+                  "미결(사람) · 시스템 전환 처리: 최신 판정이 판단 유보인 사건을 기록한 쪽으로 나눈다. 미결(사람)은 대시보드 미결과 "
+                  "같고, 시스템 전환 처리는 시스템 기록(system:…)이다. 둘의 합은 이전 보고서의 '미결(판단 유보)' 와 같다",
                   "날짜별: 한국 시각(KST) 날짜, 사건은 만들어진 시각 기준. 첫날 · 마지막 날은 기간에 든 시간만 센다"],
         "incidents": incidents,
         "verdicts": verdicts,
-        "backlog": {"unjudged": pending["total"], "undetermined": await c.fetchval(UNDETERMINED_SQL),
+        # undetermined 는 이전 보고서와 같은 판단 유보 전체(사람 + 시스템)다
+        "backlog": {"unjudged": pending["total"], "undetermined": undetermined["total"],
+                    "undetermined_human": undetermined["human"], "undetermined_system": undetermined["system"],
                     "overdue": pending["overdue"], "warning": pending["warning"],
                     "oldest_seconds": num(pending["oldest_seconds"])},
         "wait": {"incidents": wait["incidents"], "judged": wait["judged"],
@@ -493,6 +511,10 @@ async def cti_section(c, since, until, as_of) -> dict:
     snapshots = await c.fetch(cti.SNAPSHOTS_SQL)
     assets = await c.fetch(cti.ASSETS_SQL, None)
     notes = ["자산별 취약점 · 주목 CVE: 출력 시각의 대조 결과(이력이 없다)",
+             "취약점 수는 패키지별 대조 행 수다. 같은 CVE 가 여러 패키지에 걸리면 여러 번 센다",
+             "수정 여부 미확인: 현재 수집 정책에서 상세 정보를 조회하지 않는 기록(커널 질의에서만 나온 KEV 밖 기록)을 포함한다. "
+             "수정판 없음이라는 뜻은 아니다",
+             "배포판 대조를 마치지 않은 자산은 수 대신 '대조 전'으로 적는다(0건과 다르다)",
              "KEV 등재: 등재일(날짜)이 기간의 KST 날짜 안인 항목. 우리 자산에 걸린 것만 자산을 적는다",
              "신선도: 출처별 마지막 성공 수집과 자산 조사 시각"]
     watch = None
@@ -502,7 +524,8 @@ async def cti_section(c, since, until, as_of) -> dict:
     return {
         "basis": "mixed", "notes": notes,
         "assets": [{"asset_id": r["asset_id"], "role": r["role"], "vuln_total": r["vuln_total"], "vuln_kev": r["vuln_kev"],
-                    "vuln_fix_available": r["vuln_fix_available"], "vuln_reboot_pending": r["vuln_reboot_pending"],
+                    "vuln_fix_available": r["vuln_fix_available"], "vuln_fix_unknown": r["vuln_fix_unknown"],
+                    "vuln_reboot_pending": r["vuln_reboot_pending"], "checked_at": cti.iso(r["checked_at"]),
                     "collected_at": cti.iso(r["collected_at"]), "stale": cti.is_stale(r["collected_at"], as_of)}
                    for r in assets],
         "watch": watch,

@@ -60,7 +60,8 @@ const AUDIT_EVENT_LABEL: Record<string, string> = {
   'console.notify.channel.created': '알림 채널 추가',
   'console.notify.channel.changed': '알림 채널 변경',
 }
-const ORIGINS = [['R0xx', 'R0xx 허니팟'], ['R1xx', 'R1xx 웹 노드'], ['R2xx', 'R2xx 관제 자기 탐지'], ['R3xx', 'R3xx 인프라'], ['other', '기타']] as const
+// 발생원은 규칙 번호 분류이며 장비가 아니다(#94). R1xx 규칙은 web-01 · 웹 디코이 · 콘솔 이벤트를 함께 봐 장비 이름으로 적지 않는다
+const ORIGINS = [['R0xx', 'R0xx 허니팟'], ['R1xx', 'R1xx 웹 · 로그인 규칙'], ['R2xx', 'R2xx 관제 자기 탐지'], ['R3xx', 'R3xx 인프라'], ['other', '기타']] as const
 
 /** 구역 안 표 하나. 머리(h3)가 표의 이름이 된다 */
 function SubTable({ title, aside, head, empty, children }: { title: string; aside?: ReactNode; head: readonly string[]; empty?: string | false; children: ReactNode }) {
@@ -93,12 +94,13 @@ function Overview({ s }: { s: OverviewSection }) {
   const { incidents: inc, verdicts, backlog, wait, decision } = s
   return <>
     <CountRow title="기간 사건 (발생 시각 기준)" cells={[['합계', num(inc.total)], ...(['critical', 'high', 'medium', 'low'] as const).map(sev => [sev, num(inc.by_severity[sev])] as const), ['시험 출발지 (따로)', num(inc.test_source)]]} />
-    <CountRow title="발생원별 사건" cells={ORIGINS.map(([key, label]) => [label, num(inc.by_origin[key])] as const)} />
+    <CountRow title="발생원별 사건 (규칙 번호 기준)" cells={ORIGINS.map(([key, label]) => [label, num(inc.by_origin[key])] as const)} />
     <CountRow title="기간 판정 (판정 시각 기준)" cells={[['합계', num(verdicts.total)], ...VERDICTS.map(v => [FIRST_VERDICT_LABEL[v], num(verdicts.by_verdict[v])] as const), ['시험 출발지 (따로)', num(verdicts.test_source)]]} />
-    <CountRow title="미판정 잔량 (출력 시점)" cells={[['판정 없음', num(backlog.unjudged)], ['미결(판단 유보)', num(backlog.undetermined)], ['판정 목표 초과', num(backlog.overdue)], ['목표 임박', num(backlog.warning)], ['가장 오래된 미판정', seconds(backlog.oldest_seconds)]]} />
+    {/* 판단 유보는 기록한 쪽으로 나눈다(#94). 미결(사람)은 대시보드 미결과 같고, 둘의 합이 이전 보고서의 '미결(판단 유보)' 다 */}
+    <CountRow title="미판정 잔량 (출력 시점)" cells={[['판정 없음', num(backlog.unjudged)], ['미결(사람)', num(backlog.undetermined_human)], ['시스템 전환 처리', num(backlog.undetermined_system)], ['판정 목표 초과', num(backlog.overdue)], ['목표 임박', num(backlog.warning)], ['가장 오래된 미판정', seconds(backlog.oldest_seconds)]]} />
     <SubTable title="운영 부담" head={['지표', '표본', '중앙값', '90분위']}>
       <tr><td className={cell}>판정 대기 (사건 생성 → 첫 판정)</td><td data-label="표본" className={numCell}>{num(wait.judged)}<div className="text-xs text-ink-muted">생성 {num(wait.incidents)}건 중 판정</div></td><td data-label="중앙값" className={numCell}>{seconds(wait.p50_seconds)}</td><td data-label="90분위" className={numCell}>{seconds(wait.p90_seconds)}</td></tr>
-      <tr><td className={cell}>판정 소요 (화면 열기 → 판정 저장)</td><td data-label="표본" className={numCell}>{num(decision.n)}</td><td data-label="중앙값" className={numCell}>{seconds(decision.p50_seconds)}</td><td data-label="90분위" className={numCell}>{seconds(decision.p90_seconds)}</td></tr>
+      <tr><td className={cell}>판정 입력 시간 (도구 계측)</td><td data-label="표본" className={numCell}>{num(decision.n)}</td><td data-label="중앙값" className={numCell}>{seconds(decision.p50_seconds)}</td><td data-label="90분위" className={numCell}>{seconds(decision.p90_seconds)}</td></tr>
     </SubTable>
     <SubTable title="날짜별 생성 · 판정 (KST)" head={['날짜', '생성', '판정']} empty={!s.daily.length && '기간에 생성 · 판정된 사건이 없습니다.'}>
       {s.daily.map(d => <tr key={d.date}><td className={`${cell} tabular-nums`}>{d.date}</td><td data-label="생성" className={numCell}>{num(d.created)}</td><td data-label="판정" className={numCell}>{num(d.judged)}</td></tr>)}
@@ -194,13 +196,19 @@ function Cti({ s }: { s: CtiSection }) {
   const { freshness: f, watch, kev_added: kev } = s
   const sources = [['KEV', f.kev], ['EPSS', f.epss], ['배포판 대조 (OSV)', f.osv]] as const
   return <>
-    <SubTable title="자산별 취약점 (출력 시점)" head={['자산', '취약점', 'KEV', '수정판 있음', '재부팅 대기', '자산 수집 (KST)']} empty={!s.assets.length && '수집된 자산이 없습니다.'}>
-      {s.assets.map(a => <tr key={a.asset_id}>
-        <td className={`${cell} font-mono`}><UntrustedText value={a.asset_id} clip /></td>
-        <td data-label="취약점" className={numCell}>{num(a.vuln_total)}</td><td data-label="KEV" className={numCell}>{num(a.vuln_kev)}</td>
-        <td data-label="수정판 있음" className={numCell}>{num(a.vuln_fix_available)}</td><td data-label="재부팅 대기" className={numCell}>{num(a.vuln_reboot_pending)}</td>
-        <td data-label="자산 수집 (KST)" className={cell}><Time value={a.collected_at} format="minute" className="print:whitespace-nowrap" />{a.stale && <> <Badge tone="warning">오래됨</Badge></>}</td>
-      </tr>)}
+    {/* 대조 전 자산은 수를 0 으로 적지 않고 '대조 전'(자산 화면 AssetTable 과 같은 기준, #94). 이전 서버는 checked_at 이 없어 수를 그대로 적는다 */}
+    <SubTable title="자산별 취약점 (출력 시점)" head={['자산', '취약점', 'KEV', '수정판 있음', '수정 여부 미확인', '재부팅 대기', '자산 수집 (KST)']} empty={!s.assets.length && '수집된 자산이 없습니다.'}>
+      {s.assets.map(a => {
+        const checked = a.checked_at !== null
+        const count = (n: number) => checked ? num(n) : '—'
+        return <tr key={a.asset_id}>
+          <td className={`${cell} font-mono`}><UntrustedText value={a.asset_id} clip /></td>
+          <td data-label="취약점" className={numCell}>{checked ? num(a.vuln_total) : '대조 전'}</td><td data-label="KEV" className={numCell}>{count(a.vuln_kev)}</td>
+          <td data-label="수정판 있음" className={numCell}>{count(a.vuln_fix_available)}</td><td data-label="수정 여부 미확인" className={numCell}>{count(a.vuln_fix_unknown)}</td>
+          <td data-label="재부팅 대기" className={numCell}>{count(a.vuln_reboot_pending)}</td>
+          <td data-label="자산 수집 (KST)" className={cell}><Time value={a.collected_at} format="minute" className="print:whitespace-nowrap" />{a.stale && <> <Badge tone="warning">오래됨</Badge></>}</td>
+        </tr>
+      })}
     </SubTable>
     {watch ? <CountRow title="주목 CVE (출력 시점)" aside={watch.affected_cves.length ? <UntrustedText value={`해당: ${watch.affected_cves.join(', ')}`} clip /> : undefined}
       cells={[['전체', num(watch.total)], ...APPLICABILITY_STATUSES.map(st => [APPLICABILITY_LABEL[st], num(watch[st])] as const)]} />
@@ -258,7 +266,7 @@ export interface ReportSectionCardProps {
 
 /**
  * 구역 한 장. 머리 오른쪽에 기준(기간 집계 · 출력 시점 값)을 적고, 끝에 기준 설명(notes)을 둔다.
- * notes 는 화면에서 '기준 보기'로 접고 종이에는 늘 펼쳐 찍는다(구역마다 2~8줄이라 화면에서는 표를 가린다).
+ * notes 는 화면에서 '기준 보기'로 접고 종이에는 늘 펼쳐 찍는다(구역마다 2~10줄이라 화면에서는 표를 가린다).
  * 표 권한이 없어 만들지 못한 구역은 사유 한 줄만 보인다(머리 오른쪽 '만들지 못함'과 되풀이하지 않는다. 다른 구역은 그대로 나온다).
  */
 export function ReportSectionCard({ name, section, className }: ReportSectionCardProps) {

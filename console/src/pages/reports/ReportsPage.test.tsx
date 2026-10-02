@@ -161,19 +161,21 @@ describe('구역', () => {
     expect(within(overview).getByText('상위 2 · 전체 41곳 중 · 시험 대역 제외')).toBeInTheDocument()
     const burden = within(overview).getByRole('table', { name: '운영 부담' })
     expect(cells(burden, '판정 대기 (사건 생성 → 첫 판정)')).toEqual(['판정 대기 (사건 생성 → 첫 판정)', '68생성 90건 중 판정', '1시간 30분', '1일'])
-    expect(cells(burden, '판정 소요 (화면 열기 → 판정 저장)')).toEqual(['판정 소요 (화면 열기 → 판정 저장)', '0', '—', '—'])
+    // 판정 입력 시간은 도구가 잰 값이다(#94 결정 4). 화면 열기 → 저장으로 읽히는 옛 이름을 쓰지 않는다
+    expect(cells(burden, '판정 입력 시간 (도구 계측)')).toEqual(['판정 입력 시간 (도구 계측)', '0', '—', '—'])
+    expect(within(burden).queryByText(/판정 소요/)).toBeNull()
     expect(rowOf(within(overview).getByRole('table', { name: '기간 사건 (발생 시각 기준)' }))).toEqual(['120', '3', '20', '60', '37', '4'])
-    // 발생원 이름은 사건 목록 · 상세와 같은 말이다(sensorOf). R202 도 R2xx 관제 자기 탐지로 센다
-    const origins = within(overview).getByRole('table', { name: '발생원별 사건' })
-    expect(within(origins).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['R0xx 허니팟', 'R1xx 웹 노드', `R2xx ${sensorOf('R202')}`, 'R3xx 인프라', '기타'])
+    // 발생원은 규칙 번호 분류라 표 제목에 기준을 적고, R1xx 는 장비로 읽히지 않는 이름이다(#94). R202 도 R2xx 관제 자기 탐지로 센다(sensorOf)
+    const origins = within(overview).getByRole('table', { name: '발생원별 사건 (규칙 번호 기준)' })
+    expect(within(origins).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['R0xx 허니팟', 'R1xx 웹 · 로그인 규칙', `R2xx ${sensorOf('R202')}`, 'R3xx 인프라', '기타'])
     expect(rowOf(origins)).toEqual(['90', '25', '5', '0', '0'])
     // 미결이 처음 나오는 기간 판정 표에서 '미결(판단 유보)' 로 두 말을 잇는다(#83)
     const judged = within(overview).getByRole('table', { name: '기간 판정 (판정 시각 기준)' })
     expect(within(judged).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['합계', '실제 위협', '무시 가능', '오탐', '양성 정탐', '미결(판단 유보)', '시험 출발지 (따로)'])
     const backlog = within(overview).getByRole('table', { name: '미판정 잔량 (출력 시점)' })
-    expect(rowOf(backlog)).toEqual(['40', '12', '7', '2', '1일 2시간'])
-    // 판단 유보는 화면 표기 '미결' 과 두 말을 잇는다(#83, 보고서 수치는 시스템 기록 포함)
-    expect(within(backlog).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['판정 없음', '미결(판단 유보)', '판정 목표 초과', '목표 임박', '가장 오래된 미판정'])
+    // 판단 유보는 미결(사람, 대시보드 미결과 같다)과 시스템 전환 처리로 나눈다(#94). 둘의 합 12 가 이전 '미결(판단 유보)' 다
+    expect(rowOf(backlog)).toEqual(['40', '9', '3', '7', '2', '1일 2시간'])
+    expect(within(backlog).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['판정 없음', '미결(사람)', '시스템 전환 처리', '판정 목표 초과', '목표 임박', '가장 오래된 미판정'])
     const top = within(overview).getByRole('table', { name: '상위 출발지' })
     expect(within(top).getByRole('link', { name: '198.51.100.7' })).toHaveAttribute('href', '/sources/detail?ip=198.51.100.7')
     expect(cells(top, '198.51.100.9')).toEqual(['198.51.100.9', '12', 'medium', '—'])
@@ -229,6 +231,10 @@ describe('구역', () => {
     expect(rowOf(within(targets).getByRole('table', { name: 'web-01 자원 (기간 최대)' }))).toEqual(['88%', '61%', '—', '10,000', '2분'])
 
     const cti = screen.getByRole('region', { name: '취약점 · CVE' })
+    // 자산 화면과 같이 수정 여부 미확인을 따로 적는다(#94)
+    const assets = within(cti).getByRole('table', { name: '자산별 취약점 (출력 시점)' })
+    expect(within(assets).getAllByRole('columnheader').map((th) => th.textContent)).toEqual(['자산', '취약점', 'KEV', '수정판 있음', '수정 여부 미확인', '재부팅 대기', '자산 수집 (KST)'])
+    expect(cells(assets, 'web-01').slice(0, 6)).toEqual(['web-01', '14', '1', '6', '2', '1'])
     expect(rowOf(within(cti).getByRole('table', { name: '주목 CVE (출력 시점)' }))).toEqual(['3', '1', '1', '1'])
     expect(within(cti).getByText('기간 등재 4건 중 1건')).toBeInTheDocument()
     expect(within(cti).queryByText('해당 없음')).toBeNull()
@@ -267,6 +273,15 @@ describe('구역', () => {
     const ops = screen.getByRole('region', { name: '운영 기록' })
     expect(within(ops).getByText('알림 발송 기록을 읽을 수 없어 알림 발송을 싣지 않았습니다.')).toBeInTheDocument()
     expect(rowOf(within(ops).getByRole('table', { name: '로그인 · 알림 발송 (기간)' }))).toEqual(['9', '—', '—', '—'])
+  })
+
+  it('배포판 대조 전 자산은 취약점 수를 0 이 아니라 대조 전으로 적는다', async () => {
+    const unchecked = { ...CTI_SECTION.assets[0], asset_id: 'web-02', vuln_total: 0, vuln_kev: 0, vuln_fix_available: 0, vuln_fix_unknown: 0, vuln_reboot_pending: 0, checked_at: null }
+    setup('/reports?period=7d&s=cti', { report: periodReport({ sections: { cti: { ...CTI_SECTION, assets: [CTI_SECTION.assets[0], unchecked] } } }) })
+    const cti = await screen.findByRole('region', { name: '취약점 · CVE' })
+    const assets = within(cti).getByRole('table', { name: '자산별 취약점 (출력 시점)' })
+    expect(cells(assets, 'web-02').slice(0, 6)).toEqual(['web-02', '대조 전', '—', '—', '—', '—'])
+    expect(cells(assets, 'web-01').slice(0, 6)).toEqual(['web-01', '14', '1', '6', '2', '1'])
   })
 
   it('기간 중 KEV 등재가 우리 자산에 걸리지 않았으면 해당 없음으로 적는다', async () => {
