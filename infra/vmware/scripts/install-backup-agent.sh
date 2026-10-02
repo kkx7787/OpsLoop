@@ -2,7 +2,9 @@
 # DB 백업(backup-db.sh)을 Mac 의 launchd 에 올린다. 매일 04:30 · 12:30 · 20:30 (8시간 간격), 보관 21개(7일).
 # Mac 이 잠든 사이 시각이 지나면 깨어날 때 돈다. 꺼져 있던 회차는 건너뛴다(그동안 VM 도 멈춰 있다).
 # 실패하면 실행기(backup-agent.sh)가 180초 간격으로 두 번까지 다시 돌고 바로 알린다. 한 회차는 시작 뒤 20분 안에 끝낸다.
-# 마지막 성공 백업이 10시간 넘게 지나면 진입점 감시(console-watch.sh)가 알린다.
+# 회차 동안 실행기가 caffeinate 로 잠자기 방지를 건다. 시작된 뒤 잠드는 경우만 줄이고 예약 시각 실행은 보장하지 않는다.
+#   한 회차를 통째로 놓치면 직전 성공부터 16시간이다.
+# 마지막 성공 백업이 10시간 넘게 지나면 진입점 감시(console-watch.sh)가 알린다. 감시도 Mac 이 잠든 동안 멈춰 깨어난 뒤 알린다.
 # 사용: infra/vmware/scripts/install-backup-agent.sh           설치 · 스크립트 갱신 (다시 실행해도 된다)
 #       infra/vmware/scripts/install-backup-agent.sh --now     설치하고 한 번 바로 돌린다
 #       infra/vmware/scripts/install-backup-agent.sh --remove  내린다 (보관된 덤프는 지우지 않는다)

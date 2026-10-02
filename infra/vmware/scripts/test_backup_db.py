@@ -1,4 +1,4 @@
-"""backup-db.sh · backup-agent.sh · install-backup-agent.sh 시험 (이슈 #45 · #91). 가짜 ssh 로 데이터 노드 없이 돈다.
+"""backup-db.sh · backup-agent.sh · install-backup-agent.sh 시험 (이슈 #45 · #91 · #95). 가짜 ssh 로 데이터 노드 없이 돈다.
 
 - 덤프와 같은 시각의 역할 목록(opsloop-<시각>.globals.sql)을 비밀번호 없이 0600 으로 남긴다
 - 역할(지금 8개)이 빠졌거나 비밀번호가 섞인 역할 목록이면 실패하고 파일을 남기지 않는다
@@ -10,8 +10,11 @@
   '== … 백업 시작|성공|실패' 줄은 회차마다 한 번 · 시도 줄은 '-- ' · 대기 기본 180초(창 안에 못 돌면 다시 돌지 않음) ·
   창 끝에 닿은 시도는 묶음째 멈춤(TERM) · 무시하면 끊음(KILL) · 잠자기로 창 끝을 넘겨 깨도 TERM 뒤 정리할 틈 ·
   실행기가 멈추면 시도도 멈추고 실패 줄 · 잘못된 환경변수 · 기록 시각은 Mac 시간대와 상관없이 KST
+- 잠자기 방지: caffeinate -i -s -w <실행기 pid> 를 회차마다 한 번(시도 묶음 밖) · 재시도 대기 동안에도 걸림 ·
+  성공 · 모두 실패 · 창 끝 · 실행기 멈춤 · 그 밖의 끝(EXIT) 뒤 남지 않음 · 잘못된 환경변수면 부르지 않음 ·
+  없으면 '-- ' 줄 하나만 더하고 백업은 돈다
 - 설치기: launchd 04:30 · 12:30 · 20:30 · KEEP 21 · 사본 · 내림
-가짜 osascript · launchctl 은 bash 내보낸 함수로 덮는다(실행기가 PATH 를 새로 정하므로). 대기는 환경변수로 줄인다.
+가짜 osascript · caffeinate · launchctl 은 bash 내보낸 함수로 덮는다(실행기가 PATH 를 새로 정하므로). 대기는 환경변수로 줄인다.
 
 사용: python3 infra/vmware/scripts/test_backup_db.py
 """
@@ -338,11 +341,27 @@ esac
 FAKE_DATE = ('() {  if [ "$*" = +%s ] && [ -s "$FAKE_JUMP" ]; then echo $(($(command date +%s) + $(cat "$FAKE_JUMP"))); '
              'else command date "$@"; fi; }')
 
+# 알릴 때 돌고 있는 가짜 caffeinate 의 pid 도 남긴다 (끈 뒤 거두기 전 좀비는 뺀다)
 FAKE_OSA = r'''#!{python}
-import json, os, sys
+import json, os, subprocess, sys
+caf = []
+if os.path.exists(os.environ.get("FAKE_CAF_LOG", "")):
+    for line in open(os.environ["FAKE_CAF_LOG"]):
+        pid = line.split()[0]
+        st = subprocess.run(["ps", "-o", "stat=", "-p", pid], capture_output=True, text=True).stdout.strip()
+        if st and not st.startswith("Z"):
+            caf.append(int(pid))
 with open(os.environ["FAKE_EVENTS"], "a") as f:
-    f.write(json.dumps({{"osa": sys.argv[1:]}}) + "\n")
+    f.write(json.dumps({{"osa": sys.argv[1:], "caf": caf}}) + "\n")
 '''
+
+# 가짜 caffeinate. '<pid> <부모 pid> <인자…>' 한 줄을 남기고 멈추라고 할 때까지 산다. -w 의 pid 가 끝나도 스스로 끝나지
+#   않는다(실행기가 끄는지 본다). FAKE_CAF=none 이면 없는 명령처럼 127 로 바로 끝난다
+FAKE_CAF = r"""#!/bin/sh
+echo "$$ $PPID $*" >> "$FAKE_CAF_LOG"
+[ "${FAKE_CAF:-}" != none ] || exit 127
+exec sleep 60
+"""
 
 
 class BackupAgentTest(unittest.TestCase):
@@ -358,15 +377,21 @@ class BackupAgentTest(unittest.TestCase):
         shutil.copy(AGENT, os.path.join(self.bin, "backup-agent.sh"))
         write_exec(os.path.join(self.bin, "backup-db.sh"), FAKE_DB)
         write_exec(os.path.join(self.fake, "osascript"), FAKE_OSA.format(python=sys.executable))
+        write_exec(os.path.join(self.fake, "caffeinate"), FAKE_CAF)
         self.events = os.path.join(self.t, "events.jsonl")
+        self.caf_log = os.path.join(self.t, "caf.log")
         self.seq = os.path.join(self.t, "seq")
         self.child = os.path.join(self.t, "child.pid")
         self.env = {"HOME": self.home, "PATH": "/usr/bin:/bin", "TMPDIR": self.t, "LANG": "en_US.UTF-8",
                     "OPSLOOP_BACKUP_DIR": self.dest, "FAKE_BIN": self.fake, "FAKE_EVENTS": self.events,
                     "FAKE_SEQ": self.seq, "FAKE_CHILD": self.child, "FAKE_PY": sys.executable,
+                    "FAKE_CAF_LOG": self.caf_log,
                     # 실행기가 PATH 를 새로 정하므로 진짜 알림이 뜨지 않게 함수로 덮는다
-                    "BASH_FUNC_osascript%%": '() {  "$FAKE_BIN/osascript" "$@"; }'}
+                    "BASH_FUNC_osascript%%": '() {  "$FAKE_BIN/osascript" "$@"; }',
+                    # 진짜 caffeinate 처럼 $! 이 그 프로세스가 되게 exec 한다 (실행기는 뒤로 돌려 부른다)
+                    "BASH_FUNC_caffeinate%%": '() {  exec "$FAKE_BIN/caffeinate" "$@"; }'}
         self.addCleanup(self.kill_child)
+        self.addCleanup(self.kill_caf)
 
     def kill_child(self):
         if os.path.exists(self.child):
@@ -374,6 +399,24 @@ class BackupAgentTest(unittest.TestCase):
                 os.kill(int(read(self.child)), signal.SIGKILL)
             except (ProcessLookupError, ValueError):
                 pass
+
+    def kill_caf(self):
+        for c in self.caf_calls():
+            try:
+                os.kill(int(c[0]), signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+    def caf_calls(self):  # 가짜 caffeinate 가 남긴 [pid, 부모 pid, 인자…]
+        if not os.path.exists(self.caf_log):
+            return []
+        return [line.split() for line in read(self.caf_log).splitlines() if line.strip()]
+
+    def gone(self, pid, wait=3.0):  # 끈 뒤 거둬지기까지 잠깐 기다린다
+        deadline = time.time() + wait
+        while alive(pid) and time.time() < deadline:
+            time.sleep(0.05)
+        return not alive(pid)
 
     def agent(self, seq, **extra):
         with open(self.seq, "w") as f:
@@ -515,6 +558,9 @@ class BackupAgentTest(unittest.TestCase):
         self.assertRegex(out, r"(?m)^== .* KST 백업 실패 \(실행기가 멈춤 · 시도 1/3\)$")
         time.sleep(0.5)
         self.assertFalse(alive(int(read(self.child))), "따로 묶인 시도도 멈춘다 (launchctl bootout)")
+        calls = self.caf_calls()
+        self.assertEqual([c[1:] for c in calls], [[str(p.pid), "-i", "-s", "-w", str(p.pid)]])
+        self.assertTrue(self.gone(int(calls[0][0])), "실행기가 멈추면 잠자기 방지도 끈다")
 
     def test_잘못된_환경변수는_2_이고_아무것도_하지_않는다(self):
         pwned = os.path.join(self.t, "pwned")
@@ -527,6 +573,87 @@ class BackupAgentTest(unittest.TestCase):
                 self.assertEqual(r.stdout, "")
         self.assertFalse(os.path.exists(pwned))
         self.assertEqual(self.db_calls(), [])
+        time.sleep(0.5)   # 뒤로 띄웠다면 실행기가 끝난 뒤에 기록될 수 있다
+        self.assertEqual(self.caf_calls(), [], "검사를 통과하기 전에는 잠자기 방지를 띄우지 않는다")
+
+    def test_잠자기_방지는_회차마다_한_번_띄우고_끝나면_끈다(self):
+        for name, seq, extra, code in (
+                ("성공", ["ok"], {}, 0),
+                ("모두 실패", ["fail", "ssh", "fail"], {"BACKUP_RETRY_WAIT": "0"}, 1),
+                ("창 끝 멈춤", ["hang", "ok"], {"BACKUP_WINDOW": "4", "BACKUP_RETRY_WAIT": "0"}, 143)):
+            with self.subTest(name):
+                before, ev_before = len(self.caf_calls()), len(jsonl(self.events))
+                r = self.run_agent(seq, **extra)
+                self.assertEqual(r.returncode, code, r.stdout + r.stderr)
+                calls = self.caf_calls()[before:]
+                self.assertEqual(len(calls), 1, "시도마다가 아니라 회차마다 한 번")
+                pid, ppid, args = calls[0][0], calls[0][1], calls[0][2:]
+                self.assertEqual(args, ["-i", "-s", "-w", ppid], "-w 는 띄운 실행기 자신의 pid")
+                self.assertTrue(self.gone(int(pid)), "회차가 끝나면 끈다 (가짜는 -w 를 따르지 않는다)")
+                self.assertNotIn("잠자기 방지", r.stdout)
+                self.assertNotIn("caffeinate", r.stderr, "끌 때 'Terminated' 알림이 기록에 남지 않는다")
+                self.assertEqual(self.marks(r.stdout)[0], "시작")
+                osa = [e for e in jsonl(self.events)[ev_before:] if "osa" in e]
+                if osa:
+                    self.assertEqual(osa[-1]["caf"], [], "끝 알림 전에 끈다 (EXIT 까지 기다리지 않는다)")
+
+    def test_재시도_대기_동안에도_잠자기_방지가_걸려_있다(self):
+        p = subprocess.Popen([BASH, os.path.join(self.bin, "backup-agent.sh")],
+                             env=self.agent(["fail", "ok"], BACKUP_RETRY_WAIT="3"), stdin=subprocess.DEVNULL,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding="utf-8")
+        self.addCleanup(lambda: p.poll() is None and p.kill())
+        deadline = time.time() + 20
+        while "OpsLoop DB 백업 실패 · 재시도 예정" not in self.titles() and time.time() < deadline:
+            time.sleep(0.05)
+        # 첫 시도가 실패해 3초 기다리는 중이다
+        self.assertEqual(len(self.db_calls()), 1)
+        calls = self.caf_calls()
+        self.assertEqual(len(calls), 1)
+        pid = int(calls[0][0])
+        self.assertTrue(alive(pid), "재시도 대기 동안에도 걸려 있다")
+        self.assertEqual(os.getpgid(pid), os.getpgid(p.pid), "시도 묶음이 아니라 실행기 묶음에 있다")
+        out, err = p.communicate(timeout=30)
+        self.assertEqual(p.returncode, 0, out + err)
+        self.assertEqual(self.marks(out), ["시작", "성공"])
+        self.assertEqual(len(self.db_calls()), 2)
+        self.assertEqual(self.caf_calls(), calls, "재시도 때 다시 띄우지 않는다")
+        self.assertEqual([e["caf"] for e in jsonl(self.events) if "osa" in e], [[pid], []],
+                         "'재시도 예정' 알림 때는 걸려 있고 '재시도 뒤 성공' 알림 전에는 풀려 있다")
+        self.assertEqual(calls[0][1:], [str(p.pid), "-i", "-s", "-w", str(p.pid)])
+        self.assertTrue(self.gone(pid))
+
+    def test_정해_둔_끝_밖에서_끝나도_잠자기_방지를_끈다(self):
+        # 성공 · 실패 줄이나 on_signal 을 거치지 않고 셸이 끝나는 경우(셸 오류 등)를 흉내 낸다.
+        #   띄운 뒤 처음 부르는 sleep(띄운 뒤 확인)에서, 가짜 caffeinate 가 기록을 남긴 뒤 셸을 끝낸다.
+        #   끄는 곳은 EXIT 처리뿐이다
+        quit_ = ('() {  local i=0; while [ ! -s "$FAKE_CAF_LOG" ] && [ "$i" -lt 100 ]; do command sleep 0.05; '
+                 'i=$((i + 1)); done; exit 3; }')
+        r = self.run_agent(["ok"], **{"BASH_FUNC_sleep%%": quit_})
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+        self.assertEqual(self.marks(r.stdout), ["시작"])
+        self.assertEqual(self.db_calls(), [])
+        calls = self.caf_calls()
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(self.gone(int(calls[0][0])), "EXIT 처리에서도 끈다 (가짜는 -w 를 따르지 않는다)")
+
+    def test_caffeinate_가_없어도_백업은_돈다(self):
+        stamp = re.compile(r"\d{4}-\d\d-\d\d \d\d:\d\d:\d\d KST")
+        base = self.run_agent(["ok"])
+        self.assertEqual(base.returncode, 0, base.stdout + base.stderr)
+        r = self.run_agent(["ok"], FAKE_CAF="none")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(r.stderr, "")
+        lines = r.stdout.splitlines()
+        warn = [l for l in lines if "잠자기 방지" in l]
+        self.assertEqual(len(warn), 1)
+        self.assertRegex(warn[0], r"^-- \d{4}-\d\d-\d\d \d\d:\d\d:\d\d KST 잠자기 방지를 걸지 못했다 "
+                                  r"\(caffeinate 종료 코드 127\) · 백업은 그대로 돈다$")
+        self.assertEqual(lines.index(warn[0]), 1, "회차의 시작 줄 바로 뒤")
+        # '-- ' 줄 하나만 더해지고 나머지(== 줄 포함)는 잠자기 방지가 걸린 회차와 같은 모양이다
+        self.assertEqual([stamp.sub("T", l) for l in lines if l != warn[0]],
+                         [stamp.sub("T", l) for l in base.stdout.splitlines()])
+        self.assertEqual(self.marks(r.stdout), ["시작", "성공"])
+        self.assertEqual(self.db_calls(), [["ok", "restore", self.dest], ["ok", "restore", self.dest]])
 
 
 class InstallTest(unittest.TestCase):
