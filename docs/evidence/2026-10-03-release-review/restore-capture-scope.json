@@ -1,0 +1,10 @@
+{
+  "type": "video capture and functional verification; not RTO retest",
+  "backup": "opsloop-20261002-1510.dump",
+  "human_action": "User entered existing account credentials",
+  "agent_action": "Verified restored lists and saved one undetermined verdict through the console",
+  "external_notifications": "Disabled and URLs invalidated in isolated DB before console start",
+  "tunnel_interruption": "Detached SSH process ended during tool execution; restored with persistent exec session",
+  "rto": "Not measured; recording/login wait and recovery included",
+  "formal_console_human_checked": "Not asserted by drill --confirm"
+}

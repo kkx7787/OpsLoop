@@ -1,0 +1,43 @@
+
+> console@0.0.0 build
+> tsc -b && vite build
+
+vite v8.3.0 building client environment for production...
+transforming...
+✓ 241 modules transformed.
+rendering chunks...
+computing gzip size...
+../app/static/assets/favicon-CPAYERcy.svg              0.35 kB │ gzip:   0.25 kB
+../app/static/index.html                               1.62 kB │ gzip:   0.64 kB
+../app/static/assets/style--tj1Zsew.css               50.19 kB │ gzip:  10.13 kB
+../app/static/assets/Select-k6c4EIPY.js                0.23 kB │ gzip:   0.20 kB
+../app/static/assets/Badge-nwVQD71d.js                 0.29 kB │ gzip:   0.24 kB
+../app/static/assets/interval-Bj3hulVJ.js              0.32 kB │ gzip:   0.27 kB
+../app/static/assets/Label-rC6FbJLa.js                 0.40 kB │ gzip:   0.27 kB
+../app/static/assets/Input-BSEdrSLH.js                 0.63 kB │ gzip:   0.39 kB
+../app/static/assets/Card-DZc39Twx.js                  0.68 kB │ gzip:   0.41 kB
+../app/static/assets/Switch-wzNF1ML8.js                1.03 kB │ gzip:   0.53 kB
+../app/static/assets/device-format-BwhVhV6J.js         1.32 kB │ gzip:   0.70 kB
+../app/static/assets/notify-DD-4iNIS.js                1.46 kB │ gzip:   0.84 kB
+../app/static/assets/UntrustedText-XuQDwsIV.js         1.53 kB │ gzip:   0.90 kB
+../app/static/assets/cti-format-BAUmbeVm.js            1.97 kB │ gzip:   1.10 kB
+../app/static/assets/AuditPage-CoSXFEZN.js             5.88 kB │ gzip:   2.36 kB
+../app/static/assets/SourceBlock-D57_Le5g.js           6.58 kB │ gzip:   2.70 kB
+../app/static/assets/NodesPage-CS-UQgH0.js             6.79 kB │ gzip:   3.02 kB
+../app/static/assets/incidents-DZzqPjsj.js             7.59 kB │ gzip:   2.52 kB
+../app/static/assets/VerdictBadge-DACjzkBk.js          8.33 kB │ gzip:   3.42 kB
+../app/static/assets/NodeEnrollmentPage-DAGDExW7.js    8.61 kB │ gzip:   3.52 kB
+../app/static/assets/RulesPage-g0o5FVFJ.js            10.90 kB │ gzip:   3.64 kB
+../app/static/assets/SourceDetailPage-D-Cw2D1A.js     11.79 kB │ gzip:   3.42 kB
+../app/static/assets/log-format-De6DBXYE.js           14.68 kB │ gzip:   5.62 kB
+../app/static/assets/DeviceLogsPage-DI8KewTx.js       15.27 kB │ gzip:   5.12 kB
+../app/static/assets/SourcesPage-VCICE-qH.js          15.94 kB │ gzip:   5.56 kB
+../app/static/assets/AccountsPage-DfCpSCVs.js         16.76 kB │ gzip:   5.79 kB
+../app/static/assets/ReportsPage-CXcFB6F9.js          24.17 kB │ gzip:   7.44 kB
+../app/static/assets/AlertsPage-Dl5SJUlX.js           24.27 kB │ gzip:   8.38 kB
+../app/static/assets/AssetsPage-fg8KM31X.js           26.79 kB │ gzip:   6.86 kB
+../app/static/assets/PageHeader-DcWA7bhb.js           87.83 kB │ gzip:  29.98 kB
+../app/static/assets/chunk-OB3PAWPO-F1YteMc9.js       92.73 kB │ gzip:  30.77 kB
+../app/static/assets/index-B1wGWuYK.js               388.32 kB │ gzip: 115.62 kB
+
+✓ built in 466ms

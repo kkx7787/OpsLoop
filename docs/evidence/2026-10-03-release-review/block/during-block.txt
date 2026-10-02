@@ -1,0 +1,4 @@
+$ attacker → web-01:80 GET /
+HTTP 000
+curl: (28) Failed to connect to 192.168.50.21 port 80 after 4003 ms: Timeout was reached
+종료 코드 28
