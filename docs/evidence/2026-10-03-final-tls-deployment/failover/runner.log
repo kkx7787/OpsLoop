@@ -1,0 +1,102 @@
+2026-10-03T18:28:38+09:00 START t01-stop-a
+표시: inject stop · 대상 console-a · 로컬 2026-10-03T09:29:09.203703+00:00 · console-a 2026-10-03T09:29:09.210776+00:00 (왕복 459ms)
+다음 명령 (사람이 돌린다): ssh -F ~/.ssh/config.opsloop console-a 'docker stop opsloop-api'
+opsloop-api
+2026-10-03T18:29:10+09:00 INJECTED t01-stop-a
+표시: recover stop · 대상 console-a · 로컬 2026-10-03T09:31:41.401882+00:00 · console-a 2026-10-03T09:31:41.409075+00:00 (왕복 958ms)
+다음 명령 (사람이 돌린다): ssh -F ~/.ssh/config.opsloop console-a 'docker start opsloop-api'
+opsloop-api
+2026-10-03T18:31:42+09:00 RECOVERED t01-stop-a
+시나리오      n  합격  감지(중앙/최대)  실패구간끝      전환            전환완료        p99ms           좀비 최대/미감지  재연결      401
+stop          1  1/1  5.623/5.623     -/-             5.623/5.623     0.447/0.447     68.81/68.81     0.387/0           1.034       0
+(* 합격선 밖 · 참고. 초 단위, 지연은 밀리초)
+  t01-stop-a #0 stop console-a: 합격
+→ /Users/hanseongmin/opsloop-repo/output/final-development-20261003/deployment/failover/check/t01-stop-a/results.json
+2026-10-03T18:33:39+09:00 PASS t01-stop-a
+2026-10-03T18:33:39+09:00 START t02-stop-b
+표시: inject stop · 대상 console-b · 로컬 2026-10-03T09:34:11.361955+00:00 · console-b 2026-10-03T09:34:11.371317+00:00 (왕복 1228ms)
+다음 명령 (사람이 돌린다): ssh -F ~/.ssh/config.opsloop console-b 'docker stop opsloop-api'
+opsloop-api
+2026-10-03T18:34:12+09:00 INJECTED t02-stop-b
+표시: recover stop · 대상 console-b · 로컬 2026-10-03T09:36:43.590791+00:00 · console-b 2026-10-03T09:36:43.600857+00:00 (왕복 941ms)
+다음 명령 (사람이 돌린다): ssh -F ~/.ssh/config.opsloop console-b 'docker start opsloop-api'
+opsloop-api
+2026-10-03T18:36:44+09:00 RECOVERED t02-stop-b
+시나리오      n  합격  감지(중앙/최대)  실패구간끝      전환            전환완료        p99ms           좀비 최대/미감지  재연결      401
+stop          1  1/1  5.746/5.746     -/-             5.746/5.746     0.677/0.677     58.449/58.449   0.616/0           1.137       0
+(* 합격선 밖 · 참고. 초 단위, 지연은 밀리초)
+  t02-stop-b #0 stop console-b: 합격
+→ /Users/hanseongmin/opsloop-repo/output/final-development-20261003/deployment/failover/check/t02-stop-b/results.json
+2026-10-03T18:38:40+09:00 PASS t02-stop-b
+2026-10-03T18:38:40+09:00 START t03-stop-a
+표시: inject stop · 대상 console-a · 로컬 2026-10-03T09:39:12.001747+00:00 · console-a 2026-10-03T09:39:12.006673+00:00 (왕복 750ms)
+다음 명령 (사람이 돌린다): ssh -F ~/.ssh/config.opsloop console-a 'docker stop opsloop-api'
+opsloop-api
+2026-10-03T18:39:12+09:00 INJECTED t03-stop-a
+표시: recover stop · 대상 console-a · 로컬 2026-10-03T09:41:43.888635+00:00 · console-a 2026-10-03T09:41:43.899571+00:00 (왕복 938ms)
+다음 명령 (사람이 돌린다): ssh -F ~/.ssh/config.opsloop console-a 'docker start opsloop-api'
+opsloop-api
+2026-10-03T18:41:44+09:00 RECOVERED t03-stop-a
+시나리오      n  합격  감지(중앙/최대)  실패구간끝      전환            전환완료        p99ms           좀비 최대/미감지  재연결      401
+stop          1  1/1  5.732/5.732     -/-             5.732/5.732     0.476/0.476     105.22/105.22   0.416/0           1.133       0
+(* 합격선 밖 · 참고. 초 단위, 지연은 밀리초)
+  t03-stop-a #0 stop console-a: 합격
+→ /Users/hanseongmin/opsloop-repo/output/final-development-20261003/deployment/failover/check/t03-stop-a/results.json
+2026-10-03T18:43:42+09:00 PASS t03-stop-a
+2026-10-03T18:43:42+09:00 START t04-kill-a
+표시: inject kill · 대상 console-a · 로컬 2026-10-03T09:44:13.393302+00:00 · console-a 2026-10-03T09:44:13.400630+00:00 (왕복 760ms)
+다음 명령 (사람이 돌린다): ssh -F ~/.ssh/config.opsloop console-a 'docker kill opsloop-api'
+opsloop-api
+2026-10-03T18:44:14+09:00 INJECTED t04-kill-a
+표시: recover kill · 대상 console-a · 로컬 2026-10-03T09:46:45.439599+00:00 · console-a 2026-10-03T09:46:45.449213+00:00 (왕복 1241ms)
+다음 명령 (사람이 돌린다): ssh -F ~/.ssh/config.opsloop console-a 'docker start opsloop-api'
+opsloop-api
+2026-10-03T18:46:46+09:00 RECOVERED t04-kill-a
+시나리오      n  합격  감지(중앙/최대)  실패구간끝      전환            전환완료        p99ms           좀비 최대/미감지  재연결      401
+kill          1  1/1  5.717/5.717     -/-             5.717/5.717     0.447/0.447     109.578/109.578 0.39/0            1.064       0
+(* 합격선 밖 · 참고. 초 단위, 지연은 밀리초)
+  t04-kill-a #0 kill console-a: 합격
+→ /Users/hanseongmin/opsloop-repo/output/final-development-20261003/deployment/failover/check/t04-kill-a/results.json
+2026-10-03T18:48:43+09:00 PASS t04-kill-a
+2026-10-03T18:48:43+09:00 START t05-kill-b
+표시: inject kill · 대상 console-b · 로컬 2026-10-03T09:49:14.844408+00:00 · console-b 2026-10-03T09:49:14.860306+00:00 (왕복 789ms)
+다음 명령 (사람이 돌린다): ssh -F ~/.ssh/config.opsloop console-b 'docker kill opsloop-api'
+opsloop-api
+2026-10-03T18:49:15+09:00 INJECTED t05-kill-b
+표시: recover kill · 대상 console-b · 로컬 2026-10-03T09:51:47.373689+00:00 · console-b 2026-10-03T09:51:47.394106+00:00 (왕복 1360ms)
+다음 명령 (사람이 돌린다): ssh -F ~/.ssh/config.opsloop console-b 'docker start opsloop-api'
+opsloop-api
+2026-10-03T18:51:48+09:00 RECOVERED t05-kill-b
+시나리오      n  합격  감지(중앙/최대)  실패구간끝      전환            전환완료        p99ms           좀비 최대/미감지  재연결      401
+kill          1  1/1  5.338/5.338     -/-             5.338/5.338     0.37/0.37       95.054/95.054   0.466/0           1.41        0
+(* 합격선 밖 · 참고. 초 단위, 지연은 밀리초)
+  t05-kill-b #0 kill console-b: 합격
+→ /Users/hanseongmin/opsloop-repo/output/final-development-20261003/deployment/failover/check/t05-kill-b/results.json
+2026-10-03T18:53:44+09:00 PASS t05-kill-b
+2026-10-03T18:53:44+09:00 START t06-kill-a
+표시: inject kill · 대상 console-a · 로컬 2026-10-03T09:54:17.099993+00:00 · console-a 2026-10-03T09:54:17.107928+00:00 (왕복 1873ms)
+다음 명령 (사람이 돌린다): ssh -F ~/.ssh/config.opsloop console-a 'docker kill opsloop-api'
+opsloop-api
+2026-10-03T18:54:19+09:00 INJECTED t06-kill-a
+표시: recover kill · 대상 console-a · 로컬 2026-10-03T09:56:50.116076+00:00 · console-a 2026-10-03T09:56:50.134595+00:00 (왕복 904ms)
+다음 명령 (사람이 돌린다): ssh -F ~/.ssh/config.opsloop console-a 'docker start opsloop-api'
+opsloop-api
+2026-10-03T18:56:50+09:00 RECOVERED t06-kill-a
+시나리오      n  합격  감지(중앙/최대)  실패구간끝      전환            전환완료        p99ms           좀비 최대/미감지  재연결      401
+kill          1  1/1  5.645/5.645     -/-             5.645/5.645     1.362/1.362     83.645/83.645   1.32/0            1.18        0
+(* 합격선 밖 · 참고. 초 단위, 지연은 밀리초)
+  t06-kill-a #0 kill console-a: 합격
+→ /Users/hanseongmin/opsloop-repo/output/final-development-20261003/deployment/failover/check/t06-kill-a/results.json
+2026-10-03T18:58:46+09:00 PASS t06-kill-a
+시나리오      n  합격  감지(중앙/최대)  실패구간끝      전환            전환완료        p99ms           좀비 최대/미감지  재연결      401
+kill          3  3/3  5.645/5.717     -/-             5.645/5.717     0.447/1.362     95.054/109.578  1.32/0            1.41        0
+stop          3  3/3  5.732/5.746     -/-             5.732/5.746     0.476/0.677     68.81/105.22    0.616/0           1.137       0
+(* 합격선 밖 · 참고. 초 단위, 지연은 밀리초)
+  t01-stop-a #0 stop console-a: 합격
+  t02-stop-b #0 stop console-b: 합격
+  t03-stop-a #0 stop console-a: 합격
+  t04-kill-a #0 kill console-a: 합격
+  t05-kill-b #0 kill console-b: 합격
+  t06-kill-a #0 kill console-a: 합격
+→ /Users/hanseongmin/opsloop-repo/output/final-development-20261003/deployment/failover/summary/results.json
+2026-10-03T18:58:46+09:00 ALL SIX ROUNDS COMPLETE

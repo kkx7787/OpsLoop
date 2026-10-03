@@ -1,0 +1,5 @@
+시계 차이 (data01 − Mac) +0.142초 · 잰 왕복 0.304초
+NOTICE:  database "opsloop_restore_test" does not exist, skipping
+복원 시험 (events verdicts actions blocklist): 복원 452743 1039 183 28 · 운영 452743 1039 183 28
+백업  29M /Users/hanseongmin/opsloop-work/backups/final-38720bd-before/opsloop-20261003-0907.dump · 표 26 개 · 역할 8 개 opsloop-20261003-0907.globals.sql
+원장 사본 1.3M /Users/hanseongmin/opsloop-work/backups/final-38720bd-before/ledger (loki · gate · admin)

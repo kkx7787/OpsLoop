@@ -1,0 +1,1183 @@
+{
+  "date": "2026-10-03",
+  "timezone": "Asia/Seoul",
+  "scope": "콘솔 이중화 장애 주입 시험 (이슈 #43). 시각 문자열은 UTC ISO, 지표는 T0(주입 직전 표시, Mac 시계) 기준 초 · 밀리초다.",
+  "provenance": {
+    "git_head": "bc63c7ed1c01308879cc338d0d19c699e906da67",
+    "worktree_note": "도구 파일은 git HEAD 와 같다",
+    "source_sha256": {
+      "infra/vmware/failover/common.py": "614e05260b38a4a2611e9bfda60d4fd2e33ad747e8a620c5d58ff8539c214016",
+      "infra/vmware/failover/probe_http.py": "bb31250e96a9e5a570066fc884576e21a16f33fda6443529042b0099f25f1adc",
+      "infra/vmware/failover/probe_ws.py": "fbede95489fc3739b26399a6bb45f433a7800e7a4aa5348ae7cca9826569c24d",
+      "infra/vmware/failover/collect_fw.sh": "f5cd9d060f318c2d739c4163bcf704dffb8f25b4d3fc18fc1620be6a531adee2",
+      "infra/vmware/failover/mark.py": "d780181c2b3dbdf434cd63f3c38be5b9676e09501e1d3d1e572778939a0f6e1a",
+      "infra/vmware/failover/summarize.py": "ceec311098ca0888ffd634faad355dc5aa17dc84441e3272b2cb74fed890e6f6"
+    }
+  },
+  "criteria": {
+    "switchover_max_s": 30.0,
+    "unauthorized_max": 0,
+    "streak": 20,
+    "zombie_window_s": 120.0,
+    "gate_scenarios": [
+      "kill",
+      "stop",
+      "vm-off"
+    ]
+  },
+  "runs": [
+    {
+      "run": "t01-stop-a",
+      "files": {
+        "http.jsonl": "8e372f79db3b83f0c00c963da36fcd36f702a85a451c1eb5badc5f45ce261b6d",
+        "ws.jsonl": "6fc7de810bbf2076e00c86bf54a0628a115b106efbe7bfd2d9ae264bcb78e00c",
+        "fw.csv": "2e1a3946de722efe9e861c9a635080ead00b9bb3225f92fc7b0334827a5ba411",
+        "marks.jsonl": "73594b0c5a89f32d91277c524168fd060a246145aa5a0bba4c99719084da2d2e",
+        "fw-haproxy.log": "95906821e16aafb44b6480d9155ee54bdcefd4001cd0f43340c5d4f3602d0ba0",
+        "fw-meta.json": "7e7d5f9c7a7ed44dced3a4b01eb67efe7c36a1cd5a51bec4231052fdbced8015"
+      },
+      "counts": {
+        "http": 6000,
+        "ws": 40,
+        "fw": 1800,
+        "marks": 2,
+        "log_servers": 2998
+      },
+      "fw_clock_offset_ms": -4.459,
+      "episodes": [
+        {
+          "index": 0,
+          "scenario": "stop",
+          "target": "console-a",
+          "gate": true,
+          "t0": "2026-10-03T09:29:09.203703+00:00",
+          "t0_remote": "2026-10-03T09:29:09.210776+00:00",
+          "t0_host": "console-a",
+          "recover_at_s": 152.198,
+          "window_s": 269.35,
+          "detect_s": 5.623,
+          "detect_status": "DOWN",
+          "fail": {
+            "count": 0,
+            "first_s": null,
+            "last_s": null,
+            "window_s": null,
+            "by_error": {},
+            "by_stream": {},
+            "ok_after_last": 0,
+            "settled": true
+          },
+          "latency": {
+            "p99_ms": 68.81,
+            "max_ms": 265.022,
+            "ok_p99_ms": 68.81,
+            "ok_max_ms": 265.022,
+            "baseline_p99_ms": 173.64,
+            "n": 5388
+          },
+          "failover_s": 0.447,
+          "failover": {
+            "me": {
+              "basis": "다른 콘솔",
+              "failover_s": 0.447,
+              "confirmed_s": 2.377
+            },
+            "health": {
+              "basis": "다른 콘솔",
+              "failover_s": 0.347,
+              "confirmed_s": 2.274
+            }
+          },
+          "ws": {
+            "conns": [
+              {
+                "stream": "ws-browser",
+                "conn": 0,
+                "console_at_t0": "console-a",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.386,
+                "close_code": 1012,
+                "close_by": "server",
+                "reconnect_s": 1.032,
+                "new_console": "console-b"
+              },
+              {
+                "stream": "ws-browser",
+                "conn": 1,
+                "console_at_t0": "console-b",
+                "on_target": false,
+                "state": "다른 콘솔"
+              },
+              {
+                "stream": "ws-browser",
+                "conn": 2,
+                "console_at_t0": "console-a",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.387,
+                "close_code": 1012,
+                "close_by": "server",
+                "reconnect_s": 1.034,
+                "new_console": "console-b"
+              },
+              {
+                "stream": "ws-browser",
+                "conn": 3,
+                "console_at_t0": "console-a",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.387,
+                "close_code": 1012,
+                "close_by": "server",
+                "reconnect_s": 1.033,
+                "new_console": "console-b"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 0,
+                "console_at_t0": "console-b",
+                "on_target": false,
+                "state": "다른 콘솔"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 1,
+                "console_at_t0": "console-a",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.385,
+                "close_code": 1012,
+                "close_by": "server",
+                "reconnect_s": 1.034,
+                "new_console": "console-b"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 2,
+                "console_at_t0": "console-b",
+                "on_target": false,
+                "state": "다른 콘솔"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 3,
+                "console_at_t0": "console-b",
+                "on_target": false,
+                "state": "다른 콘솔"
+              }
+            ],
+            "target_conns": 4,
+            "zombie_max_s": 0.387,
+            "undetected": 0,
+            "reconnect_max_s": 1.034
+          },
+          "unauthorized": {
+            "total": 0,
+            "http_401": 0,
+            "ws_1008": 0
+          },
+          "recover": {
+            "up_s": 5.92,
+            "fail_count": 0,
+            "fail_by_error": {}
+          },
+          "baseline_fail_count": 0,
+          "switchover_s": 5.623,
+          "pass": true,
+          "reasons": [],
+          "notes": []
+        }
+      ]
+    },
+    {
+      "run": "t02-stop-b",
+      "files": {
+        "http.jsonl": "b9661b6ae8b494e616e1069b718abd65bb41a5a236a7ac25894eaf76572d171e",
+        "ws.jsonl": "30e5e64433d517d10e944713477a78c66057a76085750df5789d17c513c2de31",
+        "fw.csv": "2787d178e40cfb5a2b561732f51e2b2940258b820a9381576ed939ff8841c28d",
+        "marks.jsonl": "887ce1cd5d98e8aed4f88a8c5af8da86eb4adad4bef23c7011b794d175c580e8",
+        "fw-haproxy.log": "651e25e521214579adf297a57fd88cc2a9817376cfb57c46adf4093e2479e995",
+        "fw-meta.json": "274eaf44592e96874ab7734dd055e6020c6c3c360e1cdda984d0960359adfd98"
+      },
+      "counts": {
+        "http": 5998,
+        "ws": 40,
+        "fw": 1800,
+        "marks": 2,
+        "log_servers": 2997
+      },
+      "fw_clock_offset_ms": -6.274,
+      "episodes": [
+        {
+          "index": 0,
+          "scenario": "stop",
+          "target": "console-b",
+          "gate": true,
+          "t0": "2026-10-03T09:34:11.361955+00:00",
+          "t0_remote": "2026-10-03T09:34:11.371317+00:00",
+          "t0_host": "console-b",
+          "recover_at_s": 152.229,
+          "window_s": 268.478,
+          "detect_s": 5.746,
+          "detect_status": "DOWN",
+          "fail": {
+            "count": 0,
+            "first_s": null,
+            "last_s": null,
+            "window_s": null,
+            "by_error": {},
+            "by_stream": {},
+            "ok_after_last": 0,
+            "settled": true
+          },
+          "latency": {
+            "p99_ms": 58.449,
+            "max_ms": 435.348,
+            "ok_p99_ms": 58.449,
+            "ok_max_ms": 435.348,
+            "baseline_p99_ms": 56.144,
+            "n": 5368
+          },
+          "failover_s": 0.677,
+          "failover": {
+            "me": {
+              "basis": "다른 콘솔",
+              "failover_s": 0.478,
+              "confirmed_s": 2.576
+            },
+            "health": {
+              "basis": "다른 콘솔",
+              "failover_s": 0.677,
+              "confirmed_s": 2.597
+            }
+          },
+          "ws": {
+            "conns": [
+              {
+                "stream": "ws-browser",
+                "conn": 0,
+                "console_at_t0": "console-b",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.616,
+                "close_code": 1012,
+                "close_by": "server",
+                "reconnect_s": 1.054,
+                "new_console": "console-a"
+              },
+              {
+                "stream": "ws-browser",
+                "conn": 1,
+                "console_at_t0": "console-a",
+                "on_target": false,
+                "state": "다른 콘솔"
+              },
+              {
+                "stream": "ws-browser",
+                "conn": 2,
+                "console_at_t0": "console-a",
+                "on_target": false,
+                "state": "다른 콘솔"
+              },
+              {
+                "stream": "ws-browser",
+                "conn": 3,
+                "console_at_t0": "console-a",
+                "on_target": false,
+                "state": "다른 콘솔"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 0,
+                "console_at_t0": "console-a",
+                "on_target": false,
+                "state": "다른 콘솔"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 1,
+                "console_at_t0": "console-b",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.615,
+                "close_code": 1012,
+                "close_by": "server",
+                "reconnect_s": 1.137,
+                "new_console": "console-a"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 2,
+                "console_at_t0": "console-b",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.616,
+                "close_code": 1012,
+                "close_by": "server",
+                "reconnect_s": 1.054,
+                "new_console": "console-a"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 3,
+                "console_at_t0": "console-b",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.616,
+                "close_code": 1012,
+                "close_by": "server",
+                "reconnect_s": 1.132,
+                "new_console": "console-a"
+              }
+            ],
+            "target_conns": 4,
+            "zombie_max_s": 0.616,
+            "undetected": 0,
+            "reconnect_max_s": 1.137
+          },
+          "unauthorized": {
+            "total": 0,
+            "http_401": 0,
+            "ws_1008": 0
+          },
+          "recover": {
+            "up_s": 8.022,
+            "fail_count": 0,
+            "fail_by_error": {}
+          },
+          "baseline_fail_count": 0,
+          "switchover_s": 5.746,
+          "pass": true,
+          "reasons": [],
+          "notes": []
+        }
+      ]
+    },
+    {
+      "run": "t03-stop-a",
+      "files": {
+        "http.jsonl": "0eb57405f643853238fd1d0b6fdda9d2faf0b773030286b9b5561f776249d218",
+        "ws.jsonl": "aebd0c3cf610dbfb3c284d29733b94728ec43dd2c28ace58d4976b7e9417c68d",
+        "fw.csv": "848f622b176c3f9b0c3cdd3ad25f419445495e9cf0fc59b25a080956cca808f8",
+        "marks.jsonl": "300cbc5d9693810f9ebe9125f7cd279d0e15f2ac455cfae4cd1849f1b48a1344",
+        "fw-haproxy.log": "98c38d15fe7fd605be704a6b8270450ec2a87fbce512ea246067b6d53eb8da99",
+        "fw-meta.json": "da8b2d0ab56ef361e674b6a27dc4cc859ceaa104503aab1abc1468179842dd1f"
+      },
+      "counts": {
+        "http": 6000,
+        "ws": 44,
+        "fw": 1800,
+        "marks": 2,
+        "log_servers": 2998
+      },
+      "fw_clock_offset_ms": -7.712,
+      "episodes": [
+        {
+          "index": 0,
+          "scenario": "stop",
+          "target": "console-a",
+          "gate": true,
+          "t0": "2026-10-03T09:39:12.001747+00:00",
+          "t0_remote": "2026-10-03T09:39:12.006673+00:00",
+          "t0_host": "console-a",
+          "recover_at_s": 151.887,
+          "window_s": 268.98,
+          "detect_s": 5.732,
+          "detect_status": "DOWN",
+          "fail": {
+            "count": 0,
+            "first_s": null,
+            "last_s": null,
+            "window_s": null,
+            "by_error": {},
+            "by_stream": {},
+            "ok_after_last": 0,
+            "settled": true
+          },
+          "latency": {
+            "p99_ms": 105.22,
+            "max_ms": 525.029,
+            "ok_p99_ms": 105.22,
+            "ok_max_ms": 525.029,
+            "baseline_p99_ms": 50.961,
+            "n": 5380
+          },
+          "failover_s": 0.476,
+          "failover": {
+            "me": {
+              "basis": "다른 콘솔",
+              "failover_s": 0.476,
+              "confirmed_s": 2.408
+            },
+            "health": {
+              "basis": "다른 콘솔",
+              "failover_s": 0.279,
+              "confirmed_s": 2.195
+            }
+          },
+          "ws": {
+            "conns": [
+              {
+                "stream": "ws-browser",
+                "conn": 0,
+                "console_at_t0": "console-a",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.416,
+                "close_code": 1012,
+                "close_by": "server",
+                "reconnect_s": 1.133,
+                "new_console": "console-b"
+              },
+              {
+                "stream": "ws-browser",
+                "conn": 1,
+                "console_at_t0": "console-b",
+                "on_target": false,
+                "state": "다른 콘솔"
+              },
+              {
+                "stream": "ws-browser",
+                "conn": 2,
+                "console_at_t0": "console-a",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.415,
+                "close_code": 1012,
+                "close_by": "server",
+                "reconnect_s": 1.085,
+                "new_console": "console-b"
+              },
+              {
+                "stream": "ws-browser",
+                "conn": 3,
+                "console_at_t0": "console-a",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.416,
+                "close_code": 1012,
+                "close_by": "server",
+                "reconnect_s": 1.061,
+                "new_console": "console-b"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 0,
+                "console_at_t0": "console-b",
+                "on_target": false,
+                "state": "다른 콘솔"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 1,
+                "console_at_t0": "console-a",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.415,
+                "close_code": 1012,
+                "close_by": "server",
+                "reconnect_s": 1.084,
+                "new_console": "console-b"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 2,
+                "console_at_t0": "console-a",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.413,
+                "close_code": 1012,
+                "close_by": "server",
+                "reconnect_s": 1.062,
+                "new_console": "console-b"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 3,
+                "console_at_t0": "console-b",
+                "on_target": false,
+                "state": "다른 콘솔"
+              }
+            ],
+            "target_conns": 5,
+            "zombie_max_s": 0.416,
+            "undetected": 0,
+            "reconnect_max_s": 1.133
+          },
+          "unauthorized": {
+            "total": 0,
+            "http_401": 0,
+            "ws_1008": 0
+          },
+          "recover": {
+            "up_s": 5.844,
+            "fail_count": 0,
+            "fail_by_error": {}
+          },
+          "baseline_fail_count": 0,
+          "switchover_s": 5.732,
+          "pass": true,
+          "reasons": [],
+          "notes": []
+        }
+      ]
+    },
+    {
+      "run": "t04-kill-a",
+      "files": {
+        "http.jsonl": "fc199b025911b44fed95fcbef24a7e2c4f27217e078b5e3810fd244aaa7400c1",
+        "ws.jsonl": "4ee3cfdd0d37e85e0907d157df11aa62af4eab4f46eee8f318e81d691eeeb51e",
+        "fw.csv": "7d2147f2505ac796aef67b4b3fc26636493caa57bd1735111977a032ab14825e",
+        "marks.jsonl": "3d875148fef8e5df648f978c676297009eaf30173032936a7c80101c5e27d7c6",
+        "fw-haproxy.log": "b5e80885208ab0cdbf2aec8c9074630504adb47a0df1a721b4041d5d8fe07f39",
+        "fw-meta.json": "d5d11acbaabb00ec86b62f7806bcbe9c1c629a864542061f0239f332c22b8093"
+      },
+      "counts": {
+        "http": 5996,
+        "ws": 44,
+        "fw": 1800,
+        "marks": 2,
+        "log_servers": 2996
+      },
+      "fw_clock_offset_ms": -10.028,
+      "episodes": [
+        {
+          "index": 0,
+          "scenario": "kill",
+          "target": "console-a",
+          "gate": true,
+          "t0": "2026-10-03T09:44:13.393302+00:00",
+          "t0_remote": "2026-10-03T09:44:13.400630+00:00",
+          "t0_host": "console-a",
+          "recover_at_s": 152.046,
+          "window_s": 269.068,
+          "detect_s": 5.717,
+          "detect_status": "DOWN",
+          "fail": {
+            "count": 0,
+            "first_s": null,
+            "last_s": null,
+            "window_s": null,
+            "by_error": {},
+            "by_stream": {},
+            "ok_after_last": 0,
+            "settled": true
+          },
+          "latency": {
+            "p99_ms": 109.578,
+            "max_ms": 399.262,
+            "ok_p99_ms": 109.578,
+            "ok_max_ms": 399.262,
+            "baseline_p99_ms": 68.907,
+            "n": 5376
+          },
+          "failover_s": 0.447,
+          "failover": {
+            "me": {
+              "basis": "다른 콘솔",
+              "failover_s": 0.447,
+              "confirmed_s": 2.369
+            },
+            "health": {
+              "basis": "다른 콘솔",
+              "failover_s": 0.351,
+              "confirmed_s": 2.28
+            }
+          },
+          "ws": {
+            "conns": [
+              {
+                "stream": "ws-browser",
+                "conn": 0,
+                "console_at_t0": "console-a",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.39,
+                "close_code": 1006,
+                "close_by": "net",
+                "reconnect_s": 1.041,
+                "new_console": "console-b"
+              },
+              {
+                "stream": "ws-browser",
+                "conn": 1,
+                "console_at_t0": "console-a",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.386,
+                "close_code": 1006,
+                "close_by": "net",
+                "reconnect_s": 1.037,
+                "new_console": "console-b"
+              },
+              {
+                "stream": "ws-browser",
+                "conn": 2,
+                "console_at_t0": "console-a",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.387,
+                "close_code": 1006,
+                "close_by": "net",
+                "reconnect_s": 1.044,
+                "new_console": "console-b"
+              },
+              {
+                "stream": "ws-browser",
+                "conn": 3,
+                "console_at_t0": "console-b",
+                "on_target": false,
+                "state": "다른 콘솔"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 0,
+                "console_at_t0": "console-b",
+                "on_target": false,
+                "state": "다른 콘솔"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 1,
+                "console_at_t0": "console-b",
+                "on_target": false,
+                "state": "다른 콘솔"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 2,
+                "console_at_t0": "console-a",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.389,
+                "close_code": 1006,
+                "close_by": "net",
+                "reconnect_s": 1.064,
+                "new_console": "console-b"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 3,
+                "console_at_t0": "console-a",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.386,
+                "close_code": 1006,
+                "close_by": "net",
+                "reconnect_s": 1.033,
+                "new_console": "console-b"
+              }
+            ],
+            "target_conns": 5,
+            "zombie_max_s": 0.39,
+            "undetected": 0,
+            "reconnect_max_s": 1.064
+          },
+          "unauthorized": {
+            "total": 0,
+            "http_401": 0,
+            "ws_1008": 0
+          },
+          "recover": {
+            "up_s": 7.67,
+            "fail_count": 0,
+            "fail_by_error": {}
+          },
+          "baseline_fail_count": 0,
+          "switchover_s": 5.717,
+          "pass": true,
+          "reasons": [],
+          "notes": []
+        }
+      ]
+    },
+    {
+      "run": "t05-kill-b",
+      "files": {
+        "http.jsonl": "c9c87337c46803aa862145a085e168a72ee251e324dd6f34f8dc3faff7a05050",
+        "ws.jsonl": "30d7fdc3224caa083b03987fa4d9348293dee031b304d17dd2578210adcee3e1",
+        "fw.csv": "3450bfbb350408c9ea86ca876ece3a04ed332543a56a4ee38dd3b32e38adc6d2",
+        "marks.jsonl": "f64da1c228a36b9800103013c332e3a497f4c39f04045c3dc83bfc474ced2177",
+        "fw-haproxy.log": "e007a4ac70d058caf729977eb3552dafc936d6359007d6a09bf971d54a80ba28",
+        "fw-meta.json": "0d83157bbafa456878efa9f8f3e0e33ec3966764a2a9ea705daccf84b29087ba"
+      },
+      "counts": {
+        "http": 6000,
+        "ws": 44,
+        "fw": 1800,
+        "marks": 2,
+        "log_servers": 2998
+      },
+      "fw_clock_offset_ms": -11.178,
+      "episodes": [
+        {
+          "index": 0,
+          "scenario": "kill",
+          "target": "console-b",
+          "gate": true,
+          "t0": "2026-10-03T09:49:14.844408+00:00",
+          "t0_remote": "2026-10-03T09:49:14.860306+00:00",
+          "t0_host": "console-b",
+          "recover_at_s": 152.529,
+          "window_s": 268.965,
+          "detect_s": 5.338,
+          "detect_status": "DOWN",
+          "fail": {
+            "count": 0,
+            "first_s": null,
+            "last_s": null,
+            "window_s": null,
+            "by_error": {},
+            "by_stream": {},
+            "ok_after_last": 0,
+            "settled": true
+          },
+          "latency": {
+            "p99_ms": 95.054,
+            "max_ms": 966.598,
+            "ok_p99_ms": 95.054,
+            "ok_max_ms": 966.598,
+            "baseline_p99_ms": 55.037,
+            "n": 5380
+          },
+          "failover_s": 0.37,
+          "failover": {
+            "me": {
+              "basis": "다른 콘솔",
+              "failover_s": 0.265,
+              "confirmed_s": 2.241
+            },
+            "health": {
+              "basis": "다른 콘솔",
+              "failover_s": 0.37,
+              "confirmed_s": 2.307
+            }
+          },
+          "ws": {
+            "conns": [
+              {
+                "stream": "ws-browser",
+                "conn": 0,
+                "console_at_t0": "console-a",
+                "on_target": false,
+                "state": "다른 콘솔"
+              },
+              {
+                "stream": "ws-browser",
+                "conn": 1,
+                "console_at_t0": "console-a",
+                "on_target": false,
+                "state": "다른 콘솔"
+              },
+              {
+                "stream": "ws-browser",
+                "conn": 2,
+                "console_at_t0": "console-b",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.464,
+                "close_code": 1006,
+                "close_by": "net",
+                "reconnect_s": 1.41,
+                "new_console": "console-a"
+              },
+              {
+                "stream": "ws-browser",
+                "conn": 3,
+                "console_at_t0": "console-a",
+                "on_target": false,
+                "state": "다른 콘솔"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 0,
+                "console_at_t0": "console-b",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.463,
+                "close_code": 1006,
+                "close_by": "net",
+                "reconnect_s": 1.375,
+                "new_console": "console-a"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 1,
+                "console_at_t0": "console-b",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.466,
+                "close_code": 1006,
+                "close_by": "net",
+                "reconnect_s": 1.394,
+                "new_console": "console-a"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 2,
+                "console_at_t0": "console-b",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.463,
+                "close_code": 1006,
+                "close_by": "net",
+                "reconnect_s": 1.401,
+                "new_console": "console-a"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 3,
+                "console_at_t0": "console-b",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 0.46,
+                "close_code": 1006,
+                "close_by": "net",
+                "reconnect_s": 1.404,
+                "new_console": "console-a"
+              }
+            ],
+            "target_conns": 5,
+            "zombie_max_s": 0.466,
+            "undetected": 0,
+            "reconnect_max_s": 1.41
+          },
+          "unauthorized": {
+            "total": 0,
+            "http_401": 0,
+            "ws_1008": 0
+          },
+          "recover": {
+            "up_s": 6.807,
+            "fail_count": 0,
+            "fail_by_error": {}
+          },
+          "baseline_fail_count": 0,
+          "switchover_s": 5.338,
+          "pass": true,
+          "reasons": [],
+          "notes": []
+        }
+      ]
+    },
+    {
+      "run": "t06-kill-a",
+      "files": {
+        "http.jsonl": "a67b3af25d7bb764d31e9fed0aee71d72b96f1df5bd286128cdf91afb4314509",
+        "ws.jsonl": "be628ffdd10b1b7a548ff1a95be1a45e6db1f15a0470840068417a1ae0efa49e",
+        "fw.csv": "c3f828e5ce8ec547cec90904f0265c0636ca3ebd13127b5d3754661f89637b35",
+        "marks.jsonl": "b12adb0da9e512c1804187c5dca7d24e1e067677884205cc8c2533d80a077193",
+        "fw-haproxy.log": "5c769b692f2735703d28a2369789fd9bf7120938b1c4c93095aac8d043c70188",
+        "fw-meta.json": "d1929e6ce63dda32e943ac5c3c3f393248fbbd252dc17b06d07b462f5326766c"
+      },
+      "counts": {
+        "http": 5998,
+        "ws": 40,
+        "fw": 1800,
+        "marks": 2,
+        "log_servers": 2997
+      },
+      "fw_clock_offset_ms": -10.51,
+      "episodes": [
+        {
+          "index": 0,
+          "scenario": "kill",
+          "target": "console-a",
+          "gate": true,
+          "t0": "2026-10-03T09:54:17.099993+00:00",
+          "t0_remote": "2026-10-03T09:54:17.107928+00:00",
+          "t0_host": "console-a",
+          "recover_at_s": 153.016,
+          "window_s": 267.862,
+          "detect_s": 5.645,
+          "detect_status": "DOWN",
+          "fail": {
+            "count": 0,
+            "first_s": null,
+            "last_s": null,
+            "window_s": null,
+            "by_error": {},
+            "by_stream": {},
+            "ok_after_last": 0,
+            "settled": true
+          },
+          "latency": {
+            "p99_ms": 83.645,
+            "max_ms": 568.178,
+            "ok_p99_ms": 83.645,
+            "ok_max_ms": 568.178,
+            "baseline_p99_ms": 121.368,
+            "n": 5356
+          },
+          "failover_s": 1.362,
+          "failover": {
+            "me": {
+              "basis": "다른 콘솔",
+              "failover_s": 1.362,
+              "confirmed_s": 3.296
+            },
+            "health": {
+              "basis": "다른 콘솔",
+              "failover_s": 1.162,
+              "confirmed_s": 3.081
+            }
+          },
+          "ws": {
+            "conns": [
+              {
+                "stream": "ws-browser",
+                "conn": 0,
+                "console_at_t0": "console-a",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 1.319,
+                "close_code": 1006,
+                "close_by": "net",
+                "reconnect_s": 1.137,
+                "new_console": "console-b"
+              },
+              {
+                "stream": "ws-browser",
+                "conn": 1,
+                "console_at_t0": "console-a",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 1.32,
+                "close_code": 1006,
+                "close_by": "net",
+                "reconnect_s": 1.18,
+                "new_console": "console-b"
+              },
+              {
+                "stream": "ws-browser",
+                "conn": 2,
+                "console_at_t0": "console-b",
+                "on_target": false,
+                "state": "다른 콘솔"
+              },
+              {
+                "stream": "ws-browser",
+                "conn": 3,
+                "console_at_t0": "console-b",
+                "on_target": false,
+                "state": "다른 콘솔"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 0,
+                "console_at_t0": "console-b",
+                "on_target": false,
+                "state": "다른 콘솔"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 1,
+                "console_at_t0": "console-b",
+                "on_target": false,
+                "state": "다른 콘솔"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 2,
+                "console_at_t0": "console-a",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 1.319,
+                "close_code": 1006,
+                "close_by": "net",
+                "reconnect_s": 1.16,
+                "new_console": "console-b"
+              },
+              {
+                "stream": "ws-net",
+                "conn": 3,
+                "console_at_t0": "console-a",
+                "on_target": true,
+                "state": "감지",
+                "zombie_s": 1.319,
+                "close_code": 1006,
+                "close_by": "net",
+                "reconnect_s": 1.16,
+                "new_console": "console-b"
+              }
+            ],
+            "target_conns": 4,
+            "zombie_max_s": 1.32,
+            "undetected": 0,
+            "reconnect_max_s": 1.18
+          },
+          "unauthorized": {
+            "total": 0,
+            "http_401": 0,
+            "ws_1008": 0
+          },
+          "recover": {
+            "up_s": 5.623,
+            "fail_count": 0,
+            "fail_by_error": {}
+          },
+          "baseline_fail_count": 0,
+          "switchover_s": 5.645,
+          "pass": true,
+          "reasons": [],
+          "notes": []
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "kill": {
+      "n": 3,
+      "gate": true,
+      "targets": [
+        "console-a",
+        "console-b"
+      ],
+      "pass": 3,
+      "fail": 0,
+      "undecided": 0,
+      "detect_s": {
+        "median": 5.645,
+        "max": 5.717,
+        "n": 3
+      },
+      "fail_window_s": {
+        "median": null,
+        "max": null,
+        "n": 0
+      },
+      "fail_last_s": {
+        "median": null,
+        "max": null,
+        "n": 0
+      },
+      "fail_count": {
+        "median": 0,
+        "max": 0,
+        "n": 3
+      },
+      "switchover_s": {
+        "median": 5.645,
+        "max": 5.717,
+        "n": 3
+      },
+      "failover_s": {
+        "median": 0.447,
+        "max": 1.362,
+        "n": 3
+      },
+      "p99_ms": {
+        "median": 95.054,
+        "max": 109.578,
+        "n": 3
+      },
+      "max_ms": {
+        "median": 568.178,
+        "max": 966.598,
+        "n": 3
+      },
+      "ws_zombie_max_s": {
+        "median": 0.466,
+        "max": 1.32,
+        "n": 3
+      },
+      "ws_undetected": {
+        "median": 0,
+        "max": 0,
+        "n": 3
+      },
+      "ws_reconnect_max_s": {
+        "median": 1.18,
+        "max": 1.41,
+        "n": 3
+      },
+      "unauthorized": {
+        "median": 0,
+        "max": 0,
+        "n": 3
+      },
+      "recover_up_s": {
+        "median": 6.807,
+        "max": 7.67,
+        "n": 3
+      }
+    },
+    "stop": {
+      "n": 3,
+      "gate": true,
+      "targets": [
+        "console-a",
+        "console-b"
+      ],
+      "pass": 3,
+      "fail": 0,
+      "undecided": 0,
+      "detect_s": {
+        "median": 5.732,
+        "max": 5.746,
+        "n": 3
+      },
+      "fail_window_s": {
+        "median": null,
+        "max": null,
+        "n": 0
+      },
+      "fail_last_s": {
+        "median": null,
+        "max": null,
+        "n": 0
+      },
+      "fail_count": {
+        "median": 0,
+        "max": 0,
+        "n": 3
+      },
+      "switchover_s": {
+        "median": 5.732,
+        "max": 5.746,
+        "n": 3
+      },
+      "failover_s": {
+        "median": 0.476,
+        "max": 0.677,
+        "n": 3
+      },
+      "p99_ms": {
+        "median": 68.81,
+        "max": 105.22,
+        "n": 3
+      },
+      "max_ms": {
+        "median": 435.348,
+        "max": 525.029,
+        "n": 3
+      },
+      "ws_zombie_max_s": {
+        "median": 0.416,
+        "max": 0.616,
+        "n": 3
+      },
+      "ws_undetected": {
+        "median": 0,
+        "max": 0,
+        "n": 3
+      },
+      "ws_reconnect_max_s": {
+        "median": 1.133,
+        "max": 1.137,
+        "n": 3
+      },
+      "unauthorized": {
+        "median": 0,
+        "max": 0,
+        "n": 3
+      },
+      "recover_up_s": {
+        "median": 5.92,
+        "max": 8.022,
+        "n": 3
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+설치: local.opsloop.console-watch · 60초마다 · 기록 /Users/hanseongmin/Library/Logs/opsloop/console-watch.log
+웹훅: 없음
+  알림 경로 시험: "/Users/hanseongmin/Library/Application Support/OpsLoop/bin/console-watch.sh" --test-alert
+	path = /Users/hanseongmin/Library/LaunchAgents/local.opsloop.console-watch.plist
+	state = running
+	program = /bin/bash
+	stdout path = /Users/hanseongmin/Library/Logs/opsloop/console-watch.log
+	stderr path = /Users/hanseongmin/Library/Logs/opsloop/console-watch.log
+	runs = 1
+	last exit code = (never exited)
+		state = active
+		state = active
+상태: UP (2026-10-02 19:06 부터 · 23시간 13분째)
+마지막 확인: 2026-10-03 18:20 · HTTP 200
+점검 창: 2026-10-03 21:07 까지 (알리지 않는다)
+백업: 마지막 성공 2026-10-03 12:37 · 5시간 43분 전 (오래됨 기준 10시간)
+웹훅: 없음
+감시 주소: https://192.168.70.254:8443/health · 기록: /Users/hanseongmin/Library/Logs/opsloop/console-watch.log

@@ -1,0 +1,8 @@
+Bootstrap failed: 5: Input/output error
+Try re-running the command as root for richer errors.
+상태: UP (2026-10-02 19:06 부터 · 23시간 8분째)
+마지막 확인: 2026-10-03 18:12 · HTTP 200
+점검 창: 2026-10-03 21:07 까지 (알리지 않는다)
+백업: 마지막 성공 2026-10-03 12:37 · 5시간 37분 전 (오래됨 기준 10시간)
+웹훅: 없음
+감시 주소: https://192.168.70.254:8443/health · 기록: /Users/hanseongmin/Library/Logs/opsloop/console-watch.log
