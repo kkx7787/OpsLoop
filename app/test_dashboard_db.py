@@ -258,10 +258,11 @@ class DashboardDatabaseTests(unittest.IsolatedAsyncioTestCase):
         await self.incident("a", 0)
         await self.conn.execute("INSERT INTO blocklist (actor_ip,incident_key,expires_at) VALUES ('192.0.2.8','a',now()+interval '1 hour')")
         request = SimpleNamespace(state=SimpleNamespace(user={"u": "test-admin", "r": "admin"}))
-        body = main.ActionIn(action="unblock_ip", note="시험")
+        body = main.ActionIn(action="unblock_ip", note="시험", expected_version="0:0")
         with patch.object(main.app.state, "pool", self.pool, create=True), patch.object(main.hub, "broadcast", AsyncMock()):
             await main.add_action("a", body, request)
             first = dict(await self.conn.fetchrow("SELECT released_at, released_by FROM blocklist"))
+            body.expected_version = await self.conn.fetchval(main.workflow.VERSION_SQL, "a")
             with self.assertRaises(main.HTTPException) as error:
                 await main.add_action("a", body, request)
             self.assertEqual(error.exception.status_code, 409)

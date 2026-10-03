@@ -26,6 +26,7 @@ from unittest.mock import AsyncMock, patch
 import absorbed as absorbed_mod
 import live
 import main
+from fastapi import HTTPException
 
 DSN = os.environ.get("OPSLOOP_TEST_DATABASE_URL")
 KEY = "R006|v3|192.0.2.1|2026-09-26T00:00:00+00:00"
@@ -191,14 +192,14 @@ class LiveDatabaseTests(unittest.IsolatedAsyncioTestCase):
         await self.listener(hub_a)
         await self.listener(hub_b)
         with patch.object(main.hub, "broadcast", AsyncMock()) as direct:
-            verdict = await main.add_verdict(KEY, main.VerdictIn(verdict="threat", reason="시험"), OPERATOR)
-            action = await main.add_action(KEY, main.ActionIn(action="acknowledge"), OPERATOR)
+            verdict = await main.add_verdict(KEY, main.VerdictIn(expected_version="0:0", verdict="threat", reason="시험"), OPERATOR)
+            action = await main.add_action(KEY, main.ActionIn(expected_version=verdict["workflow_version"], action="acknowledge"), OPERATOR)
             # 되돌려진 기록은 알리지 않는다: 없는 사건(404) · 풀 차단 없음(409)
             with self.assertRaises(main.HTTPException) as missing:
-                await main.add_verdict("R001|v2|none", main.VerdictIn(verdict="threat"), OPERATOR)
+                await main.add_verdict("R001|v2|none", main.VerdictIn(expected_version="0:0", verdict="threat"), OPERATOR)
             self.assertEqual(missing.exception.status_code, 404)
             with self.assertRaises(main.HTTPException) as conflict:
-                await main.add_action(KEY, main.ActionIn(action="unblock_ip"), ADMIN)
+                await main.add_action(KEY, main.ActionIn(expected_version=action["workflow_version"], action="unblock_ip"), ADMIN)
             self.assertEqual(conflict.exception.status_code, 409)
         direct.assert_not_awaited()
         # 응답 본문은 그대로다
@@ -227,7 +228,7 @@ class LiveDatabaseTests(unittest.IsolatedAsyncioTestCase):
         # 통보 문장을 돌린 직후 멈춘다. 커밋 전이다
         gated = GatedConn(self.a, lambda sql: "pg_notify" in sql)
         main.app.state.pool = Pool(gated)
-        task = asyncio.create_task(main.add_verdict(KEY, main.VerdictIn(verdict="threat"), OPERATOR))
+        task = asyncio.create_task(main.add_verdict(KEY, main.VerdictIn(expected_version="0:0", verdict="threat"), OPERATOR))
         await asyncio.wait_for(gated.reached.wait(), 5)
         await marker("t43-before-commit")
         self.assertEqual(hub.about(KEY), [], "커밋 전에는 나가지 않는다")
@@ -240,7 +241,7 @@ class LiveDatabaseTests(unittest.IsolatedAsyncioTestCase):
         hub.messages.clear()
         main.app.state.pool = Pool(FailingConn(self.a, lambda sql: "pg_notify" in sql))
         with self.assertRaises(RuntimeError):
-            await main.add_action(KEY, main.ActionIn(action="note", note="되돌림"), OPERATOR)
+            await main.add_action(KEY, main.ActionIn(expected_version=verdict["workflow_version"], action="note", note="되돌림"), OPERATOR)
         await marker("t43-after-rollback")
         self.assertEqual(hub.about(KEY), [], "되돌려진 조치는 알리지 않는다")
         self.assertEqual(await self.a.fetchval("SELECT count(*) FROM actions WHERE incident_key = $1", KEY), 0)
@@ -270,7 +271,7 @@ class LiveDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("끊김(종료 알림)", logs.output[0])
         self.assertIn("다시 붙음(1회째 시도", logs.output[-1])
         # 다시 붙은 연결로 두 채널을 모두 받는다
-        verdict = await main.add_verdict(KEY, main.VerdictIn(verdict="threat"), OPERATOR)
+        verdict = await main.add_verdict(KEY, main.VerdictIn(expected_version="0:0", verdict="threat"), OPERATOR)
         await self.admin.execute("SELECT pg_notify('opsloop_incident', $1)", json.dumps({"incident_key": "t43-new"}))
         await until(lambda: hub.about(KEY) and hub.about("t43-new"))
         self.assertEqual(hub.about(KEY), [{"type": "verdict.created", "data": {"incident_key": KEY, "id": verdict["id"]}}])
@@ -291,29 +292,32 @@ class LiveDatabaseTests(unittest.IsolatedAsyncioTestCase):
         waiting = await self.admin.fetchval("SELECT wait_event_type FROM pg_stat_activity WHERE pid = $1",
                                             self.b.get_server_pid())
         gated.gate.set()
-        return await asyncio.wait_for(task_a, 10), await asyncio.wait_for(task_b, 10), finished_early, waiting
+        results = await asyncio.wait_for(asyncio.gather(task_a, task_b, return_exceptions=True), 10)
+        return *results, finished_early, waiting
 
     async def test_concurrent_verdicts_run_in_turn(self):
         first, second, finished_early, waiting = await self.hold_then_race(
-            lambda: main.add_verdict(KEY, main.VerdictIn(verdict="threat"), OPERATOR),
-            lambda: main.add_verdict(KEY, main.VerdictIn(verdict="false_positive"), OPERATOR))
+            lambda: main.add_verdict(KEY, main.VerdictIn(expected_version="0:0", verdict="threat"), OPERATOR),
+            lambda: main.add_verdict(KEY, main.VerdictIn(expected_version="0:0", verdict="false_positive"), OPERATOR))
         self.assertFalse(finished_early, "앞 판정이 사건 행을 쥔 동안 뒤 판정은 끝나지 않는다")
         self.assertEqual(waiting, "Lock")
-        self.assertLess(first["id"], second["id"])
+        self.assertIsInstance(second, HTTPException)
+        self.assertEqual(second.status_code, 409)
         rows = await self.a.fetch("SELECT verdict FROM verdicts WHERE incident_key = $1 ORDER BY id", KEY)
-        self.assertEqual([r["verdict"] for r in rows], ["threat", "false_positive"])
+        self.assertEqual([r["verdict"] for r in rows], ["threat"])
         self.assertEqual(await self.a.fetchval("SELECT status FROM incidents WHERE incident_key = $1", KEY), "resolved")
 
     async def test_action_waits_for_verdict_and_status_follows_commit_order(self):
         _, action, finished_early, waiting = await self.hold_then_race(
-            lambda: main.add_verdict(KEY, main.VerdictIn(verdict="threat"), OPERATOR),
-            lambda: main.add_action(KEY, main.ActionIn(action="acknowledge"), OPERATOR))
+            lambda: main.add_verdict(KEY, main.VerdictIn(expected_version="0:0", verdict="threat"), OPERATOR),
+            lambda: main.add_action(KEY, main.ActionIn(expected_version="0:0", action="acknowledge"), OPERATOR))
         self.assertFalse(finished_early, "판정이 사건 행을 쥔 동안 조치는 아무것도 쓰지 않고 기다린다")
         self.assertEqual(waiting, "Lock")
-        self.assertEqual(action["action"], "acknowledge")
-        # 조치가 판정 뒤에 커밋됐다. 상태도 조치의 것이다(판정이 늦게 커밋돼 조치 상태를 덮지 않는다)
+        self.assertIsInstance(action, HTTPException)
+        self.assertEqual(action.status_code, 409)
+        # 먼저 저장한 판정은 오래된 조치로 덮이지 않는다.
         self.assertEqual(await self.a.fetchval("SELECT status FROM incidents WHERE incident_key = $1", KEY),
-                         "acknowledged")
+                         "resolved")
 
     async def test_follower_and_absorbed_block_do_not_deadlock(self):
         """후속 차단이 흡수 출발지의 차단 목록 행을 쥔 사이 같은 첫 사건의 함께 차단이 온다. 잠금 순서가 같으면
@@ -334,12 +338,16 @@ class LiveDatabaseTests(unittest.IsolatedAsyncioTestCase):
         follow = asyncio.create_task(follower.step(gated))
         await asyncio.wait_for(gated.reached.wait(), 5)
         block = asyncio.create_task(main.add_action(
-            KEY, main.ActionIn(action="block_ip", include_absorbed=True, expires_hours=48), OPERATOR))
+            KEY, main.ActionIn(expected_version="0:0", action="block_ip", include_absorbed=True, expires_hours=48), OPERATOR))
         await asyncio.sleep(0.5)
         self.assertFalse(block.done())
         gated.gate.set()
         done = await asyncio.wait_for(follow, 10)
-        result = await asyncio.wait_for(block, 10)
+        with self.assertRaises(HTTPException) as conflict:
+            await asyncio.wait_for(block, 10)
+        self.assertEqual(conflict.exception.status_code, 409)
+        token = await self.a.fetchval(main.workflow.VERSION_SQL, KEY)
+        result = await main.add_action(KEY, main.ActionIn(expected_version=token, action="block_ip", include_absorbed=True, expires_hours=48), OPERATOR)
         self.assertEqual(done, [(KEY, 2)])
         self.assertEqual(result["absorbed"]["blocked"], 2)
         rows = await self.a.fetch("SELECT host(actor_ip) ip, incident_key FROM blocklist ORDER BY actor_ip")

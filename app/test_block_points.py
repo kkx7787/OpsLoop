@@ -355,6 +355,7 @@ class SchemaTests(unittest.IsolatedAsyncioTestCase):
     async def act(self, key, body, request=OPERATOR):
         with patch.object(main.app.state, "pool", SimpleNamespace(acquire=self.acquire), create=True), \
                 patch.object(main.hub, "broadcast", AsyncMock()):
+            body.expected_version = await self.conn.fetchval(main.workflow.VERSION_SQL, key)
             return await main.add_action(key, body, request)
 
     async def incident(self, key, rule, ip, *, target=None, sensors=None, version="v3"):

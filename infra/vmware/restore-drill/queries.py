@@ -41,7 +41,7 @@ TABLES = ("events", "sessions", "rule_versions", "incidents", "actions", "verdic
 #   시퀀스는 그대로다
 # 이슈 #77 뒤: 트리거 +1(trg_blocklist_points) · 함수 +1(blocklist_points_change). 표(blocklist · absorbed_blocks 에 points 열만
 #   더한다) · FK · 뷰 · 시퀀스는 그대로다
-EXPECT = {"tables": 27, "fk": 15, "triggers": 10, "functions": 20, "views": 3}  # #103 로그인 제한 표/함수
+EXPECT = {"tables": 27, "fk": 16, "triggers": 10, "functions": 20, "views": 3}  # #103 로그인 제한 표/함수
 S3_SENSORS = ("cowrie", "decoy", "gateway")      # opsloop-ingest SENSORS. 나머지 센서는 관제 대상 로그(Loki · 관문 · 관리 원장)
 DB_ONLY_SENSORS = ("audit", "console")           # DB 에만 있는 이벤트. 원장에서 다시 만들 수 없다
 
@@ -267,6 +267,9 @@ def q_console_after(base_id) -> str:
 # 비밀 열은 md5 로만 넣는다. 알림 채널 url 은 넣지 않는다(흐름 주소가 곧 비밀이다).
 # 시각 식은 그 행이 마지막으로 생기거나 바뀐 때다. 운영에만 있는 행 · 바뀐 행을 T_f 앞뒤로 나눈다(RPO 손실)
 FINGERPRINTS = (
+    ("incident_assignments", "incident_key", "ROW(incident_key, assigned_to)",
+     "coalesce((SELECT max(a.created_at) FROM actions a WHERE a.incident_key=i.incident_key AND a.action='assign'), i.created_at)",
+     "incidents i", "WHERE assigned_to IS NOT NULL OR EXISTS (SELECT 1 FROM actions a WHERE a.incident_key=i.incident_key AND a.action='assign')"),
     ("verdicts", "id::text",
      "ROW(id, incident_key, verdict, reason, observed_value, operator, proposed, created_at, decision_seconds)",
      "created_at", "verdicts", ""),

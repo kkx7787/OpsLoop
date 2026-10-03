@@ -22,7 +22,8 @@ class ProposalBasisDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.conn = await asyncpg.connect(os.environ["OPSLOOP_TEST_DATABASE_URL"])
         await self.conn.execute("SET search_path TO pg_temp")
         await self.conn.execute("""
-            CREATE TEMP TABLE incidents (incident_key text PRIMARY KEY, rule_id text, rule_version text NOT NULL,
+            CREATE TEMP TABLE console_users (username text PRIMARY KEY, role text, disabled_at timestamptz);
+    CREATE TEMP TABLE incidents (assigned_to text, incident_key text PRIMARY KEY, rule_id text, rule_version text NOT NULL,
                 rule_name text, severity text, actor_ip inet, target text, first_ts timestamptz,
                 last_ts timestamptz, signal_count integer, session_count integer, evidence jsonb,
                 status text DEFAULT 'open', created_at timestamptz DEFAULT now());

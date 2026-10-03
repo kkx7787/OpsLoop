@@ -98,6 +98,7 @@ export function IncidentRow({ incident, elapsedSeconds, rowIndex, cti, className
       </div>
       <div role="cell">
         <IncidentStatusLabel status={incident.status} />
+        <div className="mt-1 text-xs text-ink-muted">담당 <UntrustedText value={incident.assigned_to} fallback="미배정" />{incident.assigned_to && incident.assignee_available === false && <span className="text-warning"> · 변경 필요</span>}</div>
       </div>
       <div role="cell">
         {incident.verdict ? <VerdictBadge verdict={incident.verdict} /> : <span className="text-xs font-medium text-primary">미판정</span>}

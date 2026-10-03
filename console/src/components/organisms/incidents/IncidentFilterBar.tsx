@@ -137,6 +137,12 @@ export function IncidentFilterBar({ value, onChange, rules = [], devices = [], c
         </Select>
       </Field>
 
+      <Field id={`${id}-assignment`} label="담당">
+        <Select id={`${id}-assignment`} fieldSize="sm" className="w-auto" value={value.assignment ?? ''}
+          onChange={event => patch({ assignment: event.target.value === 'mine' || event.target.value === 'unassigned' ? event.target.value : undefined })}>
+          <option value="">전체</option><option value="mine">내 담당</option><option value="unassigned">미배정</option>
+        </Select>
+      </Field>
       <Field id={`${id}-judged`} label="판정">
         <Select
           id={`${id}-judged`}

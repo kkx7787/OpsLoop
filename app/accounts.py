@@ -31,6 +31,7 @@ COLUMNS = "username, role, disabled_at, created_at, last_login_at, updated_at"
 DELETABLE = ("NOT (u.last_login_at IS NOT NULL"
              " OR EXISTS (SELECT 1 FROM verdicts WHERE operator = u.username)"
              " OR EXISTS (SELECT 1 FROM actions WHERE operator = u.username)"
+             " OR EXISTS (SELECT 1 FROM incidents WHERE assigned_to = u.username)"
              " OR EXISTS (SELECT 1 FROM blocklist WHERE requested_by = u.username OR released_by = u.username))")
 LIST_SQL = f"SELECT {COLUMNS}, {DELETABLE} AS deletable FROM console_users u ORDER BY username"
 ONE_SQL = f"SELECT {COLUMNS}, {DELETABLE} AS deletable FROM console_users u WHERE username = $1"
@@ -38,6 +39,7 @@ ONE_SQL = f"SELECT {COLUMNS}, {DELETABLE} AS deletable FROM console_users u WHER
 # 모든 표 권한을 본다) 먼저 묻고 문장을 고른다. 거부된 문장이 변경 트랜잭션을 깨지 않는다. 콘솔 역할은 역할 블록에서 셋 다 읽는다
 READABLE_SQL = ("SELECT coalesce(has_table_privilege(to_regclass('verdicts'), 'SELECT')"
                 " AND has_table_privilege(to_regclass('actions'), 'SELECT')"
+                " AND has_table_privilege(to_regclass('incidents'), 'SELECT')"
                 " AND has_table_privilege(to_regclass('blocklist'), 'SELECT'), false)")
 LIST_PLAIN_SQL = f"SELECT {COLUMNS}, NULL::boolean AS deletable FROM console_users ORDER BY username"
 ONE_PLAIN_SQL = f"SELECT {COLUMNS}, NULL::boolean AS deletable FROM console_users WHERE username = $1"
@@ -52,6 +54,7 @@ REFUSED = {
     "invalid": (422, "아이디 · 비밀번호 형식이 맞지 않습니다"),
     "not_found": (404, "계정을 찾을 수 없습니다"),
     "exists": (409, "이미 있는 아이디입니다"),
+    "assigned": (409, "담당 사건이 있는 계정은 지울 수 없습니다. 담당을 해제·재배정하거나 계정을 비활성으로 바꿔 주세요"),
     "in_use": (409, "판정 · 조치 · 로그인 기록이 있는 계정은 지울 수 없습니다. 비활성으로 막아 주세요"),
     "cli_only": (409, "관리자 계정과 관리자 부여는 명령줄에서만 바꿉니다"),
     "self": (409, "본인 계정은 여기서 바꿀 수 없습니다"),

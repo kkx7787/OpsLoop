@@ -33,6 +33,7 @@ function detail(extra: Partial<IncidentDetail> = {}): IncidentDetail {
     status: 'open',
     created_at: '2026-09-18T06:10:05+00:00',
     evidence: { sample: [{ ts: '2026-09-18T06:00:00+00:00', shasum: 'abc123', url: 'http://evil/x.sh' }], sessions: ['s-1'], observed_count_max: 3 },
+    workflow_version: '0:0', assigned_to: null, assignee_available: false,
     actions: [],
     verdicts: [],
     related: [{ incident_key: RELATED_KEY, rule_id: 'R001', severity: 'low', first_ts: '2026-09-17T01:00:00+00:00', signal_count: 40, status: 'resolved' }],
@@ -105,6 +106,7 @@ function stubApi({ role = 'operator', body = detail(), status = 200, cti = { as_
   const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
     const method = init?.method ?? 'GET'
+    if (url === '/api/incident-operators') return json([{ username: 'han', role: 'admin' }], 200)
     if (url.startsWith('/api/me')) return json({ username: 'han', role }, 200)
     if (url === incidentCtiPath(KEY) && method === 'GET') return json(cti, ctiStatus)
     if (url === incidentPath(KEY) && method === 'GET') return json(state, status)
@@ -165,6 +167,47 @@ async function readyPanel() {
 describe('IncidentDetailPage', () => {
   afterEach(() => {
     vi.unstubAllGlobals()
+  })
+
+  it('다른 판정의 실시간 갱신은 작성한 사유와 선택을 유지하고 명시적 확인 전 저장을 막는다(#105)', async () => {
+    const fetch = stubApi()
+    const client = noRetryClient()
+    renderRoutes(routes(), `/incidents/${encodeURIComponent(KEY)}`, client)
+    const { panel } = await readyPanel()
+    fireEvent.click(panel.getByRole('radio', { name: /실제 위협/ }))
+    fireEvent.change(panel.getByLabelText('사유'), { target: { value: '작성 중인 근거' } })
+    const updated = detail({ workflow_version: '0:2', verdicts: [{ id: 2, verdict: 'false_positive', operator: 'other', reason: '다른 관제자의 확인', observed_value: null, created_at: '2026-09-18T08:00:00Z' }] })
+    act(() => client.setQueryData(incidentKeys.detail(KEY), updated))
+    await panel.findByRole('button', { name: '최신 이력 확인 후 계속' })
+    expect(panel.getByLabelText('사유')).toHaveValue('작성 중인 근거')
+    expect(panel.getByRole('radio', { name: /실제 위협/ })).toBeChecked()
+    expect(panel.getByRole('button', { name: '재판정 기록' })).toBeDisabled()
+    expect(panel.getByText('다른 관제자의 확인')).toBeInTheDocument()
+    fireEvent.click(panel.getByRole('button', { name: '최신 이력 확인 후 계속' }))
+    fireEvent.click(panel.getByRole('button', { name: '재판정 기록' }))
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/verdict`, 'POST')).toMatchObject({ expected_version: '0:2', verdict: 'threat', reason: '작성 중인 근거' }))
+  })
+
+  it('다른 담당 변경은 열어 둔 차단 메모를 보존하고 새 기준 확인을 요구한다(#105)', async () => {
+    stubApi()
+    const client = noRetryClient()
+    renderRoutes(routes(), `/incidents/${encodeURIComponent(KEY)}`, client)
+    const { panel } = await readyPanel()
+    fireEvent.click(panel.getByRole('button', { name: '차단' }))
+    fireEvent.change(panel.getByLabelText('메모 (선택)'), { target: { value: '현재 증거 확인 중' } })
+    act(() => client.setQueryData(incidentKeys.detail(KEY), detail({ workflow_version: '8:0', assigned_to: 'other', assignee_available: true })))
+    await panel.findByRole('button', { name: '최신 이력 확인 후 계속' })
+    expect(panel.getByLabelText('메모 (선택)')).toHaveValue('현재 증거 확인 중')
+    expect(panel.getByRole('button', { name: '차단 확정' })).toBeDisabled()
+    expect(panel.getByText('other')).toBeInTheDocument()
+  })
+
+  it('변경 토큰이 없는 이전 서버에는 조치·판정을 보내지 않는다(#105)', async () => {
+    stubApi({ body: detail({ workflow_version: undefined }) })
+    renderRoutes(routes(), `/incidents/${encodeURIComponent(KEY)}`)
+    const { panel } = await readyPanel()
+    expect(panel.getByRole('button', { name: '판정 기록' })).toBeDisabled()
+    expect(panel.getByText(/서버의 변경 확인 정보가 없습니다/)).toBeInTheDocument()
   })
 
   it('머리글과 구역 다섯 개를 그리고 순환 규칙 경고를 보인다', async () => {
@@ -371,7 +414,7 @@ describe('IncidentDetailPage', () => {
     fireEvent.click(confirm.getByRole('button', { name: '차단 확정' }))
 
     await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toBeDefined())
-    expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'block_ip', note: '세션 3개에서 명령 실행', expires_hours: 168 })
+    expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ expected_version: '0:0', action: 'block_ip', note: '세션 3개에서 명령 실행', expires_hours: 168 })
 
     expect(await panel.findByText('차단 조치를 기록했습니다')).toBeInTheDocument()
     expect(panel.queryByRole('form', { name: '차단 확인' })).toBeNull()
@@ -539,7 +582,7 @@ describe('IncidentDetailPage', () => {
     fireEvent.click(check)
     fireEvent.click(confirm.getByRole('button', { name: '차단 확정' }))
     await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toBeDefined())
-    expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'block_ip', expires_hours: 24, include_absorbed: true })
+    expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ expected_version: '0:0', action: 'block_ip', expires_hours: 24, include_absorbed: true })
     expect(await panel.findByText(/흡수 출발지 2곳 함께 차단/)).toBeInTheDocument()
 
     // 다시 열면 선택은 꺼져 있다
@@ -555,7 +598,7 @@ describe('IncidentDetailPage', () => {
     const confirm = within(panel.getByRole('form', { name: '차단 확인' }))
     fireEvent.click(confirm.getByRole('checkbox', { name: '앞으로 흡수되는 출발지도 함께 차단' }))
     fireEvent.click(confirm.getByRole('button', { name: '차단 확정' }))
-    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'block_ip', expires_hours: 24, include_absorbed: true }))
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ expected_version: '0:0', action: 'block_ip', expires_hours: 24, include_absorbed: true }))
   })
 
   it('함께 차단 안내에 사람이 푼 곳 · 차단 금지 대역을 적고, 후속 차단 중이면 ③ 과 해제 확인에 보인다', async () => {
@@ -589,7 +632,7 @@ describe('IncidentDetailPage', () => {
     expect(confirm.getByRole('button', { name: '흡수 차단 3곳도 함께 해제 설명' })).toHaveAccessibleDescription(/의도된 감사입니다. 흡수 판단 전체가 틀렸을 때만 쓰고/)
     fireEvent.click(confirm.getByRole('checkbox', { name: '흡수 차단 3곳도 함께 해제' }))
     fireEvent.click(confirm.getByRole('button', { name: '차단 해제 확정' }))
-    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'unblock_ip', include_absorbed: true }))
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ expected_version: '0:0', action: 'unblock_ip', include_absorbed: true }))
     expect(await panel.findByText(/흡수 차단 3곳 함께 해제/)).toBeInTheDocument()
   })
 
@@ -609,7 +652,7 @@ describe('IncidentDetailPage', () => {
     expect(confirm.queryByText(/R201/)).toBeNull()
     expect(confirm.getByRole('button', { name: '흡수 차단 2곳도 함께 해제 설명' })).toHaveAccessibleDescription('흡수 판단 전체가 틀렸을 때만 씁니다. 평소에는 만료로 풀리게 둡니다.')
     fireEvent.click(confirm.getByRole('button', { name: '차단 해제 확정' }))
-    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'unblock_ip', include_absorbed: true }))
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ expected_version: '0:0', action: 'unblock_ip', include_absorbed: true }))
   })
 
   it('출발지가 없는 사건(대상만)은 행위 · 이력을 모을 수 없다고 알리고 차단은 흐리다', async () => {
@@ -1101,7 +1144,7 @@ describe('IncidentDetailPage · 차단 적용 지점(#77)', () => {
     renderRoutes(routes(), PATH)
     const first = await openBlock()
     fireEvent.click(first.form.getByRole('button', { name: '차단 확정' }))
-    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'block_ip', expires_hours: 24, points: ['fw'] }))
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ expected_version: '0:0', action: 'block_ip', expires_hours: 24, points: ['fw'] }))
     expect(await first.panel.findByText('차단 조치를 기록했습니다')).toBeInTheDocument()
 
     fetch.mockClear()
@@ -1112,7 +1155,7 @@ describe('IncidentDetailPage · 차단 적용 지점(#77)', () => {
     expect(check).toBeChecked()
     expect(check).toHaveAccessibleDescription(/^허니팟 관측이 끊깁니다\. 허니팟 센서에서만 본 위협이라/)
     fireEvent.click(form.getByRole('button', { name: '차단 확정' }))
-    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'block_ip', expires_hours: 24, points: ['gateway', 'fw'] }))
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ expected_version: '0:0', action: 'block_ip', expires_hours: 24, points: ['gateway', 'fw'] }))
     expect(await panel.findByText('차단 조치를 기록했습니다')).toBeInTheDocument()
     // 다시 열면 고른 것은 사라지고 기본값(내부 방화벽만)이다
     fireEvent.click(panel.getByRole('button', { name: '차단' }))
@@ -1143,7 +1186,7 @@ describe('IncidentDetailPage · 차단 적용 지점(#77)', () => {
     fireEvent.click(check)
     expect(group.getByText('해제 뒤 다시 걸기로 기록됩니다.')).toHaveClass('text-warning')
     fireEvent.click(form.getByRole('button', { name: '차단 확정' }))
-    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'block_ip', expires_hours: 24, points: ['fw'] }))
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ expected_version: '0:0', action: 'block_ip', expires_hours: 24, points: ['fw'] }))
   })
 
   it('만료 없는 옛 차단에서 admin 이 관문을 빼면 적용 지점도 바뀐다고 본문에 적는다', async () => {
@@ -1175,7 +1218,7 @@ describe('IncidentDetailPage · 차단 적용 지점(#77)', () => {
     fireEvent.click(check)
     expect(group.getByText('허니팟 관측이 끊깁니다.')).toBeInTheDocument()
     fireEvent.click(form.getByRole('button', { name: '차단 확정' }))
-    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'block_ip', expires_hours: 24, points: ['gateway', 'fw'] }))
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ expected_version: '0:0', action: 'block_ip', expires_hours: 24, points: ['gateway', 'fw'] }))
   })
 
   it('관리자가 관문을 뺀 차단은 관문이 뺐다고 확인될 때까지 ③ 관문 칸이 빠짐 확인 전이다(#77 결정 14)', async () => {
@@ -1201,7 +1244,7 @@ describe('IncidentDetailPage · 차단 적용 지점(#77)', () => {
     fireEvent.click(form.getByRole('checkbox', { name: '흡수된 출발지 2곳도 함께 차단' }))
     fireEvent.click(group.getByRole('checkbox', { name: '허니팟 관문에서도 막기' }))
     fireEvent.click(form.getByRole('button', { name: '차단 확정' }))
-    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ action: 'block_ip', expires_hours: 24, include_absorbed: true, points: ['gateway', 'fw'] }))
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/actions`, 'POST')).toEqual({ expected_version: '0:0', action: 'block_ip', expires_hours: 24, include_absorbed: true, points: ['gateway', 'fw'] }))
   })
 })
 

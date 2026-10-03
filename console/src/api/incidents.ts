@@ -1,6 +1,7 @@
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { ACTION_STATUS, isIncidentAction, type IncidentAction, type IncidentStatus, type Severity, type Verdict } from '@/lib/domain'
 import { api } from './client'
+import { isApiError } from './errors'
 import { monitoringKeys } from './monitoring-keys'
 
 /**
@@ -49,6 +50,10 @@ export const UNCONFIRMED_DEVICE = '_unconfirmed'
 
 /** 목록 · 상세가 같이 갖는 사건 필드 */
 export interface IncidentBase {
+  assigned_to?: string | null
+  assignee_available?: boolean
+  workflow_version?: string
+
   incident_key: string
   rule_id: string
   rule_version: string
@@ -119,6 +124,7 @@ export interface VerdictRecord {
 
 /** POST /verdict 의 201 응답. 기록 필드에 제안값 · 소요 시간 · 사건 키가 더 온다 */
 export interface VerdictCreated extends VerdictRecord {
+  workflow_version?: string
   proposed: Verdict | null
   decision_seconds: number | null
   incident_key: string
@@ -134,6 +140,7 @@ export interface ActionRecord {
 }
 
 export interface ActionCreated extends ActionRecord {
+  workflow_version?: string
   incident_key: string
   /**
    * 흡수 출발지를 함께 다룬 조치. 차단(include_absorbed)은 blocked(이 사건 흡수 차단) · kept(다른 사건 차단으로 둠) ·
@@ -363,6 +370,7 @@ export type IncidentSort = 'pending' | 'severity' | 'recent'
 
 /** 목록 필터. 비우거나(undefined · '') 넘기지 않은 칸은 쿼리에 붙지 않는다 */
 export interface IncidentFilters {
+  assignment?: 'mine' | 'unassigned'
   status?: IncidentStatus
   severity?: Severity
   rule_id?: string
@@ -385,6 +393,7 @@ export interface IncidentFilters {
 }
 
 export interface VerdictInput {
+  expected_version?: string
   verdict: Verdict
   reason?: string
   observed_value?: number
@@ -395,6 +404,7 @@ export interface VerdictInput {
 }
 
 export interface ActionInput {
+  expected_version?: string
   action: IncidentAction
   note?: string
   /** 차단 만료(1..720시간, 기본 24) */
@@ -537,15 +547,25 @@ export function useIncident(key: string) {
   })
 }
 
+/** 실시간 재조회가 먼저 도착했으면 늦은 POST 응답으로 새 상태를 되돌리지 않는다. */
+export function newerWorkflow(detail: IncidentDetail, version?: string): boolean {
+  if (!detail.workflow_version || !version) return false
+  const current = detail.workflow_version.split(':').map(BigInt)
+  const saved = version.split(':').map(BigInt)
+  return current[0] > saved[0] || current[1] > saved[1]
+}
+
 /** 판정이 기록된 상세: 판정을 이력 끝에 붙이고 사건은 종결(resolved). 서버(add_verdict)와 같은 규칙 */
 export function applyVerdict(detail: IncidentDetail, created: VerdictCreated): IncidentDetail {
-  return { ...detail, status: 'resolved', verdicts: [...detail.verdicts, created] }
+  if (newerWorkflow(detail, created.workflow_version)) return detail
+  return { ...detail, workflow_version: created.workflow_version ?? detail.workflow_version, status: 'resolved', verdicts: [...detail.verdicts.filter(v => v.id !== created.id), created] }
 }
 
 /** 조치가 기록된 상세: 조치를 이력 끝에 붙이고 상태는 ACTION_STATUS 대로(없는 조치는 그대로) */
 export function applyAction(detail: IncidentDetail, created: ActionCreated): IncidentDetail {
+  if (newerWorkflow(detail, created.workflow_version)) return detail
   const status = (isIncidentAction(created.action) && ACTION_STATUS[created.action]) || detail.status
-  return { ...detail, status, actions: [...detail.actions, created] }
+  return { ...detail, workflow_version: created.workflow_version ?? detail.workflow_version, status, actions: [...detail.actions.filter(a => a.id !== created.id), created] }
 }
 
 /** 차단 목록을 건드리는 조치. 상세의 actor.blocked 는 서버만 알므로 다시 받는다 */
@@ -559,6 +579,7 @@ export function useVerdictMutation(key: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (input: VerdictInput) => postVerdict(key, input),
+    onError: (error) => { if (isApiError(error) && [409, 428].includes(error.status)) void queryClient.invalidateQueries({ queryKey: incidentKeys.detail(key) }) },
     onSuccess: (created) => {
       queryClient.setQueryData<IncidentDetail>(incidentKeys.detail(key), (prev) => (prev ? applyVerdict(prev, created) : prev))
       void queryClient.invalidateQueries({ queryKey: incidentKeys.lists() })
@@ -573,6 +594,7 @@ export function useActionMutation(key: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (input: ActionInput) => postAction(key, input),
+    onError: (error) => { if (isApiError(error) && [409, 428].includes(error.status)) void queryClient.invalidateQueries({ queryKey: incidentKeys.detail(key) }) },
     onSuccess: (created) => {
       queryClient.setQueryData<IncidentDetail>(incidentKeys.detail(key), (prev) => (prev ? applyAction(prev, created) : prev))
       void queryClient.invalidateQueries({ queryKey: incidentKeys.lists() })

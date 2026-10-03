@@ -77,6 +77,7 @@ export interface PointCounts {
 }
 
 export interface BlockEntry extends ActorBlock {
+  workflow_version?: string
   actor_ip: string
   incident_key: string | null
   requested_by: string | null

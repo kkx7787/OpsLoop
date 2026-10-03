@@ -2,7 +2,7 @@
 import asyncio
 import json
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import MagicMock, AsyncMock, patch
 
 from proposals import CIRCULAR_RULES, SSH_RULES, propose
 
@@ -55,6 +55,7 @@ class DetailContractTests(unittest.TestCase):
         import test_web
         main = test_web.main
         conn = AsyncMock()
+        conn.transaction = MagicMock(return_value=AsyncMock())
         conn.fetchrow.return_value = {
             "incident_key": "review-fixture", "actor_ip": None,
             "rule_id": "R201", "first_ts": None, "last_ts": None, "evidence": None,
@@ -101,6 +102,7 @@ class DetailContractTests(unittest.TestCase):
                                       ({"sensors": json.dumps(["web-01"])}, [], ([], "unconfirmed", [])),
                                       ({"sessions": "x"}, [r002], bare)]:
             conn = AsyncMock()
+            conn.transaction = MagicMock(return_value=AsyncMock())
             conn.fetchrow.return_value = {"incident_key": "k", "actor_ip": None, "rule_id": "R002", "rule_version": "v3",
                                           "first_ts": None, "last_ts": None, "evidence": json.dumps(evidence)}
             conn.fetchval.return_value = None
@@ -134,6 +136,7 @@ class DetailContractTests(unittest.TestCase):
         incident = {"incident_key": "R003|v2-target", "actor_ip": "192.0.2.8", "rule_id": "R003",
                     "rule_version": "v2", "first_ts": t0, "last_ts": t0, "evidence": None}
         conn = AsyncMock()
+        conn.transaction = MagicMock(return_value=AsyncMock())
         conn.fetchrow.side_effect = lambda sql, *_a: incident if "FROM incidents WHERE incident_key" in sql else None
         conn.fetch.return_value = []
         conn.fetchval.return_value = None

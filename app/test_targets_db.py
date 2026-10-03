@@ -55,7 +55,8 @@ CTI_MIGRATION = ROOT / "infra" / "migrations" / "20260925_cti.sql"
 RULE_FILES = sorted((ROOT / "detector").glob("rules*.json"))
 
 BASE_TABLES = """
-    CREATE TEMP TABLE incidents (incident_key text PRIMARY KEY, rule_id text NOT NULL, rule_version text NOT NULL,
+    CREATE TEMP TABLE console_users (username text PRIMARY KEY, role text, disabled_at timestamptz);
+    CREATE TEMP TABLE incidents (assigned_to text, incident_key text PRIMARY KEY, rule_id text NOT NULL, rule_version text NOT NULL,
         rule_name text, severity text NOT NULL, actor_ip inet, target text, first_ts timestamptz NOT NULL,
         last_ts timestamptz NOT NULL, signal_count integer DEFAULT 1, session_count integer DEFAULT 0, evidence jsonb,
         status text DEFAULT 'open', created_at timestamptz DEFAULT now());

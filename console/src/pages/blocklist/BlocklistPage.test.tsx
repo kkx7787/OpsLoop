@@ -124,7 +124,7 @@ describe('차단 목록', () => {
     await waitFor(() => expect(screen.queryByText('192.0.2.8', { exact: true })).toBeNull())
     const post = fetch.mock.calls.find(([, init]) => init?.method === 'POST')!
     expect(String(post[0])).toBe('/api/incidents/R001%7Cv2%7C192.0.2.8/actions')
-    expect(JSON.parse(String(post[1]?.body))).toEqual({ action: 'unblock_ip', actor_ip: '192.0.2.8', note: '정상 운영 확인' })
+    expect(JSON.parse(String(post[1]?.body))).toEqual({ expected_version: '0:0', action: 'unblock_ip', actor_ip: '192.0.2.8', note: '정상 운영 확인' })
   })
 
   it('흡수 차단 행은 그 행의 출발지만 풀도록 출발지를 함께 보내고 첫 사건으로 이어진다', async () => {
@@ -147,7 +147,7 @@ describe('차단 목록', () => {
     expect(await screen.findByText('198.51.100.7 차단 해제를 기록했습니다')).toBeInTheDocument()
     const post = fetch.mock.calls.find(([, init]) => init?.method === 'POST')!
     expect(String(post[0])).toBe(`/api/incidents/${encodeURIComponent(first)}/actions`)
-    expect(JSON.parse(String(post[1]?.body))).toEqual({ action: 'unblock_ip', actor_ip: '198.51.100.7' })
+    expect(JSON.parse(String(post[1]?.body))).toEqual({ expected_version: '0:0', action: 'unblock_ip', actor_ip: '198.51.100.7' })
   })
 
   it('다른 사람이 먼저 해제한 충돌은 성공으로 표시하지 않는다', async () => {
