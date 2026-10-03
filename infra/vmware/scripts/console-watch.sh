@@ -13,7 +13,7 @@
 #   복구를 알리기 전에 다시 DOWN 이 되면 처음 DOWN 이 이어진 것으로 본다(복구 알림을 잃지 않는다 · 30분 재알림도 처음 알림부터 센다).
 # 백업 오래됨 (이슈 #91): 회차마다 DB 백업 기록(~/opsloop-backup/backup.log)의 마지막 '== <시각> KST 백업 성공' 줄을 본다.
 #   지금보다 10시간 넘게 지났으면 한 번 알린다(같은 알림 경로). 새 성공이 보이면 풀리고, 다음에 다시 오래되면 또 한 번 알린다.
-#   점검 창에는 알리지 않는다(창이 끝난 뒤에도 오래돼 있으면 그때 알린다). 기록 파일이나 성공 줄이 없으면 조용히 넘어간다.
+#   점검 창에는 알리지 않는다(창이 끝난 뒤에도 오래돼 있으면 그때 알린다). 기록 파일·성공 줄 누락과 읽기/시각 오류는 확인 불가로 한 번 알린다(#111).
 #   백업 실행기가 돌지 못해(launchd 에서 내림 · 계속 잠듦) 스스로 실패를 알리지 못할 때를 잡는다. 백업 목표(RPO)는 12시간이다.
 # 사용: console-watch.sh               한 회차 (launchd 가 부르는 모양)
 #       console-watch.sh --status      마지막 상태 · 점검 창 · 마지막 성공 백업 · 웹훅 설정 여부 (주소는 내지 않는다)
@@ -135,7 +135,7 @@ check() {
 }
 
 load_state() {
-  S_STATE=UNKNOWN S_SINCE=0 S_DOWN_SINCE=0 S_ALERTED=0 S_LAST_ALERT=0 S_LAST_CHECK=0 S_DETAIL="" S_B_OK=0 S_B_ALERTED=0
+  S_STATE=UNKNOWN S_SINCE=0 S_DOWN_SINCE=0 S_ALERTED=0 S_LAST_ALERT=0 S_LAST_CHECK=0 S_DETAIL="" S_B_OK=0 S_B_ALERTED=0 S_B_PROBLEM=none
   [ -f "$STATE" ] || return 0
   local k v
   while IFS='=' read -r k v; do
@@ -149,6 +149,7 @@ load_state() {
       detail) S_DETAIL=$v ;;
       backup_ok) if isnum "$v"; then S_B_OK=$v; fi ;;
       backup_alerted) case "$v" in 0 | 1) S_B_ALERTED=$v ;; esac ;;
+      backup_problem) case "$v" in none | unreadable | future) S_B_PROBLEM=$v ;; esac ;;
     esac
   done < "$STATE"
   return 0
@@ -157,8 +158,8 @@ load_state() {
 save_state() {
   mkdir -p "$STATE_DIR" || return 1
   local tmp="$STATE.tmp.$$"
-  printf 'state=%s\nsince=%s\ndown_since=%s\nalerted=%s\nlast_alert=%s\nlast_check=%s\ndetail=%s\nbackup_ok=%s\nbackup_alerted=%s\n' \
-    "$S_STATE" "$S_SINCE" "$S_DOWN_SINCE" "$S_ALERTED" "$S_LAST_ALERT" "$S_LAST_CHECK" "$S_DETAIL" "$S_B_OK" "$S_B_ALERTED" \
+  printf 'state=%s\nsince=%s\ndown_since=%s\nalerted=%s\nlast_alert=%s\nlast_check=%s\ndetail=%s\nbackup_ok=%s\nbackup_alerted=%s\nbackup_problem=%s\n' \
+    "$S_STATE" "$S_SINCE" "$S_DOWN_SINCE" "$S_ALERTED" "$S_LAST_ALERT" "$S_LAST_CHECK" "$S_DETAIL" "$S_B_OK" "$S_B_ALERTED" "$S_B_PROBLEM" \
     > "$tmp" && mv -f "$tmp" "$STATE"
 }
 
@@ -170,22 +171,59 @@ kst_epoch() {
 # 백업 기록의 마지막 성공 시각을 B_OK(epoch 초)에 둔다. 기록 · 성공 줄이 없거나 읽지 못하면 1
 #   줄 모양: '== 2026-10-02 12:30:12 KST 백업 성공' (뒤에 괄호 설명이 붙을 수 있다). 시도 줄('-- …')은 보지 않는다
 last_backup_ok() {
-  local line d t z v
+  local line d t z v roundtrip
   B_OK=0
-  [ -f "$BACKUP_LOG" ] && [ -r "$BACKUP_LOG" ] || return 1
-  line=$(grep -a '^== [0-9-]* [0-9:]* KST 백업 성공' "$BACKUP_LOG" 2>/dev/null | tail -n 1)
+  B_REASON="기록 파일 없음"
+  [ -f "$BACKUP_LOG" ] || return 1
+  B_REASON="기록을 읽을 수 없음"
+  [ -r "$BACKUP_LOG" ] || return 1
+  # 파이프 마지막 tail의 성공으로 읽기 실패를 가리지 않는다.
+  line=$(set -o pipefail; grep -a '^== [0-9-]* [0-9:]* KST 백업 성공' "$BACKUP_LOG" 2>/dev/null | tail -n 1)
+  local rc=$?
+  if [ "$rc" -gt 1 ]; then return 1; fi
+  B_REASON="성공 기록 없음"
   [ -n "$line" ] || return 1
   read -r _ d t z _ <<< "$line"
+  B_REASON="성공 시각 해석 실패"
   [ "$z" = KST ] || return 1
   v=$(kst_epoch "$d $t") || return 1
   isnum "$v" || return 1
+  # BSD date가 범위 밖 날짜를 보정해 버리는 경우도 성공으로 인정하지 않는다.
+  roundtrip=$(TZ=Asia/Seoul date -r "$v" '+%F %T' 2>/dev/null || TZ=Asia/Seoul date -d "@$v" '+%F %T' 2>/dev/null)
+  [ "$roundtrip" = "$d $t" ] || return 1
   B_OK=$v
+  B_REASON=""
+}
+
+# 성공 시각을 읽을 수 있어도 5분 넘게 미래면 신뢰하지 않는다.
+backup_problem() {
+  B_PROBLEM=unreadable
+  last_backup_ok || return 0
+  if [ "$B_OK" -gt $(($1 + 300)) ]; then
+    B_PROBLEM=future
+    B_REASON="성공 시각이 현재보다 5분 넘게 앞섬 · 시계 확인 필요"
+  else
+    B_PROBLEM=none
+  fi
 }
 
 # 백업 오래됨. $1 지금 · $2 점검 창(1). 마지막 성공이 STALE_HOURS 넘게 지났으면 한 번 알린다. 새 성공이 보이면 푼다
 check_backup() {
   local now=$1 age
-  last_backup_ok || return 0
+  backup_problem "$now"
+  if [ "$B_PROBLEM" != none ]; then
+    if [ "$2" = 1 ]; then
+      log "  백업 확인 불가 · $B_REASON · 점검 창 · 알리지 않는다"
+    elif [ "$S_B_PROBLEM" != "$B_PROBLEM" ]; then
+      alert "OpsLoop DB 백업 확인 불가" "$B_REASON · 마지막 성공 백업을 확인하세요 (목표 12시간)"
+      S_B_PROBLEM=$B_PROBLEM
+    fi
+    return 0
+  fi
+  if [ "$S_B_PROBLEM" != none ]; then
+    log "  백업 확인 불가 풀림 · 성공 기록을 다시 읽음"
+    S_B_PROBLEM=none
+  fi
   if [ "$S_B_ALERTED" = 1 ] && [ "$B_OK" != "$S_B_OK" ]; then
     log "  백업 오래됨 풀림 · 새 성공 $(fmt_time "$B_OK")"
     S_B_ALERTED=0
@@ -399,14 +437,13 @@ status() {
     if [ "$S_ALERTED" = 1 ]; then echo "DOWN 알림: 보냄 ($(fmt_time "$S_LAST_ALERT")) · 복구 알림 대기"; fi
   fi
   if paused; then echo "점검 창: $(fmt_time "$PAUSE_UNTIL") 까지 (알리지 않는다)"; else echo "점검 창: 없음"; fi
-  if last_backup_ok; then
+  backup_problem "$(date +%s)"
+  if [ "$B_PROBLEM" = none ]; then
     line="백업: 마지막 성공 $(fmt_time "$B_OK") · $(fmt_dur $(($(date +%s) - B_OK))) 전 (오래됨 기준 ${STALE_HOURS}시간)"
     if [ "$S_B_ALERTED" = 1 ]; then line="$line · 오래됨 알림 보냄"; fi
     echo "$line"
-  elif [ -f "$BACKUP_LOG" ]; then
-    echo "백업: 기록에 성공 줄이 없다 ($BACKUP_LOG)"
   else
-    echo "백업: 기록 없음 ($BACKUP_LOG · 알리지 않는다)"
+    echo "백업: 확인 불가 · $B_REASON ($BACKUP_LOG)"
   fi
   webhook_url || true
   WEBHOOK=""
