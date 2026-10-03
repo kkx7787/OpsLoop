@@ -18,7 +18,7 @@
   t0        rto:T0 장애 선언 · 운영 now() = T_f (DB 시계)
   up        rto:S1 백업 선택 · 훈련 DB 컨테이너(docker run, compose 아님, initdb 마운트 없음) · rto:S2
   roles     역할 목록(globals.sql)의 CREATE/ALTER ROLE · GRANT 적용 · 로그인 역할마다 훈련 전용 새 비밀번호 · rto:S3
-  restore   덤프를 ssh 표준 입력으로 pg_restore --no-owner --exit-on-error · 26개 표 건수 · 목차 대조 · rto:S4
+  restore   덤프를 ssh 표준 입력으로 pg_restore --no-owner --exit-on-error · 목차의 표 건수 · 목차 대조 · rto:S4
   verify    훈련 쪽 지문 → 무결성(0 이어야 함) · 구조 · 시퀀스 · 역할별 허용 · 거부 → 알림 채널 끄기 · rto:S5
   console   Mac 에 console-a 이미지 · SSH 터널 · 콘솔(127.0.0.1:18000) · /health · rto:S6
             사람이 로그인해 목록 · 상세 · 판정 1건을 확인한 뒤: console --confirm → rto:S7 (서비스 재개, 중간 지표)
@@ -126,7 +126,7 @@ STEPS = (
     ("t0", "rto:T0 장애 선언 · 운영 now() = T_f"),
     ("up", "rto:S1 백업 선택 · 훈련 DB 컨테이너 · rto:S2"),
     ("roles", "역할 · 속성 · 멤버십 · 훈련 전용 비밀번호 · rto:S3"),
-    ("restore", "pg_restore · 26개 표 건수 · 목차 대조 · rto:S4"),
+    ("restore", "pg_restore · 목차의 표 건수 · 목차 대조 · rto:S4"),
     ("verify", "지문 · 무결성 · 구조 · 역할별 허용 · 거부 · 알림 끄기 · rto:S5"),
     ("console", "Mac 콘솔 · 터널 · rto:S6 (--confirm: 판정 반영 확인 · rto:S7)"),
     ("regen", "opsloop-ingest --full · pull_loki --since (훈련 HOME · env) · rto:S8"),

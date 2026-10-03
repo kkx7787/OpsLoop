@@ -158,6 +158,9 @@ export interface TargetMetrics {
 export interface TargetSystem {
   state: SystemState
   metrics: TargetMetrics | null
+  capacity?: 'ok' | 'warning' | 'critical' | 'unknown'
+  problems?: string[]
+  disks?: { label: string; used_pct: number | null; available_bytes: number | null; inode_used_pct: number | null; state: 'ok' | 'warning' | 'critical' | 'unknown' }[]
 }
 
 /** 그 지점의 차단 보고 신호(block:<point>) */

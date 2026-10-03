@@ -23,7 +23,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # psycopg2 가 없는 곳에서도 돌게 가짜를 넣는다 (Store 시험은 이 가짜로 SQL 과 커밋만 본다)
 if "psycopg2" not in sys.modules:
-    sys.modules["psycopg2"] = types.ModuleType("psycopg2")
+    fake = types.ModuleType("psycopg2")
+    # 같은 시험 프로세스의 nodes가 import 시점에 참조하는 예외형도 제공한다.
+    fake.Error = type("Error", (Exception,), {})
+    sys.modules["psycopg2"] = fake
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gate  # noqa: E402

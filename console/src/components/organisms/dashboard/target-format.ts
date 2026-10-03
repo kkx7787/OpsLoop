@@ -262,18 +262,18 @@ export function groupTargets<T extends Pick<Target, 'id' | 'kind'>>(targets: rea
   return groups
 }
 
-/** 머리 배지. 서버가 정상이라 했어도 데이터 노드의 확인(적재기 · 집행기) · 탐지 경로가 멈췄으면 '주의' 다. data-collection 은 서버 값 그대로 둔다 */
-export function headBadge(target: { collection: Pick<TargetCollection, 'state' | 'stopped'> }): { label: string; tone: Tone } {
+/** 머리 배지. 데이터 노드 정상은 수집 범위로 한정한다(디스크 상태와 구별). 서버가 정상이라 했어도 데이터 노드의 확인(적재기 · 집행기) · 탐지 경로가 멈췄으면 '주의' 다. data-collection 은 서버 값 그대로 둔다 */
+export function headBadge(target: { id?: string; collection: Pick<TargetCollection, 'state' | 'stopped'> }): { label: string; tone: Tone } {
   const state = collectionState(target.collection.state)
   if (state === 'ok' && Array.isArray(target.collection.stopped) && target.collection.stopped.length > 0) return { label: '주의', tone: 'warning' }
-  return { label: COLLECTION_LABEL[state], tone: COLLECTION_TONE[state] }
+  return { label: state === 'ok' && target.id === 'data-node' ? '수집 정상' : COLLECTION_LABEL[state], tone: COLLECTION_TONE[state] }
 }
 
 /** 보호 대상 카드 · 요약 줄의 정상 글(#83). 보고서 표(COLLECTION_LABEL)와 관측 센서 · 관제 시스템(콘솔은 '응답 중')은 그대로다 */
 export const PROTECTED_OK_LABEL = '수집 정상'
 
 /** 보호 대상의 머리 배지: 정상이면 '수집 정상', 그 밖은 headBadge 와 같다 */
-export function protectedHeadBadge(target: { collection: Pick<TargetCollection, 'state' | 'stopped'> }): { label: string; tone: Tone } {
+export function protectedHeadBadge(target: { id?: string; collection: Pick<TargetCollection, 'state' | 'stopped'> }): { label: string; tone: Tone } {
   const head = headBadge(target)
   return head.label === COLLECTION_LABEL.ok ? { ...head, label: PROTECTED_OK_LABEL } : head
 }
@@ -282,14 +282,14 @@ export function protectedHeadBadge(target: { collection: Pick<TargetCollection, 
  * 접힌 요약 줄의 머리 배지(#84). 보호 대상은 protectedHeadBadge, 그 밖은 headBadge. 콘솔 '응답 중' 은 이번 조회에 응답했다는
  * 사실이라 상태판 갱신이 실패해 이전 결과를 보이는 동안에는 두지 않는다(null, 줄 끝 '이전 결과' 하나만, 결정 5)
  */
-export function summaryHeadBadge(target: { collection: Pick<TargetCollection, 'state' | 'stopped'> }, card: 'protected' | 'full', stale: boolean): { label: string; tone: Tone } | null {
+export function summaryHeadBadge(target: { id?: string; collection: Pick<TargetCollection, 'state' | 'stopped'> }, card: 'protected' | 'full', stale: boolean): { label: string; tone: Tone } | null {
   if (stale && collectionState(target.collection.state) === 'responding') return null
   return card === 'protected' ? protectedHeadBadge(target) : headBadge(target)
 }
 
 /** 접힌 요약 줄의 경고 배지 하나 */
 export interface SummaryFlag {
-  key: 'failed' | 'enforcer' | 'unreadable' | 'loader' | 'detect' | 'parse' | 'delayed' | 'checking' | 'removing' | 'report' | 'metrics'
+  key: 'failed' | 'enforcer' | 'unreadable' | 'loader' | 'detect' | 'parse' | 'delayed' | 'checking' | 'removing' | 'report' | 'metrics' | 'capacity'
   text: string
   tone: Tone
 }
@@ -336,7 +336,7 @@ export function summaryFlags(target: {
 export function summaryLineFlags(target: {
   response: Pick<TargetResponse, 'point' | 'failed' | 'stalled' | 'unreadable'> & Partial<Pick<TargetResponse, 'checking' | 'delayed' | 'removing' | 'report_issue'>>
   collection: Pick<TargetCollection, 'stopped' | 'warnings'>
-  system?: Pick<TargetSystem, 'state'>
+  system?: Pick<TargetSystem, 'state' | 'capacity' | 'problems'>
 }): SummaryFlag[] {
   const response = target.response
   const flags: SummaryFlag[] = []
@@ -350,5 +350,10 @@ export function summaryLineFlags(target: {
   // 집행기 멈춤 · 집행 확인 불가 · 적재기 · 탐지 멈춤 · 웹 로그 적재 없음(적용 실패 수는 위 지점 배지가 대신한다)
   for (const flag of summaryFlags(target)) if (flag.key !== 'failed') flags.push(flag)
   if (target.system?.state === 'stale') flags.push({ key: 'metrics', text: '지표 오래됨', tone: 'warning' })
+  else if (target.system?.capacity) {
+    if (target.system.capacity === 'critical') flags.push({ key: 'capacity', text: '디스크 용량 부족', tone: 'danger' })
+    else if (target.system.capacity === 'warning') flags.push({ key: 'capacity', text: '디스크 여유 감소', tone: 'warning' })
+    if (target.system.capacity === 'unknown' || target.system.problems?.length) flags.push({ key: 'metrics', text: '자원 확인 불가', tone: 'neutral' })
+  }
   return flags
 }

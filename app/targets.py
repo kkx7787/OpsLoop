@@ -33,6 +33,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Request
 
 import cti
+import data_health
 from absorbed import block_nets
 from block_points import removing_sql, unrequested_sql
 from dashboard import HUMAN_UNDETERMINED, PENDING_ROWS
@@ -1337,6 +1338,7 @@ async def targets_view(c, as_of, queue: bool = False) -> dict:
         **{card["id"]: node_collection(as_of, card["node"], last, logs[card["id"]], gap=gaps.get(card["id"]))
            for card in cards},
     }
+    data_system = await data_health.read(c, as_of)
     targets = []
     # 고정 대상 뒤에 등록 노드. kind 는 화면이 순서 · 아이콘을 가르는 값이다
     for tid, label, role, kind in [*((tid, label, role, "fixed") for tid, label, role in TARGETS),
@@ -1346,7 +1348,7 @@ async def targets_view(c, as_of, queue: bool = False) -> dict:
             "id": tid, "kind": kind, "label": label, "role": role,
             "collection": collections[tid],
             "security": security_block(tid, per[tid], as_of),
-            "system": system_block(tid, metrics_available, metrics.get(tid), as_of, kind == "node"),
+            "system": data_system if tid == "data-node" else system_block(tid, metrics_available, metrics.get(tid), as_of, kind == "node"),
             "response": response_block(tid, blocks, exempt, reports, as_of, heartbeats_available),
             "vulns": vulns_block(tid, cti_available, assets, as_of),
         })
@@ -1361,7 +1363,7 @@ async def targets_view(c, as_of, queue: bool = False) -> dict:
 async def monitor_view(c, as_of) -> dict:
     """관제 이상(띠 · 사이드바). 적재기 · 집행기 확인, 센서 · 관문 기록 수신, 탐지 경로, 지점별 적용 실패 · 불일치 · 보고 · 확인 지연,
     활성 노드 수신, 보호 대상별 웹 로그 적재 · 자원 지표를 본다. 읽을 수 있는 표 · 열을 한 질의로 보고(MONITOR_READABLE_SQL) 표마다
-    한 번씩 읽어 질의는 8개 이하(now 포함)다.
+    한 번씩 읽어 질의는 10개 이하(now 포함, 데이터 노드 자원 조회 2개 포함)다.
     nodes 는 카드 열까지 읽을 수 있으면 전부(web-01 포함), web-01 이 읽는 열만 되면 web-01 한 행(등록 노드 열 모름)이고, 둘 다 안
     되면 모른다."""
     readable = await c.fetchrow(MONITOR_READABLE_SQL, NODE_COLUMNS, WEB_NODE_COLUMNS, PARSE_COLUMNS)
@@ -1393,6 +1395,7 @@ async def monitor_view(c, as_of) -> dict:
                           gateway=uploader_signal(as_of, heartbeats_available, heartbeats, "gateway"),
                           reports=reports, cards_readable=bool(can.get("cards")), web_expected=True,
                           devices=device_checks(as_of, cards, gaps, metrics, metrics_available, web))
+    items.extend(data_health.alerts(await data_health.read(c, as_of)))
     return {"as_of": cti.iso(as_of), "items": items, "detect_paths": paths}
 
 

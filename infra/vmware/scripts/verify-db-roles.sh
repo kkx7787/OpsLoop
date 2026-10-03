@@ -227,6 +227,14 @@ p opsloop_console  "(SELECT prosecdef AND prosrc LIKE '%blocklist_points_narrow%
 p opsloop_console  "(SELECT tgenabled = 'O' FROM pg_trigger WHERE tgname = 'trg_blocklist_points')" t
 p opsloop_console  "(SELECT count(*) = 2 FROM pg_constraint WHERE conname IN ('blocklist_points_valid', 'absorbed_blocks_points_valid'))" t
 
+echo "== 데이터 노드 최신 자원 상태 (이슈 #109)"
+q opsloop_console "SELECT checked_at, disks FROM data_node_health LIMIT 0" 허용
+q opsloop_console "UPDATE data_node_health SET cpu_pct=0 WHERE false" 거부
+q opsloop_ingest "INSERT INTO data_node_health SELECT * FROM data_node_health WHERE false ON CONFLICT(singleton) DO UPDATE SET checked_at=EXCLUDED.checked_at" 허용
+q opsloop_ingest "DELETE FROM data_node_health WHERE false" 거부
+p opsloop_ingest "has_table_privilege('opsloop_ingest','data_node_health','TRUNCATE')" f
+q opsloop_detector "SELECT * FROM data_node_health LIMIT 0" 거부
+
 echo "== 접속 한도 (이슈 #43. 콘솔 한 대 = 풀 10 + LISTEN 1 → 두 대 22 + triage.py)"
 #   20 이면 콘솔 B 를 켤 때 한도에 닿는다. 무제한(-1)도 기대와 다르다고 본다 (콘솔이 DB 접속을 다 써 버리지 않게 하는 울타리다)
 #   올리는 곳: infra/migrations/20260926_console_connlimit.sql · db-console-role.sh · install-collector.sh (모두 30)
