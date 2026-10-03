@@ -44,6 +44,7 @@ BRAND_DIR = Path(__file__).resolve().parent / "branding"
 BRAND_FILES = {
     "/brand/opsloop-wordmark-v1.png": "opsloop-wordmark-v1.png",
     "/brand/opsloop-mark-v1.svg": "opsloop-mark-v1.svg",
+    "/brand/opsloop-mark-v2.svg": "opsloop-mark-v2.svg",
 }
 
 # 서버가 답하는 경로. 이 밖의 GET 은 화면 경로로 보고 index.html 을 준다.
@@ -532,17 +533,16 @@ LOGIN_PAGE = Template("""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>로그인 · OpsLoop 관제</title>
-<link rel="icon" type="image/svg+xml" href="/brand/opsloop-mark-v1.svg">
+<link rel="icon" type="image/svg+xml" href="/brand/opsloop-mark-v2.svg">
 <style>
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px 16px;
  font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic","Noto Sans KR",system-ui,sans-serif;
  color:#1d1d1f;background:#f5f5f7;-webkit-font-smoothing:antialiased}
 main{width:100%;max-width:380px;display:flex;flex-direction:column;gap:24px}
-.head{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center}
-.wordmark{display:block;width:250px;max-width:100%;height:auto;margin-bottom:4px}
-h1{margin:0;font-size:22px;font-weight:650;letter-spacing:-0.025em}
-.sub{margin:0;font-size:14px;color:#6e6e73}
+.head{display:flex;justify-content:center}
+.wordmark{display:block;width:250px;max-width:100%;height:auto}
+h1{margin:0 0 4px;font-size:20px;font-weight:600;letter-spacing:-0.025em}
 form{background:#ffffff;border-radius:18px;box-shadow:0 0 0 .5px rgba(0,0,0,.06),0 2px 8px rgba(0,0,0,.04);padding:28px;display:flex;flex-direction:column;gap:16px}
 label{display:flex;flex-direction:column;gap:6px;font-size:13px}
 input{height:40px;border:0;box-shadow:0 0 0 .5px rgba(0,0,0,.16);border-radius:10px;padding:0 12px;font-size:14px;font-family:inherit;color:inherit;background:#ffffff}
@@ -552,15 +552,14 @@ button{height:44px;border:0;border-radius:10px;background:#0164b2;color:#ffffff;
 button:hover{background:#01518f}
 button:focus-visible{outline:2px solid #01518f;outline-offset:2px}
 .note{margin:0;font-size:12px;line-height:20px;text-align:center;color:#6e6e73}
-@media (max-width:420px){h1{font-size:24px}form{padding:20px}}
+@media (max-width:420px){form{padding:24px 20px}}
 </style></head>
 <body><main>
 <div class="head">
 <img class="wordmark" src="/brand/opsloop-wordmark-v1.png" alt="OpsLoop" width="1816" height="866">
-<h1>관제 콘솔 로그인</h1>
-<p class="sub">판정과 조치는 계정에 기록됩니다.</p>
 </div>
-<form method="post" action="/login">
+<form method="post" action="/login" aria-labelledby="login-title">
+<h1 id="login-title">로그인</h1>
 <label for="username">아이디<input id="username" name="username" type="text" value="$username" autocomplete="username" autocapitalize="off" spellcheck="false"$user_focus></label>
 <label for="password">비밀번호<input id="password" name="password" type="password" autocomplete="current-password"$password_focus></label>
 $error<input type="hidden" name="next" value="$next">
