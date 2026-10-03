@@ -24,6 +24,7 @@ function stubDashboard({ summary = MONITORING_SUMMARY as Answer, targets = targe
   const answer = (value: Answer) => (typeof value === 'function' ? (value as () => Response)() : json(value))
   const fetch = vi.fn<typeof globalThis.fetch>(async (input) => {
     const url = new URL(String(input), 'http://localhost')
+    if (url.pathname === '/api/me') return json({ username: 'han', role: 'operator' })
     if (url.pathname === '/api/stats/summary') return answer(summary)
     if (url.pathname === '/api/dashboard/targets') return answer(targets)
     if (url.pathname === '/api/dashboard/monitor') return answer(health)
@@ -74,7 +75,8 @@ describe('대시보드', () => {
     expect(screen.getByRole('link', { name: /악성코드 투하/ })).toHaveAttribute('href', '/incidents/R003%7Cv2%7C192.0.2.8')
     expect(await screen.findByRole('region', { name: 'web-01' })).toBeInTheDocument()
     // 관측 센서 · 관제 시스템은 수집 · 관제 상태 화면으로 옮겨 CVE 배지를 묻지 않는다(#84)
-    await waitFor(() => expect(new Set(paths(fetch))).toEqual(new Set(['/api/stats/summary', '/api/dashboard/targets', '/api/dashboard/monitor', '/api/devices/web-01/logs'])))
+    await waitFor(() => expect(new Set(paths(fetch))).toEqual(new Set(['/api/me', '/api/stats/summary', '/api/dashboard/targets', '/api/dashboard/monitor', '/api/devices/web-01/logs'])))
+    expect(screen.getByRole('link', { name: '내 담당 미판정 →' })).toHaveAttribute('href', '/incidents?assignment=mine&judged=false')
     // 보호 대상 카드는 최근 10줄만 묻는다(로그 화면 100줄과 캐시가 다르다)
     expect(fetch.mock.calls.map(([input]) => String(input))).toContain('/api/devices/web-01/logs?limit=10')
   })

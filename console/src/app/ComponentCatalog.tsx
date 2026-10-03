@@ -132,7 +132,7 @@ export function ComponentCatalog() {
             차단 해제 (operator)
           </Button>
           <Gated {...release} showReason>
-            <Button variant="danger">규칙 억제 (Gated)</Button>
+            <Button variant="danger">사건 상태 억제 (Gated)</Button>
           </Gated>
           <Gated {...verdict}>
             <Button variant="primary">판정 (operator 허용)</Button>
