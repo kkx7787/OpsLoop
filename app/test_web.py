@@ -1014,7 +1014,8 @@ class BrandFilesTest(Base):
             if built:
                 self.build_console()
             for url, mime in [("/brand/opsloop-wordmark-v1.png", "image/png"),
-                              ("/brand/opsloop-mark-v1.svg", "image/svg+xml")]:
+                              ("/brand/opsloop-mark-v1.svg", "image/svg+xml"),
+                              ("/brand/opsloop-mark-v2.svg", "image/svg+xml")]:
                 result = self.client.get(url)
                 self.assertEqual(result.status_code, 200)
                 self.assertTrue(result.headers["content-type"].startswith(mime))
@@ -1039,12 +1040,12 @@ class LoginTest(Base):
         body = r.text
         self.assertNotIn("<script", body.lower(), "CSP: 인라인 스크립트가 없다")
         self.assertNotIn("fonts.googleapis", body, "외부 글꼴을 쓰지 않는다")
-        self.assertIn('<form method="post" action="/login">', body)
+        self.assertIn('<form method="post" action="/login"', body)
         self.assertIn('name="username"', body)
         self.assertIn('name="password" type="password"', body)
         self.assertIn('<input type="hidden" name="next" value="/">', body)
         self.assertIn('alt="OpsLoop"', body)
-        self.assertIn("관제 콘솔 로그인", body)
+        self.assertIn('<h1 id="login-title">로그인</h1>', body)
         self.assertNotIn(web.LOGIN_ERROR, body)
         # 안내는 계정을 어디서 받는지 한 줄. 로그인 전 공개 화면이라 기록 방식 · 탐지 설계(디코이 · 규칙)는 적지 않는다
         self.assertIn("계정은 관리자에게 요청하세요.", body)

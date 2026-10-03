@@ -1,0 +1,19 @@
+{
+  "base": "5c46b07089397e9472c03439eabad15263320f1f",
+  "scope": "login markup/style + versioned transparent favicon; no authentication/DB changes",
+  "web_tests": 86,
+  "web_tests_pass": true,
+  "typescript_vite_build_pass": true,
+  "mobile": {
+    "width": 390,
+    "scroll_width": 390,
+    "error_focus": "password"
+  },
+  "favicon_sizes": [
+    16,
+    24,
+    32
+  ],
+  "preview": "local fixture uses real web.login_page; no production authentication request",
+  "production_deployed": false
+}
