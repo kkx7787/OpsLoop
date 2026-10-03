@@ -32,6 +32,7 @@ from pydantic import BaseModel, Field, field_validator
 
 import auth
 import login_limits
+import workflow
 import block_points
 import cti
 import node_logs
@@ -133,6 +134,7 @@ app.include_router(reports_router)
 # 계정 관리 (accounts.py · 이슈 #59 · #63). GET /api/accounts · POST /api/accounts(추가) · /api/accounts/delete ·
 #   /api/accounts/password · /api/accounts/role · /api/accounts/active (admin)
 app.include_router(accounts_router)
+app.include_router(workflow.router)
 
 
 # 세션 없이 여는 경로. /health 는 HAProxy 헬스체크가 부르므로 상태 말고는 아무것도 내지 않는다.
@@ -354,7 +356,8 @@ DEVICE_PATTERN = r"^(?:_unconfirmed|[a-z0-9][a-z0-9-]{0,62})$"
 # 목록 한 쪽의 열. 근거(sensors · sessions)는 장비 계산에만 쓰고 내보내지 않는다
 PAGE_COLUMNS = f"""i.incident_key, i.rule_id, i.rule_version, i.rule_name, i.severity,
                    host(i.actor_ip) AS actor_ip, i.target, i.first_ts, i.last_ts,
-                   i.signal_count, i.session_count, i.status, i.created_at,
+                   i.signal_count, i.session_count, i.status, i.created_at, i.assigned_to,
+                   EXISTS (SELECT 1 FROM console_users u WHERE u.username=i.assigned_to AND u.disabled_at IS NULL AND u.role IN ('operator','admin')) AS assignee_available,
                    v.verdict,
                    extract(epoch FROM (now() - i.first_ts))::bigint AS pending_seconds,
                    {targets.EVIDENCE_COLUMNS}"""
@@ -362,6 +365,8 @@ PAGE_COLUMNS = f"""i.incident_key, i.rule_id, i.rule_version, i.rule_name, i.sev
 
 @app.get("/api/incidents")
 async def list_incidents(
+    request: Request,
+    assignment: Optional[Literal["mine", "unassigned"]] = None,
     status: Optional[STATUSES] = None,
     severity: Optional[SEVERITIES] = None,
     rule_id: Optional[str] = Query(None, max_length=128),
@@ -404,12 +409,13 @@ async def list_incidents(
     async with app.state.pool.acquire() as c, c.transaction(isolation="repeatable_read", readonly=True):
         return await incident_page(c, status=status, severity=severity, rule_id=rule_id, rule_version=rule_version,
                                    actor_ip=actor_ip, target=target, since=since, until=until, judged=judged,
-                                   undetermined=undetermined, device=device, sort=sort, limit=limit, offset=offset)
+                                   undetermined=undetermined, device=device, sort=sort, limit=limit, offset=offset,
+                                   assignment=assignment, username=request.state.user["u"])
 
 
 async def incident_page(c, *, status=None, severity=None, rule_id=None, rule_version=None, actor_ip=None, target=None,
                         since=None, until=None, judged=None, undetermined=None, device=None, sort="pending", limit=50,
-                        offset=0) -> dict:
+                        offset=0, assignment=None, username=None) -> dict:
     """사건 목록 한 쪽(입력 검사 뒤). 부른 쪽이 반복 읽기 트랜잭션을 연다.
 
     장비 필터(device)는 쪽을 나누기 전에 거른다. 조건에 맞는 사건을 가볍게(키 · 근거만) 모두 읽어 장비를 한 번 계산하고, 그 장비가
@@ -422,6 +428,8 @@ async def incident_page(c, *, status=None, severity=None, rule_id=None, rule_ver
         params.append(value)
         where.append(clause.format(n=len(params)))
 
+    if assignment == "mine": add("i.assigned_to = ${n}", username)
+    if assignment == "unassigned": where.append("i.assigned_to IS NULL")
     if status:       add("i.status = ${n}", status)
     if severity:     add("i.severity = ${n}", severity)
     if rule_id:      add("i.rule_id = ${n}", rule_id)
@@ -499,11 +507,12 @@ async def incident_page(c, *, status=None, severity=None, rule_id=None, rule_ver
 async def get_incident(incident_key: str):
     if "\x00" in incident_key:  # 키에 NUL 은 없다. DB 에 넘기면 오류가 500 이 된다(이슈 #62)
         raise HTTPException(404, "인시던트를 찾을 수 없습니다")
-    async with app.state.pool.acquire() as c:
+    async with app.state.pool.acquire() as c, c.transaction(isolation="repeatable_read", readonly=True):
         inc = await c.fetchrow("""
             SELECT incident_key, rule_id, rule_version, rule_name, severity,
                    host(actor_ip) AS actor_ip, target, first_ts, last_ts,
-                   signal_count, session_count, evidence, status, created_at
+                   signal_count, session_count, evidence, status, created_at, assigned_to,
+                   EXISTS (SELECT 1 FROM console_users u WHERE u.username=incidents.assigned_to AND u.disabled_at IS NULL AND u.role IN ('operator','admin')) AS assignee_available
             FROM incidents WHERE incident_key = $1""", incident_key)
         if inc is None:
             raise HTTPException(404, "인시던트를 찾을 수 없습니다")
@@ -628,6 +637,7 @@ async def get_incident(incident_key: str):
     d["evidence"] = node_logs.mask_evidence(json.loads(inc["evidence"]) if inc["evidence"] else None)
     d["actions"] = [row_to_dict(r) for r in actions]
     d["verdicts"] = [row_to_dict(r) for r in verdicts]
+    d["workflow_version"] = workflow.version(actions, verdicts)
     d["related"] = [row_to_dict(r) for r in related]
     d["behavior"] = node_logs.mask_incident_lines([row_to_dict(r) for r in behavior])
     d["actor"] = {
@@ -758,7 +768,7 @@ def no_nul(value: Optional[str], name: str) -> Optional[str]:
 
 # 판정자와 조치자는 본문이 아니라 세션에서 가져온다. 본문 값을 믿으면 남의 이름으로
 # 판정할 수 있고, 판정이 계정에 귀속된다는 전제가 깨진다.
-class ActionIn(BaseModel):
+class ActionIn(workflow.ChangeIn):
     action: ACTIONS
     note: Optional[str] = Field(default=None, max_length=1000)
     # 차단은 되돌릴 수 있는 완화 조치다. 만료 없는 차단은 언젠가 정상 사용자를 막는다.
@@ -802,7 +812,7 @@ class ActionIn(BaseModel):
         return no_nul(v, "메모")
 
 
-class VerdictIn(BaseModel):
+class VerdictIn(workflow.ChangeIn):
     verdict: VERDICTS
     reason: Optional[str] = Field(default=None, max_length=1000)
     # NaN · 무한대는 저장은 되지만 응답 JSON 을 만들지 못해 판정 뒤 그 사건 상세가 계속 500 이 된다(이슈 #62)
@@ -829,11 +839,11 @@ ACTION_STATUS = {
 ADMIN_ACTIONS = {"unblock_ip", "suppress_rule"}
 
 # 판정 · 조치는 트랜잭션 첫머리에서 사건 행을 잠근다(이슈 #43). 같은 사건의 판정 · 조치가 겹치면 차례로 처리해
-# 뒤에 온 것이 앞의 결과(상태 · 차단)를 보고 쓴다. 잠그지 않으면 두 트랜잭션이 서로의 상태를 덮는다.
+# #105: 뒤에 온 요청의 읽기 토큰이 달라졌으면 저장하지 않고 409로 최신 확인을 요구한다.
 # 잠금 순서는 incidents → blocklist 하나다. 거꾸로 잡는 곳이 없어 교착이 없다.
 #   FOR UPDATE 는 외래 키 확인의 KEY SHARE(verdicts · actions 행을 넣을 때 incidents 행에 건다)와도 충돌한다.
 #   그래서 판정 · 조치 행을 넣는 다른 쪽도 사건 행을 먼저 잡은 뒤 차단 목록으로 간다.
-#   - detector/triage.py record: 판정 행을 먼저 넣어(외래 키 KEY SHARE) 사건 행을 잡고 차단 목록 · 상태를 쓴다
+#   - detector/triage.py record: 사건 행을 FOR UPDATE로 잡고 토큰을 비교한 뒤 판정 · 차단 · 상태를 쓴다
 #   - absorbed.AbsorbedFollower: 후속 차단할 첫 사건 행을 FOLLOW_DUE_SQL 에서 KEY SHARE 로 먼저 잡고 차단 목록으로 간다.
 #     잡지 않으면 차단 목록 → 조치 행(외래 키) 순서가 되어 같은 첫 사건의 함께 차단과 교착한다
 #   absorbed.py 의 나머지 문장은 incidents 를 읽기만 하고 잠그지 않는다.
@@ -900,6 +910,7 @@ async def add_action(incident_key: str, body: ActionIn, request: Request):
             inc = await c.fetchrow(LOCK_INCIDENT, incident_key)
             if inc is None:
                 raise HTTPException(404, "인시던트를 찾을 수 없습니다")
+            await workflow.check(c, incident_key, body.expected_version)
             inc_rule, inc_version = inc["rule_id"], inc["rule_version"]
 
             with_absorbed = body.include_absorbed and body.action in ("block_ip", "unblock_ip")
@@ -1048,9 +1059,10 @@ async def add_action(incident_key: str, body: ActionIn, request: Request):
             if new_status:
                 await c.execute("UPDATE incidents SET status = $1 WHERE incident_key = $2",
                                 new_status, incident_key)
+            updated_version = await c.fetchval(workflow.VERSION_SQL, incident_key)
             await notify_event(c, "action.created", incident_key, rec["id"])
 
-    payload = row_to_dict(rec) | {"incident_key": incident_key}
+    payload = row_to_dict(rec) | {"incident_key": incident_key, "workflow_version": updated_version}
     if absorbed is not None:
         payload["absorbed"] = absorbed
     return payload
@@ -1067,6 +1079,7 @@ async def add_verdict(incident_key: str, body: VerdictIn, request: Request):
             exists = await c.fetchrow(LOCK_INCIDENT, incident_key)
             if not exists:
                 raise HTTPException(404, "인시던트를 찾을 수 없습니다")
+            await workflow.check(c, incident_key, body.expected_version)
             rec = await c.fetchrow("""
                 INSERT INTO verdicts (incident_key, verdict, reason, observed_value, operator,
                                       proposed, decision_seconds)
@@ -1078,16 +1091,19 @@ async def add_verdict(incident_key: str, body: VerdictIn, request: Request):
             # 판정이 곧 종결이다. 판정 없이 종결되는 경로를 두지 않는다.
             await c.execute("UPDATE incidents SET status = 'resolved' WHERE incident_key = $1",
                             incident_key)
+            updated_version = await c.fetchval(workflow.VERSION_SQL, incident_key)
             await notify_event(c, "verdict.created", incident_key, rec["id"])
 
-    return row_to_dict(rec) | {"incident_key": incident_key}
+    return row_to_dict(rec) | {"incident_key": incident_key, "workflow_version": updated_version}
 
 
 @app.get("/api/blocklist")
 async def blocklist(active_only: bool = True):
     q = """SELECT host(actor_ip) actor_ip, reason, incident_key,
                   created_at, expires_at, released_at, method, requested_by,
-                  enforced_at, enforce_note, enforcement, released_by, points, now() AS checked_at
+                  enforced_at, enforce_note, enforcement, released_by, points, now() AS checked_at,
+                  coalesce((SELECT max(id) FROM actions a WHERE a.incident_key=blocklist.incident_key),0)::text || ':' ||
+                  coalesce((SELECT max(id) FROM verdicts v WHERE v.incident_key=blocklist.incident_key),0)::text AS workflow_version
            FROM blocklist {} ORDER BY created_at DESC, actor_ip"""
     q = q.format("WHERE released_at IS NULL AND (expires_at IS NULL OR expires_at > now())" if active_only else "")
     async with app.state.pool.acquire() as c:

@@ -37,6 +37,7 @@ OpsLoop - 인시던트 검토 도구 (WBS 2.5 / 폐루프 입력부)
 """
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -724,8 +725,18 @@ def block_own(cur, key, ip, reason, operator, hours, points):
     return released_text(who, when), None
 
 
+class WorkflowConflict(RuntimeError):
+    """읽은 뒤 다른 관제 작업이 커밋됐음. 저장하지 않고 다시 확인한다."""
+
+
+def workflow_version(cur, key):
+    cur.execute("""SELECT coalesce((SELECT max(id) FROM actions WHERE incident_key=%s),0)::text || ':' ||
+        coalesce((SELECT max(id) FROM verdicts WHERE incident_key=%s),0)::text""", (key,key))
+    return cur.fetchone()[0]
+
+
 def record(conn, key, ip, verdict, reason, observed, operator, proposed, block,
-           seconds=None, absorbed=False, absorbed_hours=ABSORBED_HOURS, block_hours=BLOCK_HOURS):
+           seconds=None, absorbed=False, absorbed_hours=ABSORBED_HOURS, block_hours=BLOCK_HOURS, expected_version=None):
     """판정을 기록하고 차단하면 차단 목록에 올린다.
 
     이 출발지는 block_hours 만료로 올린다(요청자 'triage:<판정자>'). 사람이 푼 출발지 · 차단 금지 대역 · 대역 주소는
@@ -743,8 +754,17 @@ def record(conn, key, ip, verdict, reason, observed, operator, proposed, block,
         raise ValueError("차단 만료는 1..720시간입니다")
     if block and absorbed and not 1 <= absorbed_hours <= 720:
         raise ValueError("흡수 차단 만료는 1..720시간입니다")
+    if expected_version is None:
+        raise ValueError("읽은 사건의 expected_version이 필요합니다")
+    # 화면에서 근거를 읽던 트랜잭션을 닫아 저장·만료 시각을 실제 작업 시작에 맞춘다.
+    conn.commit()
     result = None
     cur = conn.cursor()
+    cur.execute("SELECT incident_key FROM incidents WHERE incident_key=%s FOR UPDATE", (key,))
+    if cur.fetchone() is None or workflow_version(cur, key) != expected_version:
+        conn.rollback()
+        cur.close()
+        raise WorkflowConflict("다른 판정·조치·담당 변경이 저장됐습니다. 사건을 다시 읽어 주세요")
     # 차단 목록 감사 트리거(schema.sql #14)가 판정자를 행위자로 남기게 한다. 트랜잭션이 끝나면 풀린다
     cur.execute("SELECT set_config('opsloop.actor', %s, true)", (operator,))
     cur.execute("""
@@ -794,8 +814,13 @@ def record(conn, key, ip, verdict, reason, observed, operator, proposed, block,
         note = f"{reason} [차단 안 함 · {refused}]" if refused else reason
         cur.execute("INSERT INTO actions (incident_key, action, operator, note) "
                     "VALUES (%s,'acknowledge',%s,%s)", (key, operator, note))
-        cur.execute("UPDATE incidents SET status='acknowledged' WHERE incident_key=%s", (key,))
+        cur.execute("UPDATE incidents SET status='resolved' WHERE incident_key=%s", (key,))
 
+    # 콘솔 A/B도 명령줄 판정을 즉시 다시 읽게 한다. 트랜잭션 커밋 때 통보된다.
+    payload = json.dumps({"type": "verdict.created", "data": {"incident_key": key}}, separators=(",", ":"))
+    if len(payload.encode("utf-8")) >= 8000:
+        payload = '{"type":"verdict.created","data":{}}'
+    cur.execute("SELECT pg_notify('opsloop_event', %s)", (payload,))
     conn.commit()
     cur.close()
     return result
@@ -829,8 +854,16 @@ def triage(conn, rule_id, limit, operator, absorbed_hours=ABSORBED_HOURS, block_
 
     taken = flipped = skipped = judged = auto_done = 0
     auto = False
+    def save(*args, **kwargs):
+        try:
+            return record(*args, **kwargs)
+        except WorkflowConflict as error:
+            print(f"  저장 안 됨: {error}")
+            return {"conflict": True}
+
     for i, row in enumerate(rows, 1):
         key, rid, ip, n_sig, sev = row[0], row[1], row[5], row[8], row[4]
+        expected_version = workflow_version(cur, key)
         evidence = row[10] or {}
         sessions = list(evidence.get("sessions") or [])
         observed, unit = observed_of(evidence, n_sig)
@@ -841,9 +874,12 @@ def triage(conn, rule_id, limit, operator, absorbed_hours=ABSORBED_HOURS, block_
         # 제안이 없는 것은 남겨둔다. 판단이 필요한 것을 자동으로 넘기지 않는다.
         if auto:
             if suggestion:
-                record(conn, key, ip, suggestion, basis[1] + " [일괄 수락]",
-                       observed, operator, suggestion, False)
-                taken += 1; judged += 1; auto_done += 1
+                result = save(conn, key, ip, suggestion, basis[1] + " [일괄 수락]",
+                       observed, operator, suggestion, False, expected_version=expected_version)
+                if result and result.get("conflict"):
+                    skipped += 1
+                else:
+                    taken += 1; judged += 1; auto_done += 1
             else:
                 skipped += 1
             continue
@@ -872,20 +908,17 @@ def triage(conn, rule_id, limit, operator, absorbed_hours=ABSORBED_HOURS, block_
                 if yn != "y":
                     continue
                 auto = True
-                record(conn, key, ip, suggestion, basis[1] + " [일괄 수락]",
-                       observed, operator, suggestion, False)
-                taken += 1; judged += 1; auto_done += 1
+                result = save(conn, key, ip, suggestion, basis[1] + " [일괄 수락]",
+                       observed, operator, suggestion, False, expected_version=expected_version)
+                if result and result.get("conflict"):
+                    skipped += 1
+                else:
+                    taken += 1; judged += 1; auto_done += 1
                 break
             if ans == "" and suggestion:
                 verdict, note = suggestion, basis[1]
-                taken += 1
             elif ans in VERDICTS:
                 verdict = VERDICTS[ans][0]
-                if suggestion:
-                    if verdict != suggestion:
-                        flipped += 1
-                    else:
-                        taken += 1
                 note = input(f"  근거 (엔터 = '{LABEL[verdict]}') > ").strip() or LABEL[verdict]
             else:
                 print("  입력을 다시 확인하세요.")
@@ -908,10 +941,16 @@ def triage(conn, rule_id, limit, operator, absorbed_hours=ABSORBED_HOURS, block_
                     with_absorbed = keypress(input(
                         f"  같은 페이로드로 흡수된 출발지 {n_abs}곳도 함께 차단할까요? (만료 {absorbed_hours}시간 · "
                         f"만료 전에 새로 흡수되는 출발지도 콘솔이 같은 만료 · 같은 지점으로 차단) [y/N] > ")) == "y"
-            done = record(conn, key, ip, verdict, note, observed, operator, suggestion, block,
+            done = save(conn, key, ip, verdict, note, observed, operator, suggestion, block,
                           seconds=round(time.monotonic() - shown_at), absorbed=with_absorbed,
-                          absorbed_hours=absorbed_hours, block_hours=block_hours)
+                          absorbed_hours=absorbed_hours, block_hours=block_hours, expected_version=expected_version)
+            if done and done.get("conflict"):
+                skipped += 1
+                break
             judged += 1
+            if suggestion:
+                if verdict == suggestion: taken += 1
+                else: flipped += 1
             if done and done.get("refused"):
                 # 물은 뒤에 막힌 경우(그 사이 누가 풀었거나 금지 대역이 늘었다). 판정은 남았고 차단만 하지 않았다
                 print(f"  기록됨: {LABEL[verdict]} · 차단 안 함 ({done['refused']})")

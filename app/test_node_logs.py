@@ -955,6 +955,10 @@ INCIDENT = {"incident_key": f"R102|w2|{ACTOR}|t", "rule_id": "R102", "rule_versi
 
 
 class DetailConn:
+    @asynccontextmanager
+    async def transaction(self, **kwargs):
+        yield
+
     """사건 상세(main.get_incident)용 가짜 DB. 사건 하나와 ② · ④ 행을 주고 나머지는 비었다. calls 에 질의를 남긴다."""
     readable = True
     node_rows = [node_row("web-02", hostname="web02.lab")]       # 등록 절차처럼 발생원은 node_id 다

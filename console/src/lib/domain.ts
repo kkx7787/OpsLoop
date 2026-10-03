@@ -139,7 +139,7 @@ export function isIncidentAction(value: unknown): value is IncidentAction {
 
 /** 이력에 남은 조치 이름. 화면이 내지 않는 값(escalate · note 등)은 값 그대로 보인다. */
 export function actionLabel(action: string): string {
-  return isIncidentAction(action) ? ACTION_LABEL[action] : action
+  return action === 'assign' ? '담당 변경' : isIncidentAction(action) ? ACTION_LABEL[action] : action
 }
 
 /**

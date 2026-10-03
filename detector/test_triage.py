@@ -89,6 +89,15 @@ GUARD = """
 """
 
 
+def record_current(conn, key, ip, *args, **kwargs):
+    # 차단 규칙 시험의 옛 고아 키도 실제 FK 계약처럼 사건을 먼저 만든다.
+    cur = conn.cursor()
+    cur.execute("INSERT INTO incidents (incident_key,rule_id,rule_version,actor_ip,first_ts,last_ts) VALUES (%s,%s,'v3',%s,%s,%s) ON CONFLICT DO NOTHING", (key,key.split('|')[0],ip,T0,T0))
+    token = triage.workflow_version(cur, key)
+    cur.close()
+    return triage.record(conn, key, ip, *args, expected_version=token, **kwargs)
+
+
 class FakeCursor:
     """조회 문장과 인자를 기록한다. 결과는 모두 비어 있다."""
 
@@ -518,10 +527,24 @@ class AbsorbedDatabaseTests(unittest.TestCase):
         self.assertTrue(triage.rule_absorbs(self.cur, "v3", "R006"))
         self.assertFalse(triage.rule_absorbs(self.cur, "v3", "R002"))
 
+    def test_stale_record_does_not_overwrite_and_requires_read_token(self):
+        token = triage.workflow_version(self.cur, FIRST)
+        triage.record(self.conn, FIRST, OWN, 'threat', '먼저 확인', 1.0, 'first', None, False, expected_version=token)
+        with self.assertRaises(triage.WorkflowConflict):
+            triage.record(self.conn, FIRST, OWN, 'false_positive', '오래된 화면', 1.0, 'second', None, True, expected_version=token)
+        self.cur.execute('SELECT verdict, operator FROM verdicts WHERE incident_key=%s', (FIRST,))
+        self.assertEqual(self.cur.fetchall(), [('threat','first')])
+        self.cur.execute('SELECT count(*) FROM blocklist')
+        self.assertEqual(self.cur.fetchone()[0],0)
+        self.cur.execute('SELECT status FROM incidents WHERE incident_key=%s', (FIRST,))
+        self.assertEqual(self.cur.fetchone()[0],'resolved')
+        with self.assertRaises(ValueError):
+            triage.record(self.conn, FIRST, OWN, 'threat', '', 1.0, 'first', None, False)
+
     def test_record_blocks_absorbed_sources_with_expiry(self):
         # record 는 커밋한다. 임시 테이블이라 연결을 닫으면 사라진다
         before = self.rows()["198.51.100.4"]
-        done = triage.record(self.conn, FIRST, OWN, "threat", "키 심기 캠페인", 1.0, "han", None, True,
+        done = record_current(self.conn, FIRST, OWN, "threat", "키 심기 캠페인", 1.0, "han", None, True,
                              absorbed=True)
         rows = self.rows()
         tag = triage.absorbed_reason_tag(FIRST)
@@ -547,13 +570,13 @@ class AbsorbedDatabaseTests(unittest.TestCase):
     def test_record_skips_human_released_source(self):
         self.cur.execute("""INSERT INTO blocklist (actor_ip, reason, incident_key, expires_at, released_at, released_by)
             VALUES ('198.51.100.3', 'console', 'R002|v3|x', now() + interval '1 hour', now(), 'admin')""")
-        done = triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True, absorbed=True,
+        done = record_current(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True, absorbed=True,
                              absorbed_hours=48)
         rows = self.rows()
         self.assertEqual(rows["198.51.100.3"][1], "R002|v3|x")      # 사람이 푼 행은 그대로
         self.assertEqual((done["blocked"], done["skipped"]), (1, ["198.51.100.3"]))
         with self.assertRaises(ValueError):
-            triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True, absorbed=True,
+            record_current(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True, absorbed=True,
                           absorbed_hours=0)
 
     def test_triage_flow_asks_absorbed_block_with_expiry(self):
@@ -576,7 +599,7 @@ class AbsorbedDatabaseTests(unittest.TestCase):
         self.assertIn("다른 사건 차단 중 1곳", out.getvalue())
 
     def test_record_without_option_blocks_own_source_only(self):
-        done = triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True)
+        done = record_current(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True)
         self.assertIsNone(done)
         self.assertEqual(set(self.rows()), {OWN, "198.51.100.4"})
 
@@ -592,19 +615,19 @@ class AbsorbedDatabaseTests(unittest.TestCase):
         return self.cur.fetchone()
 
     def test_record_block_hours_and_range(self):
-        triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True, block_hours=3)
+        record_current(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True, block_hours=3)
         now = datetime.now(timezone.utc)
         self.assertTrue(now + timedelta(hours=2) < self.row(OWN)[0] < now + timedelta(hours=4))
         for hours in (0, 721):
             with self.subTest(hours=hours), self.assertRaises(ValueError):
-                triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True, block_hours=hours)
+                record_current(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True, block_hours=hours)
 
     def test_record_does_not_revive_human_release(self):
         # 사람이 푼 출발지: 해제 기록 · 사유 · 요청자를 그대로 두고 판정만 남긴다. 조치는 확인이고 까닭이 이력에 남는다
         self.cur.execute("""INSERT INTO blocklist (actor_ip, reason, incident_key, expires_at, released_at, released_by,
             requested_by) VALUES (%s, 'console', 'R002|v3|x', now() + interval '1 hour', now(), 'admin', 'op')""", (OWN,))
         before = self.row(OWN)
-        done = triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True, absorbed=True)
+        done = record_current(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True, absorbed=True)
         self.assertEqual(self.row(OWN), before)
         self.assertIn("admin 가", done["refused"])
         self.assertIn("콘솔에서 차단", done["refused"])
@@ -626,8 +649,8 @@ class AbsorbedDatabaseTests(unittest.TestCase):
             (%s, 'old', 'R002|v3|x', now() - interval '1 hour', NULL, 'nft', now() - interval '2 hours', '관문 반영 · abcd1234 · x'),
             ('198.51.100.7', 'old', 'R002|v3|y', now() + interval '1 hour', now(), 'nft', now(), '관문 반영 · abcd1234 · y')""",
                          (OWN,))
-        self.assertIsNone(triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True))
-        self.assertIsNone(triage.record(self.conn, "R002|v3|z", "198.51.100.7", "threat", "근거", 1.0, "han", None, True))
+        self.assertIsNone(record_current(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True))
+        self.assertIsNone(record_current(self.conn, "R002|v3|z", "198.51.100.7", "threat", "근거", 1.0, "han", None, True))
         now = datetime.now(timezone.utc)
         for ip, note in ((OWN, "관문 반영 · abcd1234 · x"), ("198.51.100.7", "관문 반영 · abcd1234 · y")):
             expires, released_at, released_by, who, method, enforced_at, enforce_note, reason, points = self.row(ip)
@@ -645,8 +668,8 @@ class AbsorbedDatabaseTests(unittest.TestCase):
             (%s, 'console', 'R002|v3|x', now() + interval '72 hours', 'fail2ban', now(), '관문 반영 · abcd1234 · x', 'op'),
             ('198.51.100.8', 'old', 'R002|v1|y', NULL, NULL, NULL, '집행 제외 · 만료 없음', NULL)""", (OWN,))
         live = self.row(OWN)
-        triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True)
-        triage.record(self.conn, "R002|v3|z", "198.51.100.8", "threat", "근거", 1.0, "han", None, True)
+        record_current(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True)
+        record_current(self.conn, "R002|v3|z", "198.51.100.8", "threat", "근거", 1.0, "han", None, True)
         got = self.row(OWN)
         self.assertEqual((got[0], got[4], got[5], got[6]), (live[0], live[4], live[5], live[6]))
         self.assertEqual(got[3], "triage:han")
@@ -658,7 +681,7 @@ class AbsorbedDatabaseTests(unittest.TestCase):
         key = "R002|v3|192.168.50.21|x"
         self.cur.execute("INSERT INTO incidents VALUES (%s, 'R002', '침해 후 행위', 'v3', 'high', '192.168.50.21', %s, %s)",
                          (key, T0, T0))
-        done = triage.record(self.conn, key, "192.168.50.21", "threat", "근거", 1.0, "han", None, True)
+        done = record_current(self.conn, key, "192.168.50.21", "threat", "근거", 1.0, "han", None, True)
         self.assertEqual(done["refused"], "192.168.50.21 는 차단 금지 대역 192.168.0.0/16(사설 · 관리망 · 서비스망)에 들어 "
                                           "차단하지 않습니다. 인프라 · 사설 · 예약 주소는 막지 않습니다")
         self.assertIsNone(self.row("192.168.50.21"))
@@ -666,7 +689,7 @@ class AbsorbedDatabaseTests(unittest.TestCase):
         self.cur.execute("SELECT verdict FROM verdicts WHERE incident_key = %s", (key,))
         self.assertEqual(self.cur.fetchone(), ("threat",))
         # 관문 EIP 는 사설 대역이 아니어도 막지 않는다
-        done = triage.record(self.conn, key, "15.164.37.49", "threat", "근거", 1.0, "han", None, True)
+        done = record_current(self.conn, key, "15.164.37.49", "threat", "근거", 1.0, "han", None, True)
         self.assertIn("15.164.37.49/32(허니팟 관문 EIP)", done["refused"])
 
     def test_gather_and_flow_do_not_offer_block_for_exempt_or_released(self):
@@ -745,9 +768,9 @@ class AbsorbedDatabaseTests(unittest.TestCase):
         self.assertIsNone(self.row(OWN)[0])
         self.assertEqual(self.last_action(), ("block_ip", f"실제 위협 [{triage.NO_EXPIRY_TAG}]"))
         # record 도 까닭을 돌려준다. 새 차단 · 만료가 있는 살아 있는 차단은 전처럼 None 이다
-        done = triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True)
+        done = record_current(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True)
         self.assertEqual(done, {"no_expiry": triage.NO_EXPIRY_TEXT})
-        self.assertIsNone(triage.record(self.conn, "R002|v3|z", "198.51.100.9", "threat", "근거", 1.0, "han", None, True))
+        self.assertIsNone(record_current(self.conn, "R002|v3|z", "198.51.100.9", "threat", "근거", 1.0, "han", None, True))
 
     def test_exempt_unreadable_degrades_to_constants(self):
         # 역할 블록(20260924_db_roles.sql)만 다시 적용하면 콘솔의 block_exempt 읽기가 사라진다. 표가 있어도 읽지 못하면 코드 상수만
@@ -783,7 +806,7 @@ class AbsorbedDatabaseTests(unittest.TestCase):
                 actor_ip, first_ts, last_ts, signal_count) VALUES (%s, %s, 'absorbed', 'R006', 'v3', %s, %s, %s, 1)""",
                              (FIRST, f"x{i}", ip, T0, T0))
         self.assertIn("15.164.37.49/32", triage.block_nets(self.cur))
-        done = triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True, absorbed=True)
+        done = record_current(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True, absorbed=True)
         self.assertEqual((done["blocked"], done["unblockable"]), (2, 2))
         self.assertNotIn("15.164.37.49", self.rows())
 
@@ -800,13 +823,13 @@ class AbsorbedDatabaseTests(unittest.TestCase):
     def test_record_은_사건_규칙의_기본_지점으로_올린다(self):
         key4 = "R004|v3|192.0.2.4|x"
         self.r004(key4, "192.0.2.4")
-        triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True)             # R006
-        triage.record(self.conn, key4, "192.0.2.4", "threat", "근거", 1.0, "han", None, True)     # R004
-        triage.record(self.conn, "R002|v3|z", "198.51.100.9", "threat", "근거", 1.0, "han", None, True)  # 사건 없음
+        record_current(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True)             # R006
+        record_current(self.conn, key4, "192.0.2.4", "threat", "근거", 1.0, "han", None, True)     # R004
+        record_current(self.conn, "R002|v3|z", "198.51.100.9", "threat", "근거", 1.0, "han", None, True)  # 사건 없음
         got = self.points()
         self.assertEqual((got[OWN], got["192.0.2.4"], got["198.51.100.9"]), (["fw"], ["gateway", "fw"], ["fw"]))
         # 차단하지 않는 판정은 지점도 읽지 않는다
-        triage.record(self.conn, FIRST, OWN, "non_actionable", "근거", 1.0, "han", None, False)
+        record_current(self.conn, FIRST, OWN, "non_actionable", "근거", 1.0, "han", None, False)
         self.assertEqual(self.points()[OWN], ["fw"])
 
     def test_살아_있는_차단은_넓히기만_하고_새_요청은_규칙_기본값이다(self):
@@ -825,15 +848,15 @@ class AbsorbedDatabaseTests(unittest.TestCase):
         self.cur.execute("ROLLBACK TO SAVEPOINT narrow")
         live = self.row(OWN)
         # 살아 있는 두 지점 차단에 R006(내부 방화벽) 판정으로 다시 걸어도 두 지점이 남는다(만료 · 집행 정보도 그대로)
-        self.assertIsNone(triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True))
+        self.assertIsNone(record_current(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True))
         self.assertEqual((self.row(OWN)[0], self.row(OWN)[8]), (live[0], ["gateway", "fw"]))
         # 살아 있는 내부 방화벽 차단에 R004 로 다시 걸면 관문까지 넓어진다
-        triage.record(self.conn, key4, "198.51.100.11", "threat", "근거", 1.0, "han", None, True)
+        record_current(self.conn, key4, "198.51.100.11", "threat", "근거", 1.0, "han", None, True)
         self.assertEqual(self.points()["198.51.100.11"], ["gateway", "fw"])
         # 만료된 행 · 누가 풀었는지 없는 해제는 새 요청이라 규칙 기본값(좁아져도 된다)
         for ip in ("198.51.100.12", "198.51.100.13"):
             with self.subTest(ip=ip):
-                self.assertIsNone(triage.record(self.conn, f"R006|v3|{ip}", ip, "threat", "근거", 1.0, "han", None, True))
+                self.assertIsNone(record_current(self.conn, f"R006|v3|{ip}", ip, "threat", "근거", 1.0, "han", None, True))
                 self.assertEqual(self.points()[ip], ["fw"])
 
     def test_사람이_푼_행은_지점도_그대로다(self):
@@ -842,7 +865,7 @@ class AbsorbedDatabaseTests(unittest.TestCase):
         key4 = "R004|v3|192.0.2.4|x"
         self.r004(key4, "192.0.2.4")
         before = self.row("192.0.2.4")
-        self.assertIn("admin 가", triage.record(self.conn, key4, "192.0.2.4", "threat", "근거", 1.0, "han", None,
+        self.assertIn("admin 가", record_current(self.conn, key4, "192.0.2.4", "threat", "근거", 1.0, "han", None,
                                                 True)["refused"])
         self.assertEqual(self.row("192.0.2.4"), before)
 
@@ -852,7 +875,7 @@ class AbsorbedDatabaseTests(unittest.TestCase):
         self.cur.execute("""INSERT INTO blocklist (actor_ip, reason, incident_key, expires_at, method, points)
             VALUES ('198.51.100.4', 'console', 'R002|v3|other', now() + interval '1 hour', 'nft', '{fw}')""")
         kept = self.rows()["198.51.100.4"]
-        done = triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True, absorbed=True)
+        done = record_current(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True, absorbed=True)
         self.assertEqual((done["blocked"], done["kept"]), (2, 1))
         self.assertEqual(self.points(), {OWN: ["fw"], "198.51.100.2": ["fw"], "198.51.100.3": ["fw"],
                                          "198.51.100.4": ["fw"]})
@@ -879,7 +902,7 @@ class AbsorbedDatabaseTests(unittest.TestCase):
         self.cur.execute("SELECT expires_at FROM absorbed_blocks WHERE first_key = %s", (key4,))
         promise = self.cur.fetchone()[0]
         before = self.rows()
-        done = triage.record(self.conn, key4, own4, "threat", "근거", 1.0, "han", None, True, absorbed=True)
+        done = record_current(self.conn, key4, own4, "threat", "근거", 1.0, "han", None, True, absorbed=True)
         after = self.rows()
         self.assertEqual({k: done[k] for k in ("blocked", "kept")}, {"blocked": 2, "kept": 1})
         got = self.points()
@@ -905,8 +928,8 @@ class AbsorbedDatabaseTests(unittest.TestCase):
                 enforce_note) VALUES (%s, 'old', 'R002|v3|x', now() - interval '1 second', 'nft', %s, %s)""",
                              (ip, stamp, applied))
         self.cur.execute("UPDATE blocklist SET released_at = now() WHERE actor_ip = '198.51.100.3'")   # 누가 풀었는지 없는 해제
-        triage.record(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True, absorbed=True)   # R006
-        triage.record(self.conn, key4, ip4, "threat", "근거", 1.0, "han", None, True)                   # R004
+        record_current(self.conn, FIRST, OWN, "threat", "근거", 1.0, "han", None, True, absorbed=True)   # R006
+        record_current(self.conn, key4, ip4, "threat", "근거", 1.0, "han", None, True)                   # R004
         self.cur.execute("UPDATE blocklist SET expires_at = now() - interval '1 second' WHERE actor_ip = '198.51.100.2'")
         self.cur.execute(triage.BLOCK_ABSORBED_SQL, {"key": FIRST, "reason": triage.absorbed_reason_tag(FIRST), "ip": OWN,
                                                      "who": "triage:han", "expires": datetime.now(timezone.utc) + timedelta(days=1),

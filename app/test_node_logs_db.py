@@ -63,7 +63,8 @@ TABLES = """
 """
 # 사건 상세(main.get_incident)가 더 읽는 표(test_proposals_db 와 같은 꼴). 흡수 기록 · 후속 차단은 비어 있다
 DETAIL_TABLES = """
-    CREATE TEMP TABLE incidents (incident_key text PRIMARY KEY, rule_id text, rule_version text NOT NULL,
+    CREATE TEMP TABLE console_users (username text PRIMARY KEY, role text, disabled_at timestamptz);
+    CREATE TEMP TABLE incidents (assigned_to text, incident_key text PRIMARY KEY, rule_id text, rule_version text NOT NULL,
         rule_name text, severity text, actor_ip inet, target text, first_ts timestamptz,
         last_ts timestamptz, signal_count integer, session_count integer, evidence jsonb,
         status text DEFAULT 'open', created_at timestamptz DEFAULT now());

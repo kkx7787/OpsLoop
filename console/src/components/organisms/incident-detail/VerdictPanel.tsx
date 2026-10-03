@@ -31,6 +31,8 @@ export interface VerdictPanelProps {
   /** 이 사건 화면을 연 시각(ms). 제출까지 걸린 초가 decision_seconds 로 남는다(화면 설계 6.3) */
   openedAt: number
   blocked?: boolean
+  expectedVersion?: string
+  onSaved?: (version: string | undefined) => void
   className?: string
 }
 
@@ -44,7 +46,7 @@ export interface VerdictPanelProps {
  * 권한(incident.verdict)이 없으면 패널을 숨기지 않고 흐리게 둔다. 까닭 글은 조치 바의 조회 전용 안내 한 곳에 두고,
  * 여기서는 마우스 올림 · 낭독(Gated 기본)으로만 알린다.
  */
-export function VerdictPanel({ detail, openedAt, blocked = false, className }: VerdictPanelProps) {
+export function VerdictPanel({ detail, openedAt, blocked = false, expectedVersion, onSaved, className }: VerdictPanelProps) {
   const gate = usePermission('incident.verdict')
   const mutation = useVerdictMutation(detail.incident_key)
   const [verdict, setVerdict] = useState<Verdict | null>(null)
@@ -59,7 +61,7 @@ export function VerdictPanel({ detail, openedAt, blocked = false, className }: V
   const judged = last !== undefined
   // 판정이 곧 종결이다. 최신 판정이 미결이 아니면 폼을 접어 이력이 위로 오게 한다
   const foldable = judged && last.verdict !== 'undetermined'
-  const expanded = !foldable || open
+  const expanded = !foldable || open || verdict !== null || reason !== ''
   const emptyReason = reason.trim() === ''
   const proposal = detail.proposal
 
@@ -71,6 +73,7 @@ export function VerdictPanel({ detail, openedAt, blocked = false, className }: V
       return
     }
     const input: VerdictInput = {
+      expected_version: expectedVersion ?? detail.workflow_version,
       verdict,
       observed_value: detail.signal_count,
       decision_seconds: decisionSeconds(openedAt),
@@ -79,7 +82,8 @@ export function VerdictPanel({ detail, openedAt, blocked = false, className }: V
     if (proposal?.verdict) input.proposed = proposal.verdict
     if (trimmed) input.reason = trimmed
     mutation.mutate(input, {
-      onSuccess: () => {
+      onSuccess: (created) => {
+        onSaved?.(created.workflow_version);
         setVerdict(null)
         setReason('')
         setMissing(false)

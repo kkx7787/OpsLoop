@@ -127,6 +127,8 @@ function EnforceFacts({ entry, state }: { entry: BlockEntry; state: BlockState }
 function BlockRow({ entry, now, allowed, stale, onNotice, refresh }: { entry: BlockEntry; now: number; allowed: boolean; stale: boolean; onNotice: (notice: Notice) => void; refresh: () => void }) {
   const mutation = useActionMutation(entry.incident_key ?? '')
   const [confirming, setConfirming] = useState(false)
+  const [expectedVersion, setExpectedVersion] = useState<string>()
+  const changed = confirming && expectedVersion !== entry.workflow_version
   const [note, setNote] = useState('')
   const state = blockState(entry, now)
   const live = LIVE_BLOCK_STATES.includes(state)
@@ -145,8 +147,8 @@ function BlockRow({ entry, now, allowed, stale, onNotice, refresh }: { entry: Bl
   // 사건 키만 보내면 서버가 첫 사건 출발지의 차단을 푼다. 서버는 이 행이 그 사건의 흡수 차단일 때만 이 행 하나를 푼다
   function release(event: FormEvent) {
     event.preventDefault()
-    if (!canRelease) return
-    mutation.mutate({ action: 'unblock_ip', actor_ip: entry.actor_ip, ...(note.trim() ? { note: note.trim() } : {}) }, {
+    if (!canRelease || changed || !expectedVersion) return
+    mutation.mutate({ expected_version: expectedVersion, action: 'unblock_ip', actor_ip: entry.actor_ip, ...(note.trim() ? { note: note.trim() } : {}) }, {
       onSuccess: () => { setConfirming(false); onNotice({ tone: 'success', message: `${entry.actor_ip} 차단 해제를 기록했습니다` }) },
       onError: error => { onNotice({ tone: 'danger', message: describeError(error) }); refresh() },
     })
@@ -166,13 +168,14 @@ function BlockRow({ entry, now, allowed, stale, onNotice, refresh }: { entry: Bl
     </div>
     <div className="text-xs"><span className="block text-ink-muted lg:hidden">만료 시각 (KST)</span>{entry.expires_at ? <Time value={entry.expires_at} format="short" /> : '만료 없음'}{entry.released_at && <div className="mt-1 text-ink-muted">해제 <Time value={entry.released_at} format="short" />{entry.released_by && <> · <UntrustedText value={entry.released_by} max={64} /></>}</div>}</div>
     <div className="break-words text-xs text-ink-muted"><span className="lg:hidden">요청자 </span><UntrustedText value={entry.requested_by} max={64} fallback="미기록" /></div>
-    <div className="col-span-2 justify-self-end lg:col-span-1 lg:justify-self-start">{allowed && live ? <Button size="sm" disabled={!canRelease || mutation.isPending} disabledReason={stale ? '최신 목록을 확인한 뒤 해제해 주세요' : '연결된 근거 사건이 없어 해제할 수 없습니다'} onClick={() => setConfirming(!confirming)} aria-expanded={confirming}>해제</Button> : <span className="text-xs text-ink-muted">{live ? 'admin만' : '—'}</span>}</div>
+    <div className="col-span-2 justify-self-end lg:col-span-1 lg:justify-self-start">{allowed && live ? <Button size="sm" disabled={!canRelease || mutation.isPending} disabledReason={stale ? '최신 목록을 확인한 뒤 해제해 주세요' : '연결된 근거 사건이 없어 해제할 수 없습니다'} onClick={() => { setExpectedVersion(entry.workflow_version); setConfirming(!confirming) }} aria-expanded={confirming}>해제</Button> : <span className="text-xs text-ink-muted">{live ? 'admin만' : '—'}</span>}</div>
     {confirming && live && <form className="col-span-2 flex flex-col gap-2 rounded-panel border border-line bg-canvas p-3 lg:col-span-6" aria-label={`${entry.actor_ip} 해제 확인`} onSubmit={release}>
       <p className="m-0 text-sm">{absorbed
         ? `${entry.actor_ip} 의 흡수 차단 한 곳만 해제할까요? 이 출발지는 이후 후속 차단에서도 빠집니다.`
         : `${entry.actor_ip} 차단을 해제할까요?`}</p>
+      {changed && <p role="alert">관련 사건에 다른 변경이 저장됐습니다. 사건 이력을 확인하고 해제 창을 다시 열어 주세요. 입력은 유지됩니다.</p>}
       <Input aria-label="해제 사유" maxLength={1000} placeholder="해제 사유 (선택)" value={note} onChange={event => setNote(event.target.value)} />
-      <div className="flex gap-2"><Button type="submit" variant="primary" loading={mutation.isPending} disabled={!canRelease}>해제 확정</Button><Button onClick={() => setConfirming(false)} disabled={mutation.isPending}>취소</Button></div>
+      <div className="flex gap-2"><Button type="submit" variant="primary" loading={mutation.isPending} disabled={!canRelease || changed || !expectedVersion}>해제 확정</Button><Button onClick={() => setConfirming(false)} disabled={mutation.isPending}>취소</Button></div>
     </form>}
   </li>
 }

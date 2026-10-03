@@ -715,7 +715,7 @@ class RouterTests(unittest.TestCase):
                 else:
                     self.assertNotIn(human, sql)
         # 판정자(operator)는 목록 칸에 싣지 않는다
-        self.assertNotIn("operator", self.main.PAGE_COLUMNS)
+        self.assertNotIn("v.operator", self.main.PAGE_COLUMNS)
         self.assertEqual(self.client.get("/api/incidents", params={"undetermined": "maybe"}).status_code, 422)
 
     def test_세션이_없으면_401_이다(self):

@@ -193,7 +193,7 @@ class PointsChoiceTextTest(unittest.TestCase):
 
     def test_복원_훈련은_새_트리거_함수를_세고_지문에_지점을_넣는다(self):
         # 트리거 10 = #63 뒤 9 + trg_blocklist_points, 함수 19 = 18 + blocklist_points_change. 표 · FK · 뷰는 그대로다
-        self.assertEqual(QUERIES.EXPECT, {"tables": 27, "fk": 15, "triggers": 10, "functions": 20, "views": 3})
+        self.assertEqual(QUERIES.EXPECT, {"tables": 27, "fk": 16, "triggers": 10, "functions": 20, "views": 3})
         fps = {f[0]: f for f in QUERIES.FINGERPRINTS}
         self.assertTrue(fps["blocklist"][2].endswith(" enforced_at, enforce_note, points)"), fps["blocklist"][2])
         self.assertTrue(fps["absorbed_blocks"][2].endswith(", released_by, points)"), fps["absorbed_blocks"][2])

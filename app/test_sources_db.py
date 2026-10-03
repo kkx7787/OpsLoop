@@ -73,6 +73,7 @@ class Base(unittest.IsolatedAsyncioTestCase):
         for name in tables:
             await self.conn.execute(temp_table(name))
         # 시험 대역 함수. 표는 그대로 임시 표다(스키마가 비어 pg_temp 에서 찾는다)
+        await self.conn.execute("CREATE TEMP TABLE console_users (username text, role text, disabled_at timestamptz)")
         self.schema = f"t58_{secrets.token_hex(4)}"
         await self.conn.execute(f"""
             INSERT INTO test_ranges (cidr, note) VALUES ('203.0.113.0/24', '시험');

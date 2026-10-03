@@ -205,6 +205,17 @@ describe('applyVerdict · applyAction', () => {
     expect(before.status).toBe('open')
     expect(before.verdicts).toEqual([])
   })
+
+  it('실시간 조회가 먼저 오면 이력을 중복 추가하지 않고 더 늦은 변경을 보존한다(#105)', () => {
+    const saved = { ...verdict, workflow_version: '0:7' }
+    const already = detail({ status: 'resolved', workflow_version: '0:7', verdicts: [saved] })
+    expect(applyVerdict(already, saved).verdicts).toEqual([saved])
+    const latest = detail({ status: 'in_progress', workflow_version: '9:8' })
+    expect(applyVerdict(latest, saved)).toBe(latest)
+    expect(applyAction(latest, { ...action('acknowledge'), workflow_version: '9:7' })).toBe(latest)
+    const own = { ...action('note'), workflow_version: '9:8' }
+    expect(applyAction({ ...latest, actions: [own] }, own).actions).toEqual([own])
+  })
 })
 
 // ---------------------------------------------------------------- 훅

@@ -26,7 +26,7 @@ export const BLOCKS_BY_POINT: PointCounts[] = [
 
 /** 차단 목록 한 행(두 지점 요청 · 집행 기록 없음 = 집행 대기). 내부 방화벽만 요청한 행은 points: ['fw'] 를 넣는다(#77) */
 export function blockEntry(extra: Partial<BlockEntry> = {}): BlockEntry {
-  return { actor_ip: '192.0.2.8', reason: '반복 인증 시도', incident_key: 'R001|v2|192.0.2.8', created_at: AS_OF, expires_at: '2026-09-24T08:00:00Z', released_at: null, method: null, requested_by: 'operator', enforced_at: null, enforce_note: null, released_by: null, points: ['gateway', 'fw'], checked_at: AS_OF, ...extra }
+  return { workflow_version: '0:0', actor_ip: '192.0.2.8', reason: '반복 인증 시도', incident_key: 'R001|v2|192.0.2.8', created_at: AS_OF, expires_at: '2026-09-24T08:00:00Z', released_at: null, method: null, requested_by: 'operator', enforced_at: null, enforce_note: null, released_by: null, points: ['gateway', 'fw'], checked_at: AS_OF, ...extra }
 }
 
 /** 관제 이상 항목 하나(#72). 모든 칸이 있고 해당 없는 칸은 null 이다(서버 monitor_items) */
