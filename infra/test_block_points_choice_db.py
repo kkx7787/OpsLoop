@@ -126,14 +126,14 @@ class PointsChoiceTextTest(unittest.TestCase):
                   "infra/vmware/scripts/verify-db-roles.sh 의 '차단 적용 지점' 줄"):
             self.assertIn(s, head)
 
-    def test_블록은_63_블록_뒤_파일_끝에_있다(self):
-        # 표(blocklist · absorbed_blocks)가 앞에서 만들어지고, 권한을 주지 않으므로 역할 블록 뒤 어디든 되지만 마지막 블록으로 둔다
+    def test_블록은_63_블록_뒤_103_블록_앞에_있다(self):
+        # #103이 뒤에 추가됐다. 기존 표와 역할 블록 이후라는 순서는 유지한다.
         schema = read(SCHEMA)
         at = schema.index(HEADER + "\n")
         self.assertGreater(at, schema.index(HEADER63 + "\n"))
         self.assertGreater(at, schema.index("GRANT pg_read_all_data TO opsloop_backup"))
         self.assertGreater(at, schema.index("CREATE TABLE IF NOT EXISTS absorbed_blocks"))
-        self.assertEqual(schema.rstrip("\n"), schema[:at] + block77(schema))
+        self.assertLess(at + len(block77(schema)), schema.index('-- #103.'))
         self.assertEqual(schema.count(HEADER + "\n"), 1)
 
     def test_열_두_개와_값_제약은_두_값뿐이다(self):
@@ -193,7 +193,7 @@ class PointsChoiceTextTest(unittest.TestCase):
 
     def test_복원_훈련은_새_트리거_함수를_세고_지문에_지점을_넣는다(self):
         # 트리거 10 = #63 뒤 9 + trg_blocklist_points, 함수 19 = 18 + blocklist_points_change. 표 · FK · 뷰는 그대로다
-        self.assertEqual(QUERIES.EXPECT, {"tables": 26, "fk": 15, "triggers": 10, "functions": 19, "views": 3})
+        self.assertEqual(QUERIES.EXPECT, {"tables": 27, "fk": 15, "triggers": 10, "functions": 20, "views": 3})
         fps = {f[0]: f for f in QUERIES.FINGERPRINTS}
         self.assertTrue(fps["blocklist"][2].endswith(" enforced_at, enforce_note, points)"), fps["blocklist"][2])
         self.assertTrue(fps["absorbed_blocks"][2].endswith(", released_by, points)"), fps["absorbed_blocks"][2])

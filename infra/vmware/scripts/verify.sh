@@ -35,7 +35,7 @@ echo "== 5. 부하분산과 헬스체크"
 # 통계 페이지는 방화벽 안(127.0.0.1)에서만 열린다. 관리망에서 바로는 닿지 않아야 한다 (이슈 #41)
 check "HAProxy 통계 페이지 (방화벽 안 127.0.0.1)" 통과 ssh_fw "curl -fsS --max-time 5 http://127.0.0.1:8404/"
 check "HAProxy 통계 페이지 관리망 직접 (막힘)" 실패 curl -fsS --max-time 5 http://$FW:8404/
-check "콘솔 진입점 응답" 통과 curl -fsS --max-time 5 http://$FW:8443/health
+check "콘솔 HTTPS 진입점 응답" 통과 curl -fsS --cacert "${OPSLOOP_CONSOLE_CA:-$HOME/.config/opsloop/tls/ca.crt}" --max-time 5 https://$FW:8443/health
 echo "== 6. 관제 대상 web-01 (이슈 #11 · 수집 설계 6장)"
 check "web-01 → 데이터 노드 수집 관문 3101" 통과 ssh_in $W1 "$(tcp $D1 3101)"
 check "web-01 → 데이터 노드 DB 5432" 실패 ssh_in $W1 "$(tcp $D1 5432)"
@@ -45,7 +45,7 @@ check "web-01 → 콘솔 A 8000 (콘솔 가드)" 실패 ssh_in $W1 "$(tcp $S1 80
 check "web-01 → 콘솔 A 22 (콘솔 가드)" 실패 ssh_in $W1 "$(tcp $S1 22)"
 ll=$(ssh_in $S1 "ip -6 -o addr show scope link | awk '/fe80/{split(\$4,a,\"/\"); print a[1]; exit}'" 2>/dev/null)
 if [ -n "$ll" ]; then
-  check "web-01 → 콘솔 A [$ll]:8000 (IPv6 링크 로컬)" 실패 ssh_in $W1 "curl -gsS -m 5 -o /dev/null 'http://[$ll%25enp2s0]:8000/health'"
+  check "web-01 → 콘솔 A [$ll]:8000 (IPv6 링크 로컬 TCP)" 실패 ssh_in $W1 "timeout 5 bash -c '</dev/tcp/$ll%enp2s0/8000'"
 fi
 check "web-01 → 방화벽 콘솔 진입점 8443" 실패 ssh_in $W1 "$(tcp 192.168.50.1 8443)"
 check "web-01 → 관리망 Mac 22" 실패 ssh_in $W1 "$(tcp 192.168.70.1 22)"

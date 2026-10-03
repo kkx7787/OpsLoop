@@ -780,7 +780,7 @@ class BlockEnforceDatabaseTest(DbCase):
         # console_account_set(#59)은 콘솔의 계정 변경 통로다(관제사 ↔ 조회자 · 비활성 · 재활성. infra/test_console_accounts_db.py).
         #   계정 추가 · 삭제 · 비밀번호(#63)도 함수로만 한다(infra/test_console_accounts_manage_db.py)
         self.assertEqual(definer(console) - public, {"console_account_set", "console_account_create", "console_account_delete",
-                                                     "console_account_password"})
+                                                     "console_account_password", "console_login_take"})
         self.assertEqual(definer(self.roles["detector"]) - public, set())
         self.assertEqual(definer(self.roles["gate"]) - public, {"enroll_node"})
         self.assertTrue(public <= definer(console))

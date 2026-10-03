@@ -108,9 +108,9 @@ if alias == "fw":
         if c == "show stat":
             done("# pxname,svname,qcur,qmax,scur,smax\nconsoles,console-a,0,0,4,9\nconsoles,console-b,0,0,%s,3\n"
                  % os.environ.get("FAKE_SCUR", "0"))
-    if cmd.startswith("curl ") and "http://192.168.50.11:8000/health" in cmd:
+    if cmd.startswith("curl ") and "https://192.168.50.11:8000/health" in cmd:
         done("200")
-    if cmd.startswith("curl ") and "http://192.168.50.12:8000/health" in cmd:
+    if cmd.startswith("curl ") and "https://192.168.50.12:8000/health" in cmd:
         done("200" if b_running() else "000")
 elif alias == "data01":
     if "rolconnlimit" in cmd and "pg_stat_activity" in cmd:
@@ -118,6 +118,8 @@ elif alias == "data01":
     if "rolconnlimit" in cmd:
         done(os.environ.get("FAKE_LIMIT", "30") + "\n")
 elif alias in ("console-a", "console-b"):
+    if cmd.startswith("openssl verify "):
+        done("server.crt: OK\n", int(os.environ.get("FAKE_TLS_INVALID", "0")))
     if "boot_id" in cmd:
         done(st["boot"] + "\n")
     if "systemctl reboot" in cmd:
@@ -483,7 +485,7 @@ class JoinTest(unittest.TestCase):
             "POSTGRES_PASSWORD=b-own-pg", "OTHER_SETTING=keep-me",
             f"SESSION_SECRET={CANARY['SESSION_SECRET']}",
             f"OPSLOOP_CONSOLE_DB_PASSWORD={CANARY['OPSLOOP_CONSOLE_DB_PASSWORD']}",
-            "OPSLOOP_WORKER=opsloop-console-b"]))
+            "OPSLOOP_WORKER=opsloop-console-b", "OPSLOOP_CONSOLE_URL=https://192.168.70.254:8443"]))
         for dirpath, _, files in os.walk(os.path.join(self.hosts, "console-b")):
             for name in files:
                 with open(os.path.join(dirpath, name), "rb") as f:
@@ -563,6 +565,13 @@ class JoinTest(unittest.TestCase):
         r = self.run_join("--step", "image", "--apply", FAKE_LOAD_CORRUPT="1")
         self.assertEqual(r.returncode, 1)
         self.assertIn("이미지 ID 가 콘솔 A 와 같다: 기대와 다르다", r.stderr)
+
+    def test_B_인증서가_없거나_틀리면_기동과_합류를_막는다(self):
+        self.set_state(hap={"op": 0, "admin": 1}, vms=[self.vmx])
+        r = self.run_join("--step", "up", "--apply", FAKE_TLS_INVALID="1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("B 전용 TLS 인증서를 먼저 설치", r.stderr)
+        self.assertFalse(any(e['tool'] == 'docker' and 'up' in e.get('args', []) for e in self.events()))
 
     def test_재부팅_뒤_옛_컨테이너가_멈춘_채인지_본다(self):
         # restart=no 로 바꾸지 않았으면(stop-old 를 건너뜀) 재부팅 확인에서 멈춘다

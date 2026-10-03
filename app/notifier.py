@@ -10,14 +10,15 @@ import json
 import logging
 import os
 import re
-import urllib.error
-import urllib.request
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote, urlsplit
 
 from dashboard import PENDING
 from live import console_name
 from untrusted import reveal
+import webhook_transport
 
 log = logging.getLogger("opsloop.notify")
 
@@ -29,9 +30,11 @@ SEVERITY_RANK = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 # 재시도 간격. n회째 실패 뒤 기다리는 초. 표에 없으면(4회째 실패) failed 다.
 RETRY_SECONDS = {1: 60, 2: 300, 3: 900}
 MAX_ITEMS = 20
-# 소켓 연산마다 걸리는 한도(urllib). 이름 해석까지 포함한 한 번 보내기의 전체 한도는 HTTP_DEADLINE 이다.
+# 소켓 연산 한도와 DNS를 포함한 응답 대기 한도. 취소되지 않는 OS DNS 작업은 최대 4개만 둔다.
 HTTP_TIMEOUT = 10
 HTTP_DEADLINE = 15
+_HTTP_WORKERS = ThreadPoolExecutor(max_workers=4, thread_name_prefix="webhook")
+_HTTP_SLOTS = threading.BoundedSemaphore(4)
 FILL_INTERVAL = 30
 SEND_INTERVAL = 15
 # 한 번에 집는 행 수. 묶음 하나가 이보다 크면 나머지는 다음 틱에 따로 나간다.
@@ -42,7 +45,7 @@ STALE_CLAIM = "5 minutes"
 # 채널을 켜거나 범위를 넓힌 시각보다 이만큼 앞선 사건까지 넣는다(직전 채우기 틱과의 틈을 메운다).
 FILL_SLACK = timedelta(minutes=1)
 DAILY_HOUR = 9
-DEFAULT_CONSOLE_URL = "http://192.168.70.254:8443"
+DEFAULT_CONSOLE_URL = "https://192.168.70.254:8443"
 PLACEHOLDERS = frozenset({"event_label", "count", "severity_counts", "rule_id", "rule_name", "severity",
                           "who", "elapsed", "first_ts", "incident_key", "link"})
 # Power Automate Workflows 의 HTTP · Teams 웹훅 트리거 주소. 옛 logic.azure.com 주소는 2025-11-30 부터 동작하지 않고
@@ -66,6 +69,10 @@ def validate_url(kind: str, url: str) -> str:
     if not isinstance(url, str) or not url.strip() or len(url) > 2048:
         raise ValueError("주소를 입력해 주세요 (2048자 이내)")
     try:
+        webhook_transport.destination(url.strip())
+    except webhook_transport.UnsafeDestination:
+        raise ValueError("사용자 정보 · 제어 문자 · 조각 식별자가 없는 https 주소를 입력해 주세요") from None
+    try:
         parts = urlsplit(url.strip())
         host = (parts.hostname or "").lower().rstrip(".")
     except ValueError:
@@ -87,7 +94,7 @@ def validate_url(kind: str, url: str) -> str:
         raise ValueError("알 수 없는 채널 종류입니다")
     if host == "localhost" or host.endswith(".localhost"):
         raise ValueError("localhost 주소는 받지 않습니다")
-    # 이름은 해석하지 않는다. 주소가 IP 일 때만 공인 인터넷 주소인지 본다.
+    # 저장할 때는 문법/IP를 검사한다. DNS 답 전체 검사와 IP 고정은 실제 발송 직전에 한다.
     if all(NUMERIC_LABEL_RE.fullmatch(label) for label in host.split(".")):
         # 127.1 · 0x7f.1 · 2130706433 · 192.168.070.254 같은 줄임 · 16진 · 8진 표기는 해석기가 IP 로 읽으므로
         # 정식 점 네 개 10진 표기만 받는다.
@@ -303,34 +310,29 @@ def example_payload(now=None, grade: str = "immediate") -> dict:
 #  HTTP
 # ----------------------------------------------------------------------
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-
 def post_json(url: str, body: dict):
     """(응답 코드, 오류) 를 돌려준다. 오류에는 예외 이름 · 응답 코드만 넣고 주소 · 응답 본문은 넣지 않는다."""
     data = json.dumps(body, ensure_ascii=False).encode()
-    request = urllib.request.Request(url, data=data, method="POST",
-                                     headers={"Content-Type": "application/json; charset=utf-8", "User-Agent": "OpsLoop"})
     try:
-        with urllib.request.build_opener(_NoRedirect).open(request, timeout=HTTP_TIMEOUT) as response:
-            return response.status, None
-    except urllib.error.HTTPError as error:
-        error.close()
-        return error.code, f"HTTP {error.code}"
-    except urllib.error.URLError as error:
-        # urllib 은 이름 해석 실패 · 연결 거부 · 시간 초과 · 인증서 오류를 모두 URLError 로 감싼다. 원인 이름만 남긴다.
-        reason = error.reason
-        return None, type(reason).__name__ if isinstance(reason, BaseException) else "URLError"
+        code = webhook_transport.post(url, data, timeout=HTTP_TIMEOUT, deadline_seconds=HTTP_DEADLINE)
+        return code, None if 200 <= code < 300 else f"HTTP {code}"
     except Exception as error:
         return None, type(error).__name__
 
 
 async def deliver(url: str, body: dict):
-    """post_json 을 스레드에서 돌리고 이름 해석까지 포함해 HTTP_DEADLINE 안에 끝낸다."""
+    """취소해도 DNS 스레드는 남을 수 있다. 실제 완료 때만 자리를 돌려주며 큐를 쌓지 않는다."""
+    if not _HTTP_SLOTS.acquire(blocking=False):
+        return None, "SenderBusy"
     try:
-        return await asyncio.wait_for(asyncio.to_thread(post_json, url, body), HTTP_DEADLINE)
+        future = _HTTP_WORKERS.submit(post_json, url, body)
+    except BaseException:
+        _HTTP_SLOTS.release()
+        raise
+    slots = _HTTP_SLOTS
+    future.add_done_callback(lambda _: slots.release())
+    try:
+        return await asyncio.wait_for(asyncio.wrap_future(future), HTTP_DEADLINE)
     except TimeoutError:
         return None, "TimeoutError"
 

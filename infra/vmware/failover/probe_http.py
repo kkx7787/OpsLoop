@@ -27,7 +27,7 @@ hard 한도가 모자라면 동시 요청 한도를 낮추고 알린다. 넘친 
 사용 (저장소 루트)
   python3 infra/vmware/failover/probe_http.py --run-dir ~/opsloop-failover/r01-stop-a --duration 300
   python3 infra/vmware/failover/probe_http.py --run-dir <폴더> --streams health        쿠키 없이 health 만
-  --url http://192.168.70.254:8443 (기본) · --interval 0.1 · --timeout 70 · --duration 초(0 이면 Ctrl-C 까지)
+  --url https://192.168.70.254:8443 (기본) · --interval 0.1 · --timeout 70 · --duration 초(0 이면 Ctrl-C 까지)
   Ctrl-C · kill(SIGTERM)로 멈추면 걸려 있는 요청이 끝나기를 기다렸다 끝낸다(한 번 더 누르면 바로 끝낸다).
 종료 코드: 0 · 2 설정 오류(쿠키 파일 권한 · 꼴 · 만료 포함) · 130 중단
 """
@@ -37,7 +37,6 @@ import http.client
 import json
 import os
 import socket
-import ssl
 import sys
 import threading
 import time
@@ -137,7 +136,7 @@ class Prober:
     def _connection(self):
         if self.scheme == "https":
             return http.client.HTTPSConnection(self.host, self.port, timeout=self.timeout,
-                                               context=ssl.create_default_context())
+                                               context=common.tls_context())
         return http.client.HTTPConnection(self.host, self.port, timeout=self.timeout)
 
     def request(self, stream, seq):

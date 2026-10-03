@@ -1,0 +1,1 @@
+PASS HAProxy rejects wrong backend certificate identity (503)

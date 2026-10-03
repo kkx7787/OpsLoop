@@ -106,6 +106,7 @@ class DbCase(unittest.IsolatedAsyncioTestCase):
         import asyncpg
         self.owner = await asyncpg.connect(db_url(self.dbname))
         await self.owner.execute("TRUNCATE console_users, events, incidents, blocklist CASCADE")
+        await self.owner.execute("TRUNCATE console_login_limits")
         # 콘솔과 같은 권한으로 붙은 연결. 계정 표는 읽기 · last_login_at 갱신 · 함수 실행만 된다
         self.console = await asyncpg.connect(db_url(self.dbname))
         await self.console.execute(f"SET SESSION AUTHORIZATION {self.role}")

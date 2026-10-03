@@ -31,7 +31,9 @@ umask 077
 PATH="${PATH:+$PATH:}/usr/bin:/bin:/usr/sbin:/sbin"
 export PATH
 
-URL=${CONSOLE_WATCH_URL:-http://192.168.70.254:8443/health}
+URL=${CONSOLE_WATCH_URL:-https://192.168.70.254:8443/health}
+# macOS 신뢰 저장소와 무관하게 launchd에서도 같은 CA를 확인한다. 파일이 없으면 검증 실패로 알린다.
+CONSOLE_CA=${OPSLOOP_CONSOLE_CA:-$HOME/.config/opsloop/tls/ca.crt}
 TRIES=${CONSOLE_WATCH_TRIES:-3}
 GAP=${CONSOLE_WATCH_GAP:-5}
 RENOTIFY=${CONSOLE_WATCH_RENOTIFY:-1800}
@@ -98,6 +100,8 @@ reason() {
     28) echo "시간 초과" ;;
     52) echo "빈 응답" ;;
     56) echo "수신 끊김" ;;
+    60) echo "TLS 인증서 검증 실패" ;;
+    77) echo "TLS CA 파일 확인 실패" ;;
     *) printf 'curl 종료 %s\n' "$1" ;;
   esac
 }
@@ -108,8 +112,11 @@ check() {
   RESULT=DOWN
   DETAIL=""
   LAST_REASON=""
+  # macOS 기본 bash 3.2는 set -u 아래 빈 배열의 @ 확장도 오류다. 항상 기본 인자를 담는다.
+  local -a request_args=(-q -s -o /dev/null --noproxy '*' -m 3 -w '%{http_code}')
+  case "$URL" in https://*) request_args+=(--cacert "$CONSOLE_CA") ;; esac
   while :; do
-    code=$(curl -q -s -o /dev/null --noproxy '*' -m 3 -w '%{http_code}' "$URL" 2>/dev/null)
+    code=$(curl "${request_args[@]}" "$URL" 2>/dev/null)
     rc=$?
     case "$code" in [0-9][0-9][0-9]) ;; *) code=000 ;; esac
     if [ "$rc" = 0 ] && [ "$code" = 200 ]; then

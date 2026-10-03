@@ -111,10 +111,10 @@ no_sessions() { # show stat 의 5번째 열 scur
   [ "$n" = 0 ]
 }
 state_readable() { local st; st=$(srv_state) || return 1; [ -n "$st" ]; }
-http_from_fw() { [ "$(on fw "curl -s -m 3 -o /dev/null -w \"%{http_code}\" http://$1:8000/health")" = 200 ]; }
+http_from_fw() { [ "$(on fw "curl -s --cacert /etc/haproxy/tls/ca.crt -m 3 -o /dev/null -w \"%{http_code}\" https://$1:8000/health")" = 200 ]; }
 health_a() { http_from_fw "$A_ADDR"; }
 health_b_fw() { http_from_fw "$B_ADDR"; }
-health_b() { [ "$(on console-b "curl -s -m 3 -o /dev/null -w \"%{http_code}\" http://127.0.0.1:8000/health")" = 200 ]; }
+health_b() { [ "$(on console-b "curl -s --cacert ~/opsloop/tls/ca.crt -m 3 -o /dev/null -w \"%{http_code}\" https://127.0.0.1:8000/health")" = 200 ]; }
 dbq() { on data01 "sudo -n docker exec opsloop-db psql -U opsloop -d opsloop -qAtc \"$1\""; }
 role_limit_ok() {
   local lim
@@ -205,9 +205,10 @@ umask 077; mkdir -p ~/opsloop; f=~/opsloop/.env
 new=\$(cat)
 n=\$(printf '%s\n' "\$new" | grep -cE '^($SECRET_KEYS)=.' || true)
 [ "\$n" = 2 ] || { echo "  console-a 에서 두 값을 받지 못했다 (\$n/2). .env 를 바꾸지 않는다" >&2; exit 1; }
-{ grep -vE '^($SECRET_KEYS|OPSLOOP_WORKER)=' "\$f" 2>/dev/null || true
+{ grep -vE '^($SECRET_KEYS|OPSLOOP_WORKER|OPSLOOP_CONSOLE_URL)=' "\$f" 2>/dev/null || true
   printf '%s\n' "\$new"
-  echo 'OPSLOOP_WORKER=$WORKER_B'; } > "\$f.tmp"
+  echo 'OPSLOOP_WORKER=$WORKER_B'
+  echo 'OPSLOOP_CONSOLE_URL=https://192.168.70.254:8443'; } > "\$f.tmp"
 chmod 600 "\$f.tmp"; mv "\$f.tmp" "\$f"
 echo "  .env 갱신: 비밀값 두 줄은 console-a 에서 받았다 (찍지 않는다) · OPSLOOP_WORKER=$WORKER_B"
 EOF
@@ -309,6 +310,8 @@ step_env() {
 }
 step_up() {
   require_maint
+  # A의 키를 복사하지 않는다. B 전용 인증서가 없거나 만료가 가까우면 합류 전에 멈춘다.
+  on console-b 'openssl verify -CAfile ~/opsloop/tls/ca.crt -verify_hostname console-b.opsloop.internal ~/opsloop/tls/server.crt && openssl x509 -in ~/opsloop/tls/server.crt -noout -checkend 86400' || die "B 전용 TLS 인증서를 먼저 설치해야 한다 (console-certificates.py)"
   pipe console-a 'cat ~/opsloop/console.yml' console-b "$(compose_file_script)" || die "console.yml 옮기기 실패"
   on console-b 'set -o pipefail; cd ~/opsloop && docker compose -f console.yml up -d --no-build --force-recreate 2>&1 | tail -n 2' || die "compose up 실패"
   wait_for "B /health 200 (B 안에서)" 30 health_b

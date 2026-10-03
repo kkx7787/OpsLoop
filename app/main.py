@@ -31,6 +31,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Red
 from pydantic import BaseModel, Field, field_validator
 
 import auth
+import login_limits
 import block_points
 import cti
 import node_logs
@@ -250,6 +251,19 @@ async def login(request: Request):
     # 로그인 뒤 돌아갈 곳. 같은 출처의 상대 경로만 받는다(열린 리디렉션 금지).
     next_path = web.safe_next(form.get("next"))
 
+    try:
+        retry = await login_limits.take(app.state.pool, request, username)
+    except Exception as error:
+        # 마이그레이션 누락/DB 장애 때 제한 없이 인증을 계속하지 않는다. 입력·접속 문자열은 기록하지 않는다.
+        print(f"[auth] 로그인 제한 확인 실패: {type(error).__name__}", flush=True)
+        return web.login_page(message="로그인을 확인할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+                              next_path=next_path, username=username, status_code=503)
+    if retry:
+        response = web.login_page(message=f"로그인 시도가 많습니다. {retry}초 후 다시 시도해 주세요.",
+                                  next_path=next_path, username=username, status_code=429)
+        response.headers["Retry-After"] = str(retry)
+        return response
+
     user = await auth.authenticate(app.state.pool, username, password)
     if user is None:
         await auth.log_event(app.state.pool, request, "console.login.failed",
@@ -263,7 +277,8 @@ async def login(request: Request):
                          username=user["username"], status=302, session=token[:17])
     response = RedirectResponse(next_path, status_code=302)
     response.set_cookie(auth.COOKIE, token, httponly=True, samesite="lax",
-                        max_age=auth.SESSION_HOURS * 3600)
+                        max_age=auth.SESSION_HOURS * 3600,
+                        secure=web.https_only() or request.url.scheme == "https")
     return response
 
 
@@ -275,7 +290,8 @@ async def logout(request: Request):
     await auth.log_event(app.state.pool, request, "console.logout",
                          username=session["u"] if session else None, status=302)
     response = RedirectResponse("/login", status_code=302)
-    response.delete_cookie(auth.COOKIE)
+    response.delete_cookie(auth.COOKIE, httponly=True, samesite="lax",
+                           secure=web.https_only() or request.url.scheme == "https")
     return response
 
 
