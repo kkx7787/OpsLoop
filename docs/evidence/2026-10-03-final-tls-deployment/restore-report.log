@@ -1,0 +1,4 @@
+== report · docs/evidence/<T0 KST 날짜>-restore/ results.json · sha256.json · 실제로 돌린다
+  docs/evidence/2026-10-03-final-tls-restore/results.json · sha256 34d38ae54da3
+  RTO 2579.524초 (합격) · 서비스 재개 548.713초 · RPO 설계 187.097초 (합격) · 백업 간격 최대 None초 (모름) · 재생성 일치 · 무결성 통과 · 정리 확인
+끝: report · 성공

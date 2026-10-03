@@ -1,0 +1,4 @@
+NOTICE:  relation "data_node_health" already exists, skipping
+{"cpu_pct": 3.0, "mem_used_pct": 32.0, "load1": 0.13232421875, "disks": [{"labels": ["루트", "PostgreSQL", "Loki"], "used_pct": 32.0, "available_bytes": 11758460928, "inode_used_pct": 13.9}], "problems": []}
+Created symlink /etc/systemd/system/timers.target.wants/opsloop-data-health.timer → /etc/systemd/system/opsloop-data-health.timer.
+설치 및 수집 시작 완료. 타이머/카드의 최근 측정 시각을 확인하세요.

@@ -1,0 +1,43 @@
+{
+  "date": "2026-10-03",
+  "timezone": "Asia/Seoul",
+  "source_commit": "38720bd4fc0a4511dde91de96f5dff62bed5d12f",
+  "image_id": "sha256:6fe67c018d9ac8cfb7bf81512bf7db28d0eb37d3cefe9272682e0d9d81489cbf",
+  "url": "https://192.168.70.254:8443/",
+  "workflow": {
+    "scope": "two browser tabs, same han admin account, production consoles A/B, existing 203.0.113.10 test incident",
+    "assignment_at": "2026-10-03T18:20:04+09:00",
+    "release_at": "2026-10-03T18:20:45+09:00",
+    "old_tab_blocked": true,
+    "draft_preserved": true,
+    "explicit_refresh_enabled_save": true,
+    "verdict_submitted": false,
+    "final_assignee": null,
+    "production_verdict_unchanged": true,
+    "limit": "UI prevented stale save; no production HTTP 409 was submitted in this browser check. Backend conflict response covered in isolated DB tests."
+  },
+  "layout": {
+    "production_widths_css": [
+      390,
+      1100,
+      1440
+    ],
+    "mobile_document_scroll_width": 375,
+    "mobile_document_client_width": 375,
+    "desktop_1100_paths_visible": true,
+    "mobile_node_table_internal_scroll": true,
+    "limit": "Selected layouts only, not complete accessibility certification."
+  },
+  "local_changes": "Mac watch installer and console-join helper additionally include issue #113 fixes; application image unchanged.",
+  "cli": {
+    "source_commit": "38720bd4fc0a4511dde91de96f5dff62bed5d12f",
+    "path": "/opt/opsloop/app/detector/triage.py",
+    "before_sha256": "dc0e2dc74113bab3d3f7f92a75cb6e5c2525a698e5a0756dde64e1f4a6076cda",
+    "after_sha256": "a335d78ac01aba636f636efda332359480cdb4753f5df77a1ca84602969ac71e",
+    "backup": "/var/backups/opsloop/final-38720bd-cli/triage.py.before",
+    "readonly_production_query": true,
+    "missing_version_rejected": true,
+    "production_verdict_submitted": false,
+    "issue": 115
+  }
+}

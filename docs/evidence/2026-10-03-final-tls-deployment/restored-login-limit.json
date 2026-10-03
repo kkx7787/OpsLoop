@@ -1,0 +1,42 @@
+{
+  "at": "2026-10-03T09:33:07.704801+00:00",
+  "scope": "isolated restored DB, same deployed image; account/IP pair threshold only",
+  "checks": [
+    {
+      "attempt": 1,
+      "status": 401,
+      "retry_after": null
+    },
+    {
+      "attempt": 2,
+      "status": 401,
+      "retry_after": null
+    },
+    {
+      "attempt": 3,
+      "status": 401,
+      "retry_after": null
+    },
+    {
+      "attempt": 4,
+      "status": 401,
+      "retry_after": null
+    },
+    {
+      "attempt": 5,
+      "status": 401,
+      "retry_after": null
+    },
+    {
+      "attempt": 6,
+      "status": 429,
+      "retry_after": "60"
+    },
+    {
+      "attempt": 7,
+      "status": 429,
+      "retry_after": "60"
+    }
+  ],
+  "passed": true
+}

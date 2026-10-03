@@ -1,0 +1,27 @@
+== precheck · 읽기 점검 · 덤프 · 역할 목록 고르기 · 운영 기준값 · 실제로 돌린다
+  고른 백업: opsloop-20261003-0918.dump · opsloop-20261003-0918.globals.sql
+  ✔ 덤프 머리 PGDMP · pg_dump 16 · db opsloop · 16.15 · 판 1.15.0
+  ✔ T_b (Archive created, data01 시계) · 2026-10-03T09:18:18+00:00
+  ✔ 역할 목록: 필요한 역할 8개 · 비밀번호 없음 · 역할 8 · 멤버십 1
+  … backup.log 에 이 덤프 기록 · 없음
+  ✔ 백업 간격 최댓값 ≤ 43200초
+  ✔ 운영 작업 창 밖 (00:05~00:15 · 04:25~04:50 · 12:25~12:50 · 20:25~20:50 KST) · 백업 진행 중 아님
+  ✔ Mac 잠자기 막힘 (caffeinate -dims 를 켜 둔다)
+  ✔ Mac 포트 15433 · 18000 비어 있음
+  ✔ Mac Docker · 29.7.2 arm64
+  ✔ data01 시계 (chrony) · 0.000247325
+  ✔ data01 가용 메모리 ≥ 600MB · 1305
+  ✔ data01 디스크 여유 ≥ 2GB · 11198
+  ✔ 127.0.0.1:5433 비어 있음
+  ✔ 이미지 postgres:16-alpine 있음 · sha256:3c5c8892d184
+  ✔ 운영 DB 와 같은 이미지
+  ✔ 훈련 컨테이너 · 볼륨 · 폴더 없음 · opsloop-drill-db · opsloop_drill_pgdata · /var/lib/opsloop-drill
+  ✔ opsloop-pull 사용자 · opsloop-ingest · pull_loki.py
+  ✔ /etc/default/opsloop-ingest 에 OPSLOOP_HOME 있음 · DATABASE_URL 없음
+  ✔ sudo -n · /usr/bin/time · /usr/bin/choom · docker 그룹
+  ✔ console-a 콘솔 이미지 · sha256:6fe67c018d9a
+  ✔ 운영 조회가 읽기 전용
+  ✔ 운영 cluster_name 이 훈련 이름이 아님 · (빈 값)
+  ✔ 운영 표 28개 건수
+  ✔ 운영 구조 (참고 FK 16 · 트리거 10 · 함수 20 · 뷰 3) · 표 28 · FK 16
+끝: precheck · 성공

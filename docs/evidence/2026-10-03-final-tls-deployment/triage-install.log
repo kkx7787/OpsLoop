@@ -1,0 +1,6 @@
+Source syntax: OK
+dc0e2dc74113bab3d3f7f92a75cb6e5c2525a698e5a0756dde64e1f4a6076cda  /var/backups/opsloop/final-38720bd-cli/triage.py.before
+a335d78ac01aba636f636efda332359480cdb4753f5df77a1ca84602969ac71e  /opt/opsloop/app/detector/triage.py
+Installed CLI: console role, read-only workflow version query OK
+Missing version rejected before write: OK
+No production verdict/action submitted

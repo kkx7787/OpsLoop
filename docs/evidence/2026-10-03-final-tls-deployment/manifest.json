@@ -1,0 +1,983 @@
+{
+  "commit": "38720bd4fc0a4511dde91de96f5dff62bed5d12f",
+  "kind": "review-candidate-not-deployed",
+  "frontend": "compiled from same production source as commit",
+  "ca_included": false,
+  "entries": [
+    {
+      "path": "app/Dockerfile",
+      "source": "git",
+      "sha256": "802aa33be21c7e47a79c21d1d7d02bdedf2a1f301f78ba22069b8b7f7811e765"
+    },
+    {
+      "path": "app/absorbed.py",
+      "source": "git",
+      "sha256": "e99b864fabf883a228d9d79730b02eb815502ecc953ac8ab7ac488296d0be5af"
+    },
+    {
+      "path": "app/access.py",
+      "source": "git",
+      "sha256": "674f10fa74c7812993d95040d9638af4bb1aee0759be09f55de3eb4d720e89b1"
+    },
+    {
+      "path": "app/accounts.py",
+      "source": "git",
+      "sha256": "df537088db7d88538589ebc8da19b0ee1ec3f2920c3ef70fa40ba4a3a8b4a774"
+    },
+    {
+      "path": "app/auth.py",
+      "source": "git",
+      "sha256": "02c39355ee71e177f9dad086a50f8d61f6eaf82f0b1f39031d1e6791d3375ebc"
+    },
+    {
+      "path": "app/block_points.py",
+      "source": "git",
+      "sha256": "36445c21206a4c3f800f46e37f973dcd3c56183b2b1afb0a0ab95fdb4b3abb48"
+    },
+    {
+      "path": "app/branding/README.md",
+      "source": "git",
+      "sha256": "7ffed26610213eb6e409e1b570c859537549e22aec4c02a113d0601fd2d01c44"
+    },
+    {
+      "path": "app/branding/opsloop-mark-v1.svg",
+      "source": "git",
+      "sha256": "a70ec9ff498c8cbb29b70b2c53978b799fd301cd1337623bc181cd2096eee2de"
+    },
+    {
+      "path": "app/branding/opsloop-wordmark-v1.png",
+      "source": "git",
+      "sha256": "0c35a1bf2890c6fc0a95fe4e7d4f500a7fe765e43278d805be1d78ded12189dd"
+    },
+    {
+      "path": "app/cti.py",
+      "source": "git",
+      "sha256": "db47e59c91cef0f39c579d04dc49a6481c55e8101263834bbce428c9d9ad1ea8"
+    },
+    {
+      "path": "app/dashboard.py",
+      "source": "git",
+      "sha256": "eb4d298d8b2361ec946d2668b576ae0aade10db527c77e0e8859cfef41bc02d4"
+    },
+    {
+      "path": "app/data_health.py",
+      "source": "git",
+      "sha256": "f96c676b28b1834550c8b63f86185876b5602621e74a4a6ae6e358874f67cad4"
+    },
+    {
+      "path": "app/live.py",
+      "source": "git",
+      "sha256": "d78b53875d780e62a6faa6535a8c42bfa84da3013f887988420aabd3a76d5fe2"
+    },
+    {
+      "path": "app/login_limits.py",
+      "source": "git",
+      "sha256": "e1e747b40a0f080a1c35b8584060e30ad8a130364c2c25db2bf84c3e262c775e"
+    },
+    {
+      "path": "app/main.py",
+      "source": "git",
+      "sha256": "3e5cf9f059884263f137426311101a2f71305d3b02cc776bd6842b7f18a0e596"
+    },
+    {
+      "path": "app/node_logs.py",
+      "source": "git",
+      "sha256": "1bb2d71e56e69b5f784af75c38b5304b1233e08e0d20fb88fbcb73d16ccf64c7"
+    },
+    {
+      "path": "app/notifier.py",
+      "source": "git",
+      "sha256": "772ba3d76a2cd7111245b2c339dc83e6f331e844d97fc31e0081a961c0da3367"
+    },
+    {
+      "path": "app/notify.py",
+      "source": "git",
+      "sha256": "d03459f83db457c5092411af50bc1006df58ae4a04aac21edf5e6b60d7427776"
+    },
+    {
+      "path": "app/operations.py",
+      "source": "git",
+      "sha256": "d16c5b9baca236eb30097ed0ad597101c040324594311c0dcc8f1f74cfc0fd8e"
+    },
+    {
+      "path": "app/proposals.py",
+      "source": "git",
+      "sha256": "3bfe3a440bf0e7145dccdfb48b0f2ef629c694f254d78f6f15a45f63fdaa5a2a"
+    },
+    {
+      "path": "app/reports.py",
+      "source": "git",
+      "sha256": "109ca5f32b87fdc74e15c1616499477faf2b82ce495123f1b450d4b67de2454f"
+    },
+    {
+      "path": "app/requirements.txt",
+      "source": "git",
+      "sha256": "d353e65336b148f589e51e4e7620f78061a5ad1ea4aefe9f112442594921956f"
+    },
+    {
+      "path": "app/sources.py",
+      "source": "git",
+      "sha256": "f5cf99e85e153380be093d123a76776f66c8fcf79973594a7418182031332f7a"
+    },
+    {
+      "path": "app/targets.py",
+      "source": "git",
+      "sha256": "125418669f50037c623e07fac5a8980dd11dd159a415364a8980e450f1310911"
+    },
+    {
+      "path": "app/untrusted.py",
+      "source": "git",
+      "sha256": "bdbd8c78e8e833823f531b012d50b309ca08b6a3d3d07fc992b8e1ac70fa8abc"
+    },
+    {
+      "path": "app/web.py",
+      "source": "git",
+      "sha256": "1f752fe06909283ea7e098db296748e9cc19260cf5d0fa1ff82a335b61f9bc79"
+    },
+    {
+      "path": "app/webhook_transport.py",
+      "source": "git",
+      "sha256": "0a518be39b4c0fe7c886aeb31d29f4f884bd769a007910579455c1c879ee4eba"
+    },
+    {
+      "path": "app/workflow.py",
+      "source": "git",
+      "sha256": "7dd4484e764015f74ee69c774d090f83709734ad7847c49e5812012d831fcdd2"
+    },
+    {
+      "path": "collector/data_node_health.py",
+      "source": "git",
+      "sha256": "e4e874c949a55d81c7d6e429ddb7feab9899e99e0529c55cb3ae7daf06416333"
+    },
+    {
+      "path": "collector/gate.py",
+      "source": "git",
+      "sha256": "bd8293db92533d6dcf908178260f67a9e01985a1de72e388013f9700e86261e8"
+    },
+    {
+      "path": "collector/install-collector.sh",
+      "source": "git",
+      "sha256": "3d298a09710c6b893a9f4a516b573f1bb923ceaac1825cc6eaa1c866cf28576d"
+    },
+    {
+      "path": "collector/install-data-health.sh",
+      "source": "git",
+      "sha256": "e35f23da2c46820b4b008813abdf8b61458746cf52732cfc9bb0235f926cabdd"
+    },
+    {
+      "path": "collector/nodes.py",
+      "source": "git",
+      "sha256": "4083ebfd0bde2a97ee81a0f3b2193e4fbec134b1fcfc90e283be617df43da29c"
+    },
+    {
+      "path": "collector/opsloop-agents.service",
+      "source": "git",
+      "sha256": "7434f629a254e75a7bcc4f033a460fd93f4ddc244ed609b13d30ddec7b7fb9c7"
+    },
+    {
+      "path": "collector/opsloop-agents.timer",
+      "source": "git",
+      "sha256": "b6bb8018ad6b14bc5a423d2048134f325e8e2537c95e8016e75463c1b7847bfe"
+    },
+    {
+      "path": "collector/opsloop-data-health.service",
+      "source": "git",
+      "sha256": "ddb137180546fc967a1fe345ea16c9fb99991ae011070664d5495f7f359c4837"
+    },
+    {
+      "path": "collector/opsloop-data-health.timer",
+      "source": "git",
+      "sha256": "34d6c0492864d2212061ae77a8f6c5f8dd7e4bc32c155919782cb06be772d4ce"
+    },
+    {
+      "path": "collector/opsloop-gate.service",
+      "source": "git",
+      "sha256": "92bd9e62356e4ae835dc0cb8ff89c84706703e79b9c74122a46a5a905f7472ab"
+    },
+    {
+      "path": "collector/pull_loki.py",
+      "source": "git",
+      "sha256": "04b89a9027bad9762a8bacb8ae400c41cd5c47aa1f40d7bfd0d213c6b5bdd00e"
+    },
+    {
+      "path": "cti/install-cti.sh",
+      "source": "git",
+      "sha256": "8e0a515816f8eb94cfad81db8b808edc5e16f43b4191ff649a1fb0b21e16e7f8"
+    },
+    {
+      "path": "cti/opsloop-cti",
+      "source": "git",
+      "sha256": "311ae354aafff450e750353153bc924449b39a930ba5f02573dc8e99889e76c8"
+    },
+    {
+      "path": "cti/opsloop-cti.service",
+      "source": "git",
+      "sha256": "89fac27a339d39e1d98126f705aff88cca5ef76cbbfe745ef6c46219b2961899"
+    },
+    {
+      "path": "cti/opsloop-cti.timer",
+      "source": "git",
+      "sha256": "98b838fd43878c89b375f18f11c3376cf97f08b48f0fbe316d03c66ebbe54d7b"
+    },
+    {
+      "path": "cti/opsloop_cti.py",
+      "source": "git",
+      "sha256": "81c028642bcce1f0821cbcd4fc0a8753e009743e4cfb1b0efb62632d26b04f62"
+    },
+    {
+      "path": "cti/probe.py",
+      "source": "git",
+      "sha256": "97d027159bc88610905fd651c9791ab20f993e741f6b61155850bbfbbc660df9"
+    },
+    {
+      "path": "cti/watchlist.json",
+      "source": "git",
+      "sha256": "47bc138ed79f4a3d0e0ea1f5e7b5c055f46d57271146423561edb3f61fdf6db0"
+    },
+    {
+      "path": "detector/detect.py",
+      "source": "git",
+      "sha256": "8b976683467329b464c198f5de3cd5ef20825b2f848e84c8ece49f9b4a53bcaf"
+    },
+    {
+      "path": "detector/normal_traffic.json",
+      "source": "git",
+      "sha256": "90a2f75b09b95d9f671bcd73c6639cb5b0a17a22244cc3342f4ae15158bcc336"
+    },
+    {
+      "path": "detector/normal_traffic.py",
+      "source": "git",
+      "sha256": "b42c40db79044e6da410c1634c27ff8be991b7434787c474c32a0f22c8e39f5c"
+    },
+    {
+      "path": "detector/rules.json",
+      "source": "git",
+      "sha256": "810a15418677802b33de2617216d0834e9139e96b809c263dc60ac934cb1792e"
+    },
+    {
+      "path": "detector/rules_audit.json",
+      "source": "git",
+      "sha256": "60da131301eb4804c4843bf27d81776d2da7a6c47114258029fe84900a400a0a"
+    },
+    {
+      "path": "detector/rules_cve.json",
+      "source": "git",
+      "sha256": "44723683e8068476171a7ef52922b4cd11b44c6ee08aef79e10c6c8d9e886143"
+    },
+    {
+      "path": "detector/rules_infra.json",
+      "source": "git",
+      "sha256": "60d79cb97e043e8d2dfab4db0e0cde6c434b5430d3a2b3db23826586970eee06"
+    },
+    {
+      "path": "detector/rules_node.json",
+      "source": "git",
+      "sha256": "33e439eb34034aa0119ffb4cf96965e5bdf35e983dcc7399ffad90af1f77e709"
+    },
+    {
+      "path": "detector/rules_self.json",
+      "source": "git",
+      "sha256": "22c9d96edabca7e572c31d62ec0b868a9b0f855ddc5a06b779f843328d1f7ffb"
+    },
+    {
+      "path": "detector/rules_sigma.json",
+      "source": "git",
+      "sha256": "929a4f5aa6a70f4057566cfcd2c64dbae796b144e63f419f2b9af05418b8dfd5"
+    },
+    {
+      "path": "detector/rules_v2.json",
+      "source": "git",
+      "sha256": "07dc679733a1d4384fb26f50d28e237e5476ece1411b45edf17b8bc7c3f948f4"
+    },
+    {
+      "path": "detector/rules_v3.json",
+      "source": "git",
+      "sha256": "50e4fb1cd2c43d032b2fdc1c8e22013887aa27f588e9eeb4e033e05b4d1086d6"
+    },
+    {
+      "path": "detector/rules_w1.json",
+      "source": "git",
+      "sha256": "28db03b2ab4f7a0f3a9f82e728cbf5497670d7547dbf38706c13119a20fff6be"
+    },
+    {
+      "path": "detector/sigma/LICENSE",
+      "source": "git",
+      "sha256": "4213ed7e21d9435b0aa0aa7d11016e6ab3e4664fa71738ff507306fadce79597"
+    },
+    {
+      "path": "detector/sigma/manifest.json",
+      "source": "git",
+      "sha256": "22d66dfbe3778142e4231de5aa0c4d3c3787835c2ee8aa591dae6f857a9252b2"
+    },
+    {
+      "path": "detector/sigma/rules-emerging-threats/2019/Exploits/CVE-2019-11510/web_cve_2019_11510_pulsesecure_exploit.yml",
+      "source": "git",
+      "sha256": "f0e193650c4023bfde90e849eeb94b2be03498203e647d9cede2e7267cfa3d7a"
+    },
+    {
+      "path": "detector/sigma/rules-emerging-threats/2019/Exploits/CVE-2019-3398/web_cve_2019_3398_confluence.yml",
+      "source": "git",
+      "sha256": "81a31374646997f6d825f33acf1e5e85f920be940d1ca098e6f5981231c3177d"
+    },
+    {
+      "path": "detector/sigma/rules-emerging-threats/2020/Exploits/CVE-2020-0688/web_cve_2020_0688_msexchange.yml",
+      "source": "git",
+      "sha256": "268d595c286eaa4b604b9c25369c58527e3f8092424e46cba90348371d6921e5"
+    },
+    {
+      "path": "detector/sigma/rules-emerging-threats/2021/Exploits/CVE-2021-22893/web_cve_2021_22893_pulse_secure_rce_exploit.yml",
+      "source": "git",
+      "sha256": "96b1609750d7248558bb99f8646e370bea2d6e136ca9d1ec49cae2b46f32e5a7"
+    },
+    {
+      "path": "detector/sigma/rules-emerging-threats/2021/Exploits/CVE-2021-41773/web_cve_2021_41773_apache_path_traversal.yml",
+      "source": "git",
+      "sha256": "a23560e212596feb90aa305144da9b71f41cb56025ab5bcc147febded64bf8d7"
+    },
+    {
+      "path": "detector/sigma/rules-emerging-threats/2021/Exploits/CVE-2021-44228/web_cve_2021_44228_log4j.yml",
+      "source": "git",
+      "sha256": "bda3b7263b0f4e2a02b93da52388060573967856adbdcd0173db80d4226d561a"
+    },
+    {
+      "path": "detector/sigma/rules-emerging-threats/2021/Exploits/ProxyShell-Exploit/web_exchange_proxyshell.yml",
+      "source": "git",
+      "sha256": "e2c67214b90c8aae23d7f5b1c45f403c28cb8cd46d30bbb7e981810ec629e8a9"
+    },
+    {
+      "path": "detector/sigma/rules-emerging-threats/2023/Exploits/CVE-2023-22518/web_exploit_cve_2023_22518_confluence_auth_bypass.yml",
+      "source": "git",
+      "sha256": "53783ca19e3bfee1a5d8b28c7d962ab2f5b2330e5f02a8a9b4b3cd1fe43b9181"
+    },
+    {
+      "path": "detector/sigma/rules-emerging-threats/2023/Exploits/CVE-2023-25157/web_cve_2023_25157_geoserver_sql_injection.yml",
+      "source": "git",
+      "sha256": "eaba3c4a2bfdf8c9666afc16252438cff9248a38dd6ade61ef368196cb632fab"
+    },
+    {
+      "path": "detector/sigma/rules/web/webserver_generic/web_path_traversal_exploitation_attempt.yml",
+      "source": "git",
+      "sha256": "ef44386f251d80a464d99bfc922b1769bd83c3ebe0deebbc92bdbe054b8c1a6c"
+    },
+    {
+      "path": "detector/sigma/selection.json",
+      "source": "git",
+      "sha256": "1d36cdece9037ed5e7e0fa0eec17341acab9dc932472e63196f0d4e3b4c16fe3"
+    },
+    {
+      "path": "detector/sigma_convert.py",
+      "source": "git",
+      "sha256": "e6379b8f2a42053322e35ddf1f1257095b662d5db2b24f01cef7281c8d6e4bf2"
+    },
+    {
+      "path": "detector/triage.py",
+      "source": "git",
+      "sha256": "a335d78ac01aba636f636efda332359480cdb4753f5df77a1ca84602969ac71e"
+    },
+    {
+      "path": "enforcer/block_enforcer.py",
+      "source": "git",
+      "sha256": "9940879be89a7549db5101f9a0bd6e64a6e6a669ed023fbfe1360e0cdc9a3258"
+    },
+    {
+      "path": "enforcer/install-enforcer.sh",
+      "source": "git",
+      "sha256": "ff1cd395db0c12a71c683d807dbb749fe57f7ab5cb7cfa711d82ca625a6af450"
+    },
+    {
+      "path": "enforcer/opsloop-enforcer.service",
+      "source": "git",
+      "sha256": "a918505d3cfb1ab6d6c4bfc0c33026f4537a8a9f37f8636fb4d482f1963eba44"
+    },
+    {
+      "path": "enforcer/opsloop-enforcer.timer",
+      "source": "git",
+      "sha256": "96075151a865be0dd2d2bc6a8d5d29dbb68fc4e3a0115b4ae64517f8a36c57ad"
+    },
+    {
+      "path": "enforcer/testdata/block_enforcer_p.py",
+      "source": "git",
+      "sha256": "3caebeb468875f0e54d968022eb8918546c900e8f6399bf0c64a1eeea09f639e"
+    },
+    {
+      "path": "infra/ansible/README.md",
+      "source": "git",
+      "sha256": "51b23c36dcb9e162c3be2c196c72a9213affeb338082df980e017d172893f77b"
+    },
+    {
+      "path": "infra/ansible/ansible.cfg",
+      "source": "git",
+      "sha256": "e352ba52d7b7464fa9ebe59332f341b5b27bec8c793f6ca7da9cef04c73a5a71"
+    },
+    {
+      "path": "infra/ansible/consoles.yml",
+      "source": "git",
+      "sha256": "1a361fda9b1edf6335837f610dcbf9760483834ca3d211f4e2bd563c4c9def2b"
+    },
+    {
+      "path": "infra/ansible/files/alloy-dropin.conf",
+      "source": "git",
+      "sha256": "0275705e1abdceaa73322daab3dc6721a19e2e88c91d3b53d611647c149d42df"
+    },
+    {
+      "path": "infra/ansible/files/console-guard.nft",
+      "source": "git",
+      "sha256": "99bba3544ce163e6cec5b106d8229fc51739e4eada754c9ad018afa2126ba602"
+    },
+    {
+      "path": "infra/ansible/files/metrics.logrotate",
+      "source": "git",
+      "sha256": "930b4e459ff954641d97ea09e9d8fb29f56ea66299ed238782d61244f3e59879"
+    },
+    {
+      "path": "infra/ansible/files/metrics.py",
+      "source": "git",
+      "sha256": "4e544b68f0c669f7cf33789f4b1259aaad339f176a3f0f2ed845917c27802952"
+    },
+    {
+      "path": "infra/ansible/files/nginx-opsloop.conf",
+      "source": "git",
+      "sha256": "852230f9460f959dc97ab320539babe9c752f3ad99d88a144a69b81fa1265457"
+    },
+    {
+      "path": "infra/ansible/files/nginx-opsloop.logrotate",
+      "source": "git",
+      "sha256": "3c627ecf7188650afdc74af04ac8a8607a0af249f9098fd1c0643b1e9c24a439"
+    },
+    {
+      "path": "infra/ansible/files/opsloop-agent-key",
+      "source": "git",
+      "sha256": "1e04902e4bfeeeded280a45313e3d1c7e893d05833bf3c329e482119625e21dc"
+    },
+    {
+      "path": "infra/ansible/files/opsloop-enroll",
+      "source": "git",
+      "sha256": "0f033f5d28558e85163fccc1c6d021df2b0a3c3a82c22ced34560d15ff3d272f"
+    },
+    {
+      "path": "infra/ansible/files/opsloop-guard.service",
+      "source": "git",
+      "sha256": "6ba6604d804b5318189cae7872f379d5479cf292fa62e01dda272cb310e17b68"
+    },
+    {
+      "path": "infra/ansible/files/opsloop-metrics.service",
+      "source": "git",
+      "sha256": "992d0cca25c404153905a691c1219ccedee0dcb0c43e4f41a91948bd19566790"
+    },
+    {
+      "path": "infra/ansible/files/opsloop-metrics.timer",
+      "source": "git",
+      "sha256": "69b92382a1b0d7c4880fd56126860c05c376d0f3595fbb12316ad614530587d7"
+    },
+    {
+      "path": "infra/ansible/files/rsyslog-opsloop.conf",
+      "source": "git",
+      "sha256": "0d587c7f5e0d5c88f9aee931cfc0b4349686a29a08232897cca7e2c0003b77d5"
+    },
+    {
+      "path": "infra/ansible/inventory.ini",
+      "source": "git",
+      "sha256": "d60a135c6cfeb646216e95b983336bdeec382686128cb91ac7b4ab3d554c0a6f"
+    },
+    {
+      "path": "infra/ansible/templates/config.alloy.j2",
+      "source": "git",
+      "sha256": "2115ea572dead9e3e6b147ece0ab41145a714b19e896be09227cfd93f4fa93ad"
+    },
+    {
+      "path": "infra/ansible/web01.yml",
+      "source": "git",
+      "sha256": "c44bee1929da18a0309c4ffbda7fe3be9f22caa679ddd5ad281f2a64ce6aa967"
+    },
+    {
+      "path": "infra/migrations/20260923_console_ops.sql",
+      "source": "git",
+      "sha256": "f030f1cfc635c68124c39ee9cf6a746d662e404d9fb40a907df12b13b6caf3f7"
+    },
+    {
+      "path": "infra/migrations/20260924_db_roles.sql",
+      "source": "git",
+      "sha256": "4d7253263fc2f4365500e41ce5f778be53dd4b9d197195a4fade026e4eccca6b"
+    },
+    {
+      "path": "infra/migrations/20260924_notify.sql",
+      "source": "git",
+      "sha256": "248a501c974b32ae7c26f345e1bbd6f7a55a0d6daba9f3c598bf4809196b2020"
+    },
+    {
+      "path": "infra/migrations/20260925_cti.sql",
+      "source": "git",
+      "sha256": "4867b7d312c649272ccc1a56901565456402ab5795e2a212671d2c5efcaa91f1"
+    },
+    {
+      "path": "infra/migrations/20260925_round2.sql",
+      "source": "git",
+      "sha256": "813a37f644d1fb28c988bc0d5ec6f1a49891df8f41cd696de9992a27c3530def"
+    },
+    {
+      "path": "infra/migrations/20260925_v3_absorbed.sql",
+      "source": "git",
+      "sha256": "bc337af0f02ea19cf56ec8e2bd1bd946120632592b8c9561d4db39f215700984"
+    },
+    {
+      "path": "infra/migrations/20260926_console_connlimit.sql",
+      "source": "git",
+      "sha256": "b391312290bd657c36cd7b84c58d4ab26bff424a96b344a7d5efd7ab33d9d933"
+    },
+    {
+      "path": "infra/migrations/20260927_block_enforce.sql",
+      "source": "git",
+      "sha256": "fccbfc4d1f6887681e27ead7c2615998fb01f781d29d4031116db9b40a17ef23"
+    },
+    {
+      "path": "infra/migrations/20260929_block_points.sql",
+      "source": "git",
+      "sha256": "9628396009977875212e38250ea49f6975e6ee6428a2a14ad8fbfe19ee1a27b7"
+    },
+    {
+      "path": "infra/migrations/20260930_status_board.sql",
+      "source": "git",
+      "sha256": "7787c90a99e2bea2c6755c618bd27faa3509540e99c10899dcc67ce5a141cecd"
+    },
+    {
+      "path": "infra/migrations/20261001_console_accounts.sql",
+      "source": "git",
+      "sha256": "d76fdd4e9cec4a0ff1bd9f103ac32900e820d3cd48cc592bdce225945f455c11"
+    },
+    {
+      "path": "infra/migrations/20261002_console_accounts_manage.sql",
+      "source": "git",
+      "sha256": "5103e02c71edb4302d97836ae233332ec4fc86e2ef535d2ec71ad9b732d63c00"
+    },
+    {
+      "path": "infra/migrations/20261003_block_points_choice.sql",
+      "source": "git",
+      "sha256": "cab65ab2ca78a456249321c6f01beb68c9f2252d886db0f982b88d00eebb65d4"
+    },
+    {
+      "path": "infra/migrations/20261003_data_node_health.sql",
+      "source": "git",
+      "sha256": "082e995dba24e9ad1e2b487624d86c3f5ed641955eaa528ffb45f1efa2d5e844"
+    },
+    {
+      "path": "infra/migrations/20261003_incident_workflow.sql",
+      "source": "git",
+      "sha256": "635b25372eb2cc135b7271f74819af5eba02c4a06b5e1dd3a8a98ade281776d6"
+    },
+    {
+      "path": "infra/migrations/20261003_login_limits.sql",
+      "source": "git",
+      "sha256": "175907f7861ba69f9f93467d80f09920b5ebf36934ac5bc2f82cae27bc21b92b"
+    },
+    {
+      "path": "infra/migrations/20261004_honeypot_names.sql",
+      "source": "git",
+      "sha256": "be08be2dff98d5625030a2b2d2a6ad25eb22de206499019f828f373b5821a127"
+    },
+    {
+      "path": "infra/schema.sql",
+      "source": "git",
+      "sha256": "458105540847f6bfa5e80039d67118c9dd44b39adbd413be7d962c2a3f4407d9"
+    },
+    {
+      "path": "infra/vmware/README.md",
+      "source": "git",
+      "sha256": "60d07e776c15fa7d1f10e2ea89ef07ddae131b4b7fd1f85ce1b0b28cfadbecc6"
+    },
+    {
+      "path": "infra/vmware/compose/console.yml",
+      "source": "git",
+      "sha256": "e1719361683c762f56f2679fac09c147a976bd11c335d64869f31664459dc931"
+    },
+    {
+      "path": "infra/vmware/compose/data.yml",
+      "source": "git",
+      "sha256": "d3996f8987a6ff66f7fe670b82e9e3b18dc53c08dbe3ce2b9cae1096b1292ff6"
+    },
+    {
+      "path": "infra/vmware/compose/loki.yaml",
+      "source": "git",
+      "sha256": "260a0b7a40f8c1bba07378f6e16221e6fa79bde4bea2b403bd5924c1edb9d8c7"
+    },
+    {
+      "path": "infra/vmware/failover/collect_fw.sh",
+      "source": "git",
+      "sha256": "f5cd9d060f318c2d739c4163bcf704dffb8f25b4d3fc18fc1620be6a531adee2"
+    },
+    {
+      "path": "infra/vmware/failover/common.py",
+      "source": "git",
+      "sha256": "614e05260b38a4a2611e9bfda60d4fd2e33ad747e8a620c5d58ff8539c214016"
+    },
+    {
+      "path": "infra/vmware/failover/mark.py",
+      "source": "git",
+      "sha256": "d780181c2b3dbdf434cd63f3c38be5b9676e09501e1d3d1e572778939a0f6e1a"
+    },
+    {
+      "path": "infra/vmware/failover/probe_http.py",
+      "source": "git",
+      "sha256": "bb31250e96a9e5a570066fc884576e21a16f33fda6443529042b0099f25f1adc"
+    },
+    {
+      "path": "infra/vmware/failover/probe_ws.py",
+      "source": "git",
+      "sha256": "fbede95489fc3739b26399a6bb45f433a7800e7a4aa5348ae7cca9826569c24d"
+    },
+    {
+      "path": "infra/vmware/failover/summarize.py",
+      "source": "git",
+      "sha256": "ceec311098ca0888ffd634faad355dc5aa17dc84441e3272b2cb74fed890e6f6"
+    },
+    {
+      "path": "infra/vmware/fw/chrony-server.conf",
+      "source": "git",
+      "sha256": "8d4860dd1442318d9d9fc67fe24595505ad58db2bc4aeead97ae75468d1a65af"
+    },
+    {
+      "path": "infra/vmware/fw/nftables.conf",
+      "source": "git",
+      "sha256": "68a34da40aadaa0732c556f6ad8e42e2acb8ae46941e080d840be63c94108b6f"
+    },
+    {
+      "path": "infra/vmware/haproxy/haproxy.cfg",
+      "source": "git",
+      "sha256": "9aa231896cc8bfecfa943bd94ae3bf3959266fe50cbf83d8c2e243a43b51ba72"
+    },
+    {
+      "path": "infra/vmware/netplan/attacker.yaml",
+      "source": "git",
+      "sha256": "bd872db227a98ccf0e5a9b0b34f24afcca64571bf474fe352f9b8bbf9b643065"
+    },
+    {
+      "path": "infra/vmware/netplan/chrony-client.conf.template",
+      "source": "git",
+      "sha256": "32f4c51a003b10b8200614b09bc4601bc531c8796bb8e8b56720de27b4619d16"
+    },
+    {
+      "path": "infra/vmware/netplan/console-a.yaml",
+      "source": "git",
+      "sha256": "e66b143d01a2ba27c65cc4b0582bf103a82cdd733eb33bac1609916d88ae4b19"
+    },
+    {
+      "path": "infra/vmware/netplan/console-b.yaml",
+      "source": "git",
+      "sha256": "e576246fcf05e9b707603e045d10c67723aba2a157e78cf8ba72cdb31838b1fd"
+    },
+    {
+      "path": "infra/vmware/netplan/data-01.yaml",
+      "source": "git",
+      "sha256": "6b1f4378aba1bae700dbe6920717e9b72743bff764c63e581b9aa892dc0a9172"
+    },
+    {
+      "path": "infra/vmware/netplan/fw.yaml.template",
+      "source": "git",
+      "sha256": "443d2514c234f14e4a360ee1386238fff169672fac35ec6efe55d917d6cce2a6"
+    },
+    {
+      "path": "infra/vmware/netplan/web-01.yaml",
+      "source": "git",
+      "sha256": "2515520a7dffafa0b20d7027081415e85cb7fc6b8ef8fce7ff4437ab3cbe0b65"
+    },
+    {
+      "path": "infra/vmware/restore-drill/drill.py",
+      "source": "git",
+      "sha256": "71dd84dc6bc1dbc598291dd2a15f95ea7f765d3defc9a89bcf63ab31606d3385"
+    },
+    {
+      "path": "infra/vmware/restore-drill/queries.py",
+      "source": "git",
+      "sha256": "c49389c6f37c51f0e0c3bd6a3bd00483eef55d8c4e4d2873332e390c5fe98f56"
+    },
+    {
+      "path": "infra/vmware/scripts/add-node.sh",
+      "source": "git",
+      "sha256": "2175e279cd28233bfc7fb3cbde89ff8b1b78029c166d1ae960653989659d15ee"
+    },
+    {
+      "path": "infra/vmware/scripts/assets-agent.sh",
+      "source": "git",
+      "sha256": "ef2c2b0dcaa16cd49a96a0c00d0ab50ab95b751aa13f4229cef8128137fcbbd4"
+    },
+    {
+      "path": "infra/vmware/scripts/backup-agent.sh",
+      "source": "git",
+      "sha256": "a2272b4d066c853cb83cda08afc17c68c7603ade905382b683b2a1a07fb9c955"
+    },
+    {
+      "path": "infra/vmware/scripts/backup-db.sh",
+      "source": "git",
+      "sha256": "f51bcecc929a6ef19cd630d62416c6d25894498e02b00c0a238f56a590e41472"
+    },
+    {
+      "path": "infra/vmware/scripts/clone.sh",
+      "source": "git",
+      "sha256": "d0e1d029922e7a50ccd7b80815c5d06f8bfc75258bbf3be9d9167746f7d546ea"
+    },
+    {
+      "path": "infra/vmware/scripts/collect-assets.sh",
+      "source": "git",
+      "sha256": "38e1e9de0100e4c58e5181229402093976fe7c9b44af21e9348f4a2b1061226c"
+    },
+    {
+      "path": "infra/vmware/scripts/configure.sh",
+      "source": "git",
+      "sha256": "ed62371fc920456775b0d092801e2190d95b284bc6c11b1e5e49741030021f40"
+    },
+    {
+      "path": "infra/vmware/scripts/console-certificates.py",
+      "source": "git",
+      "sha256": "da1dbef9427caaae2690683e2211d8a93c45f9e8ac96216acfe36548938b5b9c"
+    },
+    {
+      "path": "infra/vmware/scripts/console-join.sh",
+      "source": "git",
+      "sha256": "fd12bd835cde91d0c9f050b3bea6b23b6acbe0e4cfca5909fe6b08c01f899e56"
+    },
+    {
+      "path": "infra/vmware/scripts/console-watch.sh",
+      "source": "git",
+      "sha256": "1c6b79312419b27608bb1a19f72a5677b72649a9a16266e6adf913b399faaf87"
+    },
+    {
+      "path": "infra/vmware/scripts/create-networks.sh",
+      "source": "git",
+      "sha256": "69cb90e773968224c9c2858bbc85baedb9610f84f5b94453cd0bffc8e8e0f29f"
+    },
+    {
+      "path": "infra/vmware/scripts/db-console-role.sh",
+      "source": "git",
+      "sha256": "042d940d0d2133c175fb17646acbc3a15d4babf824a2c4aed0128b3e0f7d2d70"
+    },
+    {
+      "path": "infra/vmware/scripts/fw-add-ext-nic.sh",
+      "source": "git",
+      "sha256": "1a4a787e31fb54743e59530d202b7f200fd35756de2852390da8ee6f0d404cf8"
+    },
+    {
+      "path": "infra/vmware/scripts/install-assets-agent.sh",
+      "source": "git",
+      "sha256": "0586d63df4b6d324270515483e5b3779eb8f0172eb453c9ba9cf1b605b0b0ea3"
+    },
+    {
+      "path": "infra/vmware/scripts/install-backup-agent.sh",
+      "source": "git",
+      "sha256": "c792c235010dde8c0c5edf7de2547f150d24ef98e673c429d41e26678f26d3a1"
+    },
+    {
+      "path": "infra/vmware/scripts/install-console-watch.sh",
+      "source": "git",
+      "sha256": "d653353c5c6081359a2c2a7e1a60df98fb3db02453e7aadce649331e074f49d1"
+    },
+    {
+      "path": "infra/vmware/scripts/make-seed.sh",
+      "source": "git",
+      "sha256": "36d01dcbc106310c2f5e57767f487860f360180eaa45b9ec965a92d6ae46be5d"
+    },
+    {
+      "path": "infra/vmware/scripts/prepare-loki-retention.py",
+      "source": "git",
+      "sha256": "7fe443cc3488de38dffd4ea1c0ce22bf4fc339fd432137e81eb2fdb34dbf309f"
+    },
+    {
+      "path": "infra/vmware/scripts/verify-db-roles.sh",
+      "source": "git",
+      "sha256": "2d76745c592377b8a8747bbf8f7a8a119138f5f2b0308e34c1abf1582e4be9d7"
+    },
+    {
+      "path": "infra/vmware/scripts/verify.sh",
+      "source": "git",
+      "sha256": "30bc9d8cd28e22356eb1bc25787ddc74eebefba6e0ef16fc91244af06b6bb697"
+    },
+    {
+      "path": "infra/vmware/seed/meta-data",
+      "source": "git",
+      "sha256": "71443d03634b7870e5cc3b0886610df5e1292a18157b7ece5d00adcb5e52c761"
+    },
+    {
+      "path": "infra/vmware/seed/user-data.template",
+      "source": "git",
+      "sha256": "1790d6ee079a60b382bba59e8dfc6b269982c7fa2f7a22087c1c11f1436970ac"
+    },
+    {
+      "path": "parser/analyze.py",
+      "source": "git",
+      "sha256": "c773a7bc47ce4275d373f1a5fb2f93983a4095193b645bfabf9a2b08d598474b"
+    },
+    {
+      "path": "parser/exclusions.txt",
+      "source": "git",
+      "sha256": "c7ee9284e2780053c31b9172a1e2d80b3d679f483db39100afecf9120c4d4f8e"
+    },
+    {
+      "path": "parser/parse_agent.py",
+      "source": "git",
+      "sha256": "406f577f922a223aa1ec832feb3c81d641b7601471f457706ea2f3d2e047b55e"
+    },
+    {
+      "path": "parser/parse_cowrie.py",
+      "source": "git",
+      "sha256": "a27da3a00a4ccc1c69ad078cff6776bd42edc99b4ba305c7ba00b3a7e472fd70"
+    },
+    {
+      "path": "parser/parse_decoy.py",
+      "source": "git",
+      "sha256": "6ba515cd62f9431561562a4fe6fcd58ef5310be5620de881cf88b88fd14c6535"
+    },
+    {
+      "path": "parser/parse_gateway.py",
+      "source": "git",
+      "sha256": "69c1b94bc3cba673875748e14438a6656841e743eceeacb8f6367385523b45eb"
+    },
+    {
+      "path": "app/static/assets/AccountsPage-2auRZ-91.js",
+      "source": "build",
+      "sha256": "d1c13383d783a2a01bb653c22694e5628a03b22a310045189d93806e99409831"
+    },
+    {
+      "path": "app/static/assets/AlertsPage-w8g3zTmi.js",
+      "source": "build",
+      "sha256": "5acf83027da5737a4d06a5b31b0700154f6af7ab569e898ed7f64b5be8db7da8"
+    },
+    {
+      "path": "app/static/assets/AssetsPage-DhBY8hM6.js",
+      "source": "build",
+      "sha256": "8a637bdcef28cd1c8e4fdc5ca8e8cddb5407ea5a7b50dc1a135cb41e46070051"
+    },
+    {
+      "path": "app/static/assets/AuditPage-DUXSRzO3.js",
+      "source": "build",
+      "sha256": "042a75ce659021f1e61d75443c6d3fdae6c159a0b07f04a574873f196d88e530"
+    },
+    {
+      "path": "app/static/assets/Badge-Bl-2LRrw.js",
+      "source": "build",
+      "sha256": "59e6161fbe8adb1761d9445e5347bdcc6d30df05311a2d3055d512b8d456cbf3"
+    },
+    {
+      "path": "app/static/assets/Card-Vue6OOHJ.js",
+      "source": "build",
+      "sha256": "019c2bb2c49bda658e8c2092f2338f8bcd8562bcd822ee65231b0e4b284f8817"
+    },
+    {
+      "path": "app/static/assets/DeviceLogsPage-Cy8Pjp_E.js",
+      "source": "build",
+      "sha256": "7e1820cf4d9c4b0e405e1f99b714448952663b41b951c7f6023480c130f277a4"
+    },
+    {
+      "path": "app/static/assets/Input-BI_3D-O7.js",
+      "source": "build",
+      "sha256": "3a1a4cf293ba4c29d922a06bda4a0104cdacb2c9543c22c43c8c83b292127264"
+    },
+    {
+      "path": "app/static/assets/Label-g8QjRY2I.js",
+      "source": "build",
+      "sha256": "a4922f38c8689604056ee37fe2cc679d0ed9ecfa9594a136e95cd61de7fecdf4"
+    },
+    {
+      "path": "app/static/assets/NodeEnrollmentPage-DkkjmrKk.js",
+      "source": "build",
+      "sha256": "8ca05cace6935133bc6fbb61cfe544a62734904fd76f5869f35899f6eac6bac5"
+    },
+    {
+      "path": "app/static/assets/NodesPage-B993uf3n.js",
+      "source": "build",
+      "sha256": "ed23f9e72a1346d1863cacb02013142bfcca58eecaa4d27ca5393b2300327c90"
+    },
+    {
+      "path": "app/static/assets/PageHeader-CbxHOHc6.js",
+      "source": "build",
+      "sha256": "6c82c0df10e93a434a5022363f8472436b077a412ad874fefa2b6699e5bb7afa"
+    },
+    {
+      "path": "app/static/assets/ReportsPage-lXyhQ2v5.js",
+      "source": "build",
+      "sha256": "353e078e31320bb4a9b2834a4666db3bde727c0bb8bf9221767d3bf279ab530c"
+    },
+    {
+      "path": "app/static/assets/RulesPage-DJPquGKD.js",
+      "source": "build",
+      "sha256": "921f9e35488887e5768ecfadc46c79057ba705bd12092a60e83187899ff7558f"
+    },
+    {
+      "path": "app/static/assets/Select-BEPIJ8oj.js",
+      "source": "build",
+      "sha256": "fdf096fa2a709685b15187b710bf63d6b737dde46fcc916986009a8f94b96338"
+    },
+    {
+      "path": "app/static/assets/SourceBlock-BzVNpVUo.js",
+      "source": "build",
+      "sha256": "176df76e535afa23679e0ad6945cb5587c9e97f406757727120e972e1525644c"
+    },
+    {
+      "path": "app/static/assets/SourceDetailPage-DsTO0uhh.js",
+      "source": "build",
+      "sha256": "034e4ca2dbf6da6d28ec627e8463591b84d6d8a0ad0712fc4a4fbbde3ba0fb1d"
+    },
+    {
+      "path": "app/static/assets/SourcesPage-DbaLRR6b.js",
+      "source": "build",
+      "sha256": "54acfac666972ee045d9a8804d0f5b1c1bd280f401dc041765735fe528385b6b"
+    },
+    {
+      "path": "app/static/assets/Switch-BFP8ZfIJ.js",
+      "source": "build",
+      "sha256": "e17c6d8806d03040c398165385ca42630dce0003bca50a13ed78ae4b03f8b17a"
+    },
+    {
+      "path": "app/static/assets/UntrustedText-BgtQgQP9.js",
+      "source": "build",
+      "sha256": "0ab4a34960ebd8f852f57f0e818dd1369bd79e6ae7cc90782f370865744af29e"
+    },
+    {
+      "path": "app/static/assets/VerdictBadge-Clerp46N.js",
+      "source": "build",
+      "sha256": "71d2b9392ea788fd72ce494424c9169096103cf02a3c23466f26655477cc7867"
+    },
+    {
+      "path": "app/static/assets/cti-format-ASjsf5kl.js",
+      "source": "build",
+      "sha256": "67bd83696e06bb779242201ad93c639fe92055c5018236c4187f4d76f92fa57e"
+    },
+    {
+      "path": "app/static/assets/device-format-C_YeD7fP.js",
+      "source": "build",
+      "sha256": "e4c4beb9a40f64e53a185570acc4ba0f2ade8338e80fa7bd339f44c2eb7b3ead"
+    },
+    {
+      "path": "app/static/assets/incidents-DrFfTC_c.js",
+      "source": "build",
+      "sha256": "8a7f2e331f5b2264aef4a38f4f4b17bbf79e9e57d44b8199ef3f456b166af9ec"
+    },
+    {
+      "path": "app/static/assets/index-3L7hWNb2.js",
+      "source": "build",
+      "sha256": "6b27be106e59170fdbca5f32a7a2a8e7d056075d1b002407d5dcea56db564d90"
+    },
+    {
+      "path": "app/static/assets/interval-Bj3hulVJ.js",
+      "source": "build",
+      "sha256": "7312260a902f04166681342be728d2aa9024260f4143b1f7ebb9b8fb4267baa7"
+    },
+    {
+      "path": "app/static/assets/log-format-CNY4EPmG.js",
+      "source": "build",
+      "sha256": "053da346ab6bd15f939b30f85e7c355f0b941d7f0098155ae577d7a2984eaf55"
+    },
+    {
+      "path": "app/static/assets/notify-DuPIilgO.js",
+      "source": "build",
+      "sha256": "764f80b5c857bda1d694c698f6fdac2d3a67291d1a8d090772f69833ddd29f1a"
+    },
+    {
+      "path": "app/static/assets/style-C_1Ofxdo.css",
+      "source": "build",
+      "sha256": "a1850c5692d97ab97994f4de805e3a1e687d4865973cc929814bdf8ccb3b8be6"
+    },
+    {
+      "path": "app/static/index.html",
+      "source": "build",
+      "sha256": "333da2beea7079dc205acdcfbbe009b5f9adbc0817886b197d6f10f7ed2e9a9e"
+    }
+  ]
+}

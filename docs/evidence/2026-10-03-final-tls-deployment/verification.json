@@ -1,0 +1,21 @@
+{
+  "commit": "38720bd4fc0a4511dde91de96f5dff62bed5d12f",
+  "archive": "opsloop-final-38720bd.tar.gz",
+  "sha256": "9e793393c0f39d51e15722c30fb1ae070836e660d58e81740ec94ff6e956bef4",
+  "files": 195,
+  "required_files": 10,
+  "manifest_matches_archive": true,
+  "git_files_match_commit": true,
+  "built_files_match_current_build": true,
+  "private_key_files_absent": true,
+  "evidence": [
+    {
+      "folder": "2026-10-03-data-node-health",
+      "verified_files": 11
+    },
+    {
+      "folder": "2026-10-03-backup-observation",
+      "verified_files": 2
+    }
+  ]
+}

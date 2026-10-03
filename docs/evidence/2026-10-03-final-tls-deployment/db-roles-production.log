@@ -1,0 +1,181 @@
+== 역할별 문장 (데이터 노드 컨테이너 안)
+  역할            문장                                                         기대 결과
+  opsloop_console   DELETE FROM events WHERE false                                 거부 ✔
+  opsloop_console   UPDATE events SET input='' WHERE false                         거부 ✔
+  opsloop_console   SELECT token_hash FROM nodes LIMIT 0                           거부 ✔
+  opsloop_console   SELECT token_hash FROM node_enrollments LIMIT 0                거부 ✔
+  opsloop_console   UPDATE console_users SET role='admin' WHERE false              거부 ✔
+  opsloop_console   INSERT INTO console_users SELECT * FROM console_users WHERE false 거부 ✔
+  opsloop_console   ALTER TABLE events DISABLE TRIGGER trg_audit_append_only       거부 ✔
+  opsloop_console   INSERT INTO incidents SELECT * FROM incidents WHERE false      거부 ✔
+  opsloop_console   has_table_privilege('opsloop_console','actions','TRUNCATE')    f     ✔
+  opsloop_console   SELECT count(*) FROM audit_log                                 허용 ✔
+  opsloop_console   SELECT count(*) FROM rule_quality                              허용 ✔
+  opsloop_console   INSERT INTO verdicts SELECT * FROM verdicts WHERE false        허용 ✔
+  opsloop_ingest    INSERT INTO incidents SELECT * FROM incidents WHERE false      거부 ✔
+  opsloop_ingest    SELECT token_hash FROM nodes LIMIT 0                           거부 ✔
+  opsloop_ingest    DELETE FROM events WHERE false                                 거부 ✔
+  opsloop_ingest    INSERT INTO events SELECT * FROM events WHERE false            허용 ✔
+  opsloop_detector  INSERT INTO verdicts SELECT * FROM verdicts WHERE false        거부 ✔
+  opsloop_detector  INSERT INTO events SELECT * FROM events WHERE false            거부 ✔
+  opsloop_detector  UPDATE blocklist SET released_at = now() WHERE false           거부 ✔
+  opsloop_detector  SELECT node_id, addr, registered_at FROM nodes LIMIT 0         허용 ✔
+  opsloop_detector  SELECT token_hash FROM nodes LIMIT 0                           거부 ✔
+  opsloop_detector  INSERT INTO incidents SELECT * FROM incidents WHERE false      허용 ✔
+  opsloop_detector  UPDATE incidents SET status = status WHERE false               거부 ✔
+  opsloop_detector  UPDATE incidents SET last_ts = last_ts, evidence = evidence WHERE false 허용 ✔
+  opsloop_detector  SELECT incident_key FROM incidents WHERE false FOR UPDATE SKIP LOCKED 허용 ✔
+  opsloop_detector  INSERT INTO incident_absorbed SELECT * FROM incident_absorbed WHERE false 허용 ✔
+  opsloop_detector  UPDATE incident_absorbed SET kind = kind WHERE false           거부 ✔
+  opsloop_detector  SELECT count(*) FROM absorbed_blocks                           거부 ✔
+  opsloop_console   SELECT count(*) FROM incident_absorbed                         허용 ✔
+  opsloop_console   INSERT INTO incident_absorbed SELECT * FROM incident_absorbed WHERE false 거부 ✔
+  opsloop_console   UPDATE absorbed_blocks SET released_at = now() WHERE false     허용 ✔
+  opsloop_console   DELETE FROM absorbed_blocks WHERE false                        거부 ✔
+  opsloop_cti       INSERT INTO cti_snapshots SELECT * FROM cti_snapshots WHERE false 허용 ✔
+  opsloop_cti       UPDATE cti_snapshots SET error = error WHERE false             거부 ✔
+  opsloop_cti       DELETE FROM cti_snapshots WHERE false                          거부 ✔
+  opsloop_cti       has_sequence_privilege('opsloop_cti','cti_snapshots_id_seq','USAGE') t     ✔
+  opsloop_cti       INSERT INTO cti_kev SELECT * FROM cti_kev WHERE false ON CONFLICT (cve_id) DO UPDATE SET name = EXCLUDED.name 허용 ✔
+  opsloop_cti       DELETE FROM cti_kev WHERE false                                허용 ✔
+  opsloop_cti       has_table_privilege('opsloop_cti','cti_kev','TRUNCATE')        f     ✔
+  opsloop_cti       INSERT INTO cti_cve SELECT * FROM cti_cve WHERE false ON CONFLICT (cve_id) DO UPDATE SET epss = EXCLUDED.epss 허용 ✔
+  opsloop_cti       DELETE FROM cti_cve WHERE false                                거부 ✔
+  opsloop_cti       INSERT INTO cti_osv SELECT * FROM cti_osv WHERE false ON CONFLICT (osv_id) DO UPDATE SET affected = EXCLUDED.affected 허용 ✔
+  opsloop_cti       DELETE FROM cti_osv WHERE false                                거부 ✔
+  opsloop_cti       INSERT INTO cti_watch SELECT * FROM cti_watch WHERE false ON CONFLICT (cve_id) DO UPDATE SET record_found = EXCLUDED.record_found 허용 ✔
+  opsloop_cti       DELETE FROM cti_watch WHERE false                              허용 ✔
+  opsloop_cti       INSERT INTO asset_inventory SELECT * FROM asset_inventory WHERE false ON CONFLICT (asset_id) DO UPDATE SET last_error = EXCLUDED.last_error 허용 ✔
+  opsloop_cti       DELETE FROM asset_inventory WHERE false                        거부 ✔
+  opsloop_cti       INSERT INTO asset_vulnerabilities SELECT * FROM asset_vulnerabilities WHERE false 허용 ✔
+  opsloop_cti       DELETE FROM asset_vulnerabilities WHERE false                  허용 ✔
+  opsloop_cti       UPDATE asset_vulnerabilities SET fix_state = fix_state WHERE false 거부 ✔
+  opsloop_cti       SELECT rule_version, definition FROM rule_versions LIMIT 0     허용 ✔
+  opsloop_cti       UPDATE rule_versions SET reason = reason WHERE false           거부 ✔
+  opsloop_cti       SELECT node_id FROM nodes LIMIT 0                              거부 ✔
+  opsloop_cti       SELECT count(*) FROM events                                    거부 ✔
+  opsloop_cti       SELECT count(*) FROM incidents                                 거부 ✔
+  opsloop_console   SELECT 1 FROM cti_snapshots, cti_kev, cti_cve, cti_osv, cti_watch, asset_inventory, asset_vulnerabilities LIMIT 0 허용 ✔
+  opsloop_console   INSERT INTO cti_kev SELECT * FROM cti_kev WHERE false          거부 ✔
+  opsloop_console   UPDATE asset_inventory SET last_error = last_error WHERE false 거부 ✔
+  opsloop_console   DELETE FROM cti_watch WHERE false                              거부 ✔
+  opsloop_detector  SELECT count(*) FROM cti_kev                                   거부 ✔
+  opsloop_detector  SELECT count(*) FROM asset_vulnerabilities                     거부 ✔
+  opsloop_ingest    SELECT count(*) FROM cti_kev                                   거부 ✔
+  opsloop_backup    SELECT 1 FROM cti_snapshots, cti_kev, cti_cve, cti_osv, cti_watch, asset_inventory, asset_vulnerabilities LIMIT 0 허용 ✔
+  opsloop_backup    INSERT INTO events SELECT * FROM events WHERE false            거부 ✔
+  opsloop_backup    SELECT count(*) FROM events                                    허용 ✔
+  opsloop_backup    SELECT count(*) FROM console_login_limits                      허용 ✔
+  opsloop_console   DELETE FROM console_login_limits WHERE false                   거부 ✔
+  opsloop_console   SELECT 1 / has_function_privilege(current_user, 'console_login_take(text,text,text)', 'EXECUTE')::integer 허용 ✔
+  opsloop_gate      SELECT count(*) FROM events                                    거부 ✔
+  opsloop_gate      SELECT count(*) FROM nodes WHERE token_hash IS NOT NULL        허용 ✔
+  opsloop_enforcer  SELECT actor_ip, expires_at, released_at, method, enforced_at, enforce_note FROM blocklist LIMIT 0 허용 ✔
+  opsloop_enforcer  SELECT cidr, note FROM block_exempt LIMIT 0                    허용 ✔
+  opsloop_enforcer  UPDATE blocklist SET method = method, enforced_at = enforced_at, enforce_note = enforce_note WHERE false 허용 ✔
+  opsloop_enforcer  UPDATE blocklist SET released_at = released_at WHERE false     거부 ✔
+  opsloop_enforcer  UPDATE blocklist SET expires_at = expires_at WHERE false       거부 ✔
+  opsloop_enforcer  UPDATE blocklist SET actor_ip = actor_ip WHERE false           거부 ✔
+  opsloop_enforcer  INSERT INTO blocklist SELECT * FROM blocklist WHERE false      거부 ✔
+  opsloop_enforcer  DELETE FROM blocklist WHERE false                              거부 ✔
+  opsloop_enforcer  INSERT INTO block_exempt SELECT * FROM block_exempt WHERE false 거부 ✔
+  opsloop_enforcer  SELECT count(*) FROM events                                    거부 ✔
+  opsloop_enforcer  INSERT INTO events SELECT * FROM events WHERE false            거부 ✔
+  opsloop_enforcer  SELECT count(*) FROM incidents                                 거부 ✔
+  opsloop_enforcer  SELECT count(*) FROM absorbed_blocks                           거부 ✔
+  opsloop_enforcer  has_function_privilege('opsloop_enforcer', 'note_block_expired(inet, timestamptz)', 'EXECUTE') t     ✔
+  opsloop_enforcer  has_table_privilege('opsloop_enforcer', 'blocklist', 'TRUNCATE') f     ✔
+  opsloop_console   SELECT cidr, note FROM block_exempt LIMIT 0                    허용 ✔
+  opsloop_console   INSERT INTO block_exempt SELECT * FROM block_exempt WHERE false 거부 ✔
+  opsloop_console   UPDATE block_exempt SET note = note WHERE false                거부 ✔
+  opsloop_console   DELETE FROM block_exempt WHERE false                           거부 ✔
+  opsloop_console   has_function_privilege('opsloop_console', 'note_block_expired(inet, timestamptz)', 'EXECUTE') f     ✔
+  opsloop_console   (SELECT prosecdef FROM pg_proc WHERE proname = 'blocklist_guard') t     ✔
+  opsloop_detector  SELECT count(*) FROM block_exempt                              거부 ✔
+  opsloop_detector  has_function_privilege('opsloop_detector', 'note_block_expired(inet, timestamptz)', 'EXECUTE') f     ✔
+  opsloop_ingest    SELECT count(*) FROM block_exempt                              거부 ✔
+  opsloop_enforcer  UPDATE blocklist SET enforcement = enforcement WHERE false     허용 ✔
+  opsloop_console   SELECT cidr, note FROM test_ranges LIMIT 0                     허용 ✔
+  opsloop_console   INSERT INTO test_ranges (cidr, note) VALUES ('192.0.2.0/24', 'x') 거부 ✔
+  opsloop_detector  SELECT is_test_source('203.0.113.10'::inet)                    허용 ✔
+  opsloop_console   SELECT is_test_source('203.0.113.10'::inet)                    허용 ✔
+== 관제 대상 상태판 (이슈 #52. 생존 신호 표 · 콘솔의 노드 지표 읽기)
+  opsloop_ingest    INSERT INTO sensor_heartbeats SELECT * FROM sensor_heartbeats WHERE false ON CONFLICT (source) DO UPDATE SET seen_at = EXCLUDED.seen_at 허용 ✔
+  opsloop_ingest    DELETE FROM sensor_heartbeats WHERE false                      거부 ✔
+  opsloop_ingest    has_table_privilege('opsloop_ingest', 'sensor_heartbeats', 'TRUNCATE') f     ✔
+  opsloop_enforcer  INSERT INTO sensor_heartbeats SELECT * FROM sensor_heartbeats WHERE false ON CONFLICT (source) DO UPDATE SET seen_at = EXCLUDED.seen_at 허용 ✔
+  opsloop_enforcer  DELETE FROM sensor_heartbeats WHERE false                      거부 ✔
+  opsloop_enforcer  SELECT count(*) FROM node_metrics                              거부 ✔
+  opsloop_console   SELECT source, kind, role, host, seen_at, checked_at, problem FROM sensor_heartbeats LIMIT 0 허용 ✔
+  opsloop_console   SELECT node_id, ts, cpu_pct, mem_used_pct, disk_root_pct, load1 FROM node_metrics LIMIT 0 허용 ✔
+  opsloop_console   INSERT INTO sensor_heartbeats SELECT * FROM sensor_heartbeats WHERE false 거부 ✔
+  opsloop_console   UPDATE sensor_heartbeats SET problem = problem WHERE false     거부 ✔
+  opsloop_console   INSERT INTO node_metrics SELECT * FROM node_metrics WHERE false 거부 ✔
+  opsloop_detector  SELECT count(*) FROM sensor_heartbeats                         거부 ✔
+  opsloop_ingest    (SELECT tgenabled = 'O' FROM pg_trigger WHERE tgname = 'sensor_heartbeats_guard') t     ✔
+== 콘솔 계정 관리 (이슈 #59. 계정 변경 함수 · 도장 · 감사 트리거)
+  opsloop_console   UPDATE console_users SET disabled_at = now() WHERE false       거부 ✔
+  opsloop_console   UPDATE console_users SET updated_at = now() WHERE false        거부 ✔
+  opsloop_console   UPDATE console_users SET password_hash = password_hash WHERE false 거부 ✔
+  opsloop_console   DELETE FROM console_users WHERE false                          거부 ✔
+  opsloop_console   UPDATE console_users SET last_login_at = last_login_at WHERE false 허용 ✔
+  opsloop_console   SELECT console_account_set(NULL, NULL, NULL)                   허용 ✔
+  opsloop_detector  SELECT console_account_set(NULL, NULL, NULL)                   거부 ✔
+  opsloop_console   has_function_privilege('opsloop_console', 'console_account_set(text, text, boolean)', 'EXECUTE') t     ✔
+  opsloop_detector  has_function_privilege('opsloop_detector', 'console_account_set(text, text, boolean)', 'EXECUTE') f     ✔
+  opsloop_ingest    has_function_privilege('opsloop_ingest', 'console_account_set(text, text, boolean)', 'EXECUTE') f     ✔
+  opsloop_console   (SELECT prosecdef FROM pg_proc WHERE proname = 'console_account_set') t     ✔
+  opsloop_console   (SELECT count(*) = 2 FROM pg_trigger WHERE tgname IN ('console_users_stamp', 'trg_audit_console_users') AND tgenabled = 'O') t     ✔
+  opsloop_console   (SELECT pg_get_viewdef('audit_log'::regclass) LIKE '%console.account.%') t     ✔
+  opsloop_console   (SELECT pg_get_triggerdef(oid) LIKE '%console.account.%' FROM pg_trigger WHERE tgname = 'trg_audit_append_only') t     ✔
+== 콘솔 계정 추가 · 삭제 · 비밀번호 (이슈 #63. 계정 추가 · 삭제 · 비밀번호 함수)
+  opsloop_console   INSERT INTO console_users (username, password_hash, role) SELECT username, password_hash, 'viewer' FROM console_users WHERE false 거부 ✔
+  opsloop_console   DELETE FROM console_users WHERE false                          거부 ✔
+  opsloop_console   SELECT console_account_create(NULL, NULL, NULL)                허용 ✔
+  opsloop_console   SELECT console_account_delete(NULL)                            허용 ✔
+  opsloop_console   SELECT console_account_password(NULL, NULL)                    허용 ✔
+  opsloop_detector  SELECT console_account_create(NULL, NULL, NULL)                거부 ✔
+  opsloop_console   has_function_privilege('opsloop_console', 'console_account_create(text, text, text)', 'EXECUTE') t     ✔
+  opsloop_console   has_function_privilege('opsloop_console', 'console_account_delete(text)', 'EXECUTE') t     ✔
+  opsloop_console   has_function_privilege('opsloop_console', 'console_account_password(text, text)', 'EXECUTE') t     ✔
+  opsloop_detector  has_function_privilege('opsloop_detector', 'console_account_create(text, text, text)', 'EXECUTE') f     ✔
+  opsloop_detector  has_function_privilege('opsloop_detector', 'console_account_delete(text)', 'EXECUTE') f     ✔
+  opsloop_detector  has_function_privilege('opsloop_detector', 'console_account_password(text, text)', 'EXECUTE') f     ✔
+  opsloop_ingest    has_function_privilege('opsloop_ingest', 'console_account_create(text, text, text)', 'EXECUTE') f     ✔
+  opsloop_ingest    has_function_privilege('opsloop_ingest', 'console_account_delete(text)', 'EXECUTE') f     ✔
+  opsloop_ingest    has_function_privilege('opsloop_ingest', 'console_account_password(text, text)', 'EXECUTE') f     ✔
+  opsloop_console   (SELECT prosecdef FROM pg_proc WHERE proname = 'console_account_create') t     ✔
+  opsloop_console   (SELECT prosecdef FROM pg_proc WHERE proname = 'console_account_delete') t     ✔
+  opsloop_console   (SELECT prosecdef FROM pg_proc WHERE proname = 'console_account_password') t     ✔
+== 차단 적용 지점 (이슈 #77. 요청 지점 열 · 좁히기 거부 트리거)
+  opsloop_enforcer  SELECT actor_ip, points FROM blocklist LIMIT 0                 허용 ✔
+  opsloop_enforcer  UPDATE blocklist SET points = points WHERE false               거부 ✔
+  opsloop_enforcer  has_column_privilege('opsloop_enforcer', 'blocklist', 'points', 'UPDATE') f     ✔
+  opsloop_console   INSERT INTO blocklist (actor_ip, points) SELECT actor_ip, points FROM blocklist WHERE false 허용 ✔
+  opsloop_console   UPDATE blocklist SET points = '{gateway,fw}' WHERE false       허용 ✔
+  opsloop_console   UPDATE absorbed_blocks SET points = '{gateway,fw}' WHERE false 허용 ✔
+  opsloop_detector  SELECT points FROM blocklist LIMIT 0                           거부 ✔
+  opsloop_console   has_function_privilege('opsloop_console', 'blocklist_points_change()', 'EXECUTE') f     ✔
+  opsloop_console   (SELECT prosecdef AND prosrc LIKE '%blocklist_points_narrow%' FROM pg_proc WHERE proname = 'blocklist_points_change') t     ✔
+  opsloop_console   (SELECT tgenabled = 'O' FROM pg_trigger WHERE tgname = 'trg_blocklist_points') t     ✔
+  opsloop_console   (SELECT count(*) = 2 FROM pg_constraint WHERE conname IN ('blocklist_points_valid', 'absorbed_blocks_points_valid')) t     ✔
+== 데이터 노드 최신 자원 상태 (이슈 #109)
+  opsloop_console   SELECT checked_at, disks FROM data_node_health LIMIT 0         허용 ✔
+  opsloop_console   UPDATE data_node_health SET cpu_pct=0 WHERE false              거부 ✔
+  opsloop_ingest    INSERT INTO data_node_health SELECT * FROM data_node_health WHERE false ON CONFLICT(singleton) DO UPDATE SET checked_at=EXCLUDED.checked_at 허용 ✔
+  opsloop_ingest    DELETE FROM data_node_health WHERE false                       거부 ✔
+  opsloop_ingest    has_table_privilege('opsloop_ingest','data_node_health','TRUNCATE') f     ✔
+  opsloop_detector  SELECT * FROM data_node_health LIMIT 0                         거부 ✔
+== 접속 한도 (이슈 #43. 콘솔 한 대 = 풀 10 + LISTEN 1 → 두 대 22 + triage.py)
+  opsloop_console   CONNECTION LIMIT (지금 접속 15)                            ≥30 ✔ 30
+== 집행 역할 속성 (이슈 #47. enforcer/install-enforcer.sh 가 만든다)
+  opsloop_enforcer  LOGIN · NOINHERIT · 슈퍼유저 아님 · CONNECTION LIMIT  2     ✔
+== 지금 붙어 있는 접속 (역할 · application_name · 수)
+  opsloop  psql  1
+  opsloop_console  opsloop-console-a  11
+  opsloop_console  opsloop-console-b  4
+  소유자         opsloop 로 붙은 서비스 접속(psql 제외)               0     ✔
+== 네트워크: 5432 는 콘솔 · 데이터 노드만 (관제 대상 노드는 막힌다)
+  console-a         192.168.60.11:5432                                             열림 ✔
+  web01             192.168.60.11:5432                                             막힘 ✔
+전부 기대대로

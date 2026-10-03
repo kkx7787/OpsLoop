@@ -1,0 +1,51 @@
+{
+  "at": "2026-10-03T09:32:27.473793+00:00",
+  "scope": "production HTTPS; viewer cookie minted by existing probe procedure, not a password login; one nonexistent-account failure; no external webhook",
+  "checks": [
+    {
+      "label": "viewer-session",
+      "status": 200,
+      "expected": 200,
+      "passed": true,
+      "role": "viewer",
+      "console": "opsloop-console-a"
+    },
+    {
+      "label": "viewer-admin-read-denied",
+      "status": 403,
+      "expected": 403,
+      "passed": true
+    },
+    {
+      "label": "http-origin-denied",
+      "status": 403,
+      "expected": 403,
+      "passed": true
+    },
+    {
+      "label": "one-invalid-login",
+      "status": 401,
+      "expected": 401,
+      "passed": true
+    },
+    {
+      "label": "logout-cookie-flags",
+      "status": 302,
+      "expected": 302,
+      "passed": true,
+      "cookie_attributes": [
+        "expires=Sat, 03 Oct 2026 09:32:27 GMT",
+        "HttpOnly",
+        "Max-Age=0",
+        "Path=/",
+        "SameSite=lax",
+        "Secure"
+      ]
+    },
+    {
+      "label": "wrong-hostname",
+      "passed": true,
+      "error": "SSLCertVerificationError"
+    }
+  ]
+}

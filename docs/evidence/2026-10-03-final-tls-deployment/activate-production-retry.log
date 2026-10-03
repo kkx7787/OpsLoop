@@ -1,0 +1,23 @@
+2026-10-03T18:14:00+0900 DB migration begin
+NOTICE:  relation "console_login_limits" already exists, skipping
+migration applied: 20261003_login_limits
+NOTICE:  column "assigned_to" of relation "incidents" already exists, skipping
+NOTICE:  relation "idx_inc_assigned" already exists, skipping
+NOTICE:  relation "idx_actions_workflow" already exists, skipping
+NOTICE:  relation "idx_verdicts_workflow" already exists, skipping
+migration applied: 20261003_incident_workflow
+NOTICE:  relation "data_node_health" already exists, skipping
+migration applied: 20261003_data_node_health
+28
+2026-10-03T18:14:00+0900 DB migration complete; A switch begin
+sha256:6fe67c018d9ac8cfb7bf81512bf7db28d0eb37d3cefe9272682e0d9d81489cbf
+ Container opsloop-api  Recreate
+ Container opsloop-api  Recreated
+ Container opsloop-api  Starting
+ Container opsloop-api  Started
+curl: (35) OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to 127.0.0.1:8000 
+{"status":"ok"}
+2026-10-03T18:14:03+0900 A TLS healthy; HAProxy switch begin
+Configuration file is valid
+B admin state 1
+2026-10-03T18:14:04+0900 Front HTTPS health 200; activation complete

@@ -1,0 +1,85 @@
+콘솔 B 합류 · 실제로 돌린다
+== precheck · 콘솔 A /health · 역할 접속 한도 · HAProxy 상태 · VM 상태
+  ✔ 콘솔 A /health 200 (방화벽에서)
+    opsloop_console 접속 한도 30
+  ✔ opsloop_console 접속 한도 30 이상
+  ✔ HAProxy master 소켓 읽기
+    console-a  운영 2 · 관리 0
+    console-b  운영 0 · 관리 1
+  VM: 켜져 있다
+끝.
+콘솔 B 합류 · 실제로 돌린다
+== chrony · 방화벽 시간원 · 맞춰질 때까지
+  시간원 설정은 이미 같다
+    Reference ID    : C0A83201 (192.168.50.1)
+    System time     : 0.000013596 seconds fast of NTP time
+끝.
+콘솔 B 합류 · 실제로 돌린다
+== guard · consoles.yml --limit console-b 두 번
+
+PLAY [콘솔 호스트 가드] ********************************************************
+
+TASK [설정 폴더] ***************************************************************
+ok: [console-b]
+
+TASK [가드 규칙 (적용 전 문법 검사)] *******************************************
+ok: [console-b]
+
+TASK [가드 단위] ***************************************************************
+ok: [console-b]
+
+TASK [가드 켜기 (부팅 때도)] ***************************************************
+ok: [console-b]
+
+TASK [바뀐 가드 적용] **********************************************************
+
+TASK [가드 확인] ***************************************************************
+ok: [console-b]
+
+PLAY RECAP *********************************************************************
+console-b                  : ok=5    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+
+    console-b                  : ok=5    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0   
+  ✔ 가드 두 번째 실행 changed=0
+끝.
+콘솔 B 합류 · 실제로 돌린다
+== image · 콘솔 A 이미지 docker save | load
+Loaded image: opsloop-api:latest
+    A sha256:6fe67c018d9a · B sha256:6fe67c018d9a
+  ✔ 이미지 ID 가 콘솔 A 와 같다
+끝.
+콘솔 B 합류 · 실제로 돌린다
+== env · .env 동기화 (비밀값은 파이프로만)
+  .env 갱신: 비밀값 두 줄은 console-a 에서 받았다 (찍지 않는다) · OPSLOOP_WORKER=opsloop-console-b
+    .env 권한 · 비밀값 줄 · 발송기 이름 줄: 600 2 1
+  ✔ .env 0600 · 비밀값 두 줄 · OPSLOOP_WORKER=opsloop-console-b (값은 찍지 않는다)
+끝.
+콘솔 B 합류 · 실제로 돌린다
+== up · console.yml · compose up · /health
+/home/ops/opsloop/tls/server.crt: OK
+Certificate will not expire
+  console.yml 을 콘솔 A 판으로 (이전 판 console.yml.prev)
+ Container opsloop-api  Starting
+ Container opsloop-api  Started
+  ✔ B /health 200 (B 안에서) (2번째)
+끝.
+콘솔 B 합류 · 실제로 돌린다
+== verify · A 와 같은지 · 발송기 이름 · DB 역할 · 방화벽에서 /health
+    A sha256:6fe67c018d9a · B sha256:6fe67c018d9a
+  ✔ 이미지 ID 가 콘솔 A 와 같다
+  ✔ console.yml 이 콘솔 A 와 같다
+  ✔ 비밀값 두 줄이 콘솔 A 와 같다 (해시를 변수로만 비교한다)
+    재시작 정책 · 발송기 이름 · DB 역할: always opsloop-console-b opsloop_console
+  ✔ B 컨테이너: 재시작 정책 always · 발송기 이름 opsloop-console-b · DB 역할 opsloop_console
+  ✔ 방화벽에서 B /health 200
+    opsloop_console 접속 8 / 한도 30
+  ✔ opsloop_console 접속 수가 한도 안
+끝.
+콘솔 B 합류 · 실제로 돌린다
+== ready · HAProxy console-b → ready · UP 대기
+  ✔ 방화벽에서 B /health 200
+  HAProxy consoles/console-b → ready
+  ✔ console-b UP (운영 2 · 관리 0) (15번째)
+    console-a  운영 2 · 관리 0
+    console-b  운영 2 · 관리 0
+끝.
