@@ -54,7 +54,19 @@ EOF
 plutil -lint -s "$PLIST"
 
 launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
-launchctl bootstrap "$DOMAIN" "$PLIST"
+# 재설치 직후 launchd가 종료를 처리하는 동안 오류 5가 날 수 있다.
+# 실패를 출력하고 최대 세 번만 시도한다. 계속 실패하면 설치 성공으로 표시하지 않는다.
+bootstrap_rc=0
+for attempt in 1 2 3; do
+  if launchctl bootstrap "$DOMAIN" "$PLIST"; then bootstrap_rc=0; break
+  else bootstrap_rc=$?; fi
+  if [ "$bootstrap_rc" != 5 ] || [ "$attempt" = 3 ]; then
+    echo "감시 등록 실패 (종료 $bootstrap_rc). launchctl 상태를 확인하세요: $DOMAIN/$LABEL" >&2
+    exit "$bootstrap_rc"
+  fi
+  echo "감시 재등록 대기 ($attempt/3, 종료 5)" >&2
+  sleep 1
+done
 echo "설치: $LABEL · 60초마다 · 기록 $LOGDIR/console-watch.log"
 # 웹훅 설정이 있으면 권한 · 형식을 여기서 알려 준다 (주소는 내지 않는다)
 bash "$BIN/console-watch.sh" --status | grep '^웹훅:' || true

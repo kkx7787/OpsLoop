@@ -111,7 +111,9 @@ no_sessions() { # show stat 의 5번째 열 scur
   [ "$n" = 0 ]
 }
 state_readable() { local st; st=$(srv_state) || return 1; [ -n "$st" ]; }
-http_from_fw() { [ "$(on fw "curl -s --cacert /etc/haproxy/tls/ca.crt -m 3 -o /dev/null -w \"%{http_code}\" https://$1:8000/health")" = 200 ]; }
+# CA 자체는 공개 값이지만 부모 tls 폴더는 개인키와 함께 root:0700으로 보호한다.
+# 배포 권한을 넓히지 않고 fw의 기존 sudo 권한으로 인증서를 읽는다.
+http_from_fw() { [ "$(on fw "sudo -n curl -s --cacert /etc/haproxy/tls/ca.crt -m 3 -o /dev/null -w \"%{http_code}\" https://$1:8000/health")" = 200 ]; }
 health_a() { http_from_fw "$A_ADDR"; }
 health_b_fw() { http_from_fw "$B_ADDR"; }
 health_b() { [ "$(on console-b "curl -s --cacert ~/opsloop/tls/ca.crt -m 3 -o /dev/null -w \"%{http_code}\" https://127.0.0.1:8000/health")" = 200 ]; }
