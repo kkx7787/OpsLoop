@@ -108,9 +108,12 @@ if alias == "fw":
         if c == "show stat":
             done("# pxname,svname,qcur,qmax,scur,smax\nconsoles,console-a,0,0,4,9\nconsoles,console-b,0,0,%s,3\n"
                  % os.environ.get("FAKE_SCUR", "0"))
-    if cmd.startswith("curl ") and "https://192.168.50.11:8000/health" in cmd:
+    # 실제 fw의 CA는 root:0700 폴더 안에 있다. 일반 ops의 curl은 77로 실패한다.
+    if cmd.startswith("curl ") and "/etc/haproxy/tls/ca.crt" in cmd:
+        done("000", 77)
+    if cmd.startswith("sudo -n curl ") and "https://192.168.50.11:8000/health" in cmd:
         done("200")
-    if cmd.startswith("curl ") and "https://192.168.50.12:8000/health" in cmd:
+    if cmd.startswith("sudo -n curl ") and "https://192.168.50.12:8000/health" in cmd:
         done("200" if b_running() else "000")
 elif alias == "data01":
     if "rolconnlimit" in cmd and "pg_stat_activity" in cmd:

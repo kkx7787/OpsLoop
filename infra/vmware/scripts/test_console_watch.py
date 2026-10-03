@@ -123,7 +123,16 @@ class Base(unittest.TestCase):
             open(p, "w").close()
         write_exec(os.path.join(self.fake, "curl"), FAKE_CURL.format(python=sys.executable))
         write_exec(os.path.join(self.fake, "osascript"), FAKE_OSA.format(python=sys.executable))
-        write_exec(os.path.join(self.fake, "launchctl"), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$FAKE_LC_LOG"\n')
+        write_exec(os.path.join(self.fake, "launchctl"), '''#!/bin/sh
+printf "%s\\n" "$*" >> "$FAKE_LC_LOG"
+if [ "$1" = bootstrap ]; then
+  count=$(grep -c '^bootstrap ' "$FAKE_LC_LOG")
+  if [ "$count" -le "${FAKE_BOOTSTRAP_FAILURES:-0}" ]; then
+    echo 'Bootstrap failed' >&2
+    exit "${FAKE_BOOTSTRAP_RC:-5}"
+  fi
+fi
+''')
         write_exec(os.path.join(self.fake, "sleep"), '#!/bin/sh\nprintf "%s\\n" "$*" >> "$FAKE_SLEEP_LOG"\n')
         # 진짜 curl · osascript · launchctl 이 불리지 않게 PATH 에 더해 bash 내보낸 함수로도 덮는다
         self.env = {"HOME": self.home, "PATH": self.fake + ":/usr/bin:/bin", "TMPDIR": self.t, "LANG": "en_US.UTF-8",
@@ -1058,6 +1067,29 @@ class LaunchdTest(Base):
         r = self.install()
         self.assertIn("웹훅: 설정됨", r.stdout)
         self.assertNotIn(SECRET, r.stdout + r.stderr)
+
+    def test_등록_오류5는_한정_재시도_뒤_성공(self):
+        self.env['FAKE_BOOTSTRAP_FAILURES'] = '1'
+        r = self.install()
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn('재등록 대기 (1/3', r.stderr)
+        self.assertEqual(sum(x.startswith('bootstrap ') for x in read(self.lc_log).splitlines()), 2)
+        self.assertIn('설치:', r.stdout)
+        self.assertEqual(self.osa(), [])
+
+    def test_등록_지속_실패는_성공으로_숨기지_않음(self):
+        self.env['FAKE_BOOTSTRAP_FAILURES'] = '5'
+        r = self.install()
+        self.assertEqual(r.returncode, 5, r.stderr)
+        self.assertEqual(sum(x.startswith('bootstrap ') for x in read(self.lc_log).splitlines()), 3)
+        self.assertIn('감시 등록 실패', r.stderr)
+        self.assertNotIn('설치:', r.stdout)
+
+    def test_등록_다른_오류는_즉시_실패(self):
+        self.env.update(FAKE_BOOTSTRAP_FAILURES='5', FAKE_BOOTSTRAP_RC='78')
+        r = self.install()
+        self.assertEqual(r.returncode, 78, r.stderr)
+        self.assertEqual(sum(x.startswith('bootstrap ') for x in read(self.lc_log).splitlines()), 1)
 
     def test_모르는_옵션은_2_이고_아무것도_하지_않는다(self):
         r = self.install("--now")
