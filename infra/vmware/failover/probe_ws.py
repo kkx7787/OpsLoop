@@ -256,7 +256,7 @@ class Session:
     def _open(self):
         raw = socket.create_connection((self.host, self.port), timeout=self.connect_timeout)
         if self.scheme == "https":
-            raw = ssl.create_default_context().wrap_socket(raw, server_hostname=self.host)
+            raw = common.tls_context().wrap_socket(raw, server_hostname=self.host)
         self.sock = raw
         raw.settimeout(self.connect_timeout)
         key = base64.b64encode(os.urandom(16)).decode("ascii")

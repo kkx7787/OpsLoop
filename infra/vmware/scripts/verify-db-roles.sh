@@ -105,6 +105,9 @@ q opsloop_ingest   "SELECT count(*) FROM cti_kev" 거부
 q opsloop_backup   "SELECT 1 FROM cti_snapshots, cti_kev, cti_cve, cti_osv, cti_watch, asset_inventory, asset_vulnerabilities LIMIT 0" 허용
 q opsloop_backup   "INSERT INTO events SELECT * FROM events WHERE false" 거부
 q opsloop_backup   "SELECT count(*) FROM events" 허용
+q opsloop_backup   "SELECT count(*) FROM console_login_limits" 허용
+q opsloop_console  "DELETE FROM console_login_limits WHERE false" 거부
+q opsloop_console  "SELECT 1 / has_function_privilege(current_user, 'console_login_take(text,text,text)', 'EXECUTE')::integer" 허용
 q opsloop_gate     "SELECT count(*) FROM events" 거부
 q opsloop_gate     "SELECT count(*) FROM nodes WHERE token_hash IS NOT NULL" 허용
 # 차단 집행 (이슈 #47). 집행기는 차단 목록 읽기, 집행 열(method · enforced_at · enforce_note) 쓰기, 금지 대역 읽기, 만료 기록 함수뿐이다.

@@ -5,7 +5,7 @@
 (PATH 앞 가짜 실행기. curl · osascript · launchctl 은 bash 내보낸 함수로도 덮어 진짜가 불리지 않게 한다).
   - 상태 전이   UP 은 알리지 않음 · UP→DOWN 알림 한 번 · 계속 DOWN 은 30분 전 재알림 없음 · 30분 지나면 재알림 ·
                 복구 알림 한 번 · 처음부터 DOWN 이면 알림 · 한 번이라도 200 이면 UP · 실패 사유(503 · 시간 초과 · 연결 실패)
-  - 검사 모양   기본 주소 http://192.168.70.254:8443/health · curl -m 3 · 프록시 · .curlrc 안 탐 · 5초 간격 3번
+  - 검사 모양   기본 주소 https://192.168.70.254:8443/health · curl -m 3 · 프록시 · .curlrc 안 탐 · 5초 간격 3번
   - 점검 창     창 안에서는 알리지 않고 상태만 · 창이 끝나면 이어진 DOWN 을 알림 · 창 안 복구는 창 뒤에 알림 ·
                 읽지 못하는 파일은 무시하고 알림 · 창 안에서는 웹훅도 없음 · --pause · --resume ·
                 DOWN 을 알린 뒤 창 안에서 복구 · 다시 DOWN 이면 이어진 DOWN (미룬 복구 알림을 잃지 않음)
@@ -46,7 +46,7 @@ WATCH = os.path.join(HERE, "console-watch.sh")
 INSTALL = os.path.join(HERE, "install-console-watch.sh")
 BASH = "/bin/bash" if os.path.exists("/bin/bash") else shutil.which("bash")
 LABEL = "local.opsloop.console-watch"
-DEFAULT_URL = "http://192.168.70.254:8443/health"
+DEFAULT_URL = "https://192.168.70.254:8443/health"
 HOOK = "https://hooks.example.test/workflows/abc123/triggers/manual?sig=SeCrEtSiG0123456789"
 SECRET = "SeCrEtSiG0123456789"
 OSA_HEAD = ["-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)",
@@ -213,6 +213,8 @@ class TransitionTest(Base):
             self.assertEqual(a[-1], DEFAULT_URL)
             self.assertEqual(a[a.index("-m") + 1], "3")
             self.assertEqual(a[a.index("--noproxy") + 1], "*")
+            self.assertTrue(a[a.index("--cacert") + 1].endswith('/.config/opsloop/tls/ca.crt'))
+            self.assertNotIn("-k", a)
             self.assertNotIn("-L", a)
         self.assertEqual(read(self.sleep_log).split(), ["5", "5"], "시도 사이에만 5초 쉰다")
 
@@ -887,6 +889,18 @@ class RealCurlTest(Base):
         self.assertIn("3번 모두 실패 (연결 실패 · 연결 실패 · 연결 실패)", read(self.log))
         self.ok(CONSOLE_WATCH_URL=up)
         self.assertEqual(self.titles(), ["OpsLoop 콘솔 DOWN", "OpsLoop 콘솔 복구"])
+
+    def test_HTTPS_감시는_지정_CA로_검증하고_CA가_없으면_DOWN이다(self):
+        cert, key = os.path.join(self.t, 'health.crt'), os.path.join(self.t, 'health.key')
+        subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', key, '-out', cert,
+                        '-days', '1', '-subj', '/CN=127.0.0.1', '-addext', 'subjectAltName=IP:127.0.0.1'],
+                       check=True, capture_output=True, timeout=60)
+        url = 'https://127.0.0.1:%d/health' % self.serve(200, (cert, key))
+        self.ok(CONSOLE_WATCH_URL=url, OPSLOOP_CONSOLE_CA=cert)
+        self.assertEqual(self.read_state()['state'], 'UP')
+        self.ok(CONSOLE_WATCH_URL=url, OPSLOOP_CONSOLE_CA=os.path.join(self.t, 'missing.crt'))
+        self.assertEqual(self.read_state()['state'], 'DOWN')
+        self.assertIn('TLS CA 파일 확인 실패', read(self.log))
 
     def test_진짜_curl_이_표준_입력_설정의_주소로_보낸다(self):
         openssl = shutil.which("openssl")

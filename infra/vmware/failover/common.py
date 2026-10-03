@@ -14,6 +14,7 @@ import json
 import os
 import re
 import signal
+import ssl
 import subprocess
 import sys
 import threading
@@ -21,7 +22,7 @@ import time
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
-DEFAULT_URL = "http://192.168.70.254:8443"       # 콘솔 진입점(HAProxy frontend console)
+DEFAULT_URL = "https://192.168.70.254:8443"       # 콘솔 진입점(HAProxy frontend console)
 COOKIE_NAME = "opsloop_session"                  # app/auth.py COOKIE
 COOKIE_FILE = os.path.join("~", ".config", "opsloop", "probe-cookie")
 PROBE_USER, PROBE_ROLE = "failover-probe", "viewer"
@@ -40,6 +41,11 @@ MINT_REMOTE = ("docker exec opsloop-api python3 -c "
 
 class ToolError(Exception):
     """사용자에게 한 줄로 보이고 종료 코드 2 로 끝나는 오류."""
+
+
+def tls_context():
+    path = os.environ.get("OPSLOOP_CONSOLE_CA", os.path.expanduser("~/.config/opsloop/tls/ca.crt"))
+    return ssl.create_default_context(cafile=path)
 
 
 def now_ns() -> int:

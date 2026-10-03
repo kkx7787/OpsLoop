@@ -97,6 +97,8 @@ class FakeConn:
         return "INSERT 0 1"
 
     async def fetchval(self, sql, *args):
+        if sql == main.login_limits.TAKE:
+            return 0
         return 1
 
     async def fetchrow(self, sql, *args):
@@ -1335,14 +1337,13 @@ class ForwardedForTest(Base):
     def test_without_header_proxy_address_stays(self):
         self.assertEqual(self.login_from(self.PROXY), self.PROXY)
 
-    def test_forwarded_proto_changes_nothing_visible(self):
-        """믿는 프록시를 거친 X-Forwarded-Proto 도 uvicorn 이 믿는다(HAProxy 가 지우지 않으면 클라이언트 값). 앱은 요청의
-        scheme 으로 주소 · 쿠키를 만들지 않으므로 로그인 동작이 그대로다. 이 가정이 깨지면 여기서 드러난다."""
+    def test_trusted_https_proto_enables_secure_cookie(self):
+        """신뢰한 프록시가 보낸 HTTPS 요청은 Secure 쿠키를 발급한다. 출발지 기록은 유지한다."""
         r = self.post_login(self.PROXY, {"X-Forwarded-Proto": "https", "X-Forwarded-For": "203.0.113.7"},
                             password=PASSWORD)
         self.assertEqual(r.status_code, 302)
         self.assertEqual(r.headers["location"], "/")
-        self.assertNotIn("secure", r.headers["set-cookie"].lower())
+        self.assertIn("secure", r.headers["set-cookie"].lower())
         (event,) = self.pool.events()
         self.assertEqual((event["eventid"], event["src_ip"]), ("console.login.success", "203.0.113.7"))
 

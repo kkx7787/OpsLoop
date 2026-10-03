@@ -96,7 +96,7 @@ class HAProxy(unittest.TestCase):
                 self.assertNotIn("8404", d, f"{head}: {d}")
 
     def test_콘솔_진입점과_헬스체크는_그대로(self):
-        self.assertEqual([d for d in self.sec["frontend console"] if d.startswith("bind ")], ["bind :8443"])
+        self.assertEqual([d for d in self.sec["frontend console"] if d.startswith("bind ")], ["bind :8443 ssl crt /etc/haproxy/tls/console.pem"])
         backend = self.sec["backend consoles"]
         # 콘솔 /health 는 세션 없이 200 을 준다(이슈 #41 에서 본문만 줄였다). 검사는 상태 코드만 본다
         self.assertIn("option httpchk GET /health", backend)
@@ -112,8 +112,8 @@ class HAProxy(unittest.TestCase):
             "option log-health-checks",
             "option redispatch 1",
             "default-server inter 2s fall 3 rise 3 slowstart 30s on-marked-down shutdown-sessions",
-            "server console-a 192.168.50.11:8000 check",
-            "server console-b 192.168.50.12:8000 check",
+            "server console-a 192.168.50.11:8000 check ssl verify required ca-file /etc/haproxy/tls/ca.crt verifyhost console-a.opsloop.internal sni str(console-a.opsloop.internal) check-sni console-a.opsloop.internal",
+            "server console-b 192.168.50.12:8000 check ssl verify required ca-file /etc/haproxy/tls/ca.crt verifyhost console-b.opsloop.internal sni str(console-b.opsloop.internal) check-sni console-b.opsloop.internal",
         ])
         timeouts = [d for d in self.sec["defaults"] if d.startswith("timeout ")]
         self.assertEqual(timeouts, ["timeout connect 1s", "timeout client 60s", "timeout server 60s", "timeout tunnel 1h"])
@@ -129,6 +129,7 @@ class HAProxy(unittest.TestCase):
         fe = self.sec["frontend console"]
         self.assertIn("http-request del-header X-Forwarded-For", fe)
         self.assertIn("http-request del-header X-Forwarded-Proto", fe)
+        self.assertIn("http-request set-header X-Forwarded-Proto https", fe)
         self.assertIn("option forwardfor", fe)
         # if-none 이면 클라이언트가 보낸 값을 그대로 두고, except 는 지울 곳을 좁힌다
         self.assertFalse([d for d in fe if d.startswith("option forwardfor") and d != "option forwardfor"], fe)

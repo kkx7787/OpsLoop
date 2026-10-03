@@ -194,7 +194,7 @@ class StatusBoardTextTest(unittest.TestCase):
         self.assertEqual(len(QUERIES.TABLES), len(set(QUERIES.TABLES)))
         # #59 가 트리거 +2 · 함수 +3, #63 이 함수 +3, #77 이 트리거 +1 · 함수 +1 을 더했다(infra/test_console_accounts_manage_db.py ·
         # infra/test_block_points_choice_db.py 가 시험 DB 카탈로그와 대조한다)
-        self.assertEqual(QUERIES.EXPECT, {"tables": 26, "fk": 15, "triggers": 10, "functions": 19, "views": 3})
+        self.assertEqual(QUERIES.EXPECT, {"tables": 27, "fk": 15, "triggers": 10, "functions": 20, "views": 3})
 
 
 @unittest.skipUnless(MOD.SKIP is True, str(MOD.SKIP))

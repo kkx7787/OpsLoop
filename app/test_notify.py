@@ -1,12 +1,11 @@
 """알림 채널 주소 검증 · 메시지 틀 · Teams 카드 · 재시도 일정 · 마스킹 · 권한 시험. DB · 외부 네트워크 없이 돈다.
-리다이렉트 시험만 127.0.0.1 에 잠깐 HTTP 서버를 띄운다. 비신뢰 값 정리(이슈 #41)도 여기서 본다.
+실제 DNS/IP 고정·TLS·리다이렉트 시험은 test_webhook_transport.py에 있다. 비신뢰 값 정리(이슈 #41)도 여기서 본다.
 발송기 이름 경고(이슈 #43): OPSLOOP_WORKER 가 비면 기동 때 경고한다. 같은 이름의 최근 행 경고는 test_notify_db.py 에 있다."""
 import json
 import os
 import socket
 import ssl
 import unittest
-import urllib.error
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -299,94 +298,21 @@ class HostileValueTests(unittest.TestCase):
         self.assertEqual(message["lines"], ["- web⟨U+202E⟩10-bew 가짜 · - · node:web-01 · 방금"])
 
 
-class FakeResponse:
-    status = 202
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        return False
-
-
-class FakeOpener:
-    def __init__(self, outcome):
-        self.outcome = outcome
-        self.request = None
-        self.timeout = None
-
-    def open(self, request, timeout=None):
-        self.request, self.timeout = request, timeout
-        if isinstance(self.outcome, Exception):
-            raise self.outcome
-        return self.outcome
-
-
 class HttpTests(unittest.TestCase):
-    def test_post_json_posts_body_with_timeout_and_reports_code_or_exception_name_only(self):
-        opener = FakeOpener(FakeResponse())
-        handlers = []
-
-        def build_opener(*args):
-            handlers.extend(args)
-            return opener
-        with patch.object(notifier.urllib.request, "build_opener", build_opener):
+    def test_post_json_posts_body_and_masks_errors(self):
+        with patch.object(notifier.webhook_transport, "post", return_value=202) as send:
             self.assertEqual(notifier.post_json(TEAMS_URL, {"a": "가"}), (202, None))
-        # 리다이렉트를 따라가지 않는 처리기가 실제 opener 에 끼워진다
-        self.assertEqual(handlers, [notifier._NoRedirect])
-        self.assertEqual(opener.request.get_method(), "POST")
-        self.assertEqual(opener.timeout, notifier.HTTP_TIMEOUT)
-        self.assertEqual(json.loads(opener.request.data), {"a": "가"})
-        self.assertTrue(opener.request.get_header("Content-type").startswith("application/json"))
-        redirect = urllib.error.HTTPError(TEAMS_URL, 302, "Found", {}, None)
-        with patch.object(notifier.urllib.request, "build_opener", lambda *a: FakeOpener(redirect)):
-            self.assertEqual(notifier.post_json(TEAMS_URL, {}), (302, "HTTP 302"))
-        with patch.object(notifier.urllib.request, "build_opener", lambda *a: FakeOpener(urllib.error.URLError(TEAMS_URL))):
-            code, error = notifier.post_json(TEAMS_URL, {})
-        self.assertEqual((code, error), (None, "URLError"))
-        self.assertNotIn("SECRETSIG", error)
-        self.assertIsNone(notifier._NoRedirect().redirect_request(None, None, 302, "Found", {}, "https://elsewhere"))
-
-    def test_url_error_reports_underlying_cause_name(self):
-        """이름 해석 실패 · 연결 거부 · 시간 초과 · 인증서 오류를 구별한다(주소 · 본문은 넣지 않는다)."""
-        for reason, name in [(socket.gaierror(8, "nodename nor servname"), "gaierror"),
-                             (ConnectionRefusedError(61, "refused"), "ConnectionRefusedError"),
-                             (TimeoutError("timed out"), "TimeoutError"),
-                             (ssl.SSLCertVerificationError(1, "certificate verify failed"), "SSLCertVerificationError")]:
-            with self.subTest(name=name), patch.object(notifier.urllib.request, "build_opener",
-                                                       lambda *a, r=reason: FakeOpener(urllib.error.URLError(r))):
-                self.assertEqual(notifier.post_json(TEAMS_URL, {}), (None, name))
-
-    def test_302_is_not_followed_by_a_real_opener(self):
-        """실제 opener 로 로컬 HTTP 서버에 보내 302 를 받아도 Location 을 따라가지 않는다."""
-        import http.server
-        import threading
-        hits = []
-
-        class Handler(http.server.BaseHTTPRequestHandler):
-            def do_POST(self):
-                hits.append(self.path)
-                self.send_response(302)
-                self.send_header("Location", "/moved")
-                self.send_header("Content-Length", "0")
-                self.end_headers()
-
-            def do_GET(self):
-                hits.append(self.path)
-                self.send_response(200)
-                self.end_headers()
-
-            def log_message(self, *args):
-                pass
-        server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        try:
-            self.assertEqual(notifier.post_json(f"http://127.0.0.1:{server.server_port}/hook", {}), (302, "HTTP 302"))
-        finally:
-            server.shutdown()
-            server.server_close()
-        self.assertEqual(hits, ["/hook"])
+            args, kwargs = send.call_args
+            self.assertEqual(args[0], TEAMS_URL)
+            self.assertEqual(json.loads(args[1]), {"a": "가"})
+            self.assertEqual(kwargs, {"timeout": 10, "deadline_seconds": 15})
+        for code in (302, 400, 500):
+            with patch.object(notifier.webhook_transport, "post", return_value=code):
+                self.assertEqual(notifier.post_json(TEAMS_URL, {}), (code, f"HTTP {code}"))
+        for error in (socket.gaierror("SECRETSIG"), TimeoutError("SECRETSIG"),
+                      ssl.SSLCertVerificationError("SECRETSIG"), notifier.webhook_transport.UnsafeDestination("SECRETSIG")):
+            with patch.object(notifier.webhook_transport, "post", side_effect=error):
+                self.assertEqual(notifier.post_json(TEAMS_URL, {}), (None, type(error).__name__))
 
     def test_deliver_has_overall_deadline(self):
         import asyncio

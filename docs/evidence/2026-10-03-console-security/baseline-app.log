@@ -1,0 +1,52 @@
+.....................................[web] 출처 거부: POST /api/accounts/active 출처='-' host='testserver'
+[web] 출처 거부: POST /api/accounts 출처='-' host='testserver'
+[web] 출처 거부: POST /api/accounts/delete 출처='-' host='testserver'
+[web] 출처 거부: POST /api/accounts/password 출처='-' host='testserver'
+[web] 출처 거부: POST /api/accounts/active 출처='http://evil.example' host='testserver'
+[web] 출처 거부: POST /api/accounts 출처='http://evil.example' host='testserver'
+[web] 출처 거부: POST /api/accounts/delete 출처='http://evil.example' host='testserver'
+[web] 출처 거부: POST /api/accounts/password 출처='http://evil.example' host='testserver'
+....................................................................................................................................................................................................................................................................................................................................................알림 결과 기록 건너뜀 1건 (다른 콘솔이 가져감)
+알림 결과 기록 건너뜀 1건 (다른 콘솔이 가져감)
+.............................................................................................................................................................................................................................................................................................[web] 출처 거부: POST /x 출처='http://localhost:5173' host='testserver'
+.[web] 출처 거부: POST /x 출처='http://evil.example' host='testserver'
+.........../usr/local/lib/python3.12/site-packages/websockets/legacy/__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+  warnings.warn(  # deprecated in 14.0 - 2024-11-09
+/usr/local/lib/python3.12/site-packages/uvicorn/protocols/websockets/websockets_impl.py:17: DeprecationWarning: websockets.server.WebSocketServerProtocol is deprecated
+  from websockets.server import WebSocketServerProtocol
+......../usr/local/lib/python3.12/site-packages/anyio/streams/memory.py:190: ResourceWarning: Unclosed <MemoryObjectReceiveStream at ffff8f954ad0>
+  warnings.warn(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./usr/local/lib/python3.12/site-packages/anyio/streams/memory.py:190: ResourceWarning: Unclosed <MemoryObjectReceiveStream at ffff9c50f0b0>
+  warnings.warn(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.................[web] 출처 거부: POST /api/incidents/k1/verdict 출처='http://evil.example' host='testserver'
+[web] 출처 거부: PUT /api/incidents/k1/verdict 출처='http://evil.example' host='testserver'
+[web] 출처 거부: PATCH /api/incidents/k1/verdict 출처='http://evil.example' host='testserver'
+[web] 출처 거부: DELETE /api/incidents/k1/verdict 출처='http://evil.example' host='testserver'
+..[web] 출처 거부: POST /login 출처='http://192.168.70.254:8404' host='192.168.70.254:8443'
+[web] 출처 거부: POST /login 출처='http://192.168.70.254' host='192.168.70.254:8443'
+.[web] 출처 거부: POST /login 출처='http://evil.example' host='testserver'
+[web] 출처 거부: POST /login 출처='null' host='testserver'
+[web] 출처 거부: POST /login 출처='http://testserver.evil.example' host='testserver'
+[web] 출처 거부: POST /login 출처='http://testserver:8443' host='testserver'
+[web] 출처 거부: POST /login 출처='ftp://testserver' host='testserver'
+.[web] 출처 거부: POST /login 출처='-' host='testserver'
+..[web] 출처 거부: POST /logout 출처='-' host='testserver'
+.[web] 출처 거부: POST /login 출처='http://evil.example' host='testserver'
+..[web] 출처 거부: POST /login 출처='http://evil.example/login' host='testserver'
+.[web] 출처 거부: WS /ws 출처='http://evil.example' host='testserver'
+[web] 출처 거부: WS /ws 출처='-' host='testserver'
+...[web] 출처 거부: POST /api/incidents/k1/verdict 출처='http://evil.example' host='testserver'
+.....[web] 출처 설정을 해석하지 못해 뺍니다 (scheme://host[:port] 형식): 'bad-entry'
+[web] 출처 거부: POST /x 출처='http://console.example:8443' host='testserver'
+[web] 출처 거부: POST /x 출처='https://console.example' host='testserver'
+/usr/local/lib/python3.12/site-packages/anyio/streams/memory.py:190: ResourceWarning: Unclosed <MemoryObjectReceiveStream at ffff8f9550d0>
+  warnings.warn(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+[web] 출처 거부: POST /x 출처='-' host='testserver'
+...........
+----------------------------------------------------------------------
+Ran 729 tests in 37.242s
+
+OK

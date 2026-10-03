@@ -1,0 +1,32 @@
+test_ca_key_is_not_distributed_and_keys_are_private (test_console_certificates.Certificates.test_ca_key_is_not_distributed_and_keys_are_private) ... ok
+test_existing_authority_and_certificates_are_not_overwritten (test_console_certificates.Certificates.test_existing_authority_and_certificates_are_not_overwritten) ... ok
+test_front_ip_and_backend_names_have_verified_server_certificates (test_console_certificates.Certificates.test_front_ip_and_backend_names_have_verified_server_certificates) ... ok
+test_mismatching_key_and_short_lifetime_are_rejected (test_console_certificates.Certificates.test_mismatching_key_and_short_lifetime_are_rejected) ... ok
+test_B_인증서가_없거나_틀리면_기동과_합류를_막는다 (test_console_join.JoinTest.test_B_인증서가_없거나_틀리면_기동과_합류를_막는다) ... ok
+test_console_yml_을_받지_못하면_바꾸지_않는다 (test_console_join.JoinTest.test_console_yml_을_받지_못하면_바꾸지_않는다) ... ok
+test_env_두_값을_받지_못하면_바꾸지_않는다 (test_console_join.JoinTest.test_env_두_값을_받지_못하면_바꾸지_않는다) ... ok
+test_maint_가_아니면_VM_을_켜지_않는다 (test_console_join.JoinTest.test_maint_가_아니면_VM_을_켜지_않는다) ... ok
+test_maint_가_아니면_compose_up_하지_않는다 (test_console_join.JoinTest.test_maint_가_아니면_compose_up_하지_않는다) ... ok
+test_가드_두번째가_changed_0_이_아니면_멈춘다 (test_console_join.JoinTest.test_가드_두번째가_changed_0_이_아니면_멈춘다) ... ok
+test_단계_고르기 (test_console_join.JoinTest.test_단계_고르기) ... ok
+test_드라이런은_기본이고_아무것도_부르지_않는다 (test_console_join.JoinTest.test_드라이런은_기본이고_아무것도_부르지_않는다) ... ok
+test_떼기 (test_console_join.JoinTest.test_떼기) ... ok
+test_떼기_drain_은_maint_를_풀므로_stop_앞에_maint_를_다시_건다 (test_console_join.JoinTest.test_떼기_drain_은_maint_를_풀므로_stop_앞에_maint_를_다시_건다) ... ok
+test_떼기_maint_가_아니면_VM_을_끄지_않는다 (test_console_join.JoinTest.test_떼기_maint_가_아니면_VM_을_끄지_않는다) ... ok
+test_떼기_maint_가_아니면_멈추지_않는다 (test_console_join.JoinTest.test_떼기_maint_가_아니면_멈추지_않는다) ... ok
+test_떼기_연결이_남아도_기다린_뒤_계속한다 (test_console_join.JoinTest.test_떼기_연결이_남아도_기다린_뒤_계속한다) ... ok
+test_목록_도움말_잘못된_인자 (test_console_join.JoinTest.test_목록_도움말_잘못된_인자) ... ok
+test_셸_문법 (test_console_join.JoinTest.test_셸_문법) ... ok
+test_이미지_ID_가_다르면_멈춘다 (test_console_join.JoinTest.test_이미지_ID_가_다르면_멈춘다) ... ok
+test_재부팅_뒤_옛_컨테이너가_멈춘_채인지_본다 (test_console_join.JoinTest.test_재부팅_뒤_옛_컨테이너가_멈춘_채인지_본다) ... ok
+test_접속_한도가_낮으면_사전_점검에서_멈춘다 (test_console_join.JoinTest.test_접속_한도가_낮으면_사전_점검에서_멈춘다) ... ok
+test_합류_전체 (test_console_join.JoinTest.test_합류_전체) ... ok
+test_검증_스크립트는_30_이상을_본다 (test_console_join.RoleLimit.test_검증_스크립트는_30_이상을_본다) ... ok
+test_마이그레이션_모양 (test_console_join.RoleLimit.test_마이그레이션_모양) ... ok
+test_마이그레이션을_두_번_적용해도_같다 (test_console_join.RoleLimit.test_마이그레이션을_두_번_적용해도_같다) ... ok
+test_역할을_만드는_곳은_모두_30 (test_console_join.RoleLimit.test_역할을_만드는_곳은_모두_30) ... ok
+
+----------------------------------------------------------------------
+Ran 27 tests in 4.592s
+
+OK

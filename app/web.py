@@ -139,12 +139,16 @@ class SecurityHeaders:
 #  상태를 바꾸는 요청과 웹소켓 핸드셰이크는 Origin(없으면 Referer)이 요청의 Host 와 같거나
 #  신뢰 목록에 있어야 한다. 둘 다 없으면 거부한다. 브라우저는 같은 출처의 POST 에도 Origin 을 붙인다.
 #
-#  Host 와 비교할 때 scheme 은 보지 않는다. 앞단에서 TLS 를 끝내면 콘솔이 받는 요청은 http 인데
-#  브라우저의 출처는 https 이기 때문이다. 대신 Host 에 포트가 없으면 출처 scheme 의 기본 포트여야 한다.
+#  운영(OPSLOOP_HTTPS_ONLY=1)은 HTTPS 출처만 받는다. 로컬 HTTP 개발/격리 복원에서는 scheme을 제한하지 않는다.
+#  Host 에 포트가 없으면 출처 scheme 의 기본 포트여야 한다.
 #  신뢰 목록(TRUSTED_ORIGINS)은 scheme 까지 맞춘다.
 # ──────────────────────────────────────────────────────────────
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 DEFAULT_PORT = {"http": 80, "https": 443}
+
+
+def https_only():
+    return os.environ.get("OPSLOOP_HTTPS_ONLY", "0") == "1"
 
 
 def parse_origin(value):
@@ -183,6 +187,8 @@ def origin_problem(headers: Headers, trusted=frozenset()):
     origin = parse_origin(raw)
     if origin is None:
         return "출처를 확인할 수 없는 요청은 받지 않습니다"
+    if https_only() and origin[0] != "https":
+        return "HTTPS 출처에서만 요청할 수 있습니다"
     if origin in trusted:
         return None
     host = _parse_host(headers.get("host"))
@@ -555,14 +561,14 @@ LOGIN_STYLE_HASH = base64.b64encode(hashlib.sha256(LOGIN_STYLE.encode("utf-8")).
 LOGIN_CSP = _csp(f"'self' 'sha256-{LOGIN_STYLE_HASH}'")
 
 
-def login_page(*, error: bool = False, next_path=None, username: str = "",
+def login_page(*, error: bool = False, message: str = "", next_path=None, username: str = "",
                status_code: int = 200) -> HTMLResponse:
     """로그인 화면. 실패하면 아이디를 남기고 비밀번호 칸에 초점을 둔다."""
     username = username or ""
     body = LOGIN_PAGE.substitute(
         username=html.escape(username, quote=True),
         next=html.escape(safe_next(next_path), quote=True),
-        error=f'<p class="err" role="alert">{LOGIN_ERROR}</p>\n' if error else "",
+        error=f'<p class="err" role="alert">{html.escape(message or LOGIN_ERROR)}</p>\n' if error or message else "",
         user_focus="" if username else " autofocus",
         password_focus=" autofocus" if username else "",
     )

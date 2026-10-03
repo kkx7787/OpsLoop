@@ -1,0 +1,8 @@
+PASS front TLS/IP SAN and backend TLS health
+PASS untrusted CA rejected
+PASS login, Secure/HttpOnly cookie, authenticated API
+PASS WSS same session across console A/B
+PASS plaintext Origin rejected
+PASS spoofed forwarding headers discarded
+PASS shared login limit across A/B (5 attempts, then 429)
+PASS secure logout

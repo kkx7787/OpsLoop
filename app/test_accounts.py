@@ -570,6 +570,8 @@ class AuthPool:
 
             async def fetchval(self, sql, *args):
                 pool.calls.append((sql, args))
+                if sql == main.login_limits.TAKE:
+                    return 0
                 return pool.returning
 
             async def execute(self, sql, *args):

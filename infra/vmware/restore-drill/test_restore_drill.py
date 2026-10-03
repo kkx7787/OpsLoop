@@ -127,12 +127,12 @@ ROLES = {"opsloop": ("true", "true", "-1", "true"), "opsloop_backup": ("true", "
 # 이슈 #77 뒤: 함수 +1(blocklist_points_change) · 트리거 +1(trg_blocklist_points)
 FUNCS = ("audit_append_only,audit_blocklist,audit_console_users,audit_event,blocklist_enforcement_guard,blocklist_guard,"
          "blocklist_points_change,console_account_create,console_account_delete,console_account_password,console_account_set,"
-         "console_users_stamp,enroll_node,incidents_keep_judged,is_test_source,node_first_receipt,note_block_expired,"
+         "console_login_take,console_users_stamp,enroll_node,incidents_keep_judged,is_test_source,node_first_receipt,note_block_expired,"
          "notify_incident,sensor_heartbeats_guard")
 TRIGS = ("blocklist_enforcement_guard=O,blocklist_guard=O,console_users_stamp=O,sensor_heartbeats_guard=O,"
          "trg_audit_append_only=O,trg_audit_blocklist=O,trg_audit_console_users=O,trg_blocklist_points=O,"
          "trg_incidents_keep_judged=O,trg_notify_incident=O")
-CATALOG = ("c|tables|26\nc|fk|15\nc|triggers|%s\nc|functions|%s\nc|views|audit_log,rule_quality,unjudged_incidents\n"
+CATALOG = ("c|tables|27\nc|fk|15\nc|triggers|%s\nc|functions|%s\nc|views|audit_log,rule_quality,unjudged_incidents\n"
            "c|sequences|7\nc|extensions|plpgsql\n" % (TRIGS, FUNCS))
 BASE = "b|judged_not_resolved|15\nb|verdict_operator_missing|810\nb|released_blocks|0\nb|released_audit|2\n"
 
@@ -1045,8 +1045,8 @@ class Metrics(unittest.TestCase):
         self.assertEqual(sorted(toc["tables"]), sorted(Q.TABLES))
         self.assertEqual((toc["counts"]["TABLE"], toc["counts"]["TABLE DATA"], toc["counts"]["FK CONSTRAINT"],
                           toc["counts"]["SEQUENCE"], toc["counts"]["SEQUENCE SET"], toc["counts"]["FUNCTION"],
-                          toc["counts"]["TRIGGER"], toc["counts"]["VIEW"]), (26, 26, 15, 7, 7, 19, 10, 3))
-        # 시험 자료의 카탈로그(이슈 #77 까지)가 계약 참고값과 같다
+                          toc["counts"]["TRIGGER"], toc["counts"]["VIEW"]), (27, 27, 15, 7, 7, 20, 10, 3))
+        # 시험 자료의 카탈로그(이슈 #103까지)가 계약 참고값과 같다
         self.assertEqual((len(FUNCS.split(",")), len(TRIGS.split(","))), (Q.EXPECT["functions"], Q.EXPECT["triggers"]))
         self.assertEqual(toc["archive_created"], {"at": "2026-09-26 07:27:40", "tz": "UTC"})
 

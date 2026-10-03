@@ -45,7 +45,7 @@ for c in "${CONSOLES[@]}"; do
   # shellcheck disable=SC2016  # 위와 같다. $pw · $f 는 콘솔의 원격 셸이 펼친다
   printf '%s\n' "$OPSLOOP_PW" | "${SSH[@]}" "$c" 'read -r pw; f=~/opsloop/.env; umask 077; { grep -v "^OPSLOOP_CONSOLE_DB_PASSWORD=" "$f" 2>/dev/null || true; printf "OPSLOOP_CONSOLE_DB_PASSWORD=%s\n" "$pw"; } > "$f.tmp" && mv "$f.tmp" "$f" && chmod 600 "$f" && echo "  .env 갱신"'
   "${SSH[@]}" "$c" 'cat > ~/opsloop/console.yml' < "$ROOT/infra/vmware/compose/console.yml"
-  "${SSH[@]}" "$c" 'cd ~/opsloop && docker compose -f console.yml up -d 2>&1 | tail -1; sleep 4; docker exec opsloop-api python3 -c "import os; print(\"  DB 역할:\", os.environ[\"DATABASE_URL\"].split(\"://\")[1].split(\":\")[0])"; curl -s -m 5 -o /dev/null -w "  /health → %{http_code}\n" http://127.0.0.1:8000/health'
+  "${SSH[@]}" "$c" 'cd ~/opsloop && docker compose -f console.yml up -d 2>&1 | tail -1; sleep 4; docker exec opsloop-api python3 -c "import os; print(\"  DB 역할:\", os.environ[\"DATABASE_URL\"].split(\"://\")[1].split(\":\")[0])"; curl -s -m 5 -o /dev/null -w "  /health → %{http_code}\n" --cacert ~/opsloop/tls/ca.crt https://127.0.0.1:8000/health'
 done
 unset OPSLOOP_PW
 echo "끝. 콘솔에서 로그인 · 판정 · 차단 목록을 확인한다. 검증은 infra/vmware/scripts/verify-db-roles.sh"
