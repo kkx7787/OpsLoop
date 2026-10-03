@@ -22,6 +22,7 @@ export default defineConfig({
       '/login': keep,
       '/logout': keep,
       '/health': keep,
+      '/brand/': keep,
       '/ws': { target: backend.replace(/^http/, 'ws'), ws: true },
     },
   },

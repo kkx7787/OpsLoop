@@ -79,7 +79,7 @@ describe('elapsedTone', () => {
 describe('조치 표기', () => {
   it('네 조치의 표기와 상태 전이', () => {
     expect(INCIDENT_ACTIONS).toEqual(['acknowledge', 'block_ip', 'unblock_ip', 'suppress_rule'])
-    expect(ACTION_LABEL).toEqual({ acknowledge: '확인', block_ip: '차단', unblock_ip: '차단 해제', suppress_rule: '규칙 억제' })
+    expect(ACTION_LABEL).toEqual({ acknowledge: '확인', block_ip: '차단', unblock_ip: '차단 해제', suppress_rule: '사건 상태 억제' })
     expect(ACTION_STATUS).toEqual({ acknowledge: 'acknowledged', block_ip: 'in_progress', suppress_rule: 'suppressed' })
     expect(ACTION_STATUS.unblock_ip).toBeUndefined()
   })

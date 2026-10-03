@@ -28,12 +28,12 @@ function Svg({ size = 18, strokeWidth = 1.8, children, ...rest }: IconProps & { 
   )
 }
 
-/** 제품 표지(순환 화살표). 어두운 칸 위에 흰색으로 쓴다. */
+/** 제품 표지: 가운데 워드마크의 두 순환 화살표를 작은 크기에 맞춰 단순화했다. */
 export function IconLogo(props: IconProps) {
   return (
-    <Svg strokeWidth={2.2} {...props}>
-      <path d="M4.5 12a7.5 7.5 0 0 1 13.2-4.9M19.5 12a7.5 7.5 0 0 1-13.2 4.9" />
-      <path d="M18 3.5v4h-4M6 20.5v-4h4" />
+    <Svg stroke="none" viewBox="0 0 32 32" {...props}>
+      <path d="M6.1 15.5C9.1 7.1 21 3.4 27.3 7.2C21.8.8 9.1 3 3.9 12.8L1.8 11.8L3.5 21L11.2 15.1Z" fill="#173f73" />
+      <path d="M6.1 15.5C9.1 7.1 21 3.4 27.3 7.2C21.8.8 9.1 3 3.9 12.8L1.8 11.8L3.5 21L11.2 15.1Z" transform="rotate(180 16 16)" fill="#3284ae" />
     </Svg>
   )
 }

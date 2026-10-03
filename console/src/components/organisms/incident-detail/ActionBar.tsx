@@ -4,7 +4,7 @@ import { describeError } from '@/api/errors'
 import { useMe, usePermission } from '@/auth/useMe'
 import { cn } from '@/lib/cn'
 import { revealHidden } from '@/lib/untrusted'
-import { ACTION_LABEL, actionLabel, INCIDENT_STATUS_LABEL, type IncidentAction } from '@/lib/domain'
+import { ACTION_LABEL, actionLabel, INCIDENT_STATUS_LABEL } from '@/lib/domain'
 import { Button } from '../../atoms/Button'
 import { Input } from '../../atoms/Input'
 import { Select } from '../../atoms/Select'
@@ -23,15 +23,15 @@ export interface ActionBarProps {
   className?: string
 }
 
-/** 확인 단계가 있는 조치. 되돌리기 어려운 것(차단 · 억제)과 되돌리는 것(해제)은 두 번째 단추로 확정한다 */
-type Confirmable = Exclude<IncidentAction, 'acknowledge'>
+/** 확인 단계가 있는 조치. 차단 · 해제는 두 번째 단추로 확정한다. */
+type Confirmable = 'block_ip' | 'unblock_ip'
 
 /**
- * 조치 바(⑤): 확인 · 차단 · 차단 해제 · 규칙 억제. 권한 밖의 조치는 숨긴다.
+ * 조치 바(⑤): 확인 · 차단 · 차단 해제. 권한 밖의 조치는 숨긴다.
  *  확인      operator 이상 · 신규 상태에서만
  *  차단      operator 이상 · 출발지가 있어야 · 만료 시간과 메모를 받고 확정
  *  차단 해제 admin · 살아 있는 차단이 있어야 · 확정
- *  규칙 억제 admin · 확정
+ * 실제 규칙을 중단하지 않는 옛 suppress_rule 조치는 제공하지 않는다(#107).
  * 첫 사건(같은 페이로드 흡수, 규칙 v3)이면 차단 확인에 '흡수된 출발지 n곳도 함께 차단', 해제 확인에 '흡수 차단 n곳도
  * 함께 해제'를 둔다(include_absorbed, 기본 끔). 흡수된 인시던트는 지워져 상세가 없으므로 첫 사건에서만 걸고 푼다.
  * 함께 차단하면 만료 전까지 새로 흡수되는 출발지도 서버가 같은 만료로 올린다(후속 차단). 흡수는 판정 · 차단 뒤에도
@@ -51,7 +51,6 @@ export function ActionBar({ detail, blocked = false, expectedVersion, onSaved, c
   const ack = ackPermission(me.data?.role)
   const block = usePermission('block.request')
   const release = usePermission('block.release')
-  const suppress = usePermission('rule.suppress')
 
   const [pending, setPending] = useState<Confirmable | null>(null)
   const [hours, setHours] = useState(String(DEFAULT_BLOCK_HOURS))
@@ -84,7 +83,7 @@ export function ActionBar({ detail, blocked = false, expectedVersion, onSaved, c
   // 관문 빼기(admin). 서버가 해제 뒤 다시 걸되 만료는 살아 있는 차단처럼 앞당기지 않는다
   const narrowing = !!blockPoints && liveGateway && !withGateway
   const busy = mutation.isPending
-  const canConfirm = pending === 'block_ip' ? block.allowed : pending === 'unblock_ip' ? release.allowed : suppress.allowed
+  const canConfirm = pending === 'block_ip' ? block.allowed : release.allowed
 
   function open(action: Confirmable) {
     mutation.reset()
@@ -169,17 +168,6 @@ export function ActionBar({ detail, blocked = false, expectedVersion, onSaved, c
         >
           {ACTION_LABEL.unblock_ip}
         </Button>}
-        {suppress.allowed && <Button
-          variant="secondary"
-          className="text-danger"
-          disabled={!suppress.allowed}
-          disabledReason={suppress.reason}
-          aria-expanded={pending === 'suppress_rule'}
-          aria-controls={panelId}
-          onClick={() => open('suppress_rule')}
-        >
-          {ACTION_LABEL.suppress_rule}
-        </Button>}
         {me.data?.role === 'viewer' && <p className="m-0 text-xs text-ink-muted">조회 전용 계정입니다. 조치 · 판정은 operator · admin 이 합니다.</p>}
       </div>
 
@@ -232,11 +220,6 @@ export function ActionBar({ detail, blocked = false, expectedVersion, onSaved, c
             {pending === 'unblock_ip' && absorbedOnlyRelease && (
               <>
                 출발지 <span className="font-mono font-medium">{detail.actor_ip}</span> 의 차단은 이미 풀렸거나 만료됐습니다. 이 사건의 흡수 차단 <strong>{absorbedBlocked}곳</strong>만 지금 풉니다{follow ? '(후속 차단도 멈춥니다)' : ''}.
-              </>
-            )}
-            {pending === 'suppress_rule' && (
-              <>
-                규칙 <span className="font-mono font-medium">{detail.rule_id} {detail.rule_version}</span> 을 억제하고 이 사건을 억제 상태로 닫습니다.
               </>
             )}
           </p>

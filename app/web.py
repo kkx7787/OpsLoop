@@ -39,10 +39,16 @@ from untrusted import reveal
 # 화면 빌드 결과. Mac 에서 console/ 의 npm run build 가 만든다. git 에는 넣지 않는다.
 # 없으면 main.py 의 자리표시 화면이 그대로 나온다. 요청마다 보므로 시험에서 바꿔 끼울 수 있다.
 STATIC_DIR = Path(__file__).resolve().parent / "static"
+# 로그인 전에도 읽는 제품 그림만 정확한 경로로 공개한다. 임의 assets/ 파일은 세션 뒤에 둔다.
+BRAND_DIR = Path(__file__).resolve().parent / "branding"
+BRAND_FILES = {
+    "/brand/opsloop-wordmark-v1.png": "opsloop-wordmark-v1.png",
+    "/brand/opsloop-mark-v1.svg": "opsloop-mark-v1.svg",
+}
 
 # 서버가 답하는 경로. 이 밖의 GET 은 화면 경로로 보고 index.html 을 준다.
 SERVER_PATHS = ("/api", "/ws", "/login", "/logout", "/docs", "/redoc",
-                "/openapi.json", "/health", "/assets")
+                "/openapi.json", "/health", "/assets", "/brand")
 
 
 def _under(path: str, prefixes) -> bool:
@@ -350,6 +356,14 @@ class ConsoleFiles:
 router = APIRouter()
 
 
+@router.api_route('/brand/{name}', methods=['GET', 'HEAD'], include_in_schema=False)
+async def brand_file(name: str):
+    filename = BRAND_FILES.get('/brand/' + name)
+    if filename is None:
+        raise HTTPException(404, '파일을 찾을 수 없습니다')
+    return _file_response(BRAND_DIR / filename, 'public, max-age=86400')
+
+
 @router.get("/api/me")
 async def me(request: Request):
     """화면이 처음 부르는 곳. 누가 어떤 역할로 들어왔는지 돌려준다. 세션은 인증 미들웨어가 채운다.
@@ -518,6 +532,7 @@ LOGIN_PAGE = Template("""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>로그인 · OpsLoop 관제</title>
+<link rel="icon" type="image/svg+xml" href="/brand/opsloop-mark-v1.svg">
 <style>
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px 16px;
@@ -525,8 +540,8 @@ body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:c
  color:#1d1d1f;background:#f5f5f7;-webkit-font-smoothing:antialiased}
 main{width:100%;max-width:380px;display:flex;flex-direction:column;gap:24px}
 .head{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center}
-.mark{width:56px;height:56px;border-radius:14px;background:#0164b2;display:flex;align-items:center;justify-content:center;margin-bottom:10px}
-h1{margin:0;font-size:30px;font-weight:700;letter-spacing:-0.025em}
+.wordmark{display:block;width:250px;max-width:100%;height:auto;margin-bottom:4px}
+h1{margin:0;font-size:22px;font-weight:650;letter-spacing:-0.025em}
 .sub{margin:0;font-size:14px;color:#6e6e73}
 form{background:#ffffff;border-radius:18px;box-shadow:0 0 0 .5px rgba(0,0,0,.06),0 2px 8px rgba(0,0,0,.04);padding:28px;display:flex;flex-direction:column;gap:16px}
 label{display:flex;flex-direction:column;gap:6px;font-size:13px}
@@ -541,8 +556,8 @@ button:focus-visible{outline:2px solid #01518f;outline-offset:2px}
 </style></head>
 <body><main>
 <div class="head">
-<span class="mark" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12a7.5 7.5 0 0 1 13.2-4.9M19.5 12a7.5 7.5 0 0 1-13.2 4.9"></path><path d="M18 3.5v4h-4M6 20.5v-4h4"></path></svg></span>
-<h1>OpsLoop 관제 콘솔</h1>
+<img class="wordmark" src="/brand/opsloop-wordmark-v1.png" alt="OpsLoop" width="1816" height="866">
+<h1>관제 콘솔 로그인</h1>
 <p class="sub">판정과 조치는 계정에 기록됩니다.</p>
 </div>
 <form method="post" action="/login">

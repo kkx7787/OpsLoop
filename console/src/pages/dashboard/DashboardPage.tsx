@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { useCardLogsFailed } from '@/api/device-logs'
 import { useControlHealth } from '@/api/health'
 import { useLiveState } from '@/api/live-context'
+import { useMe } from '@/auth/useMe'
 import { useSummary } from '@/api/monitoring'
 import { isTargetsNotDeployed, useTargets } from '@/api/targets'
 import { Time } from '@/components/atoms/Time'
@@ -32,6 +33,7 @@ export function DashboardPage() {
   const targets = useTargets()
   const health = useControlHealth()
   const live = useLiveState()
+  const me = useMe()
   const logsFailed = useCardLogsFailed()
   const queueTitleId = useId()
   const data = query.data
@@ -49,7 +51,7 @@ export function DashboardPage() {
   const summaryError = <ApiErrorState error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} titleAs="h3" />
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      <PageHeader title="관제 현황" badges={(data || queue) && <a href="/#pending-incidents" className="hidden text-xs font-medium md:inline-flex">판정 대기로 이동 ↓</a>} status={<PageRefresh parts={parts} announce />} />
+      <PageHeader title="관제 현황" badges={<div className="flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium">{(me.data?.role === 'operator' || me.data?.role === 'admin') && <Link to="/incidents?assignment=mine&judged=false">내 담당 미판정 →</Link>}{(data || queue) && <a href="/#pending-incidents" className="hidden md:inline-flex">판정 대기로 이동 ↓</a>}</div>} status={<PageRefresh parts={parts} announce />} />
       <ControlHealthBand health={health} live={live.status} />
       <TargetBoard
         data={targets.data}

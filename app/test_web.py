@@ -1008,6 +1008,25 @@ class ConsoleFilesTest(Base):
 # ──────────────────────────────────────────────────────────────
 #  6. 로그인
 # ──────────────────────────────────────────────────────────────
+class BrandFilesTest(Base):
+    def test_only_product_images_are_public_with_or_without_console_build(self):
+        for built in (False, True):
+            if built:
+                self.build_console()
+            for url, mime in [("/brand/opsloop-wordmark-v1.png", "image/png"),
+                              ("/brand/opsloop-mark-v1.svg", "image/svg+xml")]:
+                result = self.client.get(url)
+                self.assertEqual(result.status_code, 200)
+                self.assertTrue(result.headers["content-type"].startswith(mime))
+                self.assertEqual(result.headers["x-content-type-options"], "nosniff")
+                self.assertNotIn("<!doctype html>", result.text[:40].lower())
+            for url in ("/brand/main.py", "/brand/../main.py", "/assets/index-abc123.js"):
+                self.assertEqual(self.client.get(url).status_code, 302)
+            self.assertEqual(self.client.get("/api/me").status_code, 401)
+        self.login_as()
+        self.assertEqual(self.client.get("/brand/main.py").status_code, 404)
+
+
 class LoginTest(Base):
     def post(self, **fields):
         data = {"username": "han", "password": PASSWORD} | fields
@@ -1024,7 +1043,8 @@ class LoginTest(Base):
         self.assertIn('name="username"', body)
         self.assertIn('name="password" type="password"', body)
         self.assertIn('<input type="hidden" name="next" value="/">', body)
-        self.assertIn("OpsLoop 관제 콘솔", body)
+        self.assertIn('alt="OpsLoop"', body)
+        self.assertIn("관제 콘솔 로그인", body)
         self.assertNotIn(web.LOGIN_ERROR, body)
         # 안내는 계정을 어디서 받는지 한 줄. 로그인 전 공개 화면이라 기록 방식 · 탐지 설계(디코이 · 규칙)는 적지 않는다
         self.assertIn("계정은 관리자에게 요청하세요.", body)
@@ -1097,7 +1117,14 @@ class LoginTest(Base):
         self.assertEqual(event["username"], "admin")
         # 화면 재표시는 이스케이프한다
         r = self.post(username='a\x00"><img src=//a.attacker.test/p.png>', password="wrong")
-        self.assertNotIn("<img", r.text)
+        from html.parser import HTMLParser
+        images = []
+        class Images(HTMLParser):
+            def handle_starttag(self, tag, attrs):
+                if tag == 'img':
+                    images.append(dict(attrs).get('src'))
+        Images().feed(r.text)
+        self.assertEqual(images, ['/brand/opsloop-wordmark-v1.png'])
         self.assertIn("&quot;&gt;&lt;img", r.text)
 
     def test_log_event_clips_like_parser(self):
