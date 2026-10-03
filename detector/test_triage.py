@@ -528,14 +528,18 @@ class AbsorbedDatabaseTests(unittest.TestCase):
         self.assertFalse(triage.rule_absorbs(self.cur, "v3", "R002"))
 
     def test_stale_record_does_not_overwrite_and_requires_read_token(self):
+        existing_blocks = self.rows()
         token = triage.workflow_version(self.cur, FIRST)
         triage.record(self.conn, FIRST, OWN, 'threat', '먼저 확인', 1.0, 'first', None, False, expected_version=token)
+        self.cur.execute('SELECT * FROM actions ORDER BY id')
+        saved_actions = self.cur.fetchall()
         with self.assertRaises(triage.WorkflowConflict):
             triage.record(self.conn, FIRST, OWN, 'false_positive', '오래된 화면', 1.0, 'second', None, True, expected_version=token)
         self.cur.execute('SELECT verdict, operator FROM verdicts WHERE incident_key=%s', (FIRST,))
         self.assertEqual(self.cur.fetchall(), [('threat','first')])
-        self.cur.execute('SELECT count(*) FROM blocklist')
-        self.assertEqual(self.cur.fetchone()[0],0)
+        self.assertEqual(self.rows(), existing_blocks)
+        self.cur.execute('SELECT * FROM actions ORDER BY id')
+        self.assertEqual(self.cur.fetchall(), saved_actions)
         self.cur.execute('SELECT status FROM incidents WHERE incident_key=%s', (FIRST,))
         self.assertEqual(self.cur.fetchone()[0],'resolved')
         with self.assertRaises(ValueError):

@@ -1,0 +1,35 @@
+....../Users/hanseongmin/opsloop-repo/infra/vmware/restore-drill/test_restore_drill.py:609: ResourceWarning: unclosed file <_io.TextIOWrapper name='/var/folders/n9/8r0fsrrd77g8z5765dy7jj1c0000gn/T/drill45-6buws1yn/runs/r01/marks.jsonl' mode='r' encoding='UTF-8'>
+  marks = [json.loads(x) for x in open(os.path.join(self.e.run, "marks.jsonl"))]
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+......./Users/hanseongmin/opsloop-repo/infra/vmware/restore-drill/test_restore_drill.py:602: ResourceWarning: unclosed file <_io.TextIOWrapper name='/var/folders/n9/8r0fsrrd77g8z5765dy7jj1c0000gn/T/drill45-6buws1yn/runs/r01/records.jsonl' mode='r' encoding='UTF-8'>
+  recs = [json.loads(x) for x in open(os.path.join(self.e.run, "records.jsonl"))]
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.................../Users/hanseongmin/opsloop-repo/infra/vmware/restore-drill/test_restore_drill.py:764: ResourceWarning: unclosed file <_io.TextIOWrapper name='/var/folders/n9/8r0fsrrd77g8z5765dy7jj1c0000gn/T/drill45-_t9bgkky/runs/r01/state.json' mode='r' encoding='UTF-8'>
+  before = json.load(open(os.path.join(e.run, "state.json")))["precheck"]["backup"]["file"]
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/Users/hanseongmin/opsloop-repo/infra/vmware/restore-drill/test_restore_drill.py:776: ResourceWarning: unclosed file <_io.TextIOWrapper name='/var/folders/n9/8r0fsrrd77g8z5765dy7jj1c0000gn/T/drill45-_t9bgkky/runs/r01/state.json' mode='r' encoding='UTF-8'>
+  self.assertEqual(json.load(open(os.path.join(e.run, "state.json")))["precheck"]["backup"]["file"], before)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/Users/hanseongmin/opsloop-repo/infra/vmware/restore-drill/test_restore_drill.py:778: ResourceWarning: unclosed file <_io.TextIOWrapper name='/var/folders/n9/8r0fsrrd77g8z5765dy7jj1c0000gn/T/drill45-_t9bgkky/runs/r01/state.json' mode='r' encoding='UTF-8'>
+  st = json.load(open(os.path.join(e.run, "state.json")))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+............../Users/hanseongmin/opsloop-repo/infra/vmware/restore-drill/test_restore_drill.py:1323: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/hanseongmin/opsloop-repo/infra/vmware/restore-drill/drill.py' mode='r' encoding='utf-8'>
+  src = open(os.path.join(HERE, f), encoding="utf-8").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/Users/hanseongmin/opsloop-repo/infra/vmware/restore-drill/test_restore_drill.py:1323: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/hanseongmin/opsloop-repo/infra/vmware/restore-drill/queries.py' mode='r' encoding='utf-8'>
+  src = open(os.path.join(HERE, f), encoding="utf-8").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/Users/hanseongmin/opsloop-repo/infra/vmware/restore-drill/test_restore_drill.py:1323: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/hanseongmin/opsloop-repo/infra/vmware/restore-drill/test_restore_drill.py' mode='r' encoding='utf-8'>
+  src = open(os.path.join(HERE, f), encoding="utf-8").read()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./Users/hanseongmin/opsloop-repo/infra/vmware/restore-drill/test_restore_drill.py:1333: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/hanseongmin/opsloop-repo/infra/vmware/restore-drill/drill.py' mode='r' encoding='utf-8'>
+  tree = ast.parse(open(os.path.join(HERE, f), encoding="utf-8").read())
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/Users/hanseongmin/opsloop-repo/infra/vmware/restore-drill/test_restore_drill.py:1333: ResourceWarning: unclosed file <_io.TextIOWrapper name='/Users/hanseongmin/opsloop-repo/infra/vmware/restore-drill/queries.py' mode='r' encoding='utf-8'>
+  tree = ast.parse(open(os.path.join(HERE, f), encoding="utf-8").read())
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.
+----------------------------------------------------------------------
+Ran 48 tests in 25.989s
+
+OK
