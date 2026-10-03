@@ -1,0 +1,23 @@
+[Unit]
+Description=OpsLoop 데이터 노드 자원 상태 (최신 한 행)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Docker 볼륨 경로의 stat 권한만 필요. Docker 소켓이나 소유자 DB 자격 증명은 사용하지 않는다.
+User=root
+ExecStart=/usr/bin/python3 /opt/opsloop/app/collector/data_node_health.py
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallFilter=@system-service
+MemoryMax=64M
+TimeoutStartSec=30

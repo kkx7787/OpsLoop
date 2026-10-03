@@ -1,0 +1,41 @@
+
+> console@0.0.0 build
+> tsc -b && vite build
+
+vite v8.3.0 building client environment for production...
+transforming...
+✓ 244 modules transformed.
+rendering chunks...
+computing gzip size...
+../app/static/index.html                               1.51 kB │ gzip:   0.61 kB
+../app/static/assets/style-C_1Ofxdo.css               50.68 kB │ gzip:  10.20 kB
+../app/static/assets/Select-BEPIJ8oj.js                0.23 kB │ gzip:   0.20 kB
+../app/static/assets/interval-Bj3hulVJ.js              0.32 kB │ gzip:   0.27 kB
+../app/static/assets/Label-g8QjRY2I.js                 0.40 kB │ gzip:   0.27 kB
+../app/static/assets/Input-BI_3D-O7.js                 0.63 kB │ gzip:   0.39 kB
+../app/static/assets/Card-Vue6OOHJ.js                  0.68 kB │ gzip:   0.41 kB
+../app/static/assets/Switch-BFP8ZfIJ.js                1.03 kB │ gzip:   0.53 kB
+../app/static/assets/device-format-C_YeD7fP.js         1.32 kB │ gzip:   0.70 kB
+../app/static/assets/notify-DuPIilgO.js                1.46 kB │ gzip:   0.84 kB
+../app/static/assets/UntrustedText-BgtQgQP9.js         1.53 kB │ gzip:   0.90 kB
+../app/static/assets/cti-format-ASjsf5kl.js            1.97 kB │ gzip:   1.10 kB
+../app/static/assets/AuditPage-DUXSRzO3.js             5.87 kB │ gzip:   2.36 kB
+../app/static/assets/SourceBlock-BzVNpVUo.js           6.58 kB │ gzip:   2.70 kB
+../app/static/assets/NodesPage-B993uf3n.js             6.75 kB │ gzip:   3.00 kB
+../app/static/assets/incidents-DrFfTC_c.js             8.20 kB │ gzip:   2.70 kB
+../app/static/assets/NodeEnrollmentPage-DkkjmrKk.js    8.59 kB │ gzip:   3.51 kB
+../app/static/assets/VerdictBadge-Clerp46N.js          8.85 kB │ gzip:   3.65 kB
+../app/static/assets/RulesPage-DJPquGKD.js            10.91 kB │ gzip:   3.64 kB
+../app/static/assets/SourceDetailPage-DsTO0uhh.js     11.88 kB │ gzip:   3.43 kB
+../app/static/assets/log-format-CNY4EPmG.js           14.91 kB │ gzip:   5.70 kB
+../app/static/assets/DeviceLogsPage-Cy8Pjp_E.js       15.43 kB │ gzip:   5.16 kB
+../app/static/assets/SourcesPage-DbaLRR6b.js          16.04 kB │ gzip:   5.60 kB
+../app/static/assets/AccountsPage-2auRZ-91.js         16.71 kB │ gzip:   5.75 kB
+../app/static/assets/ReportsPage-lXyhQ2v5.js          24.13 kB │ gzip:   7.41 kB
+../app/static/assets/AlertsPage-w8g3zTmi.js           25.83 kB │ gzip:   8.85 kB
+../app/static/assets/AssetsPage-DhBY8hM6.js           26.75 kB │ gzip:   6.84 kB
+../app/static/assets/PageHeader-CbxHOHc6.js           88.02 kB │ gzip:  30.06 kB
+../app/static/assets/Badge-Bl-2LRrw.js                93.00 kB │ gzip:  30.93 kB
+../app/static/assets/index-3L7hWNb2.js               396.39 kB │ gzip: 117.93 kB
+
+✓ built in 437ms

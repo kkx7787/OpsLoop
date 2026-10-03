@@ -742,15 +742,15 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(body["as_of"], NOW.isoformat())
         self.assertEqual([(x["key"], x["level"]) for x in body["items"]],
                          [("heartbeats", "unknown"), ("detect:honeypot", "alert"), ("detect:bridge", "alert"),
-                          ("nodes", "unknown")])
+                          ("nodes", "unknown"), ("data_resources", "unknown")])
         for item in body["items"]:
             self.assertEqual(set(item), {"key", "level", "label", "reason", "at", "count"})
         self.assertEqual([(p["key"], p["stale"], p["reason"], p["versions"]) for p in body["detect_paths"]],
                          [("honeypot", True, "24시간 안 실행 기록 없음", []), ("bridge", True, "24시간 안 실행 기록 없음", [])])
-        # 한 트랜잭션(반복 읽기 · 읽기 전용)이고 질의는 8개 이하(now 포함)다. 없는 표는 읽지 않는다
+        # 한 트랜잭션(반복 읽기 · 읽기 전용)이고 질의는 10개 이하(now 포함)다. 없는 표는 읽지 않는다
         self.assertEqual([c for c in self.pool.calls if isinstance(c, tuple)],
                          [("transaction", {"isolation": "repeatable_read", "readonly": True})])
-        self.assertLessEqual(len([c for c in self.pool.calls if isinstance(c, str)]), 8)
+        self.assertLessEqual(len([c for c in self.pool.calls if isinstance(c, str)]), 10)
         for sql in (t.HEARTBEATS_SQL, t.NODES_SQL, t.NODE_SQL):
             self.assertNotIn(sql, self.pool.calls)
         self.assertIn(t.DETECT_PATHS_SQL, self.pool.calls)
@@ -761,11 +761,11 @@ class RouterTests(unittest.TestCase):
             node_row("web-03", status="pending", reception="waiting", seen=None)]})
         self.client.cookies.set(self.auth.COOKIE, self.auth.issue("han", "viewer"))
         items = self.client.get("/api/dashboard/monitor").json()["items"]
-        self.assertEqual(items[-1], {"key": "nodes_silent", "level": "alert", "label": "노드 수신",
+        self.assertEqual(next(x for x in items if x["key"] == "nodes_silent"), {"key": "nodes_silent", "level": "alert", "label": "노드 수신",
                                      "reason": "노드 2대 수신 끊김", "at": None, "count": 2})
         self.assertIn(t.NODES_SQL, self.pool.calls)
 
-    def test_관제_이상은_질의_8개_이하로_보완_항목을_싣는다(self):
+    def test_관제_이상은_질의_10개_이하로_보완_항목을_싣는다(self):
         self.client.cookies.set(self.auth.COOKIE, self.auth.issue("han", "viewer"))
         for can, keys in [
                 ({}, ["sensor", "point_stale:fw", "report:fw", "nodes_silent", "parse:web-03", "metrics:web-01"]),
@@ -775,8 +775,8 @@ class RouterTests(unittest.TestCase):
                 self.pool.calls.clear()
                 self.pool.conn = type("Conn", (MonitorConn,), {"CAN": {**MonitorConn.CAN, **can}})
                 items = self.client.get("/api/dashboard/monitor").json()["items"]
-                self.assertEqual([x["key"] for x in items], keys)
-                self.assertLessEqual(len([c for c in self.pool.calls if isinstance(c, str)]), 8)
+                self.assertEqual([x["key"] for x in items], keys + ["data_resources"])
+                self.assertLessEqual(len([c for c in self.pool.calls if isinstance(c, str)]), 10)
         self.assertEqual(items[3]["reason"], "등록 노드 열을 읽을 수 없음")
         self.assertIn(t.NODE_SQL, self.pool.calls)
         self.assertNotIn(t.NODES_SQL, self.pool.calls)
@@ -792,7 +792,7 @@ class RouterTests(unittest.TestCase):
             with self.subTest(web=[r["reception"] for r in rows if r["node_id"] == "web-01"]):
                 self.pool.conn = type("Conn", (MonitorConn,), {"ROWS": rows})
                 items = self.client.get("/api/dashboard/monitor").json()["items"]
-                self.assertEqual([x["key"] for x in items], keys)
+                self.assertEqual([x["key"] for x in items], keys + ["data_resources"])
                 if "nodes" in keys:
                     self.assertEqual(items[keys.index("nodes")]["reason"], "web-01 등록 기록 없음")
 
@@ -811,7 +811,7 @@ class RouterTests(unittest.TestCase):
         self.assertEqual((console["reason"], console["db_links"]), ("DB 연결 확인 불가", None))
         self.assertIn(t.CONSOLE_LINKS_READABLE_SQL, self.pool.calls)
         self.assertEqual([x["system"]["state"] for x in body["targets"]],
-                         ["not_collected", "no_privilege", "not_collected", "not_collected"])
+                         ["not_collected", "no_privilege", "not_collected", "no_data"])
         self.assertEqual([x["vulns"] for x in body["targets"]], [{"available": False, "assets": []}] * 4)
         self.assertEqual(body["unmapped"], {"incidents_1h": 0, "pending": 0, "undetermined": 0})
         # 한 트랜잭션(반복 읽기 · 읽기 전용)이고, 없는 표는 읽지 않는다

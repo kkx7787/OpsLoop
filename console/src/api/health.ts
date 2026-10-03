@@ -127,7 +127,7 @@ export function monitorItemHref(key: string): string | null {
   if (['enforcer:', 'block_failed:', 'point_stale:', 'report:', 'point_delayed:'].some((p) => key.startsWith(p)) || key === 'gateway_mismatch') return '/blocklist'
   if (key === 'nodes_silent' || key === 'nodes' || key.startsWith('metrics:')) return STATUS_PATH
   if (key === 'sensor' || key === 'gateway_uploader') return statusHref('aws-sensor')
-  if (key.startsWith('detect:') || key === 'loader' || key === 'heartbeats') return statusHref('data-node')
+  if (key.startsWith('detect:') || key === 'loader' || key === 'heartbeats' || key === 'data_resources' || key.startsWith('data_disk:')) return statusHref('data-node')
   if (key.startsWith('parse:') && key.length > 'parse:'.length) return deviceLogsHref(key.slice('parse:'.length))
   return null
 }

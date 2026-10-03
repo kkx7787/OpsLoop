@@ -495,7 +495,7 @@ class TargetsDatabaseTests(Base):
                                                              "mem_used_pct": 41.5, "disk_root_pct": 73.5,
                                                              "load1": 0.5}})
         self.assertEqual([self.target(body, x)["system"]["state"] for x in ("aws-sensor", "console", "data-node")],
-                         ["not_collected"] * 3)
+                         ["not_collected", "not_collected", "no_data"])
         await self.conn.execute("DELETE FROM node_metrics WHERE line_hash = 'm1'")
         await self.conn.execute("UPDATE node_metrics SET ts = $1 WHERE line_hash = 'm2'", self.ago(601))
         self.assertEqual(self.target(await self.view(), "web-01")["system"]["state"], "stale")
@@ -1063,7 +1063,7 @@ class TargetsDatabaseTests(Base):
             with self.subTest(card=why):
                 self.assertTrue(want & set(keys), f"{why}: 띠 {keys} 에 {sorted(want)} 가 없다")
         self.assertEqual(keys, ["sensor", "gateway_uploader", "detect:bridge", "block_failed:fw", "point_stale:gateway",
-                                "point_stale:fw", "report:fw", "nodes_silent", "parse:web-01", "metrics:web-01"])
+                                "point_stale:fw", "report:fw", "nodes_silent", "parse:web-01", "metrics:web-01", "data_resources"])
         items = {x["key"]: x for x in monitor["items"]}
         # 센서 까닭은 카드 까닭 그대로다(관문 기록 신호 시각까지)
         self.assertEqual(items["sensor"]["reason"], "업로더 생존 신호 18분 전 · 적재기 확인 2분 전 · 확인 때 이미 15분 넘게 새 신호 없음"
@@ -1077,8 +1077,8 @@ class TargetsDatabaseTests(Base):
         self.assertEqual((web["collection"]["state"], [w["key"] for w in web["collection"]["warnings"]],
                           web["response"]["stale"]), ("ok", ["parse"], 1))
         self.assertEqual(self.target(body, "web-03")["collection"]["warnings"], [])
-        # now 를 더해 8개 이하다
-        self.assertLessEqual(len(conn.queries), 7)
+        # 데이터 노드 조회 2개와 now 를 더해 10개 이하다
+        self.assertLessEqual(len(conn.queries), 9)
         self.assertEqual(conn.queries.count(t.PARSE_SQL), 1)
 
     async def test_시험_출발지로_적재된_웹_로그도_적재다(self):
@@ -1371,7 +1371,7 @@ class TargetsWithoutTablesTests(Base):
         for why, want in needs:
             with self.subTest(card=why):
                 self.assertTrue(want & set(keys), f"{why}: 띠 {keys} 에 {sorted(want)} 가 없다")
-        self.assertEqual(keys, ["heartbeats", "detect:honeypot", "detect:bridge", "nodes"])
+        self.assertEqual(keys, ["heartbeats", "detect:honeypot", "detect:bridge", "nodes", "data_resources"])
         web = next(x for x in body["targets"] if x["id"] == "web-01")["response"]
         self.assertEqual((web["applied"], web["failed"], web["unverified"]), (0, 0, 1))
 

@@ -1,0 +1,16 @@
+{
+  "image": "grafana/loki:3.7.8",
+  "digest": "sha256:1107dd5274e0ada47e42472b7a7e71f3b2a2fe878878108f3e2f9e51528f0193",
+  "config_verification": {
+    "30d": {
+      "exit_code": 0,
+      "sha256": "e773a04643332f17de310d448eb9fd69a432a28f5fc54b157dc561fc7aeaeef1"
+    },
+    "7d": {
+      "exit_code": 0,
+      "sha256": "894f281843a9f82bc34bc70ab5634bbd9a2768ffed3d6b80ec7496d5d775641e"
+    }
+  },
+  "production_applied": false,
+  "actual_retention_deletion_tested": false
+}

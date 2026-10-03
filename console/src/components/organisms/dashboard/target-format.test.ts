@@ -166,7 +166,7 @@ describe('무리 · 머리 배지 · 경고 배지 · 미판정 주소(#72)', ()
   it('머리 배지: 데이터 노드가 정상이어도 확인이 멈췄으면 주의, 아니면 수집 상태 그대로', () => {
     expect(headBadge(dataNodeStopped())).toEqual({ label: '주의', tone: 'warning' })
     expect(headBadge(dataNodeStopped(['enforcer']))).toEqual({ label: '주의', tone: 'warning' })
-    expect(headBadge(dataNodeStopped([]))).toEqual({ label: '정상', tone: 'success' })
+    expect(headBadge(dataNodeStopped([]))).toEqual({ label: '수집 정상', tone: 'success' })
     // 서버가 이미 수신 없음이면 그대로(멈춤은 경고 배지가 말한다)
     expect(headBadge(dataNode({ collection: { ...dataNode().collection, stopped: ['loader'] } }))).toEqual({ label: '수신 없음', tone: 'warning' })
     expect(headBadge(awsSensor())).toEqual({ label: '정상', tone: 'success' })
@@ -348,4 +348,27 @@ describe('보호 대상 카드 문구(#83)', () => {
     expect(undeterminedHref()).toBe('/incidents?undetermined=true')
     expect(undeterminedHref('web-02')).toBe('/incidents?undetermined=true&device=web-02')
   })
+})
+
+describe('데이터 노드 자원 요약(#109)', () => {
+  it('측정 성공과 용량 정상은 별개이며, 부족과 일부 실패를 함께 표시한다', () => {
+    const target = dataNode({ system: { state: 'ok', metrics: null, capacity: 'critical', problems: ['Loki 측정 실패'] } })
+    expect(summaryLineFlags(target)).toEqual(expect.arrayContaining([
+      { key: 'capacity', text: '디스크 용량 부족', tone: 'danger' },
+      { key: 'metrics', text: '자원 확인 불가', tone: 'neutral' },
+    ]))
+  })
+  it('미설치도 접힌 줄에서 보이고, 오래된 용량은 현재 부족으로 확정하지 않는다', () => {
+    const target = dataNode({ system: { state: 'no_data', metrics: null, capacity: 'unknown', problems: ['미설치'] } })
+    expect(summaryLineFlags(target)).toContainEqual({ key: 'metrics', text: '자원 확인 불가', tone: 'neutral' })
+    target.system.state = 'stale'
+    expect(summaryLineFlags(target)).toContainEqual({ key: 'metrics', text: '지표 오래됨', tone: 'warning' })
+    expect(summaryLineFlags(target).some((x) => x.key === 'capacity')).toBe(false)
+  })
+})
+
+it('데이터 노드의 정상 배지는 전체 자원 정상으로 읽히지 않게 수집 범위를 밝힌다', () => {
+  const target = dataNode()
+  target.collection.state = 'ok'
+  expect(headBadge(target).label).toBe('수집 정상')
 })

@@ -1,0 +1,10 @@
+[Unit]
+Description=OpsLoop 데이터 노드 자원 상태 (1분)
+
+[Timer]
+OnBootSec=1min
+OnUnitInactiveSec=1min
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

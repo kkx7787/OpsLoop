@@ -209,7 +209,7 @@ class ManageTextTest(unittest.TestCase):
 
     def test_복원_훈련은_새_함수_셋을_센다(self):
         # 함수 18 = #59 뒤 15 + 이 블록의 셋. #77 이 트리거 +1 · 함수 +1 을 더했다(infra/test_block_points_choice_db.py)
-        self.assertEqual(QUERIES.EXPECT, {"tables": 27, "fk": 16, "triggers": 10, "functions": 20, "views": 3})
+        self.assertEqual(QUERIES.EXPECT, {"tables": 28, "fk": 16, "triggers": 10, "functions": 20, "views": 3})
 
 
 class ManageCase(ACC.AccountsCase):

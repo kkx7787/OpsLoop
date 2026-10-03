@@ -503,3 +503,17 @@ describe('TargetCard · 등록 노드(#64)', () => {
     expect(title.querySelector('button')).toBeNull()
   })
 })
+
+it('데이터 노드의 실제 저장소 여유와 일부 측정 실패를 함께 보인다(#109)', () => {
+  const { row } = renderCard(dataNode({ system: {
+    state: 'ok', metrics: { ts: TARGETS_AS_OF, cpu_pct: 12, mem_used_pct: 45, disk_root_pct: 91, load1: 0.5 },
+    capacity: 'critical', problems: ['Loki 디스크 측정 실패'],
+    disks: [{ label: '루트 · PostgreSQL', used_pct: 91, available_bytes: 1024 ** 3, inode_used_pct: 10, state: 'critical' },
+      { label: 'Loki', used_pct: null, available_bytes: null, inode_used_pct: null, state: 'unknown' }],
+  } }))
+  expect(row('시스템')).toHaveTextContent('루트 · PostgreSQL')
+  expect(row('시스템')).toHaveTextContent('남음 1.0 GiB')
+  expect(row('시스템')).toHaveTextContent('용량 부족')
+  expect(row('시스템')).toHaveTextContent('Loki 디스크 측정 실패')
+  expect(row('시스템')).toHaveTextContent('사용량 확인 불가')
+})

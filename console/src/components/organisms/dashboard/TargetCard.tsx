@@ -385,6 +385,17 @@ function SystemFacts({ system, asOf }: { system: TargetSystem; asOf: number }) {
           </Badge>
         </>
       )}
+      {system.disks?.map((disk) => (
+        <span key={disk.label} className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span>{disk.label}</span>
+          <span>{disk.used_pct === null ? '사용량 확인 불가' : `사용 ${disk.used_pct.toFixed(1)}%`}</span>
+          <span>{disk.available_bytes === null ? '여유 확인 불가' : `남음 ${(disk.available_bytes / 1024 ** 3).toFixed(1)} GiB`}</span>
+          {disk.inode_used_pct !== null && disk.inode_used_pct >= 90 && <span>inode 사용 {disk.inode_used_pct.toFixed(1)}%</span>}
+          {disk.state === 'warning' && <Badge tone="warning">여유 감소</Badge>}
+          {disk.state === 'critical' && <Badge tone="danger">용량 부족</Badge>}
+        </span>
+      ))}
+      {system.problems?.map((problem) => <span key={problem} className="mt-1 block text-ink-muted">{problem}</span>)}
     </span>
   )
 }

@@ -227,7 +227,7 @@ class ConsoleAccountsTextTest(unittest.TestCase):
     def test_복원_훈련은_새_트리거_함수를_세고_계정_지문에_비활성과_변경_시각을_넣는다(self):
         # 함수 18 = #59 뒤 15 + #63 의 계정 추가 · 삭제 · 비밀번호 함수 셋(infra/test_console_accounts_manage_db.py),
         # #77 이 트리거 +1 · 함수 +1(infra/test_block_points_choice_db.py)
-        self.assertEqual(QUERIES.EXPECT, {"tables": 27, "fk": 16, "triggers": 10, "functions": 20, "views": 3})
+        self.assertEqual(QUERIES.EXPECT, {"tables": 28, "fk": 16, "triggers": 10, "functions": 20, "views": 3})
         [fp] = [f for f in QUERIES.FINGERPRINTS if f[0] == "console_users"]
         self.assertEqual(fp[1:], ("username", "ROW(username, role, created_at, disabled_at, md5(password_hash))",
                                   "greatest(created_at, updated_at)", "console_users", ""))

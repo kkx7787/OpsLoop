@@ -147,3 +147,8 @@ describe('관제 이상 판정(#72)', () => {
     expect(monitorItemHref(key)).toBe(href)
   })
 })
+
+it('데이터 자원·디스크 경고는 데이터 노드 상세를 펼친다(#109)', () => {
+  expect(monitorItemHref('data_resources')).toBe('/nodes?open=data-node')
+  expect(monitorItemHref('data_disk:0')).toBe('/nodes?open=data-node')
+})
