@@ -4,6 +4,8 @@
  */
 
 const REASONS: Record<string, string> = {
+  UnsafeDestination: '허용되지 않는 목적지 · HTTPS 주소와 DNS 결과가 모두 공인 주소인지 확인해 주세요. 사설 주소로는 발송하지 않습니다',
+  SenderBusy: '발송 작업자 사용 중 · 지연된 DNS 조회나 발송 작업이 끝난 뒤 자동 재시도합니다. 계속되면 콘솔 DNS와 네트워크를 확인해 주세요',
   gaierror: '이름 해석 실패 · 주소의 호스트 이름과 콘솔의 DNS 를 확인해 주세요',
   TimeoutError: '연결 시간 초과 · 방화벽(콘솔 → 인터넷 443)과 받는 쪽 상태를 확인해 주세요',
   ConnectionRefusedError: '연결 거부 · 받는 쪽 주소 · 포트를 확인해 주세요',

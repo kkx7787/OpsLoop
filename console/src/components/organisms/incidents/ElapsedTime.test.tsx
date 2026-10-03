@@ -1,8 +1,14 @@
 import { render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
+import { isPending } from './model'
 import { ElapsedTime } from './ElapsedTime'
 
 describe('ElapsedTime', () => {
+  it('옛 상태 억제도 판정이 없으면 서버 집계와 같이 대기다', () => {
+    expect(isPending({ status: 'suppressed', verdict: null })).toBe(true)
+    expect(isPending({ status: 'suppressed', verdict: 'non_actionable' })).toBe(false)
+  })
+
   it('목표 초과는 시간 경고색 · 낭독기에는 글로 알린다', () => {
     render(<ElapsedTime seconds={22_320} severity="critical" since="2026-09-18T06:00:00+00:00" />)
     const el = screen.getByText('6h 12m')

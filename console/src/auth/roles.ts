@@ -22,7 +22,7 @@ export const ACTION_LABEL = {
   'block.request': '차단 요청',
   'block.release': '차단 해제',
   'block.extend': '차단 연장',
-  'rule.suppress': '규칙 억제',
+  'rule.suppress': '사건 상태 억제',
   'rule.approve': '규칙 승인',
   'notify.manage': '알림 설정',
   'node.token': '노드 토큰 발급',
@@ -37,9 +37,9 @@ const OPERATORS: readonly Role[] = ['operator', 'admin']
 const ADMINS: readonly Role[] = ['admin']
 
 /**
- * 권한표. 되돌리는 행위(차단 해제 · 연장)와 기준을 바꾸는 행위(규칙 억제 · 승인)는 admin 만 한다.
+ * 권한표. 되돌리는 행위(차단 해제 · 연장)와 기준을 바꾸는 행위(사건 상태 억제 · 승인)는 admin 만 한다.
  *
- * | 역할     | 판정 · 차단 요청 | 차단 해제 · 연장 · 규칙 억제 · 승인 | 알림 · 노드 토큰 · 콘솔 분배 · 계정 | 감사 기록 열람 |
+ * | 역할     | 판정 · 차단 요청 | 차단 해제 · 연장 · 사건 상태 억제 · 승인 | 알림 · 노드 토큰 · 콘솔 분배 · 계정 | 감사 기록 열람 |
  * | viewer   | 불가             | 불가                                | 불가                                | 불가           |
  * | operator | 가능             | 불가                                | 불가                                | 불가           |
  * | admin    | 가능             | 가능                                | 가능                                | 가능           |

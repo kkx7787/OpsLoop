@@ -432,9 +432,17 @@ describe('IncidentDetailPage', () => {
     expect(panel.getByText(/조회 전용 계정/)).toHaveTextContent('조회 전용 계정입니다. 조치 · 판정은 operator · admin 이 합니다.')
     expect(region.querySelector('[data-gated="denied"]')).toHaveAttribute('title', '이 동작(판정)은 operator · admin 만 할 수 있습니다 · 현재 역할 viewer')
     expect(panel.getByText('이 동작(판정)은 operator · admin 만 할 수 있습니다 · 현재 역할 viewer')).toHaveClass('sr-only')
-    for (const name of ['확인', '차단', '차단 해제', '규칙 억제']) {
+    for (const name of ['확인', '차단', '차단 해제']) {
       expect(panel.queryByRole('button', { name })).toBeNull()
     }
+  })
+
+  it('관리자에게도 실제 규칙을 중단하지 않는 억제 조치를 제공하지 않는다', async () => {
+    stubApi({ role: 'admin' })
+    renderRoutes(routes(), PATH)
+    const { panel } = await readyPanel()
+    expect(panel.queryByRole('button', { name: /억제/ })).toBeNull()
+    expect(panel.getByRole('button', { name: '판정 기록' })).toBeInTheDocument()
   })
 
   it('operator 는 차단 해제 · 규칙 억제가 숨겨지고, 신규가 아니면 확인은 비활성이다', async () => {

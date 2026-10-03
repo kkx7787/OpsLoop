@@ -26,11 +26,12 @@ export const STATUS_SIGNAL: Record<IncidentStatus, Signal> = {
 }
 
 /**
- * 판정을 기다리는 건: 판정이 없고, 규칙 억제로 닫힌 건(suppressed)도 아니다.
+ * 판정을 기다리는 건: 서버 집계와 같이 판정 기록이 없는 사건이다.
+ * 옛 사건 상태 억제(suppressed)는 판정·규칙 중단이 아니므로 제외하지 않는다(#107).
  * 경과 시간에 목표 대비 색을 주는 기준이다. 판정된 건의 경과는 더 이상 위험이 아니다.
  */
 export function isPending(incident: Pick<Incident, 'verdict' | 'status'>): boolean {
-  return incident.verdict === null && incident.status !== 'suppressed'
+  return incident.verdict === null
 }
 
 /** 출발지 표기. IP 가 없는 건(user:<이름> · node:<id>)은 대상을 보인다. */

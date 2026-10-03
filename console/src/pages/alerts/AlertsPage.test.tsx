@@ -225,6 +225,8 @@ describe('알림 설정', () => {
   })
 
   it('발송 실패 원인 이름을 한국어 조치 안내로 바꾼다', () => {
+    expect(deliveryProblem('UnsafeDestination', null)).toMatch(/공인 주소/)
+    expect(deliveryProblem('SenderBusy', null)).toMatch(/DNS/)
     expect(deliveryProblem('gaierror', null)).toMatch(/^이름 해석 실패/)
     expect(deliveryProblem('TimeoutError', null)).toMatch(/방화벽/)
     expect(deliveryProblem('SSLCertVerificationError', null)).toMatch(/^인증서 오류/)

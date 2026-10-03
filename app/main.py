@@ -139,7 +139,7 @@ app.include_router(workflow.router)
 
 # 세션 없이 여는 경로. /health 는 HAProxy 헬스체크가 부르므로 상태 말고는 아무것도 내지 않는다.
 # /api/csp-report 는 브라우저의 CSP 위반 보고다(쿠키가 없을 수 있다. web.csp_report).
-OPEN_PATHS = ("/health", "/login", "/logout", web.CSP_REPORT_PATH)
+OPEN_PATHS = ("/health", "/login", "/logout", web.CSP_REPORT_PATH, *web.BRAND_FILES)
 # 요청마다 하는 계정 확인(auth.lookup)이 DB 오류로 끝났을 때(503)
 ACCOUNT_CHECK_FAILED = "계정 상태를 확인하지 못했습니다. 잠시 뒤 다시 시도해 주세요"
 

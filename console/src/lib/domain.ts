@@ -25,7 +25,7 @@ export function isVerdict(value: unknown): value is Verdict {
   return typeof value === 'string' && (VERDICTS as readonly string[]).includes(value)
 }
 
-/** 상태 전이: 신규 → 확인 → 조치중 → 종결 (화면 설계 15장). 억제는 규칙 억제 조치로 닫힌 건이다. */
+/** 상태 전이: 신규 → 확인 → 조치중 → 종결. suppressed는 옛 사건 상태 억제이며 규칙 중단·판정을 뜻하지 않는다. */
 export const INCIDENT_STATUSES = ['open', 'acknowledged', 'in_progress', 'resolved', 'suppressed'] as const
 export type IncidentStatus = (typeof INCIDENT_STATUSES)[number]
 
@@ -130,7 +130,7 @@ export const ACTION_LABEL: Record<IncidentAction, string> = {
   acknowledge: '확인',
   block_ip: '차단',
   unblock_ip: '차단 해제',
-  suppress_rule: '규칙 억제',
+  suppress_rule: '사건 상태 억제',
 }
 
 export function isIncidentAction(value: unknown): value is IncidentAction {
