@@ -1432,6 +1432,56 @@ ssh -F ~/.ssh/config.opsloop data01 'sudo -n -u opsloop-cti /usr/local/bin/opslo
   CVE-2021-3156)는 비해당('배포판 기록에 이 릴리스(…)의 영향 패키지가 없다')이다.
 - 타이머 회차가 돌고 있으면 끝날 때까지 기다린다(20분이 넘으면 종료 1). 그때는 타이머 회차가 끝난 뒤 다시 돌린다.
 
+## AI 판정 추천 (이슈 #120)
+
+판정 대기 사건마다 LLM 추천(판정 후보 · 근거 세 줄 · 차단 제안)을 미리 붙여 관제자 판정을 돕는다. 추천은 판정이 아니다.
+판정과 차단은 관제자가 하고, 추천 작업기는 추천 표와 상태 한 행에만 쓴다. 추천 원칙은 `docs/2026-09-08-판정-기준.md` §6 'AI 판정 추천'.
+평가(조정에 쓰지 않은 사건 100건에서 사람 판정과 같음 92건, 미결로 사람에게 넘김 4건, 다름 4건)는 `docs/evidence/2026-10-06-ai-pilot/`.
+
+```
+데이터 노드  opsloop-recommend.timer (5분) ─ 판정 대기 사건 근거 ─→ 127.0.0.1:21434 ─ opsloop-ai-tunnel (SSH, 안에서 밖으로) ─→ AI 서버 Ollama
+                                         └─→ DB ai_recommendations (추가만) · ai_status (한 행)
+콘솔 API     DB 읽기 ─→ 사건 상세 판정 패널 'AI 추천' · 대시보드 'AI 추천 일치 n/m'. 판정 저장 때 본 추천 번호(verdicts.recommendation_id)
+```
+
+| 구성 | 위치 |
+|---|---|
+| 작업기 | 데이터 노드 `/opt/opsloop/recommend` (root 소유) · 실행 래퍼 `/usr/local/bin/opsloop-recommend` (`run` · `status`) |
+| 주기 | `opsloop-recommend.timer` 부팅 3분 뒤 · 5분 간격. 회당 최대 10건, 한 건씩, 회차 마지막 요청에서 모델을 내린다(공용 GPU 서버) |
+| 터널 | `opsloop-ai-tunnel.service` (opsloop-ai, `ssh -N -L 127.0.0.1:21434:127.0.0.1:21434`). 키 `/var/lib/opsloop-ai/.ssh/id_ed25519`, 서버 키 `/etc/opsloop/ai-known_hosts`(지문을 대조한 뒤에만 만든다). 끊기면 1분마다 다시 붙는다 |
+| 설정 | `/etc/default/opsloop-recommend` (터널 끝 주소 · 모델 · 회당 상한 · AI 서버 주소와 계정. 비밀 아님, 처음 설치 때만 만든다) |
+| 비밀 | `/etc/opsloop/ai.env` (DB 역할 `opsloop_ai`, 0640 root:opsloop-ai, 셸로 읽지 않는다) |
+| AI 서버 | 학교 GPU 서버(공용) 내 계정의 rootless Docker 컨테이너 `ollama`(0.35.1), `127.0.0.1:21434` 에만 연다. 모델 `gpt-oss:20b` |
+| 방화벽 | `fw/nftables.conf` 의 `define AI_SERVER` 와 데이터 노드 → AI 서버 22 한 줄. 서버 주소가 바뀌면 이 줄과 위 설정 파일만 고친다 |
+
+학교 밖에서는 AI 서버에 닿지 않는 것이 정상이다. 작업기는 3초 안에 닿는지만 보고, 닿지 않으면 추천 없이 넘어가 상태 한 행에 사유와
+마지막 성공 시각을 남긴다(종료 0, 알림 없음). 이미 만든 추천은 DB 에 있어 콘솔에 그대로 보이고, 판정 · 차단은 영향을 받지 않는다.
+회차 안에서 연속 두 번 실패하면 그 회차를 멈추고, 같은 모델 · 지시문으로 실패한 사건은 세 번까지만 다시 묻는다.
+
+설치 순서 (Mac, 저장소 루트):
+
+```bash
+# 1. 데이터 노드: 사용자 · 코드 · 설정 · 터널 키 · 서버 키(지문 대조) · DB 역할 · 마이그레이션(20261006_ai_recommend.sql) · 단위 (켜지 않는다)
+#    서버 키 지문은 Mac 이 처음 접속할 때 받아들인 것을 쓴다(학교 안에서 돌린다)
+C=$(git rev-parse --short HEAD); FP=$(ssh-keygen -l -F 192.168.217.248 -f ~/.ssh/known_hosts | awk '/ED25519/{print $3}')
+git archive "$C" recommend infra/migrations/20261006_ai_recommend.sql | ssh -F ~/.ssh/config.opsloop data01 \
+  "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo OPSLOOP_AI_HOSTKEY=$FP bash /tmp/ol/recommend/install-recommend.sh $C"
+# 2. AI 서버: 설치기가 찍은 한 줄(restrict,port-forwarding,permitopen="127.0.0.1:21434" ssh-ed25519 … opsloop-ai@data01)을
+#    AI 서버 계정의 ~/.ssh/authorized_keys 에 넣는다. 이 키로는 셸을 열 수 없고 Ollama 포트로만 이어진다
+# 3. 방화벽: fw/nftables.conf 를 반영한다 (위 '내부 방화벽 차단 집행'의 반영 절차와 같다)
+# 4. 터널을 켜고 닿는지 본다
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n systemctl enable --now opsloop-ai-tunnel.service; sleep 5; sudo -n journalctl -u opsloop-ai-tunnel -n 10 --no-pager; curl -s --max-time 3 http://127.0.0.1:21434/api/version'
+# 5. 한 번 돌려 확인하고 타이머를 켠다
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n systemctl start opsloop-recommend.service; sudo -n journalctl -u opsloop-recommend -n 30 --no-pager'
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n -u opsloop-ai /usr/local/bin/opsloop-recommend status'
+ssh -F ~/.ssh/config.opsloop data01 'sudo -n systemctl enable --now opsloop-recommend.timer'
+# 6. 역할 검증 ('AI 판정 추천' 절이 모두 ✔) · 콘솔 이미지 갱신 (app/ai_recommend.py · 화면). 1번의 마이그레이션이 먼저 들어가 있어야 한다
+infra/vmware/scripts/verify-db-roles.sh
+```
+
+- 역할 블록(`schema.sql` · `20260924_db_roles.sql`)을 다시 적용하면 콘솔의 추천 표 읽기가 빠진다. 그때 콘솔은 AI 구역을 빼고 뜬다. 1번 설치기를 다시 돌린다.
+- 지시문을 바꾸면 `PROMPT_VERSION` 을 올리고 다시 평가한다. 작업기 시험이 평가 도구의 지시문과 같은지 본다(`recommend/test_opsloop_recommend.py`).
+
 ## 셸 스크립트 점검 (이슈 #62)
 
 저장소의 셸 스크립트(추적 중인 `*.sh` 와 첫 줄이 sh · bash 인 `cti/opsloop-cti`)를 shellcheck 로 본다. 방화벽 · 콘솔 · 데이터 노드 · 허니팟 관문(AWS)에서 도는 것들이라 스크립트를 고친 커밋마다 돌린다. 읽기만 한다.
@@ -1469,6 +1519,7 @@ scripts/check-shell.sh -f gcc     # 한 줄 꼴. shellcheck 가 없으면 설치
 | `compose/data.yml` | 데이터 노드 PostgreSQL · Loki. initdb 에 스키마를 붙이지 않는다(스키마는 `install-collector.sh`, 복원은 'DB 복원') |
 | `test_data_compose.py` | 위 파일 시험 (initdb 마운트 없음 · 이미지 · 볼륨 · 바인드 주소 · 'DB 복원' 절). `python3 infra/vmware/test_data_compose.py` |
 | `scripts/console-join.sh` | 콘솔 B 합류 · 떼기 단계 (기본 드라이런). 시험 `python3 infra/vmware/scripts/test_console_join.py` (가짜 ssh · 접속 한도 30) |
+| `../../recommend/` | AI 판정 추천 작업기 · 터널 · 설치기(데이터 노드, 위 'AI 판정 추천'). 시험 `python3 recommend/test_opsloop_recommend.py` · DB 시험 `recommend/test_opsloop_recommend_db.py` |
 | `../../enforcer/` | 차단 집행기(데이터 노드): 차단 목록 → S3 → 관문 보고 대조 → 집행 결과 기록. 시험 `python3 enforcer/test_block_enforcer.py` |
 | `scripts/console-watch.sh` · `scripts/install-console-watch.sh` | Mac 에서 콘솔 진입점 감시(두 대 모두 죽으면 알림) · 백업 오래됨 알림. 시험 `python3 infra/vmware/scripts/test_console_watch.py` |
 | `scripts/backup-db.sh` · `scripts/backup-agent.sh` · `scripts/install-backup-agent.sh` | Mac 으로 DB 백업(하루 세 번 · 덤프 전 시계 확인 · 재시도 · 즉시 알림, 'DB 복원' 의 '정기 백업'). 시험 `python3 infra/vmware/scripts/test_backup_db.py` |

@@ -132,8 +132,8 @@ FUNCS = ("audit_append_only,audit_blocklist,audit_console_users,audit_event,bloc
 TRIGS = ("blocklist_enforcement_guard=O,blocklist_guard=O,console_users_stamp=O,sensor_heartbeats_guard=O,"
          "trg_audit_append_only=O,trg_audit_blocklist=O,trg_audit_console_users=O,trg_blocklist_points=O,"
          "trg_incidents_keep_judged=O,trg_notify_incident=O")
-CATALOG = ("c|tables|28\nc|fk|16\nc|triggers|%s\nc|functions|%s\nc|views|audit_log,rule_quality,unjudged_incidents\n"
-           "c|sequences|7\nc|extensions|plpgsql\n" % (TRIGS, FUNCS))
+CATALOG = ("c|tables|30\nc|fk|18\nc|triggers|%s\nc|functions|%s\nc|views|audit_log,rule_quality,unjudged_incidents\n"
+           "c|sequences|8\nc|extensions|plpgsql\n" % (TRIGS, FUNCS))
 BASE = "b|judged_not_resolved|15\nb|verdict_operator_missing|810\nb|released_blocks|0\nb|released_audit|2\n"
 
 
@@ -144,9 +144,9 @@ def toc_text(created):
         lines.append("%d; 1259 1 TABLE public %s opsloop" % (n, t))
         lines.append("%d; 0 1 TABLE DATA public %s opsloop" % (n + 1, t))
         n += 2
-    for i in range(16):
+    for i in range(18):
         lines.append("%d; 2606 1 FK CONSTRAINT public t fk_%d opsloop" % (n + i, i))
-    for i in range(7):
+    for i in range(8):
         lines.append("%d; 1259 1 SEQUENCE public s_%d opsloop" % (n + 20 + i, i))
         lines.append("%d; 0 0 SEQUENCE SET public s_%d opsloop" % (n + 30 + i, i))
     for f in FUNCS.split(","):
@@ -1045,7 +1045,7 @@ class Metrics(unittest.TestCase):
         self.assertEqual(sorted(toc["tables"]), sorted(Q.TABLES))
         self.assertEqual((toc["counts"]["TABLE"], toc["counts"]["TABLE DATA"], toc["counts"]["FK CONSTRAINT"],
                           toc["counts"]["SEQUENCE"], toc["counts"]["SEQUENCE SET"], toc["counts"]["FUNCTION"],
-                          toc["counts"]["TRIGGER"], toc["counts"]["VIEW"]), (28, 28, 16, 7, 7, 20, 10, 3))
+                          toc["counts"]["TRIGGER"], toc["counts"]["VIEW"]), (30, 30, 18, 8, 8, 20, 10, 3))
         # 시험 자료의 카탈로그(이슈 #103까지)가 계약 참고값과 같다
         self.assertEqual((len(FUNCS.split(",")), len(TRIGS.split(","))), (Q.EXPECT["functions"], Q.EXPECT["triggers"]))
         self.assertEqual(toc["archive_created"], {"at": "2026-09-26 07:27:40", "tz": "UTC"})

@@ -40,6 +40,7 @@ import targets
 import web
 from proposals import CIRCULAR_RULES, SSH_RULES, propose
 from dashboard import HUMAN_UNDETERMINED, dashboard_metrics
+import ai_recommend
 from access import masked_validation, require_role
 from operations import router as operations_router
 from notify import router as notify_router
@@ -532,8 +533,11 @@ async def get_incident(incident_key: str):
         actions = await c.fetch(
             "SELECT id, action, operator, note, created_at FROM actions "
             "WHERE incident_key = $1 ORDER BY created_at", incident_key)
+        # AI 판정 추천(이슈 #120). 표가 없거나 읽을 수 없으면(마이그레이션 전) 구역을 빼고 판정 목록도 옛 열만 읽는다
+        ai = await ai_recommend.incident(c, incident_key)
         verdicts = await c.fetch(
-            "SELECT id, verdict, reason, observed_value, operator, proposed, decision_seconds, created_at FROM verdicts "
+            "SELECT id, verdict, reason, observed_value, operator, proposed, decision_seconds, created_at"
+            + (", recommendation_id" if ai is not None else "") + " FROM verdicts "
             "WHERE incident_key = $1 ORDER BY created_at, id", incident_key)
         # 같은 출발지의 다른 인시던트. 관제자가 제일 먼저 궁금해하는 것.
         related = await c.fetch("""
@@ -667,6 +671,8 @@ async def get_incident(incident_key: str):
     }
     d["circular"] = CIRCULAR.get(inc["rule_id"])
     d["proposal"] = propose(inc["rule_id"], {r["eventid"]: r["n"] for r in counts}, covered)
+    # 판정 대기 사건에 붙은 AI 추천과 작업기 상태(AI 서버에 닿는지 · 마지막 성공). 추천은 판정이 아니다
+    d["ai"] = ai
     d |= devices[inc["incident_key"]]
     # 차단 적용 지점(이슈 #77). default 는 규칙만으로 정한 기본값, basis 는 그 까닭(확인 창 ⓘ, 장비는 여기만 쓴다),
     #   requested 는 이 출발지의 살아 있는 차단이 요청한 지점(없으면 null)이다
@@ -733,6 +739,7 @@ async def summary():
         reports = targets.reports_of([dict(r) for r in await c.fetch(targets.HEARTBEATS_SQL)]) \
             if heartbeats_available else {}
         by_point = await c.fetchrow(targets.BLOCKS_SQL, as_of)
+        ai = await ai_recommend.summary(c)
 
     return {
         **metrics,
@@ -752,6 +759,8 @@ async def summary():
         "blocks_by_point": [targets.point_counts(p, by_point, reports.get(p), as_of, heartbeats_available)
                             for p in targets.POINT_LABELS],
         **({"absorbed_unblocked": dict(unblocked)} if unblocked else {}),
+        # AI 추천 일치(관제자가 추천을 보고 남긴 판정 중 같은 값) · 작업기 상태. 표를 읽을 수 없으면 뺀다(이슈 #120)
+        **({"ai": ai} if ai is not None else {}),
     }
 
 
@@ -820,6 +829,8 @@ class VerdictIn(workflow.ChangeIn):
     # 뒤집힘 비율과 판정 비용을 재려면 제안값과 소요 시간이 판정과 함께 남아야 한다.
     proposed: Optional[VERDICTS] = None
     decision_seconds: Optional[int] = Field(default=None, ge=0, le=86400)
+    # 판정할 때 본 AI 추천(이슈 #120). 같은 사건의 정상 추천만 받는다. 추천 일치 수의 근거다
+    recommendation_id: Optional[int] = Field(default=None, ge=1, le=2**63 - 1)
 
     @field_validator("reason")
     @classmethod
@@ -1080,14 +1091,19 @@ async def add_verdict(incident_key: str, body: VerdictIn, request: Request):
             if not exists:
                 raise HTTPException(404, "인시던트를 찾을 수 없습니다")
             await workflow.check(c, incident_key, body.expected_version)
-            rec = await c.fetchrow("""
+            rid = body.recommendation_id
+            if rid is not None and not await ai_recommend.belongs(c, rid, incident_key):
+                raise HTTPException(400, "이 사건의 AI 추천이 아닙니다")
+            # 추천 연결 열은 마이그레이션(20261006_ai_recommend) 뒤에만 있다. 추천을 붙이지 않은 판정은 옛 문장 그대로 쓴다
+            extra = ", recommendation_id" if rid is not None else ""
+            rec = await c.fetchrow(f"""
                 INSERT INTO verdicts (incident_key, verdict, reason, observed_value, operator,
-                                      proposed, decision_seconds)
-                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                                      proposed, decision_seconds{extra})
+                VALUES ($1, $2, $3, $4, $5, $6, $7{", $8" if rid is not None else ""})
                 RETURNING id, verdict, reason, observed_value, operator, proposed,
-                          decision_seconds, created_at""",
+                          decision_seconds, created_at{extra}""",
                 incident_key, body.verdict, body.reason, body.observed_value, user["u"],
-                body.proposed, body.decision_seconds)
+                body.proposed, body.decision_seconds, *([rid] if rid is not None else []))
             # 판정이 곧 종결이다. 판정 없이 종결되는 경로를 두지 않는다.
             await c.execute("UPDATE incidents SET status = 'resolved' WHERE incident_key = $1",
                             incident_key)

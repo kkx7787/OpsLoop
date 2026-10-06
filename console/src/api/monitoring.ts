@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import type { AiSummary } from './ai'
 import { api } from './client'
 import { ApiError } from './errors'
 import type { ActorBlock } from './incidents'
@@ -43,6 +44,8 @@ export interface Summary {
    * 여기서만 드러난다. 흡수 기록 표가 없는 서버는 생략한다. first_key 는 그런 첫 사건 하나(바로 가기)
    */
   absorbed_unblocked?: { sources: number; incidents: number; first_key: string | null }
+  /** AI 추천 일치(관제자가 추천을 보고 남긴 판정 중 같은 값) · 작업기 상태(이슈 #120). 추천 표를 읽을 수 없는 서버는 생략한다 */
+  ai?: AiSummary
   latest_event: string | null
 }
 

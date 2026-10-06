@@ -67,8 +67,8 @@ NAME_NEW = "--   S3 block/v1/latest.json 으로 허니팟 관문에 넘기고, �
 NEW_EVENTS = ["console.block.created", "console.block.rearmed", "console.block.enforced", "console.block.unenforced",
               "console.block.expired"]
 R201_EVENTS = ["console.block.released", "console.block.shortened"]
-ROLE = re.compile(r"\bopsloop_(gate|ingest|detector|console|backup|cti|enforcer)\b")
-ROLE_KEYS = ("gate", "ingest", "detector", "console", "backup", "cti", "enforcer")
+ROLE = re.compile(r"\bopsloop_(gate|ingest|detector|console|backup|cti|enforcer|ai)\b")
+ROLE_KEYS = ("gate", "ingest", "detector", "console", "backup", "cti", "enforcer", "ai")
 # 운영의 기존 13행과 같은 꼴(2026-09-08 triage, 만료 · 요청자 · 집행 없음, 모두 공인 /32). 주소는 문서용 대역으로 바꿨다
 LEGACY = [f"{net}.{n}" for net in ("192.0.2", "198.51.100", "203.0.113") for n in (11, 12, 13, 14)][:13]
 APP_MAIN = os.path.join(ROOT, "app", "main.py")
