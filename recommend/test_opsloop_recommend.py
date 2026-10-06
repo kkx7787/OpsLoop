@@ -266,6 +266,9 @@ class ContractTests(unittest.TestCase):
                      "User=opsloop-ai", "Restart=always", "StartLimitIntervalSec=0", "NoNewPrivileges=yes"):
             self.assertIn(need, unit)
         self.assertNotIn("-R ", unit)                       # 서버가 안으로 들어오는 역방향 터널은 없다
+        # 실패가 이어지면 간격을 늘린다(공용 서버에 1분마다 로그인 실패를 남기지 않는다, 이슈 #122)
+        for need in ("RestartSec=60", "RestartSteps=4", "RestartMaxDelaySec=15min"):
+            self.assertIn(need, unit)
         self.assertNotIn("StrictHostKeyChecking=no", unit)
 
     def test_작업기는_opsloop_ai_로_돌고_타이머는_5분(self):
