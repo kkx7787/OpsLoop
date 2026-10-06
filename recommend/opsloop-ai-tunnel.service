@@ -20,7 +20,12 @@ ExecStart=/usr/bin/ssh -N -T -i /var/lib/opsloop-ai/.ssh/id_ed25519 \
   -L 127.0.0.1:${OPSLOOP_AI_LOCAL_PORT}:127.0.0.1:${OPSLOOP_AI_REMOTE_PORT} \
   -p ${OPSLOOP_AI_SSH_PORT} ${OPSLOOP_AI_SSH_USER}@${OPSLOOP_AI_HOST}
 Restart=always
+# 실패가 이어지면 간격을 1분 → 약 2 · 4 · 8분 → 15분으로 늘린다(systemd 254+). 키가 틀리거나 서버가 막힌 동안 공용 서버에
+# 1분마다 로그인 실패를 남기면 서버 쪽 차단 도구가 같은 출발지(학교에서 쓰는 Mac 주소)의 사람 접속까지 막을 수 있다.
+# 대가: 오래 끊겼다 돌아오면 다시 붙기까지 최대 15분. 그동안 추천이 늦게 붙을 뿐 판정 · 차단은 영향이 없다
 RestartSec=60
+RestartSteps=4
+RestartMaxDelaySec=15min
 NoNewPrivileges=yes
 ProtectSystem=strict
 ProtectHome=yes

@@ -1448,7 +1448,7 @@ ssh -F ~/.ssh/config.opsloop data01 'sudo -n -u opsloop-cti /usr/local/bin/opslo
 |---|---|
 | 작업기 | 데이터 노드 `/opt/opsloop/recommend` (root 소유) · 실행 래퍼 `/usr/local/bin/opsloop-recommend` (`run` · `status`) |
 | 주기 | `opsloop-recommend.timer` 부팅 3분 뒤 · 5분 간격. 회당 최대 10건, 한 건씩, 회차 마지막 요청에서 모델을 내린다(공용 GPU 서버) |
-| 터널 | `opsloop-ai-tunnel.service` (opsloop-ai, `ssh -N -L 127.0.0.1:21434:127.0.0.1:21434`). 키 `/var/lib/opsloop-ai/.ssh/id_ed25519`, 서버 키 `/etc/opsloop/ai-known_hosts`(지문을 대조한 뒤에만 만든다). 끊기면 1분마다 다시 붙는다 |
+| 터널 | `opsloop-ai-tunnel.service` (opsloop-ai, `ssh -N -L 127.0.0.1:21434:127.0.0.1:21434`). 키 `/var/lib/opsloop-ai/.ssh/id_ed25519`, 서버 키 `/etc/opsloop/ai-known_hosts`(지문을 대조한 뒤에만 만든다). 끊기면 1분 뒤 다시 붙고, 실패가 이어지면 간격을 15분까지 늘린다(공용 서버에 로그인 실패를 쌓지 않게) |
 | 설정 | `/etc/default/opsloop-recommend` (터널 끝 주소 · 모델 · 회당 상한 · AI 서버 주소와 계정. 비밀 아님, 처음 설치 때만 만든다) |
 | 비밀 | `/etc/opsloop/ai.env` (DB 역할 `opsloop_ai`, 0640 root:opsloop-ai, 셸로 읽지 않는다) |
 | AI 서버 | 학교 GPU 서버(공용) 내 계정의 rootless Docker 컨테이너 `ollama`(0.35.1), `127.0.0.1:21434` 에만 연다. 모델 `gpt-oss:20b` |
