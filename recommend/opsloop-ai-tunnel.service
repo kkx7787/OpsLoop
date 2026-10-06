@@ -1,0 +1,38 @@
+[Unit]
+Description=OpsLoop AI 서버 터널 (데이터 노드 → 학교 GPU 서버 Ollama. 안에서 밖으로만 연다)
+Wants=network-online.target
+After=network-online.target
+# 학교 밖이면 닿지 않는다. 1분마다 다시 시도하고(횟수 제한 없음) 그 사이 추천 작업기는 추천 없이 넘어간다
+StartLimitIntervalSec=0
+
+[Service]
+User=opsloop-ai
+Group=opsloop-ai
+EnvironmentFile=/etc/default/opsloop-recommend
+# 비밀번호 없이 키로만 붙는다(BatchMode). 서버 키는 설치 때 지문을 대조해 둔 파일로만 믿는다(StrictHostKeyChecking).
+# 서버 쪽 authorized_keys 에서 이 키는 restrict,port-forwarding,permitopen="127.0.0.1:원격포트" 라 셸 · 다른 포트로 갈 수 없다.
+# 연결이 죽으면 45초 안에 끊고(ServerAlive 15초 × 3) 다시 붙는다. 데이터 노드 쪽 터널 끝은 127.0.0.1 에만 연다
+ExecStart=/usr/bin/ssh -N -T -i /var/lib/opsloop-ai/.ssh/id_ed25519 \
+  -o BatchMode=yes -o IdentitiesOnly=yes -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -o ConnectTimeout=10 \
+  -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/etc/opsloop/ai-known_hosts -o GlobalKnownHostsFile=/dev/null \
+  -o UpdateHostKeys=no -o PermitLocalCommand=no \
+  -L 127.0.0.1:${OPSLOOP_AI_LOCAL_PORT}:127.0.0.1:${OPSLOOP_AI_REMOTE_PORT} \
+  -p ${OPSLOOP_AI_SSH_PORT} ${OPSLOOP_AI_SSH_USER}@${OPSLOOP_AI_HOST}
+Restart=always
+RestartSec=60
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+SystemCallFilter=@system-service
+MemoryMax=64M
+
+[Install]
+WantedBy=multi-user.target

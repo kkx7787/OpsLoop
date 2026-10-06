@@ -1,0 +1,5 @@
+#!/bin/sh
+# AI 판정 추천 작업기 실행 래퍼 (이슈 #120). recommend/install-recommend.sh 가 /usr/local/bin/opsloop-recommend 로 깐다.
+# 코드는 root 소유 사본(/opt/opsloop/recommend)이라 작업기가 자기 코드를 바꿀 수 없다.
+# 타이머: opsloop-recommend.service (opsloop-ai 사용자, run). 상태: sudo -u opsloop-ai opsloop-recommend status
+exec /usr/bin/python3 /opt/opsloop/recommend/opsloop_recommend.py "$@"

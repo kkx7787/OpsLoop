@@ -16,6 +16,8 @@
 #   실행 권한도 본다. infra/migrations/20261002_console_accounts_manage.sql 을 적용한 뒤에 돌린다.
 #   차단 적용 지점 선택(이슈 #77)의 요청 지점 열(points) 권한 · 좁히기 거부 트리거 · 값 제약도 본다.
 #   infra/migrations/20261003_block_points_choice.sql 을 적용한 뒤에 돌린다.
+#   AI 판정 추천(이슈 #120)의 추천 작업기 역할(opsloop_ai)과 추천 표 권한도 본다. infra/migrations/20261006_ai_recommend.sql 을
+#   적용하고 recommend/install-recommend.sh 로 역할을 만든 뒤에 돌린다.
 # 사용 (Mac, 저장소 루트): infra/vmware/scripts/verify-db-roles.sh     종료 코드 0 = 전부 기대대로
 set -uo pipefail
 SSH=(ssh -F "$HOME/.ssh/config.opsloop" -o BatchMode=yes -o ConnectTimeout=10)
@@ -235,6 +237,33 @@ q opsloop_ingest "DELETE FROM data_node_health WHERE false" 거부
 p opsloop_ingest "has_table_privilege('opsloop_ingest','data_node_health','TRUNCATE')" f
 q opsloop_detector "SELECT * FROM data_node_health LIMIT 0" 거부
 
+echo "== AI 판정 추천 (이슈 #120. 추천 작업기 역할 · 추천 표)"
+#   작업기는 사건 · 이벤트를 읽고 판정 표는 사건 키 열만 읽는다(판정 대기 여부). 추천 표는 추가만, 상태 한 행은 넣고 고친다.
+#   판정 · 조치 · 차단 목록 · 계정은 읽지도 쓰지도 못한다. 콘솔은 읽기만 하고(판정 기록의 추천 연결은 verdicts INSERT 로 남긴다),
+#   탐지 · 적재는 보지 못한다. recommend/test_opsloop_recommend_db.py 가 이 줄들을 시험 DB 에서 돌린다
+q opsloop_ai       "SELECT incident_key, evidence FROM incidents LIMIT 0" 허용
+q opsloop_ai       "SELECT input, shasum FROM events LIMIT 0" 허용
+q opsloop_ai       "SELECT incident_key FROM verdicts LIMIT 0" 허용
+q opsloop_ai       "SELECT verdict FROM verdicts LIMIT 0" 거부
+q opsloop_ai       "INSERT INTO ai_recommendations SELECT * FROM ai_recommendations WHERE false" 허용
+q opsloop_ai       "UPDATE ai_recommendations SET error = error WHERE false" 거부
+q opsloop_ai       "DELETE FROM ai_recommendations WHERE false" 거부
+q opsloop_ai       "INSERT INTO ai_status SELECT * FROM ai_status WHERE false ON CONFLICT (singleton) DO UPDATE SET checked_at = EXCLUDED.checked_at" 허용
+q opsloop_ai       "DELETE FROM ai_status WHERE false" 거부
+q opsloop_ai       "INSERT INTO verdicts SELECT * FROM verdicts WHERE false" 거부
+q opsloop_ai       "UPDATE incidents SET status = status WHERE false" 거부
+q opsloop_ai       "SELECT actor_ip FROM blocklist LIMIT 0" 거부
+q opsloop_ai       "SELECT action FROM actions LIMIT 0" 거부
+q opsloop_ai       "SELECT username FROM console_users LIMIT 0" 거부
+p opsloop_ai       "has_sequence_privilege('opsloop_ai','ai_recommendations_id_seq','USAGE')" t
+p opsloop_ai       "has_table_privilege('opsloop_ai','ai_recommendations','TRUNCATE')" f
+q opsloop_console  "SELECT recommendation, reasons FROM ai_recommendations LIMIT 0" 허용
+q opsloop_console  "SELECT reachable, last_ok_at FROM ai_status LIMIT 0" 허용
+q opsloop_console  "INSERT INTO ai_recommendations SELECT * FROM ai_recommendations WHERE false" 거부
+q opsloop_console  "UPDATE ai_status SET reachable = reachable WHERE false" 거부
+q opsloop_detector "SELECT * FROM ai_recommendations LIMIT 0" 거부
+q opsloop_ingest   "SELECT * FROM ai_status LIMIT 0" 거부
+
 echo "== 접속 한도 (이슈 #43. 콘솔 한 대 = 풀 10 + LISTEN 1 → 두 대 22 + triage.py)"
 #   20 이면 콘솔 B 를 켤 때 한도에 닿는다. 무제한(-1)도 기대와 다르다고 본다 (콘솔이 DB 접속을 다 써 버리지 않게 하는 울타리다)
 #   올리는 곳: infra/migrations/20260926_console_connlimit.sql · db-console-role.sh · install-collector.sh (모두 30)
@@ -249,6 +278,12 @@ echo "== 집행 역할 속성 (이슈 #47. enforcer/install-enforcer.sh 가 만�
 att=$(psql_as opsloop "SELECT rolcanlogin::text || ' ' || rolinherit::text || ' ' || rolsuper::text || ' ' || rolconnlimit FROM pg_roles WHERE rolname = 'opsloop_enforcer'" | head -1)
 if [ "$att" = "true false false 2" ]; then row opsloop_enforcer "LOGIN · NOINHERIT · 슈퍼유저 아님 · CONNECTION LIMIT" 2 "✔"
 else row opsloop_enforcer "LOGIN · NOINHERIT · 슈퍼유저 아님 · CONNECTION LIMIT" 2 "✘ ${att:-역할 없음}"; fail=1; fi
+
+echo "== AI 추천 작업기 역할 속성 (이슈 #120. recommend/install-recommend.sh 가 만든다)"
+#   로그인 · 권한을 물려받지 않음 · 슈퍼유저 아님 · 접속 한도 2 (5분 타이머 한 번에 접속 하나. status 를 함께 돌려도 2 를 넘지 않는다)
+att=$(psql_as opsloop "SELECT rolcanlogin::text || ' ' || rolinherit::text || ' ' || rolsuper::text || ' ' || rolconnlimit FROM pg_roles WHERE rolname = 'opsloop_ai'" | head -1)
+if [ "$att" = "true false false 2" ]; then row opsloop_ai "LOGIN · NOINHERIT · 슈퍼유저 아님 · CONNECTION LIMIT" 2 "✔"
+else row opsloop_ai "LOGIN · NOINHERIT · 슈퍼유저 아님 · CONNECTION LIMIT" 2 "✘ ${att:-역할 없음}"; fail=1; fi
 
 echo "== 지금 붙어 있는 접속 (역할 · application_name · 수)"
 psql_as opsloop "SELECT usename || '  ' || app || '  ' || n FROM (SELECT usename, coalesce(nullif(application_name,''),'-') AS app, count(*) AS n FROM pg_stat_activity WHERE datname='opsloop' AND usename IS NOT NULL GROUP BY 1,2) t ORDER BY 1" 2>/dev/null | sed 's/^/  /'

@@ -45,7 +45,7 @@ import reports as r
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = ROOT / "infra" / "schema.sql"
 # 참조되는 표가 먼저 오게 둔다
-TABLES = ["events", "rule_versions", "incidents", "actions", "verdicts", "blocklist", "nodes", "detector_runs",
+TABLES = ["events", "rule_versions", "incidents", "ai_recommendations", "actions", "verdicts", "blocklist", "nodes", "detector_runs",
           "node_metrics", "incident_absorbed", "notify_channels", "notify_deliveries", "cti_snapshots", "cti_kev",
           "cti_cve", "cti_osv", "cti_watch", "asset_inventory", "asset_vulnerabilities", "block_exempt", "test_ranges",
           "sensor_heartbeats"]

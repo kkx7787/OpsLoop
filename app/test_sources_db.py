@@ -67,7 +67,7 @@ class Base(unittest.IsolatedAsyncioTestCase):
         import asyncpg
         self.conn = await asyncpg.connect(os.environ["OPSLOOP_TEST_DATABASE_URL"])
         await self.conn.execute("SET search_path TO pg_temp")
-        tables = ["incidents", "verdicts", "actions", "events", "blocklist", "test_ranges", "rule_versions"]
+        tables = ["incidents", "ai_recommendations", "verdicts", "actions", "events", "blocklist", "test_ranges", "rule_versions"]
         tables += ["block_exempt"] * self.with_exempt + ["sensor_heartbeats"] * self.with_heartbeats
         tables += ["incident_absorbed"] * self.with_absorbed
         for name in tables:

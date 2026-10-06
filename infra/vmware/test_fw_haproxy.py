@@ -235,6 +235,12 @@ class Nftables(unittest.TestCase):
         # ext → uplink(인터넷 · 허니팟) 허용은 없다. 시연 흐름은 web-01 만 친다
         self.assertFalse(any('"ext"' in ln and "uplink" in ln for ln in fwd))
 
+    def test_AI_서버로는_데이터_노드의_22_하나만(self):
+        fwd = nft_chain(self.text, "forward")
+        ai = [ln for ln in fwd if "$AI_SERVER" in ln]
+        self.assertEqual(ai, ['ip saddr $DATA01 ip daddr $AI_SERVER oifname "uplink" tcp dport 22 accept'])
+        self.assertIn("define AI_SERVER = 192.168.217.248", nft_code(self.text))
+
     def test_외부_세그먼트에서_방화벽_자신에는_핑과_NTP_만(self):
         ext = [ln for ln in self.input if '"ext"' in ln and "!=" not in ln]
         self.assertEqual(ext, ['iifname "ext" icmp type echo-request accept', 'iifname "ext" udp dport 123 accept',

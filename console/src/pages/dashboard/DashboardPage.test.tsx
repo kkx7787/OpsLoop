@@ -530,6 +530,30 @@ describe('대시보드', () => {
     expect(screen.queryByRole('button', { name: '미결 설명' })).toBeNull()
   })
 
+  it('AI 추천 일치는 카드 아래 한 줄이고, AI 서버에 닿지 않으면 마지막 연결을 적되 경고색은 쓰지 않는다 · 정보가 없는 서버는 줄이 없다(#120)', async () => {
+    const status = { checked_at: '2026-10-06T06:05:00+00:00', reachable: true, last_ok_at: '2026-10-06T06:05:00+00:00', model: 'gpt-oss:20b', pending: 0, error: null }
+    stubDashboard({ summary: { ...MONITORING_SUMMARY, ai: { agreed: 12, judged: 14, status } } })
+    let view = renderPage()
+    let line = await screen.findByText('AI 추천 일치 12/14')
+    expect(line.closest('[data-ai-agreement]')).not.toHaveTextContent('연결 안 됨')
+    expect(screen.getByRole('button', { name: 'AI 추천 일치 설명' })).toHaveAccessibleDescription(/판정과 차단은 사람이 합니다/)
+    view.unmount()
+
+    stubDashboard({ summary: { ...MONITORING_SUMMARY, ai: { agreed: 0, judged: 0, status: { ...status, reachable: false, last_ok_at: '2026-10-06T04:00:00+00:00' } } } })
+    view = renderPage()
+    line = await screen.findByText('AI 추천 일치 아직 없음')
+    const row = line.closest('[data-ai-agreement]') as HTMLElement
+    expect(row).toHaveTextContent('AI 서버 연결 안 됨')
+    expect(row).toHaveTextContent('마지막 연결')
+    expect(row.querySelector('.text-warning')).toBeNull()
+    view.unmount()
+
+    stubDashboard()
+    renderPage()
+    await screen.findByText('6시간 12분')
+    expect(screen.queryByText(/AI 추천 일치/)).toBeNull()
+  })
+
   it('S-10: 실시간 끊김은 공통 띠 대신 관제 이상 띠의 끝 항목 하나이고 주기 조회를 ⓘ 로 안내하며 조회 상태를 지우지 않는다(#84)', async () => {
     stubDashboard()
     renderRoutes([{ path: '/', element: <LiveContext.Provider value={{ status: 'reconnecting', retries: 1 }}><DashboardPage /></LiveContext.Provider> }], '/', noRetryClient())

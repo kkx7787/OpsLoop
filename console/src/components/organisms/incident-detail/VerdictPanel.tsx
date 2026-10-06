@@ -15,6 +15,7 @@ import { Banner } from '../../molecules/Banner'
 import { FormField } from '../../molecules/FormField'
 import { InfoTip } from '../../molecules/InfoTip'
 import { Gated } from '../../molecules/Gated'
+import { AiRecommendationBox } from './AiRecommendationBox'
 import { decisionSeconds } from './format'
 
 /** 판정값 이름의 글자 색(배지 색 조합표에서 글자 색만). 클래스는 통째로 적는다(Tailwind 가 소스에서 읽는다) */
@@ -64,6 +65,9 @@ export function VerdictPanel({ detail, openedAt, blocked = false, expectedVersio
   const expanded = !foldable || open || verdict !== null || reason !== ''
   const emptyReason = reason.trim() === ''
   const proposal = detail.proposal
+  // AI 추천(이슈 #120). 판정 대기 사건에만 붙으므로, 추천 없이 이미 판정된 옛 사건에는 칸을 그리지 않는다
+  const ai = detail.ai ?? null
+  const showAi = ai !== null && (ai.recommendation !== null || !judged)
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -80,6 +84,7 @@ export function VerdictPanel({ detail, openedAt, blocked = false, expectedVersio
     }
     const trimmed = reason.trim()
     if (proposal?.verdict) input.proposed = proposal.verdict
+    if (ai?.recommendation) input.recommendation_id = ai.recommendation.id
     if (trimmed) input.reason = trimmed
     mutation.mutate(input, {
       onSuccess: (created) => {
@@ -130,6 +135,7 @@ export function VerdictPanel({ detail, openedAt, blocked = false, expectedVersio
                 </p>
               )}
             </div>
+            {showAi && <AiRecommendationBox ai={ai} chosen={verdict} />}
 
             <fieldset className="m-0 flex min-w-0 flex-col gap-1.5 border-0 p-0" aria-describedby={missing && !verdict ? missingId : undefined}>
               <legend className="mb-1.5 p-0 text-sm font-medium">판정값</legend>

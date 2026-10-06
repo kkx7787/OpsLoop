@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
+import type { AiSummary } from '@/api/ai'
 import type { BlockCounts, PointCounts, Summary } from '@/api/monitoring'
 import { cn } from '@/lib/cn'
 import { formatDuration } from '@/lib/time'
 import { Badge } from '../../atoms/Badge'
 import { Card } from '../../atoms/Card'
+import { Time } from '../../atoms/Time'
 import { InfoTip } from '../../molecules/InfoTip'
 import { undeterminedHref } from './target-format'
 
@@ -49,6 +51,7 @@ export function DashboardMetrics({ summary: data, stale = false, className }: Da
           tip={absorbedNote(data.absorbed_unblocked) ? { at: 'note', label: '첫 사건', content: FIRST_INCIDENT_NOTE } : undefined}
           warn={!!data.absorbed_unblocked?.sources || !!data.blocks?.mismatch} className="col-span-2 md:col-span-1" />
       </dl>
+      {data.ai && <AiLine ai={data.ai} />}
     </Card>
   )
 }
@@ -112,6 +115,41 @@ function undeterminedNote(n: number | undefined): ReactNode {
     </Link>
   )
 }
+
+/**
+ * AI 추천 일치 한 줄(이슈 #120). 관제자가 추천을 보고 남긴 판정 중 판정값이 추천과 같은 수다. AI 서버에 닿지 않으면(학교 밖)
+ * 마지막 연결 시각을 함께 적는다. 장애 표시(경고색)는 하지 않는다. 판정 · 차단은 영향을 받지 않는다
+ */
+function AiLine({ ai }: { ai: AiSummary }) {
+  const st = ai.status
+  const n = (v: number) => (Number.isFinite(v) ? v : 0).toLocaleString('ko-KR')
+  return (
+    <InfoTip
+      label="AI 추천 일치"
+      render={({ button, panel }) => (
+        <div className="border-t border-line px-4 py-2 text-xs text-ink-muted" data-ai-agreement="">
+          <span className="font-medium text-ink tabular-nums">AI 추천 일치 {ai.judged > 0 ? `${n(ai.agreed)}/${n(ai.judged)}` : '아직 없음'}</span>
+          {st && !st.reachable && (
+            <>
+              {' · AI 서버 연결 안 됨'}
+              {st.last_ok_at && (
+                <>
+                  {' '}(마지막 연결 <Time value={st.last_ok_at} format="relative" />)
+                </>
+              )}
+            </>
+          )}{' '}
+          {button}
+          {panel}
+        </div>
+      )}
+    >
+      {AI_NOTE}
+    </InfoTip>
+  )
+}
+
+const AI_NOTE = '관제자가 AI 추천을 보고 남긴 판정 중 판정값이 추천과 같은 수입니다. 추천은 판정이 아니며, 판정과 차단은 사람이 합니다.'
 
 const UNDETERMINED_NOTE = '최신 판정이 사람이 남긴 미결인 사건입니다. 시스템 전환 처리 제외.'
 

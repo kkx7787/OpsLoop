@@ -1,4 +1,5 @@
 import { keepPreviousData, useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from '@tanstack/react-query'
+import type { IncidentAi } from './ai'
 import { ACTION_STATUS, isIncidentAction, type IncidentAction, type IncidentStatus, type Severity, type Verdict } from '@/lib/domain'
 import { api } from './client'
 import { isApiError } from './errors'
@@ -123,6 +124,8 @@ export interface VerdictRecord {
   /** 이전 이력은 미기록(null), 미지원 서버는 생략될 수 있다. */
   proposed?: Verdict | null
   decision_seconds?: number | null
+  /** 판정할 때 본 AI 추천(이슈 #120). 추천 없이 남긴 판정 · 이전 서버는 생략 · null */
+  recommendation_id?: number | null
 }
 
 /** POST /verdict 의 201 응답. 기록 필드에 제안값 · 소요 시간 · 사건 키가 더 온다 */
@@ -348,6 +351,8 @@ export interface IncidentDetail extends IncidentBase {
   proposal?: { verdict: Verdict | null; reasons: string[] }
   /** 차단 적용 지점의 기본값 · 까닭 · 살아 있는 요청(이슈 #77). 이전 서버에는 없고 그때 확인 창은 지점을 보내지 않는다 */
   block_points?: BlockPointsInfo
+  /** AI 판정 추천과 작업기 상태(이슈 #120). 추천 표를 읽을 수 없는 서버 · 이전 서버는 생략 · null */
+  ai?: IncidentAi | null
 }
 
 /** GET /api/rules/quality 한 행(infra/schema.sql 의 rule_quality 뷰). 비율은 % 값이고 판정이 없으면 null */
@@ -404,6 +409,8 @@ export interface VerdictInput {
   proposed?: Verdict
   /** 판정 소요 초(0..86400) */
   decision_seconds?: number
+  /** 화면이 보인 AI 추천 번호(이슈 #120). 같은 사건의 정상 추천만 서버가 받는다. 추천 일치 수의 근거다 */
+  recommendation_id?: number
 }
 
 export interface ActionInput {

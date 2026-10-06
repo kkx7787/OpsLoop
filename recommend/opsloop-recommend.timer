@@ -1,0 +1,12 @@
+[Unit]
+Description=OpsLoop AI 판정 추천 주기 실행 (5분)
+
+[Timer]
+# 달력 타이머(OnCalendar)는 쓰지 않는다. 부팅 직후 VM 시계가 앞서면 다음 실행이 밀린다 (infra/vmware/README.md 시간 동기화).
+# 앞 회차가 아직 돌면 겹쳐 시작하지 않는다(oneshot 이 끝나야 다음이 선다)
+OnBootSec=3min
+OnUnitActiveSec=5min
+RandomizedDelaySec=20s
+
+[Install]
+WantedBy=timers.target

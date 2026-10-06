@@ -473,6 +473,52 @@ describe('IncidentDetailPage', () => {
     expect(within(history).getByText(new RegExp(comparison))).toHaveTextContent('소요')
   })
 
+  const AI_REC = { id: 41, created_at: '2026-10-06T06:00:00+00:00', model: 'gpt-oss:20b', prompt_version: 'p3-1006',
+    recommendation: 'threat', needs_human: false, guard: [], block_hours: 24, seconds: 5.1,
+    reasons: ['로그인 뒤 wget 으로 파일을 받았습니다.', '파일 투하는 위협 조건입니다.', '출발지 차단을 검토하십시오.'] } as const
+  const AI_UP = { checked_at: '2026-10-06T06:05:00+00:00', reachable: true, last_ok_at: '2026-10-06T06:05:00+00:00', model: 'gpt-oss:20b', pending: 0, error: null }
+
+  it('AI 추천을 판정 패널에 보이고 판정할 때 본 추천 번호를 함께 저장한다(#120)', async () => {
+    const fetch = stubApi({ body: detail({ ai: { recommendation: { ...AI_REC, reasons: [...AI_REC.reasons], guard: [] }, failed: 0, status: AI_UP } }) })
+    renderRoutes(routes(), PATH)
+    const { panel } = await readyPanel()
+    const box = panel.getByLabelText('AI 추천')
+    expect(box).toHaveTextContent('AI 추천 · 실제 위협')
+    expect(box).toHaveTextContent('로그인 뒤 wget 으로 파일을 받았습니다.')
+    fireEvent.click(panel.getByRole('radio', { name: /^무시 가능/ }))
+    expect(within(box).getByRole('status')).toHaveTextContent('AI 추천과 다름')
+    fireEvent.click(panel.getByRole('button', { name: '판정 기록' }))
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/verdict`, 'POST')).toMatchObject({ verdict: 'non_actionable', recommendation_id: 41 }))
+  })
+
+  it('AI 정보가 없는 서버 · 추천 없이 판정된 옛 사건에는 AI 칸이 없고 추천 번호를 보내지 않는다(#120)', async () => {
+    const fetch = stubApi()
+    renderRoutes(routes(), PATH)
+    const { panel } = await readyPanel()
+    expect(panel.queryByLabelText('AI 추천')).toBeNull()
+    fireEvent.click(panel.getByRole('radio', { name: /^미결/ }))
+    fireEvent.click(panel.getByRole('button', { name: '판정 기록' }))
+    await waitFor(() => expect(sentBody(fetch, `${incidentPath(KEY)}/verdict`, 'POST')).toBeDefined())
+    expect('recommendation_id' in sentBody(fetch, `${incidentPath(KEY)}/verdict`, 'POST')!).toBe(false)
+  })
+
+  it('이미 판정된 사건이라도 추천이 있었으면 재판정 때 보인다 · 없었으면 칸이 없다(#120)', async () => {
+    const judged = { status: 'resolved' as const, verdicts: [{ id: 1, verdict: 'threat' as const, proposed: null, decision_seconds: 30, reason: null,
+      observed_value: 3, operator: 'han', created_at: '2026-10-06T07:00:00Z', recommendation_id: null }] }
+    stubApi({ body: detail({ ...judged, ai: { recommendation: null, failed: 0, status: AI_UP } }) })
+    const first = renderRoutes(routes(), PATH)
+    let { panel } = await readyPanel()
+    fireEvent.click(panel.getByRole('button', { name: '재판정' }))
+    expect(panel.queryByLabelText('AI 추천')).toBeNull()
+    first.unmount()
+    vi.unstubAllGlobals()
+    stubApi({ body: detail({ ...judged, ai: { recommendation: { ...AI_REC, reasons: [...AI_REC.reasons], guard: [] }, failed: 0, status: AI_UP } }) })
+    renderRoutes(routes(), PATH)
+    ;({ panel } = await readyPanel())
+    fireEvent.click(panel.getByRole('button', { name: '재판정' }))
+    expect(panel.getByLabelText('AI 추천')).toHaveTextContent('실제 위협')
+  })
+
   it('저장된 제안 · 뒤집힘 · 소요 시간은 상세를 다시 열어도 보인다', async () => {
     stubApi({ body: detail({ status: 'resolved', verdicts: [{ id: 1, verdict: 'false_positive', proposed: 'threat', decision_seconds: 125, reason: '추가 확인', observed_value: 3, operator: 'han', created_at: '2026-09-18T08:00:00Z' }] }) })
     renderRoutes(routes(), PATH)
