@@ -86,6 +86,22 @@ class WorkflowDB(DbCase):
         self.assertEqual(await self.owner.fetchval('SELECT count(*) FROM verdicts'), 2)
         self.assertEqual(await self.owner.fetchval('SELECT count(*) FROM actions'), 0)
 
+    async def test_list_verdict_actor_and_time_belong_to_latest_verdict(self):
+        async with self.console.transaction(isolation='repeatable_read', readonly=True):
+            row = (await main.incident_page(self.console))['items'][0]
+        self.assertIsNone(row['verdict_operator'])
+        self.assertIsNone(row['verdict_at'])
+        with patch.object(main.app.state, 'pool', self.pool, create=True):
+            first = await main.add_verdict('case', main.VerdictIn(verdict='threat', expected_version='0:0'), self.req())
+            await main.add_verdict('case', main.VerdictIn(verdict='false_positive', expected_version=first['workflow_version']), self.req('two'))
+        async with self.console.transaction(isolation='repeatable_read', readonly=True):
+            row = (await main.incident_page(self.console))['items'][0]
+        latest = await self.owner.fetchrow('SELECT operator, created_at FROM verdicts ORDER BY id DESC LIMIT 1')
+        self.assertEqual(row['verdict'], 'false_positive')
+        self.assertEqual(row['verdict_operator'], 'two')
+        self.assertEqual(row['verdict_at'], latest['created_at'].isoformat())
+        self.assertEqual(await self.owner.fetchval('SELECT count(*) FROM verdicts'), 2)
+
     async def test_two_connections_compete_for_assignment_or_verdict_only_one_succeeds(self):
         import asyncpg
         async def auth(conn): await conn.execute(f'SET SESSION AUTHORIZATION {self.role}')

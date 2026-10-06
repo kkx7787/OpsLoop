@@ -211,6 +211,15 @@ class Nftables(unittest.TestCase):
         # 관문의 규칙 꼴과 접두만 다르다(gw- ↔ fw-)
         self.assertIn(log.replace("fw-block-drop", "gw-block-drop"), nft_chain(read(GATEWAY_NFT), "forward"))
 
+    def test_registered_senders_only_reach_ingest_and_consoles_only_reach_db(self):
+        code = nft_code(self.text)
+        self.assertIn('define LOG_SENDERS = { 192.168.50.21, 192.168.50.22 }', code)
+        fwd = nft_chain(self.text, 'forward')
+        self.assertEqual([r for r in fwd if '$LOG_SENDERS' in r],
+                         ['ip saddr $LOG_SENDERS ip daddr $DATA01 tcp dport $INGEST accept'])
+        self.assertEqual([r for r in fwd if '5432' in r],
+                         ['ip saddr $CONSOLES ip daddr $DATA01 tcp dport 5432 accept'])
+
     def test_외부_세그먼트는_web01_의_80_만_넘긴다(self):
         fwd = nft_chain(self.text, "forward")
         ext = [ln for ln in fwd if '"ext"' in ln]

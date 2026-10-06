@@ -714,8 +714,8 @@ class RouterTests(unittest.TestCase):
                     self.assertIn(clause, sql)
                 else:
                     self.assertNotIn(human, sql)
-        # 판정자(operator)는 목록 칸에 싣지 않는다
-        self.assertNotIn("v.operator", self.main.PAGE_COLUMNS)
+        # 판정값과 같은 최신 기록의 판정자를 목록에 함께 싣는다 (#118)
+        self.assertIn("v.operator AS verdict_operator", self.main.PAGE_COLUMNS)
         self.assertEqual(self.client.get("/api/incidents", params={"undetermined": "maybe"}).status_code, 422)
 
     def test_세션이_없으면_401_이다(self):

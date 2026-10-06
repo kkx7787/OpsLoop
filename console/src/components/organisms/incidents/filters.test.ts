@@ -154,3 +154,13 @@ describe('미결 조건(#83)', () => {
     expect(clearFilters({ undetermined: true, sort: 'recent' })).toEqual({ sort: 'recent' })
   })
 })
+
+
+describe('담당 조건 제거 (#118)', () => {
+  it('옛 담당 링크가 미판정 목록을 숨겨서 거르지 않고 주소 정리 때도 제거한다', () => {
+    const legacy = new URLSearchParams('assignment=mine&judged=false&device=web-02&sort=recent')
+    const filters = filtersFromSearch(legacy)
+    expect(filters).toEqual({ judged: false, device: 'web-02', sort: 'recent' })
+    expect(searchFromFilters(filters, legacy).has('assignment')).toBe(false)
+  })
+})

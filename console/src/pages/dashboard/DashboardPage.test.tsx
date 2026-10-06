@@ -76,7 +76,7 @@ describe('대시보드', () => {
     expect(await screen.findByRole('region', { name: 'web-01' })).toBeInTheDocument()
     // 관측 센서 · 관제 시스템은 수집 · 관제 상태 화면으로 옮겨 CVE 배지를 묻지 않는다(#84)
     await waitFor(() => expect(new Set(paths(fetch))).toEqual(new Set(['/api/me', '/api/stats/summary', '/api/dashboard/targets', '/api/dashboard/monitor', '/api/devices/web-01/logs'])))
-    expect(screen.getByRole('link', { name: '내 담당 미판정 →' })).toHaveAttribute('href', '/incidents?assignment=mine&judged=false')
+    expect(screen.getByRole('link', { name: '전체 미판정 →' })).toHaveAttribute('href', '/incidents?judged=false')
     // 보호 대상 카드는 최근 10줄만 묻는다(로그 화면 100줄과 캐시가 다르다)
     expect(fetch.mock.calls.map(([input]) => String(input))).toContain('/api/devices/web-01/logs?limit=10')
   })

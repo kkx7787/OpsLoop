@@ -50,6 +50,9 @@ export const UNCONFIRMED_DEVICE = '_unconfirmed'
 
 /** 목록 · 상세가 같이 갖는 사건 필드 */
 export interface IncidentBase {
+  /** 최신 판정 기록의 작성자와 저장 시각. 이전 서버 응답에는 없을 수 있다. */
+  verdict_operator?: string | null
+  verdict_at?: string | null
   assigned_to?: string | null
   assignee_available?: boolean
   workflow_version?: string

@@ -8,7 +8,7 @@ import { sensorOf } from '@/lib/domain'
 import { revealHidden } from '@/lib/untrusted'
 import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { UntrustedText } from '../../atoms/UntrustedText'
-import { VerdictBadge } from '../../atoms/VerdictBadge'
+import { IncidentVerdict } from './IncidentVerdict'
 import { CtiBadge } from '../../molecules/CtiBadge'
 import { DeviceBadges } from '../../molecules/DeviceBadges'
 import { ElapsedTime } from './ElapsedTime'
@@ -98,10 +98,9 @@ export function IncidentRow({ incident, elapsedSeconds, rowIndex, cti, className
       </div>
       <div role="cell">
         <IncidentStatusLabel status={incident.status} />
-        <div className="mt-1 text-xs text-ink-muted">담당 <UntrustedText value={incident.assigned_to} fallback="미배정" />{incident.assigned_to && incident.assignee_available === false && <span className="text-warning"> · 변경 필요</span>}</div>
       </div>
       <div role="cell">
-        {incident.verdict ? <VerdictBadge verdict={incident.verdict} /> : <span className="text-xs font-medium text-primary">미판정</span>}
+        <IncidentVerdict incident={incident} />
       </div>
     </div>
   )

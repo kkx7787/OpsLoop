@@ -7,7 +7,7 @@ import { useReturnTo } from '@/lib/returnTo'
 import { revealHidden } from '@/lib/untrusted'
 import { SeverityBadge } from '../../atoms/SeverityBadge'
 import { UntrustedText } from '../../atoms/UntrustedText'
-import { VerdictBadge } from '../../atoms/VerdictBadge'
+import { IncidentVerdict } from './IncidentVerdict'
 import { CtiBadge } from '../../molecules/CtiBadge'
 import { DeviceBadges } from '../../molecules/DeviceBadges'
 import { IncidentStatusLabel } from './IncidentStatusLabel'
@@ -62,8 +62,7 @@ export function IncidentCard({ incident, elapsedSeconds, cti, className, ...rest
         {incident.devices && <DeviceBadges source={incident} mode="compact" className="flex-wrap" />}
         <div className="flex items-center justify-between gap-2 border-t border-black/5 pt-2 text-xs">
           <IncidentStatusLabel status={incident.status} />
-        <div className="mt-1 text-xs text-ink-muted">담당 <UntrustedText value={incident.assigned_to} fallback="미배정" />{incident.assigned_to && incident.assignee_available === false && <span className="text-warning"> · 변경 필요</span>}</div>
-          {incident.verdict ? <VerdictBadge verdict={incident.verdict} /> : <span className="font-medium text-primary">미판정</span>}
+          <IncidentVerdict incident={incident} />
         </div>
       </Link>
     </li>
