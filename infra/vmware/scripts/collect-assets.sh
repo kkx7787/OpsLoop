@@ -8,7 +8,7 @@
 #    AWS 노드     SSM AWS-RunShellScript 에 probe.py 를 gzip · base64 로 실어 보내고 결과도 gzip · base64 로 받는다.
 #                 SSM 표준 출력은 24,000자에서 잘린다. 거기에 닿으면 그 자산은 '출력 한도 초과' 오류로 보낸다
 #  닿지 않는 노드(평소 꺼 둔 console-b 등)는 error 로 묶음에 넣는다. 적재기는 그 자산의 옛 조사 결과를 두고
-#  시도 기록만 고친다. AWS 자격이 없으면 AWS 두 대는 묶음에 넣지 않는다(옛 결과가 남고 콘솔에 '정보 오래됨'으로 보인다).
+#  시도 기록만 고친다. AWS 자격이 없으면 두 대의 인증 실패를 기록한다(옛 성공 결과는 보존한다).
 #  허니팟 출력은 장악된 호스트의 비신뢰 데이터다. 여기서는 JSON 인지 · 크기 · 중첩 깊이 · UTF-8 로 쓸 수 있는지만 보고
 #  (노드 하나가 묶음 전체를 깨지 못하게 그 자산에서 막는다), 형식 검증은 적재기가 한다. 묶음은 ASCII 로 쓴다.
 #  노드가 정하는 글자(표준 오류 · hostname)는 제어 문자를 '?' 로 바꿔 요약 · 오류 문구에 넣는다.
@@ -22,9 +22,9 @@
 #  (--dry-run 은 수집 결과로만 0 · 1 을 낸다)
 #
 #  자동 실행: install-assets-agent.sh 가 launchd 에 올려 매일 05:10 에 돌린다. launchd 안에서는 AWS 로그인이
-#  대개 만료돼 있어 AWS 두 대는 빠진다. 그 두 대는 aws login 뒤 손으로 돌린다:
+#  만료될 수 있다. 인증 실패를 기록하고 재시도한다. 바로 재개하려면 aws login 뒤 손으로 돌린다:
 #    infra/vmware/scripts/collect-assets.sh --only gateway,honeypot-dmz --aws
-#  필요: ~/.ssh/config.opsloop 의 별칭(web01 · fw · console-a · console-b · data01) · python3 · (AWS) aws CLI 로그인
+#  필요: ~/.ssh/config.opsloop 의 별칭(web01 · web02 · fw · console-a · console-b · data01) · python3 · (AWS) aws CLI 로그인
 # ============================================================
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -37,6 +37,7 @@ export AWS_PAGER=""   # aws CLI 가 터미널에서 less 를 띄워 멈추지 �
 # 자산 표 (고정). asset_id · 역할 · 방법 · 접속(ssh 별칭, SSM 은 실행 중 인스턴스의 Name 태그)
 ASSETS=(
   "web-01 target ssh web01"
+  "web-02 target ssh web02"
   "fw platform ssh fw"
   "console-a platform ssh console-a"
   "console-b platform ssh console-b"
@@ -58,7 +59,7 @@ import base64, binascii, gzip, json, os, re, subprocess, sys, zlib
 from datetime import datetime, timezone
 
 SSM_LIMIT = 24000              # get-command-invocation 표준 출력 상한(글자). 닿았으면 잘린 것이다
-MAX_PROBE = 2 * 1024 * 1024    # 자산 하나의 조사 출력 상한. 일곱 대를 합쳐도 적재기 묶음 상한(16 MiB) 안이다
+MAX_PROBE = 2 * 1024 * 1024    # 자산 하나의 조사 출력 상한. 자산 여덟 대의 최대 크기 합은 적재기 묶음 상한(16 MiB)에 가깝다
 MAX_STDERR = 64 * 1024        # 노드 표준 오류는 앞부분만 남긴다(오류 문구에는 끝 세 줄만 쓴다)
 MAX_ERROR = 500                # 적재기의 오류 문구 상한(512자) 안
 MAX_DEPTH = 16                 # 조사 출력의 중첩 상한. probe.py 는 4단이다 (probe → kernel → installed → 항목)
@@ -359,9 +360,9 @@ if [ "$need_aws" = 1 ]; then
   elif command -v aws >/dev/null 2>&1 && helper timeout 30 aws --region "$REGION" sts get-caller-identity >/dev/null 2>&1; then
     use_aws=1
   else
-    echo "AWS 자격이 없어 AWS 노드(gateway · honeypot-dmz)는 묶음에 넣지 않는다 (옛 결과가 남고 콘솔에 '정보 오래됨'으로 보인다)" >&2
+    echo "AWS 자격이 없어 AWS 노드(gateway · honeypot-dmz)의 인증 필요 상태를 기록한다 (옛 조사 결과는 유지)" >&2
     echo "  aws login 뒤 손으로 돌린다: infra/vmware/scripts/collect-assets.sh --only gateway,honeypot-dmz --aws" >&2
-    if [ "$AWS_MODE" = on ]; then aws_missing=1; fi
+    aws_missing=1
   fi
 fi
 
@@ -373,8 +374,13 @@ specs=()
 for a in "${sel[@]}"; do
   read -r id role method conn <<< "$a"
   if [ "$method" = ssm ]; then
-    [ "$use_aws" = 1 ] || continue
-    probe_ssm "$id" "$conn"
+    if [ "$use_aws" = 1 ]; then
+      probe_ssm "$id" "$conn"
+    elif [ "$aws_missing" = 1 ]; then
+      printf '%s\n' 'AWS 인증 확인 실패: 로그인 또는 인증 설정을 확인해야 자산 조사를 재개할 수 있습니다' > "$TMP/$id.err"
+    else
+      continue
+    fi
   else
     probe_ssh "$id" "$conn"
   fi

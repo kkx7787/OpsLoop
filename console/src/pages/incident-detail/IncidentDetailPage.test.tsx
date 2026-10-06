@@ -199,7 +199,8 @@ describe('IncidentDetailPage', () => {
     await panel.findByRole('button', { name: '최신 이력 확인 후 계속' })
     expect(panel.getByLabelText('메모 (선택)')).toHaveValue('현재 증거 확인 중')
     expect(panel.getByRole('button', { name: '차단 확정' })).toBeDisabled()
-    expect(panel.getByText('other')).toBeInTheDocument()
+    expect(panel.getByText(/다른 변경이 저장됐습니다/)).toBeInTheDocument()
+    expect(panel.queryByText('other')).not.toBeInTheDocument()
   })
 
   it('변경 토큰이 없는 이전 서버에는 조치·판정을 보내지 않는다(#105)', async () => {

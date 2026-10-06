@@ -358,7 +358,7 @@ PAGE_COLUMNS = f"""i.incident_key, i.rule_id, i.rule_version, i.rule_name, i.sev
                    host(i.actor_ip) AS actor_ip, i.target, i.first_ts, i.last_ts,
                    i.signal_count, i.session_count, i.status, i.created_at, i.assigned_to,
                    EXISTS (SELECT 1 FROM console_users u WHERE u.username=i.assigned_to AND u.disabled_at IS NULL AND u.role IN ('operator','admin')) AS assignee_available,
-                   v.verdict,
+                   v.verdict, v.operator AS verdict_operator, v.created_at AS verdict_at,
                    extract(epoch FROM (now() - i.first_ts))::bigint AS pending_seconds,
                    {targets.EVIDENCE_COLUMNS}"""
 
@@ -451,9 +451,9 @@ async def incident_page(c, *, status=None, severity=None, rule_id=None, rule_ver
                     "WHEN 'medium' THEN 2 ELSE 3 END, i.first_ts DESC",
         "recent":   "i.first_ts DESC",
     }[sort] + ", i.incident_key ASC"  # 같은 시각·등급도 페이지 사이 순서가 바뀌지 않게 한다.
-    # 최근 판정 하나만 붙인다. 재판정이 생겨도 목록에는 마지막 판단이 보여야 한다. 판정자(operator)는 미결 필터에만 쓰고 싣지 않는다
+    # 판정값·판정자·시각은 같은 최신 기록에서 읽는다. 담당 배정과 실제 판정자를 혼동하지 않는다.
     latest = """LEFT JOIN LATERAL (
-            SELECT verdict, operator FROM verdicts WHERE incident_key = i.incident_key
+            SELECT verdict, operator, created_at FROM verdicts WHERE incident_key = i.incident_key
             ORDER BY created_at DESC, id DESC LIMIT 1) v ON true"""
     base = f"""FROM incidents i
         {latest}

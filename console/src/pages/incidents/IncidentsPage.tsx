@@ -88,7 +88,7 @@ export function IncidentsPage() {
   }
 
   // 빠른 보기는 장비 · 정렬을 남긴다(#94). 선택 표시도 장비를 뺀 조건 수로 정한다
-  const others = active - (filters.device ? 1 : 0) - (filters.assignment ? 1 : 0)
+  const others = active - (filters.device ? 1 : 0)
   const quickViews: Array<{ label: string; filters: ListFilters; selected: boolean }> = [
     { label: '전체 사건', filters: {}, selected: others === 0 },
     { label: '미판정만', filters: { judged: false }, selected: others === 1 && filters.judged === false },

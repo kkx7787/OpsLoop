@@ -192,14 +192,14 @@ ssh -F ~/.ssh/config.opsloop fw 'set -e
 - 그 뒤 다른 판을 또 올려 `.prev` 가 바뀌었으면 `.prev` 대신 1 · 2번을 `C` 를 되돌릴 커밋으로 두고 다시 돌린다.
 
 **새 관제 대상 노드의 수집 허용 줄.** 관제 대상 노드(예: web-02)를 더할 때는 에이전트를 설치하기 전에 그 노드 → 수집 관문(192.168.60.11:3101) 허용 줄을 먼저 넣는다.
-저장소 기본 설정의 허용 줄은 web-01 하나뿐이다(`fw/nftables.conf` forward 체인의 `ip saddr $WEB01 ip daddr $DATA01 tcp dport $INGEST accept`). 줄이 없으면 그 노드는 관문에 닿지 못해 자기 등록부터 실패한다.
+저장소 기본 허용 목록은 web-01 · web-02다(`fw/nftables.conf`의 `LOG_SENDERS`, forward 체인의 `ip saddr $LOG_SENDERS ip daddr $DATA01 tcp dport $INGEST accept`). 줄이 없으면 그 노드는 관문에 닿지 못해 자기 등록부터 실패한다.
 
-1. 저장소 `fw/nftables.conf` 의 web-01 줄 옆에 그 노드 줄을 더하고 커밋한다. 방화벽에서 `nft add rule` 로만 넣지 않는다. 첫 줄 `flush ruleset` 때문에 다음 `nft -f` · 재부팅 때 사라진다.
+1. 저장소 `fw/nftables.conf`의 `LOG_SENDERS`에 새 노드 주소를 더하고 커밋한다. 방화벽에서 `nft add rule` 로만 넣지 않는다. 첫 줄 `flush ruleset` 때문에 다음 `nft -f` · 재부팅 때 사라진다.
 2. 커밋한 판을 위 2번(nftables)으로 올린다. 반영은 사람이 돌린다.
 3. 플레이북 대상도 손으로 맞춘다. `infra/ansible/inventory.ini` 의 `[targets]` 에 `node_id` · `node_addr` 줄을 더하고, `web01.yml` 의 `hosts: web01` 을 그 노드로 바꿔 돌린다. 구성 창(`provision` 집합)은 플레이북이 `node_addr` 로 연다. 등록 토큰 · 순서는 `infra/ansible/README.md`.
 4. 확인은 플레이북의 첫 수신 확인으로 한다. `scripts/verify.sh` 는 web-01 줄만 본다.
 
-허용 줄과 플레이북 대상 모두 수작업이다. 시연 범위에서 받아들인 한계다. 10/03 촬영의 web-02(192.168.50.22)는 실행 중 설정에 `opsloop-demo-web02` 허용 줄을 추가해 첫 수신·로그와 격리를 확인했다. VM과 등록 노드는 남겼으나 그 줄은 영속화하지 않았다. 방화벽 재적용·재부팅 뒤에는 그대로 수집된다고 가정하지 않는다. 근거와 남은 상태는 `docs/evidence/2026-10-03-release-review/summary.md` 다.
+허용 목록과 플레이북 대상은 수작업으로 관리한다. 10/03 촬영 당시 web-02 허용 줄은 임시였고, #118에서 영속 방화벽 설정·Ansible 인벤토리·자산 조사 목록에 반영했다. 새 노드는 SSH 별칭과 자산 조사 대상도 함께 추가해야 한다. 10/03 당시 상태는 `docs/evidence/2026-10-03-release-review/summary.md`에 보존한다. 실행 중 한 경로만 추가할 때도 차단 규칙·외부 세그먼트 거부 뒤에 두고, 전체 ruleset을 비워서 추가하지 않는다.
 
 ### 출발지 주소 · 작업 프로세스 권한 (이슈 #43)
 
@@ -1343,7 +1343,7 @@ Mac          collect-assets.sh (매일 05:10) ─ 노드마다 cti/probe.py ─�
 | 주기 | `opsloop-cti.timer` 부팅 15분 뒤 · 하루 간격 · 무작위 30분. 달력 타이머는 쓰지 않는다(위 '시간 동기화') |
 | 설정 | `/etc/default/opsloop-cti` (비밀 아님. 처음 설치 때만 만든다) · 상태 폴더 `/var/lib/opsloop-cti` |
 | 비밀 | `/etc/opsloop/cti.env` (DB 역할 `opsloop_cti`, 설치기가 만든다) · `/etc/opsloop/s3-cti.env` (S3 쓰기 사용자 키, Mac 에서 파이프로 넣는다). 둘 다 0640 root:opsloop-cti 이고 셸로 읽지 않는다 |
-| 자산 수집 | Mac `scripts/collect-assets.sh` (SSH 다섯 대 · SSM 두 대) · `scripts/install-assets-agent.sh` (launchd `local.opsloop.assets`, 기록 `~/opsloop-assets/assets.log`) |
+| 자산 수집 | Mac `scripts/collect-assets.sh` (SSH 여섯 대 · SSM 두 대) · `scripts/install-assets-agent.sh` (launchd `local.opsloop.assets`, 기록 `~/opsloop-assets/assets.log`) |
 | 주목 CVE 목록 | 저장소 `cti/watchlist.json` → 설치기가 `/opt/opsloop/cti/watchlist.json` 으로 함께 둔다 (아래 '주목 CVE 목록 바꾸기') |
 | 탐지 규칙 | `detector/rules_cve.json`(c1: R105 제품 식별 탐색 · R106 알려진 취약점 공격 시도). 1분 다리(`opsloop-agents`)가 s1 · w2 · a1 · i2 다음에 돌린다 |
 | Sigma 규칙 | `detector/rules_sigma.json`(sg1: R107 공개 규칙(Sigma) 웹 공격 요청, 이슈 #54). `detector/sigma_convert.py build` 가 `detector/sigma/`(원본 · 선정표 · 출처)에서 만든다. 1분 다리가 c1 다음에 돌린다 |
@@ -1385,9 +1385,10 @@ infra/vmware/scripts/install-assets-agent.sh
 ```
 
 - 적재기는 받은 자산의 배포판 대조(OSV)를 바로 한다. 자산 CVE 의 NVD 정보는 다음 회차에 채워진다.
-- **AWS 두 대(gateway · honeypot-dmz)는 로그인 뒤 손으로 돌린다.** launchd 안에서는 AWS 로그인이 대개 만료돼 있어
-  빠진다. `aws login` 뒤 `infra/vmware/scripts/collect-assets.sh --only gateway,honeypot-dmz --aws`. 빠진 날은 옛
-  결과가 남고, 48시간이 지나면 콘솔에 '정보 오래됨'(해당 여부 미확인)으로 보인다.
+- **정기 실행과 실패 복귀:** `assets-schedule.py`가 마지막 종료 상태를 저장한다. 매일 05:10 KST가 기준이며 로그인 때와 15분마다 실행 필요 여부를 확인한다. 일부 실패는 4시간, 연결·시계·적재 실패는 15분 뒤 재시도한다. 중복 실행은 파일 잠금으로 막고 20분을 넘는 수집 프로세스 묶음은 종료한다. 새 일일 실행 구간에는 이전 결과와 관계없이 다시 시도한다.
+- **AWS 인증은 사용자가 갱신한다.** 인증이 없으면 두 자산의 실패 사유를 적재하고 옛 성공 결과를 보존한다. `aws login` 후 바로 조사하려면 `python3 infra/vmware/scripts/assets-schedule.py`를 실행한다. UI 새로고침은 저장된 정보를 다시 읽을 뿐 원격 자산 조사를 실행하지 않는다. `--no-aws`는 사용자가 명시한 생략이다.
+- Mac이 꺼져 있거나 잠든 동안에는 작업이 돌지 않는다. 실행 중 잠자기 방지는 예약 시각의 실행 보장이 아니다. data01 연결·시계 검사가 실패하면 S3 서명·적재를 시작하지 않는다. AWS 인증 갱신, 꺼진 VM 기동은 자동으로 하지 않는다.
+- `~/opsloop-assets/schedule.json`은 최근 회차의 종료 상태, `assets.log`는 자산별 실패 기록이다. UI에는 마지막 성공 수집과 최근 시도를 구분해 표시한다. 48시간을 넘으면 취약점 수는 이전 자산 정보 기준이며, 주목 CVE의 미확인은 사람의 판정 대기가 아니다.
 - 평소 꺼 둔 console-b 는 연결 실패로 보내져 옛 결과를 두고 시도 기록만 고친다(종료 코드 1, 알림 없음).
 - **`20260924_db_roles.sql` 을 다시 적용하면 `20260925_cti.sql` 도 다시 적용한다.** `20260924_db_roles.sql` 은 콘솔
   역할의 표 권한을 먼저 모두 거두고 정해 둔 표만 다시 주므로 콘솔의 CTI 표 읽기가 사라진다(콘솔 API 의 취약점 연계 ·

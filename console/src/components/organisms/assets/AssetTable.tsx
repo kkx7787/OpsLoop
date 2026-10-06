@@ -55,10 +55,13 @@ export function AssetTable({ rows, selected, onSelect }: AssetTableProps) {
                 {r.reboot_pending && <Badge tone="orange" className="mt-1" title={`설치된 최신 커널 ${revealHidden(r.kernel_newest_version ?? '—')}`}>재부팅 대기</Badge>}
               </td>
               <td data-label="조사 상태" className={`${cell} text-xs`}>
-                {!r.last_error && !r.check_error ? <span className="text-ink-muted">{checked ? '대조 완료' : '대조 대기'}</span> : <details><summary className="cursor-pointer text-warning">{r.last_error ? '수집 실패' : '대조 실패'}</summary>
+                {!r.last_error && !r.check_error ? <span className={r.stale ? 'text-warning' : 'text-ink-muted'}>{r.stale ? '자산 정보 갱신 필요' : checked ? '대조 완료' : '대조 대기'}</span> : <details><summary className="cursor-pointer text-warning">{r.last_error ? '수집 실패' : '대조 실패'}</summary>
                   {r.last_error && <div className="mt-2 break-words text-danger">수집 · <UntrustedText value={r.last_error} max={200} /></div>}
                   {r.check_error && <div className="mt-2 break-words text-warning">대조 · <UntrustedText value={r.check_error} max={200} /></div>}
                 </details>}
+                {r.last_attempt_at && <div className="mt-1 text-ink-muted">최근 수집 시도 <Time value={r.last_attempt_at} format="short" /></div>}
+                {r.checked_at && <div className="mt-1 text-ink-muted">대조 <Time value={r.checked_at} format="short" /></div>}
+                {r.stale && checked && <div className="mt-1 text-ink-muted">취약점 수는 이전 자산 정보 기준</div>}
               </td>
             </tr>
           })}</tbody>

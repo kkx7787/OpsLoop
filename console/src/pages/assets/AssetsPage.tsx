@@ -63,8 +63,9 @@ export function AssetsPage() {
       <EmptyState title="공개 취약점 정보 표가 아직 없습니다" description="수집 상태를 확인해 주세요." />
     ) : <>
       {stale.length > 0 && <Banner tone="warning">공개 정보가 오래됐습니다. 비해당으로 읽지 않습니다. 오래된 출처: {stale.join(' · ')}</Banner>}
+      {(data.freshness?.assets.stale_assets.length ?? 0) > 0 && <Banner tone="warning" title="최신 자산 정보를 확인하지 못했습니다">{data.freshness?.assets.stale_assets.length}대의 자산 정보가 48시간을 넘었거나 없습니다. 아래 취약점 수는 마지막 수집 결과 기준입니다. 자동 조사 실행 기록과 대상 연결 상태를 확인해 주세요.</Banner>}
       {data.freshness && <details className="rounded-panel border border-line px-3 py-2 text-xs text-ink-muted">
-        <summary className="cursor-pointer">공개 정보 신선도 · <Time value={data.as_of} format="time" zone /> 조회 기준</summary>
+        <summary className="cursor-pointer">공개 정보·자산 수집 시각 · <Time value={data.as_of} format="time" zone /> 조회 기준</summary>
         <div className="mt-3"><CtiFreshnessFacts freshness={data.freshness} /></div>
         <ul className="m-0 mt-3 list-none space-y-0.5 p-0 leading-5">
           <li>48시간 넘게 새로 받지 못하면 오래됨입니다.</li>

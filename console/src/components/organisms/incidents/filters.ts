@@ -50,8 +50,7 @@ export function filtersFromSearch(params: URLSearchParams): ListFilters {
   if (actorIp && isIpAddress(actorIp)) out.actor_ip = actorIp
   const device = params.get('device')?.trim()
   if (isDeviceId(device)) out.device = device
-  const assignment = params.get('assignment')
-  if (assignment === 'mine' || assignment === 'unassigned') out.assignment = assignment
+  // 이전 담당 링크는 전체 목록으로 연다. 보이지 않는 담당 조건으로 사건을 숨기지 않는다.
   const sort = params.get('sort')
   if (isSort(sort) && sort !== DEFAULT_SORT) out.sort = sort
   return out
@@ -67,7 +66,6 @@ export function searchFromFilters(filters: ListFilters, base?: URLSearchParams):
   if (filters.judged !== undefined) params.set('judged', String(filters.judged))
   if (filters.undetermined) params.set('undetermined', 'true')
   if (filters.actor_ip) params.set('actor_ip', filters.actor_ip)
-  if (filters.assignment) params.set('assignment', filters.assignment)
   if (filters.device) params.set('device', filters.device)
   if (filters.sort && filters.sort !== DEFAULT_SORT) params.set('sort', filters.sort)
   return params
@@ -83,7 +81,6 @@ export function countFilters(filters: ListFilters): number {
   if (filters.undetermined) n++
   if (filters.actor_ip) n++
   if (filters.device) n++
-  if (filters.assignment) n++
   return n
 }
 
@@ -95,7 +92,6 @@ export function clearFilters(filters: ListFilters): ListFilters {
 /** 빠른 보기. 장비 · 정렬은 남기고 나머지 조건만 바꾼다(#94). '전체 사건' 도 고른 장비의 전체다 */
 export function quickViewFilters(current: ListFilters, view: ListFilters): ListFilters {
   const out: ListFilters = { ...view }
-  if (current.assignment) out.assignment = current.assignment
   if (current.device) out.device = current.device
   if (current.sort) out.sort = current.sort
   return out

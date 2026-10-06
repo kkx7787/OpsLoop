@@ -2970,7 +2970,9 @@ class RearmPgTest(PgBase):
                  " signal_count) VALUES (%s, 'R001', 'v3', '시험 규칙', 'high', %s, now(), now(), 1)", (key, self.IP))
 
         def rearm():                                                # R001 의 기본값은 내부 방화벽만이다
-            self.assertIsNone(tr.record(self.app, key, self.IP, "threat", "근거", 1.0, "han", None, True))
+            with self.app.cursor() as cur:
+                version = tr.workflow_version(cur, key)
+            self.assertIsNone(tr.record(self.app, key, self.IP, "threat", "근거", 1.0, "han", None, True, expected_version=version))
         self.scenario(self.expire, rearm, "console.block.extended")
 
     def test_흡수_후속_차단(self):
@@ -3173,7 +3175,9 @@ class RearmPgTest(PgBase):
                  " signal_count) VALUES (%s, 'R004', 'v3', '시험 규칙', 'high', %s, now(), now(), 1)", (key, self.IP))
 
         def rearm():                                                # R004 의 기본값은 관문 + 내부 방화벽이다
-            self.assertIsNone(tr.record(self.app, key, self.IP, "threat", "근거", 1.0, "han", None, True))
+            with self.app.cursor() as cur:
+                version = tr.workflow_version(cur, key)
+            self.assertIsNone(tr.record(self.app, key, self.IP, "threat", "근거", 1.0, "han", None, True, expected_version=version))
         return rearm
 
     def triage_gw(self, case):

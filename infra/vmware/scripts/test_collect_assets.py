@@ -37,10 +37,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 COLLECT = os.path.join(HERE, "collect-assets.sh")
 INSTALL = os.path.join(HERE, "install-assets-agent.sh")
 AGENT = os.path.join(HERE, "assets-agent.sh")
+SCHEDULE = os.path.join(HERE, "assets-schedule.py")
 CTI = os.path.normpath(os.path.join(HERE, "..", "..", "..", "cti"))
 PROBE = os.path.join(CTI, "probe.py")
 BASH = "/bin/bash" if os.path.exists("/bin/bash") else shutil.which("bash")
-SSH_ASSETS = ["web-01", "fw", "console-a", "console-b", "data-01"]
+SSH_ASSETS = ["web-01", "web-02", "fw", "console-a", "console-b", "data-01"]
 ALL_ASSETS = SSH_ASSETS + ["gateway", "honeypot-dmz"]
 LOAD_CMD = "sudo -n -u opsloop-cti /usr/local/bin/opsloop-cti load-assets"
 
@@ -53,6 +54,9 @@ while i < len(args) and args[i].startswith("-"):
     opts += args[i:i + 2]
     i += 2
 alias, cmd = args[i], " ".join(args[i + 1:])
+if cmd == "date +%s":
+    print(int(time.time()))
+    sys.exit(0)
 data = sys.stdin.buffer.read()
 with open(os.environ["FAKE_SSH_LOG"], "a") as f:
     f.write(json.dumps({{"opts": opts, "alias": alias, "cmd": cmd,
@@ -313,7 +317,7 @@ class CollectTest(unittest.TestCase):
             self.assertTrue(a["error"].startswith("연결 실패: ssh: connect to host"), a["error"])
         self.assertEqual((by["web-01"]["role"], by["fw"]["role"], by["data-01"]["method"]), ("target", "platform", "ssh"))
         self.assertFalse([c for c in self.ssh_calls() if "load-assets" in c["cmd"]], "시험 실행은 보내지 않는다")
-        self.assertIn("수집 0 · 실패 5", r.stderr)
+        self.assertIn("수집 0 · 실패 6", r.stderr)
         self.assertIn("시험 실행: 적재기에 보내지 않았다", r.stderr)
         self.assertEqual(self.aws_calls(), [])
 
@@ -339,7 +343,7 @@ class CollectTest(unittest.TestCase):
             probe_sha = hashlib.sha256(f.read()).hexdigest()
         calls = self.ssh_calls()
         probes = [c for c in calls if "load-assets" not in c["cmd"]]
-        self.assertEqual([c["alias"] for c in probes], ["web01", "fw", "console-a", "console-b", "data01"])
+        self.assertEqual([c["alias"] for c in probes], ["web01", "web02", "fw", "console-a", "console-b", "data01"])
         cfg = os.path.join(self.home, ".ssh", "config.opsloop")
         for c in probes:
             self.assertEqual(c["opts"], ["-F", cfg, "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"])
@@ -358,7 +362,7 @@ class CollectTest(unittest.TestCase):
         by = self.assert_bundle(self.loaded(), SSH_ASSETS)
         self.assertIn("error", by["console-b"])
         self.assertIn("probe", by["web-01"])
-        self.assertIn("수집 4 · 실패 1", r.stderr)
+        self.assertIn("수집 5 · 실패 1", r.stderr)
 
     def test_적재가_실패하면_2(self):
         self.fake_ssh()
@@ -443,9 +447,9 @@ class CollectTest(unittest.TestCase):
                     self.assertTrue(by["console-b"]["error"].startswith("조사 출력"), by["console-b"]["error"])
                     self.assertTrue(all(by[a]["host"] is None for a in ("web-01", "fw", "console-a", "console-b")))
                     self.assertEqual(by["data-01"]["probe"]["hostname"], "opsloop-data01")
-                    self.assertIn("수집 1 · 실패 4", r.stderr)
+                    self.assertIn("수집 2 · 실패 4", r.stderr)
                     kinds = [e["kind"] for e in loader_entries(body)]
-                    self.assertEqual(kinds, ["error", "error", "error", "error", "probe"])
+                    self.assertEqual(kinds, ["error", "probe", "error", "error", "error", "probe"])
 
     def test_노드가_보낸_제어_문자는_요약과_error_에_남지_않는다(self):
         # 노드가 정하는 표준 오류 · hostname 의 터미널 제어 순서가 그대로 찍히면 '실패' 줄을 지우고 가짜 '수집' 줄을 보일 수 있다
@@ -521,12 +525,14 @@ class CollectTest(unittest.TestCase):
         self.assertNotIn("set -euo", r.stdout)
 
     # ── AWS 자격 ────────────────────────────────────────────
-    def test_자격이_없으면_AWS_두_대를_빼고_안내한다(self):
+    def test_자격이_없으면_AWS_두_대의_실패를_기록한다(self):
         self.fake_ssh()
         self.fake_aws(sts="fail")
         r = self.run_collect(FAKE_SSH_DEFAULT="probe")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assert_bundle(self.loaded(), SSH_ASSETS)
+        self.assertEqual(r.returncode, 1, r.stderr)
+        by = self.assert_bundle(self.loaded(), ALL_ASSETS)
+        self.assertIn('AWS 인증 확인 실패', by['gateway']['error'])
+        self.assertNotIn('probe', by['honeypot-dmz'])
         self.assertIn("aws login 뒤 손으로 돌린다: infra/vmware/scripts/collect-assets.sh --only gateway,honeypot-dmz --aws",
                       r.stderr)
         self.assertEqual([(c["svc"], c["op"]) for c in self.aws_calls()], [("sts", "get-caller-identity")])
@@ -536,7 +542,7 @@ class CollectTest(unittest.TestCase):
         self.fake_aws(sts="fail")
         r = self.run_collect("--aws", FAKE_SSH_DEFAULT="probe")
         self.assertEqual(r.returncode, 1, r.stderr)
-        self.assert_bundle(self.loaded(), SSH_ASSETS)
+        self.assert_bundle(self.loaded(), ALL_ASSETS)
 
     def test_no_aws_는_aws_를_부르지_않는다(self):
         self.fake_ssh()
@@ -546,11 +552,11 @@ class CollectTest(unittest.TestCase):
         self.assert_bundle(json.loads(r.stdout), SSH_ASSETS)
         self.assertEqual(self.aws_calls(), [])
 
-    def test_aws_가_없으면_AWS_두_대를_뺀다(self):
+    def test_aws_가_없으면_AWS_두_대를_실패로_남긴다(self):
         self.fake_ssh()
         r = self.run_collect("--dry-run", FAKE_SSH_DEFAULT="probe")
-        self.assertEqual(r.returncode, 0, r.stderr)
-        self.assert_bundle(json.loads(r.stdout), SSH_ASSETS)
+        self.assertEqual(r.returncode, 1, r.stderr)
+        self.assert_bundle(json.loads(r.stdout), ALL_ASSETS)
         self.assertIn("AWS 자격이 없어", r.stderr)
 
     # ── SSM ─────────────────────────────────────────────────
@@ -597,7 +603,7 @@ class CollectTest(unittest.TestCase):
         self.assertEqual(r.returncode, 1, r.stderr)
         entries = loader_entries(r.stdout.encode("utf-8"))
         self.assertEqual({e["asset_id"]: e["kind"] for e in entries},
-                         {"web-01": "probe", "fw": "probe", "console-a": "probe", "console-b": "error",
+                         {"web-01": "probe", "web-02": "probe", "fw": "probe", "console-a": "probe", "console-b": "error",
                           "data-01": "probe", "gateway": "probe", "honeypot-dmz": "probe"},
                          [(e["asset_id"], e.get("error")) for e in entries])
         by = {e["asset_id"]: e for e in entries}
@@ -689,11 +695,13 @@ class LaunchdTest(unittest.TestCase):
         with open(plist, "rb") as f:
             p = plistlib.load(f)
         self.assertEqual(p["Label"], "local.opsloop.assets")
-        self.assertEqual(p["ProgramArguments"], ["/bin/bash", os.path.join(binp, "assets-agent.sh")])
+        self.assertEqual(p["ProgramArguments"], ["/bin/bash", os.path.join(binp, "assets-agent.sh"), '--scheduled'])
+        self.assertTrue(p['RunAtLoad'])
+        self.assertEqual(p['StartInterval'], 900)
         self.assertEqual(p["StartCalendarInterval"], {"Hour": 5, "Minute": 10})
         self.assertEqual(p["StandardOutPath"], os.path.join(dest, "assets.log"))
         self.assertEqual(p["StandardErrorPath"], os.path.join(dest, "assets.log"))
-        for name, src in (("collect-assets.sh", COLLECT), ("assets-agent.sh", AGENT), ("probe.py", PROBE)):
+        for name, src in (("collect-assets.sh", COLLECT), ("assets-agent.sh", AGENT), ('assets-schedule.py', SCHEDULE), ("probe.py", PROBE)):
             self.assertEqual(self.read(os.path.join(binp, name)), self.read(src), name)
         self.assertEqual(os.stat(dest).st_mode & 0o777, 0o700)
         uid = os.getuid()
@@ -701,7 +709,8 @@ class LaunchdTest(unittest.TestCase):
         self.assertEqual(calls, ["bootout gui/%d/local.opsloop.assets" % uid, "bootstrap gui/%d %s" % (uid, plist),
                                  "kickstart gui/%d/local.opsloop.assets" % uid])
         self.assertIn("매일 05:10", r.stdout)
-        self.assertIn("aws login 뒤 손으로", r.stdout)
+        self.assertIn("AWS 인증 갱신: aws login", r.stdout)
+        self.assertIn("python3 infra/vmware/scripts/assets-schedule.py", r.stdout)
 
         open(os.path.join(dest, "assets.log"), "w").close()
         r = subprocess.run([BASH, INSTALL, "--remove"], env=self.env, capture_output=True, text=True, timeout=60)
@@ -727,8 +736,12 @@ class LaunchdTest(unittest.TestCase):
         binp = os.path.join(self.t, "agent-bin")
         os.makedirs(binp, exist_ok=True)
         shutil.copy(AGENT, binp)
+        shutil.copy(SCHEDULE, binp)
+        write_exec(os.path.join(self.bin, 'ssh'), '#!/bin/bash\ndate +%s\n')
+        write_exec(os.path.join(self.bin, 'caffeinate'), '#!/bin/sh\nexit 0\n')
+        write_exec(os.path.join(self.bin, 'osascript'), '#!/bin/sh\nprintf \"%s\\n\" \"$*\" >> \"$FAKE_OSA_LOG\"\n')
         write_exec(os.path.join(binp, "collect-assets.sh"), '#!/bin/bash\necho "가짜 수집"\nexit "${FAKE_RC:-0}"\n')
-        return subprocess.run([BASH, os.path.join(binp, "assets-agent.sh")], env=dict(self.env, FAKE_RC=str(rc)),
+        return subprocess.run([sys.executable, os.path.join(binp, "assets-schedule.py")], env=dict(self.env, FAKE_RC=str(rc)),
                               capture_output=True, text=True, timeout=60)
 
     def test_실행기_종료_코드와_알림(self):
@@ -744,7 +757,7 @@ class LaunchdTest(unittest.TestCase):
         self.assertEqual(r.returncode, 2)
         self.assertIn("자산 수집 실패 (종료 코드 2)", r.stdout)
         osa = self.read(self.osa_log)
-        self.assertIn('with title "OpsLoop 자산 수집 실패"', osa)
+        self.assertIn('OpsLoop 자산 수집 실패', osa)
         self.assertIn("종료 코드 2", osa)
 
 

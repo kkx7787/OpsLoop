@@ -51,7 +51,7 @@ export function DashboardPage() {
   const summaryError = <ApiErrorState error={query.error} onRetry={() => void query.refetch()} retrying={query.isFetching} titleAs="h3" />
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      <PageHeader title="관제 현황" badges={<div className="flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium">{(me.data?.role === 'operator' || me.data?.role === 'admin') && <Link to="/incidents?assignment=mine&judged=false">내 담당 미판정 →</Link>}{(data || queue) && <a href="/#pending-incidents" className="hidden md:inline-flex">판정 대기로 이동 ↓</a>}</div>} status={<PageRefresh parts={parts} announce />} />
+      <PageHeader title="관제 현황" badges={<div className="flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium">{(me.data?.role === 'operator' || me.data?.role === 'admin') && <Link to="/incidents?judged=false">전체 미판정 →</Link>}{(data || queue) && <a href="/#pending-incidents" className="hidden md:inline-flex">판정 대기로 이동 ↓</a>}</div>} status={<PageRefresh parts={parts} announce />} />
       <ControlHealthBand health={health} live={live.status} />
       <TargetBoard
         data={targets.data}

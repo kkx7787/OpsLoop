@@ -42,6 +42,15 @@ export function RulesPage() {
   const comparison = [...new Set(data?.rows.filter(r => [base, compare].includes(r.rule_version)).map(r => r.rule_id))].sort()
   return <div className="flex min-w-0 flex-col gap-4">
     <PageHeader title="규칙 · 리플레이" description="판정 결과와 규칙 버전별 저장 결과를 비교합니다." />
+    <details className="rounded-panel border border-line px-3 py-2 text-xs text-ink-muted">
+      <summary className="cursor-pointer">판정이 규칙 개선으로 이어지는 과정</summary>
+      <ol className="mb-0 space-y-1 pl-5 leading-5">
+        <li>사건별 마지막 판정으로 규칙·버전별 비조치율과 오탐률을 집계합니다. 화면을 보고 있는 동안 30초마다 갱신하며 판정 저장 통보를 받으면 다시 조회합니다. 시험 출발지는 집계에서 제외됩니다.</li>
+        <li>운영자가 근거를 검토해 후보 규칙을 만들고 같은 입력 구간으로 리플레이합니다. 이 화면은 저장된 결과를 비교하며 규칙 수정이나 리플레이 실행은 운영 도구에서 합니다.</li>
+        <li>오탐 감소뿐 아니라 놓친 위협도 확인한 뒤 관리자가 적용할 버전을 결정합니다. 판정 저장이나 화면 갱신만으로 임계치·버전이 자동 변경되지는 않습니다.</li>
+      </ol>
+      <p className="mb-0 leading-5">R 번호는 프로젝트 내부 규칙 식별자이며 심각도 순서가 아닙니다. v·w·c·sg 등은 서로 다른 규칙 묶음이고, 뒤 숫자는 해당 묶음의 개정 번호입니다. 정의상 활성 여부와 실제 실행 기록을 함께 확인하세요.</p>
+    </details>
     <MonitoringStatus updatedAt={query.dataUpdatedAt} error={data ? query.error : null} onRetry={() => void query.refetch()} busy={query.isFetching} />
     <Card><form onSubmit={filter} className="grid gap-3 sm:flex sm:flex-wrap sm:items-end">
       <label htmlFor="rules-field-0" className="grid gap-1 text-xs">시작 (KST)<Input id="rules-field-0" type="datetime-local" value={start} onChange={e => setStart(e.target.value)} /></label>

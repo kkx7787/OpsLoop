@@ -12,8 +12,8 @@ import { LoadingState } from '@/components/organisms/states/LoadingState'
 import { revealHidden } from '@/lib/untrusted'
 import { APPLICABILITY_TONE, cvssTone, formatCvss, formatPercentile, formatProbability, ransomwareLabel, staleSources, ubuntuPriorityLabel, ubuntuPriorityTone } from './cti-format'
 
-const HEAD = ['CVE', '주목 이유', 'KEV', 'EPSS (백분위)', '판정', '자산별 판정']
-const ASSET_HEAD = ['자산', '판정', '패키지', '설치 버전', '배포판 수정판', '이유']
+const HEAD = ['CVE', '주목 이유', 'KEV', 'EPSS (백분위)', '자산 해당 여부', '자산별 해당 여부']
+const ASSET_HEAD = ['자산', '해당 여부', '패키지', '설치 버전', '배포판 수정판', '이유']
 const cell = 'px-4 py-3 align-top'
 const subCell = 'px-2.5 py-1.5 align-top shadow-hairline'
 
@@ -35,6 +35,7 @@ export interface WatchCardProps {
 export function WatchCard({ data, pending, fetching, error, onRetry }: WatchCardProps) {
   const rows = data?.available ? data.rows : []
   const affected = rows.filter((r) => r.summary === 'affected').length
+  const unknown = rows.filter((r) => r.summary === 'unknown').length
   const stale = data?.available ? staleSources(data.freshness) : []
   return (
     <Card padding="none" className="min-w-0" role="region" aria-label="주목 CVE">
@@ -42,7 +43,7 @@ export function WatchCard({ data, pending, fetching, error, onRetry }: WatchCard
         title="주목 CVE"
         aside={data?.available ? <>
           {stale.length > 0 && <Badge tone="warning" className="whitespace-normal">오래됨({stale.join(' · ')}) · 비해당 보류</Badge>}
-          <span>{rows.length}건 · 해당 {affected}건 · <Time value={data.as_of} format="time" zone /> 기준</span>
+          <span>{rows.length}건 · 해당 {affected}건 · 미확인 {unknown}건 · <Time value={data.as_of} format="time" zone /> 조회</span>
         </> : undefined}
       />
       {pending ? <LoadingState className="m-4" /> : !data ? (
@@ -59,7 +60,9 @@ export function WatchCard({ data, pending, fetching, error, onRetry }: WatchCard
 function WatchBody({ data, error }: { data: WatchResult; error: unknown }) {
   return <>
     <div className="flex flex-col gap-3 p-4">
-      <p className="m-0 text-xs leading-5 text-ink-muted">정해 둔 CVE 마다 자산의 설치 버전을 배포판(Ubuntu) 수정판과 견줍니다.</p>
+      <p className="m-0 text-xs leading-5 text-ink-muted">정해 둔 CVE마다 자산의 설치 버전을 배포판(Ubuntu) 수정판과 자동 대조합니다. 미확인은 대조 근거 부족이며, 사람의 판정 대기가 아닙니다. CVE를 펼치면 자산별 이유를 볼 수 있습니다.</p>
+      <details className="text-xs leading-5 text-ink-muted"><summary className="cursor-pointer">선정·갱신 기준</summary><p className="mb-0">현재 자산과의 관련성·영향·알려진 악용 여부를 고려해 운영자가 선정한 목록입니다. 점수순 자동 선정은 아니며 목록 변경은 운영 설정 파일에서 반영합니다. 공개 정보와 자산 정보가 갱신되면 다음 조회에서 다시 대조합니다. 화면 새로고침은 저장된 정보를 다시 조회하며 자산 조사를 실행하지 않습니다.</p></details>
+      {(data.freshness?.assets.stale_assets.length ?? 0) > 0 && <Banner tone="warning" title="자산 정보 갱신 필요">{data.freshness?.assets.stale_assets.join(' · ')} · 수집한 지 48시간을 넘었거나 정보가 없습니다. 해당 0건이어도 미확인 항목이 있으면 안전이 확인된 뜻이 아닙니다.</Banner>}
       {error ? <Banner tone="danger" title="다시 받지 못했습니다">{describeError(error)} · 이전 결과를 보입니다</Banner> : null}
     </div>
     {data.rows.length === 0
@@ -104,10 +107,10 @@ function WatchTable({ rows }: { rows: WatchRow[] }) {
               <td data-label="EPSS (백분위)" className={`${cell} font-mono text-xs`}>
                 {r.epss ? <>{formatProbability(r.epss.score)} <span className="text-ink-muted">({formatPercentile(r.epss.percentile)})</span></> : <span className="text-ink-muted">—</span>}
               </td>
-              <td data-label="판정" className={cell}><Badge tone={APPLICABILITY_TONE[r.summary] ?? 'neutral'}>{APPLICABILITY_LABEL[r.summary] ?? r.summary}</Badge></td>
-              <td data-label="자산별 판정" data-wide className={cell}>
+              <td data-label="자산 해당 여부" className={cell}><Badge tone={APPLICABILITY_TONE[r.summary] ?? 'neutral'}>{APPLICABILITY_LABEL[r.summary] ?? r.summary}</Badge></td>
+              <td data-label="자산별 해당 여부" data-wide className={cell}>
                 {r.assets.length === 0 ? <span className="text-xs text-ink-muted">자산 없음</span> : (
-                  <ul className="m-0 flex list-none flex-wrap gap-1 p-0" aria-label={`${revealHidden(r.cve_id)} 자산별 판정`}>
+                  <ul className="m-0 flex list-none flex-wrap gap-1 p-0" aria-label={`${revealHidden(r.cve_id)} 자산별 해당 여부`}>
                     {r.assets.map((a) => <li key={a.asset_id}>
                       <Badge tone={APPLICABILITY_TONE[a.status] ?? 'neutral'} title={revealHidden(a.reason)}>
                         <span className="font-mono">{a.asset_id}</span> {APPLICABILITY_LABEL[a.status] ?? a.status}

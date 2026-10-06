@@ -83,7 +83,7 @@ describe('자산 · 취약점', () => {
 
     expect(screen.getByText('KEV 수집')).toBeInTheDocument()
     // 오래됨 기준 · 대조 범위는 신선도 접힘 안에 둔다
-    expect(screen.getByText('48시간 넘게 새로 받지 못하면 오래됨입니다.').closest('details')).toHaveTextContent('공개 정보 신선도')
+    expect(screen.getByText('48시간 넘게 새로 받지 못하면 오래됨입니다.').closest('details')).toHaveTextContent('공개 정보·자산 수집 시각')
     expect(screen.queryByText(/공개 정보가 오래됐습니다/)).toBeNull()
     expect(screen.getByRole('link', { name: '수집 · 관제 상태' })).toHaveAttribute('href', '/nodes')
     expect(screen.queryByRole('region', { name: /자산 상세$/ })).toBeNull()
@@ -274,7 +274,7 @@ describe('자산 · 취약점', () => {
 })
 
 describe('주목 CVE', () => {
-  it('자산 목록 다음에 CVE · 주목 이유 · KEV · EPSS · 판정 요약 · 자산별 판정을 서버 순서대로 보인다', async () => {
+  it('자산 목록 다음에 CVE · 주목 이유 · KEV · EPSS · 판정 요약 · 자산별 해당 여부를 서버 순서대로 보인다', async () => {
     setup()
     const card = await screen.findByRole('region', { name: '주목 CVE' })
     const table = await within(card).findByRole('region', { name: '주목 CVE 표' })
@@ -282,7 +282,7 @@ describe('주목 CVE', () => {
     const assetTable = await screen.findByRole('region', { name: '자산 표' })
     expect(assetTable.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(within(card).getByText(/3건 · 해당 1건/)).toBeInTheDocument()
-    expect(within(card).getByText('정해 둔 CVE 마다 자산의 설치 버전을 배포판(Ubuntu) 수정판과 견줍니다.')).toBeInTheDocument()
+    expect(within(card).getByText(/자산의 설치 버전을 배포판\(Ubuntu\) 수정판과 자동 대조/)).toBeInTheDocument()
     // '판정 근거 아님' 은 제목 옆 ⓘ 한 곳에만 둔다
     expect(within(card).queryByText(/판정 근거가 아닙니다/)).toBeNull()
     expect(screen.getByRole('button', { name: '자산 · 취약점 설명' })).toHaveAccessibleDescription(/주목 CVE 는 조사 · 조치 우선순위 참고용이며 사건 판정의 근거가 아닙니다/)
@@ -297,17 +297,17 @@ describe('주목 CVE', () => {
     expect(summaryCell(kernel)).toHaveTextContent(/^해당$/)
     expect(summaryCell(ssh)).toHaveTextContent(/^비해당$/)
     expect(summaryCell(sudo)).toHaveTextContent(/^미확인$/)
-    expect(within(within(kernel).getByRole('list', { name: 'CVE-2026-53266 자산별 판정' })).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['web-01 해당', 'fw 해당', 'console-b 미확인'])
+    expect(within(within(kernel).getByRole('list', { name: 'CVE-2026-53266 자산별 해당 여부' })).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['web-01 해당', 'fw 해당', 'console-b 미확인'])
 
     // CVE-2024-6387: KEV 아님 · EPSS 99.5% (백분위 99.9) · 배포판 수정판 기준 비해당
     expect(within(ssh).getByText('OpenSSH regreSSHion · 인증 전 원격 코드 실행 · 모든 노드의 sshd')).toBeInTheDocument()
     expect(within(ssh).queryByText('KEV')).toBeNull()
     expect(ssh).toHaveTextContent('99.5% (백분위 99.9)')
-    expect(within(within(ssh).getByRole('list', { name: 'CVE-2024-6387 자산별 판정' })).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['web-01 비해당', 'fw 비해당', 'console-b 미확인'])
+    expect(within(within(ssh).getByRole('list', { name: 'CVE-2024-6387 자산별 해당 여부' })).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['web-01 비해당', 'fw 비해당', 'console-b 미확인'])
     expect(within(ssh).getByText('web-01').closest('span[title]')).toHaveAttribute('title', 'openssh 1:9.6p1-3ubuntu13.19 ≥ 수정판 1:9.6p1-3ubuntu13.3')
 
     // 배포판 기록이 없으면 비해당이 아니라 미확인이다
-    expect(within(within(sudo).getByRole('list', { name: 'CVE-2021-3156 자산별 판정' })).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['web-01 미확인', 'fw 미확인'])
+    expect(within(within(sudo).getByRole('list', { name: 'CVE-2021-3156 자산별 해당 여부' })).getAllByRole('listitem').map((li) => li.textContent)).toEqual(['web-01 미확인', 'fw 미확인'])
   })
 
   it('행을 펼치면 자산마다 패키지 · 설치 버전 · 수정판 · 이유를 보이고 다시 누르면 접힌다', async () => {
@@ -449,10 +449,26 @@ describe('자산 · 취약점 · 비신뢰 문자열(#41)', () => {
     expect(within(detailRegion).getByText('OS').nextElementSibling?.textContent).toBe('⟨U+2066⟩x⟨U+2069⟩')
     expect(within(detailRegion).getByTitle(revealHidden(MIXED))).toBeInTheDocument()
 
-    // 주목 CVE: 자산별 판정 배지의 말풍선 · 펼친 설명(2만 자)
+    // 주목 CVE: 자산별 해당 여부 배지의 말풍선 · 펼친 설명(2만 자)
     const watchRegion = screen.getByRole('region', { name: '주목 CVE 표' })
     expect(within(watchRegion).getByTitle(revealHidden(MIXED))).toBeInTheDocument()
 
     expectLongFolds(container)
   })
+})
+
+
+it('모두 미확인이면 해당 0건과 함께 미확인 수·자동 대조·오래된 자산을 알린다', async () => {
+  const f = freshness()
+  f.assets.stale_assets = ['web-01']
+  setup('/inventory', { list: assetsResult({ rows: [assetRow({ stale: true, last_error: null, check_error: null })] }),
+    watch: watchResult({ rows: [watchRow({ summary: 'unknown' })], freshness: f }) })
+  const card = await screen.findByRole('region', { name: '주목 CVE' })
+  await waitFor(() => expect(card).toHaveTextContent('해당 0건 · 미확인 1건'))
+  expect(card).toHaveTextContent('사람의 판정 대기가 아닙니다')
+  expect(card).toHaveTextContent('web-01 · 수집한 지 48시간')
+  const table = await screen.findByRole('region', { name: '자산 표' })
+  expect(table).toHaveTextContent('자산 정보 갱신 필요')
+  expect(table).not.toHaveTextContent('대조 완료')
+  expect(table).toHaveTextContent('취약점 수는 이전 자산 정보 기준')
 })
