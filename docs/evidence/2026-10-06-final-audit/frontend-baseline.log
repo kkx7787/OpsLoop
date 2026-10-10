@@ -1,0 +1,17 @@
+
+> console@0.0.0 test
+> vitest run
+
+
+ RUN  v5.0.1 /Users/hanseongmin/opsloop-repo/console
+
+
+ Test Files  70 passed (70)
+      Tests  1109 passed (1109)
+   Start at  10:09:55
+   Duration  19.25s (tests 53%, environment 32%, transform 6%, setup 6%, import 3%)
+
+Environment  jsdom was created 70 times · 40.36s total, 32% of tracked time
+             create it once per worker with pool: 'vmThreads' (keeps per-file isolation) or isolate: false (shares it across files)
+             learn more: https://vitest.dev/guide/improving-performance#test-environments
+

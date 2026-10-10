@@ -1,0 +1,59 @@
+.........내부 방화벽 장부를 기존 장부에서 다시 만들었다 (옛 상태 파일 · 옛 집행기가 그 사이 돌았다)
+.............s.....................s...................................................................................................................................................
+----------------------------------------------------------------------
+Ran 192 tests in 22.875s
+
+OK (skipped=2)
+[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=56825.g0/000000000000-000000000006.jsonl  6 B · 1 줄
+[2026-10-06T01:20:55Z] 경고: /tmp/tmpfo2tdmnn/cowrie.json 에 41 B 짜리 한 줄. 통째로 올린다
+[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=56825.g0/000000000006-000000000047.jsonl  41 B · 1 줄
+[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=56825.g0/000000000047-000000000054.jsonl  7 B · 1 줄
+[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=56825.g0/000000000054-000000000061.jsonl  7 B · 1 줄
+.[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=gateway/host=i-test/ino=64768.g0/000000000000-000000000102.jsonl  102 B · 1 줄
+[2026-10-06T01:20:55Z] 완료 · 이번 회차 102 B
+..[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64780.g0/000000000000-000000000008.jsonl  8 B · 1 줄
+[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=decoy/host=i-test/ino=64781.g0/000000000000-000000000008.jsonl  8 B · 1 줄
+[2026-10-06T01:20:55Z] 완료 · 이번 회차 16 B
+.[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64784.g0/000000000000-000000000008.jsonl  8 B · 1 줄
+[2026-10-06T01:20:55Z] 경고: 이번 회차가 끝나지 않아 생존 신호를 쓰지 않는다 (회전 cowrie.json, 회전 cowrie.json.2026-09-21)
+[2026-10-06T01:20:55Z] 완료 · 이번 회차 8 B
+.[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64788.g0/000000000000-000000000003.jsonl  3 B · 1 줄
+.[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64790.g0/000000000000-000000000008.jsonl  8 B · 1 줄
+[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64790.g0/000000000008-000000000016.jsonl  8 B · 1 줄
+..[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64795.g0/000000000000-000000000003.jsonl  3 B · 1 줄
+[2026-10-06T01:20:55Z] 경고: /tmp/tmp338c64eu/cowrie.json 에 31 B 짜리 한 줄. 통째로 올린다
+[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64795.g0/000000000003-000000000034.jsonl  31 B · 1 줄
+[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64795.g0/000000000034-000000000038.jsonl  4 B · 1 줄
+.[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64797.g0/000000000000-000000000003.jsonl  3 B · 1 줄
+[2026-10-06T01:20:55Z] 이미 있음 raw/v1/sensor=cowrie/host=i-test/ino=64797.g0/000000000000-000000000003.jsonl  3 B · 1 줄
+[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64797.g0/000000000003-000000000006.jsonl  3 B · 1 줄
+..[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64805.g0/000000000000-000000000028.jsonl  28 B · 2 줄
+.[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64807.g0/000000000000-000000000010.jsonl  10 B · 2 줄
+[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64807.g0/000000000010-000000000015.jsonl  5 B · 1 줄
+.[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64809.g0/000000000000-000000000006.jsonl  6 B · 2 줄
+[2026-10-06T01:20:55Z] inode 64809 재사용 감지 (cowrie.json → cowrie.json). 새 세대로 처음부터 올린다
+[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64809.g1/000000000000-000000000003.jsonl  3 B · 1 줄
+.[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64811.g0/000000000000-000000000008.jsonl  8 B · 1 줄
+[2026-10-06T01:20:55Z] 실패 /tmp/tmp55044h13/decoy.json.2026-09-21: 일시 오류
+[2026-10-06T01:20:55Z] 경고: 이번 회차가 끝나지 않아 생존 신호를 쓰지 않는다 (실패 decoy.json.2026-09-21)
+[2026-10-06T01:20:55Z] 완료 · 이번 회차 8 B
+.[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64815.g0/000000000000-000000000006.jsonl  6 B · 2 줄
+[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64815.g0/000000000006-000000000009.jsonl  3 B · 1 줄
+[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64816.g0/000000000000-000000000003.jsonl  3 B · 1 줄
+.[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64818.g0/000000000000-000000000008.jsonl  8 B · 1 줄
+[2026-10-06T01:20:55Z] 경고: /tmp/tmp6at7_mef/cowrie.json 이번 회차 상한 8 B 도달. 나머지는 다음 회차로
+[2026-10-06T01:20:55Z] 경고: 이번 회차가 끝나지 않아 생존 신호를 쓰지 않는다 (상한 cowrie.json)
+[2026-10-06T01:20:55Z] 완료 · 이번 회차 8 B
+[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64818.g0/000000000008-000000000016.jsonl  8 B · 1 줄
+[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64818.g0/000000000016-000000000024.jsonl  8 B · 1 줄
+[2026-10-06T01:20:55Z] 완료 · 이번 회차 16 B
+.[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64821.g0/000000000000-000000000004.jsonl  4 B · 1 줄
+[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64821.g0/000000000004-000000000008.jsonl  4 B · 1 줄
+[2026-10-06T01:20:55Z] 경고: /tmp/tmpqc4owirv/cowrie.json 이번 회차 상한 8 B 도달. 나머지는 다음 회차로
+[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64821.g0/000000000008-000000000012.jsonl  4 B · 1 줄
+[2026-10-06T01:20:55Z] 올림 raw/v1/sensor=cowrie/host=i-test/ino=64821.g0/000000000012-000000000016.jsonl  4 B · 1 줄
+.
+----------------------------------------------------------------------
+Ran 18 tests in 0.021s
+
+OK
