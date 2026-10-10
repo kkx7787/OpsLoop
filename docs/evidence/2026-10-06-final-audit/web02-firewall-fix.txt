@@ -1,0 +1,3 @@
+cp: warning: behavior of -n is non-portable and may change in future; use --update=none instead
+		ip saddr 192.168.50.22 ip daddr 192.168.60.11 tcp dport 3101 accept
+381eca1671dbfe47b0da7834daa3cd6f80d908315d1348cf942eb9d80aa9238d  /etc/nftables.conf

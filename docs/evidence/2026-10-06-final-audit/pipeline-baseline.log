@@ -1,0 +1,558 @@
+Suite: infra
+........................................................................................................................................................
+----------------------------------------------------------------------
+Ran 152 tests in 9.404s
+
+OK
+Suite: cti
+...........................다른 실행(fetch · load-assets)이 끝나기를 기다린다
+......EPSS 사본이 없어 새 CVE 1건의 EPSS 는 다음 fetch 가 채운다
+.............  HTTP 503. 5초 뒤 다시 받는다: https://x/a
+  HTTP 502. 20초 뒤 다시 받는다: https://x/a
+  시간 초과. 5초 뒤 다시 받는다: https://x/a
+  시간 초과. 20초 뒤 다시 받는다: https://x/a
+........nvd: 서명 bad 의 kev_match 정규식이 틀려 건너뛴다
+....assets: 원본 보관(S3) 실패: RuntimeError: down
+..assets: 정상 · 자산 2개: 조사 1 · 조사 실패 기록 1 · 형식 오류 0 · 버림 0 · 옛 조사라 건너뜀 0 · 원본 cti/v1/source=assets/date=2026-09-25/c39f8f19a69eb430.json
+assets: web-01 는 배포판 취약점과 대조하지 못했다 (패키지 목록이 없다)
+assets: 정상 · 자산 2개: 조사 1 · 조사 실패 기록 1 · 형식 오류 0 · 버림 0 · 옛 조사라 건너뜀 0 · 원본 cti/v1/source=assets/date=2026-09-25/c39f8f19a69eb430.json
+assets: 정상 · 자산 1개: 조사 0 · 조사 실패 기록 1 · 형식 오류 0 · 버림 0 · 옛 조사라 건너뜀 0 · 원본 cti/v1/source=assets/date=2026-09-25/45c93ff0bd3a806e.json
+assets: 정상 · 자산 2개: 조사 1 · 조사 실패 기록 1 · 형식 오류 0 · 버림 0 · 옛 조사라 건너뜀 0 · 원본 cti/v1/source=assets/date=2026-09-25/c39f8f19a69eb430.json
+.assets: honeypot-dmz 조사 결과 형식 오류: collected_at 이 시각이 아니다
+assets: gateway 조사 결과 형식 오류: os.pretty 는 제어 문자 · 숨은 문자가 없는 256자 이하 문자열이어야 한다
+.assets: 정상 · 자산 5개: 조사 2 · 조사 실패 기록 1 · 형식 오류 2 · 버림 0 · 옛 조사라 건너뜀 0 · 원본 cti/v1/source=assets/date=2026-09-25/2f4336d28e88356d.json
+assets: 정상 · 자산 2개: 조사 1 · 조사 실패 기록 1 · 형식 오류 0 · 버림 0 · 옛 조사라 건너뜀 0 · 원본 cti/v1/source=assets/date=2026-09-25/c39f8f19a69eb430.json
+assets: honeypot-dmz 조사 결과 형식 오류: probe_version 이 1 이 아니다
+assets: 정상 · 자산 3개: 조사 1 · 조사 실패 기록 1 · 형식 오류 1 · 버림 0 · 옛 조사라 건너뜀 0 · 원본 cti/v1/source=assets/date=2026-09-25/63875e31c3f79188.json
+assets: 자산 항목을 버린다 (자산 항목이 객체가 아니다)
+assets: 정상 · 자산 3개: 조사 1 · 조사 실패 기록 1 · 형식 오류 0 · 버림 1 · 옛 조사라 건너뜀 0 · 원본 cti/v1/source=assets/date=2026-09-25/d532dae79d901c67.json
+assets: 받기 · 검증 실패: 묶음이 JSON 이 아니다 (또는 너무 깊다)
+.assets: 정상 · 자산 1개: 조사 1 · 조사 실패 기록 0 · 형식 오류 0 · 버림 0 · 옛 조사라 건너뜀 0 · 원본 cti/v1/source=assets/date=2026-09-25/378a1f309f87b733.json
+osv: 대조할 자산이 없다 (모두 대조하지 못한다). 원본 기록을 남기지 않는다
+assets: web-01 는 배포판 취약점과 대조하지 못했다 (패키지 목록이 없다)
+..nvd: 받을 CVE 가 없다 (초점 CVE 를 모두 14일 안에 받았다)
+.....nvd: CVE-2024-6387 를 받지 못했다 (HTTP 403: x)
+nvd: 받기 · 검증 실패: NVD 응답을 하나도 받지 못했다 (1건 실패)
+nvd: CVE-2017-9841 를 받지 못했다 (HTTP 503: x)
+nvd: 정상 · CVE 1건 갱신 · NVD 에 없음 1건 · 원본 cti/v1/source=nvd/date=2026-09-25/0c3a5364df63ba0d.json
+.EPSS 사본이 없어 새 CVE 2건의 EPSS 는 다음 fetch 가 채운다
+osv: 정상 · 자산 1개 대조 · 질의 5개 · 기록 2개(상세 1, 실패 0) · 자산 취약점 2건 · EPSS 채움 0건 · 원본 cti/v1/source=osv/date=2026-09-25/bb57b5916268f1ee.json
+....EPSS 사본이 없어 새 CVE 3건의 EPSS 는 다음 fetch 가 채운다
+osv: 정상 · 자산 1개 대조 · 질의 2개 · 기록 3개(상세 2, 실패 0) · 자산 취약점 3건 · 주목 CVE 0개(기록 있음 0 · 없음 0 · 조회 실패 0) · EPSS 채움 0건 · fw 대조 못 함(지원하지 않는 배포판) · 원본 cti/v1/source=osv/date=2026-09-25/1cab50fafc392353.json
+..........kev: 형식이 틀린 항목 1개를 건너뛴다
+kev: 정상 · 3건 · 목록에서 빠진 1건 지움 · 원본 cti/v1/source=kev/date=2026-09-25/16ea82fa380b0ca4.json
+kev: 형식이 틀린 항목 1개를 건너뛴다
+kev: 정상 · 3건 · 목록에서 빠진 1건 지움 · 원본 cti/v1/source=kev/date=2026-09-25/16ea82fa380b0ca4.json (이미 있음)
+.epss: 정상 · 전체 5줄 · 관심 CVE 2건 갱신 (기준 2026-09-24T12:00:20Z) · 원본 cti/v1/source=epss/date=2026-09-25/190d47ae37693305.csv.gz
+.kev: 형식이 틀린 항목 1개를 건너뛴다
+kev: 원본 보관(S3) 실패: S3Error: AccessDenied
+.kev: 받기 · 검증 실패: HTTP 403: x
+.kev: 형식이 틀린 항목 1개를 건너뛴다
+kev: DB 갱신 실패: RuntimeError: 가짜 DB 오류
+.kev: 형식이 틀린 항목 1개를 건너뛴다
+kev: 정상 · 3건 · 목록에서 빠진 1건 지움 · 원본 cti/v1/source=kev/date=2026-09-25/16ea82fa380b0ca4.json
+....osv: 정상 · 자산 1개 대조 · 질의 1개 · 기록 0개(상세 0, 실패 0) · 자산 취약점 0건 · EPSS 채움 0건 · 원본 cti/v1/source=osv/date=2026-09-25/e3c3b499667db586.json
+...osv: 받기 · 검증 실패: 주목 CVE 목록을 읽지 못했다 (/tmp/tmpxk6wfu88.json: JSONDecodeError)
+EPSS 사본이 없어 새 CVE 1건의 EPSS 는 다음 fetch 가 채운다
+osv: 정상 · 자산 1개 대조 · 질의 1개 · 기록 1개(상세 1, 실패 0) · 자산 취약점 1건 · 주목 CVE 1개(기록 있음 1 · 없음 0 · 조회 실패 0) · EPSS 채움 0건 · 원본 cti/v1/source=osv/date=2026-09-25/5c7040602940ffa9.json
+.osv: 대조할 자산이 없다 (조사 결과가 있는 자산이 없다). 원본 기록을 남기지 않는다
+.osv: 대조할 자산이 없다 (모두 대조하지 못한다). 원본 기록을 남기지 않는다
+osv: 주목 CVE CVE-2024-3094 의 기록을 받지 못했다 (HTTP 503: https://api.osv.dev/v1/vulns/UBUNTU-CVE-2024-3094). 다음 회차에 다시 받는다
+EPSS 사본이 없어 새 CVE 4건의 EPSS 는 다음 fetch 가 채운다
+osv: 정상 · 자산 0개 대조 · 질의 0개 · 기록 0개(상세 0, 실패 0) · 자산 취약점 0건 · 주목 CVE 4개(기록 있음 2 · 없음 1 · 조회 실패 1) · EPSS 채움 0건 · 원본 cti/v1/source=osv/date=2026-09-25/127b9b98c6bacb60.json
+..osv: 주목 CVE CVE-2024-6387 의 기록을 받지 못했다 (HTTP 503: https://api.osv.dev/v1/vulns/UBUNTU-CVE-2024-6387). 다음 회차에 다시 받는다
+osv: 받기 · 검증 실패: 주목 CVE 1개의 기록을 하나도 받지 못했다 (대조한 자산도 없다)
+.kev: 정상 · 1건 · 목록에서 빠진 0건 지움 · 원본 cti/v1/source=kev/date=2026-09-25/a9e4faf01fc8ccbd.json
+assets: 정상 · 자산 2개: 조사 2 · 조사 실패 기록 0 · 형식 오류 0 · 버림 0 · 옛 조사라 건너뜀 0 · 원본 cti/v1/source=assets/date=2026-09-25/6f8346f78de77bca.json
+osv: 상세 UBUNTU-CVE-2024-7777 를 받지 못했다 (HTTP 404: https://api.osv.dev/v1/vulns/UBUNTU-CVE-2024-7777). 다음 회차에 다시 받는다
+EPSS 사본이 없어 새 CVE 7건의 EPSS 는 다음 fetch 가 채운다
+osv: 정상 · 자산 2개 대조 · 질의 9개 · 기록 7개(상세 3, 실패 1) · 자산 취약점 9건 · EPSS 채움 0건 · 원본 cti/v1/source=osv/date=2026-09-25/2517349740c67a4a.json
+.kev: 형식이 틀린 항목 1개를 건너뛴다
+kev: 정상 · 3건 · 목록에서 빠진 0건 지움 · 원본 cti/v1/source=kev/date=2026-09-25/16ea82fa380b0ca4.json
+epss: 정상 · 전체 4줄 · 관심 CVE 2건 갱신 (기준 2026-09-24T12:00:20Z) · 원본 cti/v1/source=epss/date=2026-09-25/7db94989a01f5656.csv.gz
+assets: 정상 · 자산 1개: 조사 1 · 조사 실패 기록 0 · 형식 오류 0 · 버림 0 · 옛 조사라 건너뜀 0 · 원본 cti/v1/source=assets/date=2026-09-25/77401e7b7e18865c.json
+osv: 정상 · 자산 1개 대조 · 질의 2개 · 기록 4개(상세 2, 실패 0) · 자산 취약점 4건 · EPSS 채움 1건 · 원본 cti/v1/source=osv/date=2026-09-25/bda28bac96f22424.json
+epss: 정상 · 전체 4줄 · 관심 CVE 3건 갱신 (기준 2026-09-24T12:00:20Z) · 원본 cti/v1/source=epss/date=2026-09-25/4e0bfeba673cbe25.csv.gz
+.kev: 형식이 틀린 항목 1개를 건너뛴다
+kev: 정상 · 3건 · 목록에서 빠진 0건 지움 · 원본 cti/v1/source=kev/date=2026-09-25/16ea82fa380b0ca4.json
+kev: 정상 · 2건 · 목록에서 빠진 1건 지움 · 원본 cti/v1/source=kev/date=2026-09-25/3dc9e8854959f2a6.json
+.kev: 형식이 틀린 항목 1개를 건너뛴다
+kev: 정상 · 3건 · 목록에서 빠진 0건 지움 · 원본 cti/v1/source=kev/date=2026-09-25/16ea82fa380b0ca4.json
+assets: 정상 · 자산 1개: 조사 1 · 조사 실패 기록 0 · 형식 오류 0 · 버림 0 · 옛 조사라 건너뜀 0 · 원본 cti/v1/source=assets/date=2026-09-25/77401e7b7e18865c.json
+EPSS 사본이 없어 새 CVE 4건의 EPSS 는 다음 fetch 가 채운다
+osv: 정상 · 자산 1개 대조 · 질의 2개 · 기록 4개(상세 2, 실패 0) · 자산 취약점 4건 · EPSS 채움 0건 · 원본 cti/v1/source=osv/date=2026-09-25/bda28bac96f22424.json
+nvd: 정상 · CVE 9건 갱신 · NVD 에 없음 1건 · 원본 cti/v1/source=nvd/date=2026-09-25/cde88a58cb840dac.json
+nvd: 받을 CVE 가 없다 (초점 CVE 를 모두 14일 안에 받았다)
+.kev: 형식이 틀린 항목 1개를 건너뛴다
+kev: 정상 · 3건 · 목록에서 빠진 0건 지움 · 원본 cti/v1/source=kev/date=2026-09-25/16ea82fa380b0ca4.json
+kev: 원본 보관(S3) 실패: S3Error: AccessDenied
+kev: 형식이 틀린 항목 1개를 건너뛴다
+kev: 정상 · 3건 · 목록에서 빠진 0건 지움 · 원본 cti/v1/source=kev/date=2026-09-25/16ea82fa380b0ca4.json (이미 있음)
+.assets: 정상 · 자산 1개: 조사 1 · 조사 실패 기록 0 · 형식 오류 0 · 버림 0 · 옛 조사라 건너뜀 0 · 원본 cti/v1/source=assets/date=2026-09-25/378a1f309f87b733.json
+osv: 대조할 자산이 없다 (모두 대조하지 못한다). 원본 기록을 남기지 않는다
+assets: web-01 는 배포판 취약점과 대조하지 못했다 (패키지 목록이 없다)
+.assets: honeypot-dmz 조사 결과 형식 오류: os.pretty 는 제어 문자 · 숨은 문자가 없는 256자 이하 문자열이어야 한다
+assets: gateway 조사 결과 형식 오류: collected_at 이 시각이 아니다
+assets: 정상 · 자산 5개: 조사 2 · 조사 실패 기록 1 · 형식 오류 2 · 버림 0 · 옛 조사라 건너뜀 0 · 원본 cti/v1/source=assets/date=2026-09-25/5b94049d5765359f.json
+EPSS 사본이 없어 새 CVE 5건의 EPSS 는 다음 fetch 가 채운다
+osv: 정상 · 자산 2개 대조 · 질의 6개 · 기록 5개(상세 2, 실패 0) · 자산 취약점 8건 · EPSS 채움 0건 · 원본 cti/v1/source=osv/date=2026-09-25/37728c50341a7144.json
+.kev: 형식이 틀린 항목 1개를 건너뛴다
+kev: 정상 · 3건 · 목록에서 빠진 0건 지움 · 원본 cti/v1/source=kev/date=2026-09-25/16ea82fa380b0ca4.json
+epss: 정상 · 전체 1줄 · 관심 CVE 0건 갱신 (기준 2026-09-24T12:00:20Z) · 원본 cti/v1/source=epss/date=2026-09-25/dc8d1bd7a7d44a39.csv.gz
+assets: 정상 · 자산 3개: 조사 2 · 조사 실패 기록 1 · 형식 오류 0 · 버림 0 · 옛 조사라 건너뜀 0 · 원본 cti/v1/source=assets/date=2026-09-25/d68c96248b98bd93.json
+osv: 정상 · 자산 2개 대조 · 질의 5개 · 기록 5개(상세 3, 실패 0) · 자산 취약점 9건 · EPSS 채움 1건 · 원본 cti/v1/source=osv/date=2026-09-25/1757d31b9d1d8887.json
+assets: 정상 · 자산 1개: 조사 0 · 조사 실패 기록 1 · 형식 오류 0 · 버림 0 · 옛 조사라 건너뜀 0 · 원본 cti/v1/source=assets/date=2026-09-25/9596a46853d654bf.json
+osv: 정상 · 자산 2개 대조 · 질의 5개 · 기록 5개(상세 0, 실패 0) · 자산 취약점 9건 · 주목 CVE 2개(기록 있음 1 · 없음 1 · 조회 실패 0) · EPSS 채움 0건 · 원본 cti/v1/source=osv/date=2026-09-25/5da24f9bfbb5c62e.json
+osv: 정상 · 자산 2개 대조 · 질의 5개 · 기록 5개(상세 0, 실패 0) · 자산 취약점 9건 · 주목 CVE 1개(기록 있음 1 · 없음 0 · 조회 실패 0) · EPSS 채움 0건 · 원본 cti/v1/source=osv/date=2026-09-25/dabd883b7f28f251.json
+nvd: 정상 · CVE 0건 갱신 · NVD 에 없음 11건 · 원본 cti/v1/source=nvd/date=2026-09-25/d8d2b6731ead91e8.json
+.nvd: CVE-2017-9841 를 받지 못했다 (HTTP 404: https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=CVE-2017-9841)
+nvd: CVE-2018-10561 를 받지 못했다 (HTTP 404: https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=CVE-2018-10561)
+nvd: CVE-2018-10562 를 받지 못했다 (HTTP 404: https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=CVE-2018-10562)
+nvd: CVE-2021-36260 를 받지 못했다 (HTTP 404: https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=CVE-2021-36260)
+nvd: CVE-2021-41773 를 받지 못했다 (HTTP 404: https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=CVE-2021-41773)
+nvd: CVE-2021-42013 를 받지 못했다 (HTTP 404: https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=CVE-2021-42013)
+nvd: CVE-2021-44228 를 받지 못했다 (HTTP 404: https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=CVE-2021-44228)
+nvd: CVE-2021-45046 를 받지 못했다 (HTTP 404: https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=CVE-2021-45046)
+nvd: CVE-2024-36401 를 받지 못했다 (HTTP 404: https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=CVE-2024-36401)
+nvd: CVE-2022-24816 를 받지 못했다 (HTTP 404: https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=CVE-2022-24816)
+nvd: 받기 · 검증 실패: NVD 응답을 하나도 받지 못했다 (10건 실패)
+끝: nvd 실패
+.kev: 형식이 틀린 항목 1개를 건너뛴다
+kev: 정상 · 3건 · 목록에서 빠진 0건 지움 · 원본 cti/v1/source=kev/date=2026-09-25/16ea82fa380b0ca4.json
+assets: honeypot-dmz 조사 결과 형식 오류: packages.name 형식이 틀리다: evil;rm
+assets: 정상 · 자산 5개: 조사 3 · 조사 실패 기록 1 · 형식 오류 1 · 버림 0 · 옛 조사라 건너뜀 0 · 원본 cti/v1/source=assets/date=2026-09-25/af5ab07a44c116b1.json
+EPSS 사본이 없어 새 CVE 5건의 EPSS 는 다음 fetch 가 채운다
+osv: 정상 · 자산 2개 대조 · 질의 5개 · 기록 5개(상세 3, 실패 0) · 자산 취약점 9건 · EPSS 채움 0건 · fw 대조 못 함(지원하지 않는 배포판) · 원본 cti/v1/source=osv/date=2026-09-25/1757d31b9d1d8887.json
+assets: fw 는 배포판 취약점과 대조하지 못했다 (지원하지 않는 배포판)
+assets: 정상 · 자산 1개: 조사 0 · 조사 실패 기록 1 · 형식 오류 0 · 버림 0 · 옛 조사라 건너뜀 0 · 원본 cti/v1/source=assets/date=2026-09-25/6aef0870cca78997.json
+assets: web-01 는 이미 더 새 조사가 있어 건너뛴다
+assets: 정상 · 자산 1개: 조사 1 · 조사 실패 기록 0 · 형식 오류 0 · 버림 0 · 옛 조사라 건너뜀 1 · 원본 cti/v1/source=assets/date=2026-09-25/8bceaf53a56123c8.json
+assets: 정상 · 자산 1개: 조사 1 · 조사 실패 기록 0 · 형식 오류 0 · 버림 0 · 옛 조사라 건너뜀 0 · 원본 cti/v1/source=assets/date=2026-09-25/32aac4b31eadbca9.json
+EPSS 사본이 없어 새 CVE 3건의 EPSS 는 다음 fetch 가 채운다
+osv: 정상 · 자산 1개 대조 · 질의 4개 · 기록 3개(상세 0, 실패 0) · 자산 취약점 3건 · EPSS 채움 0건 · 원본 cti/v1/source=osv/date=2026-09-25/9ba27205addbe40c.json
+.osv: 주목 CVE CVE-2024-3094 의 기록을 받지 못했다 (HTTP 500: https://api.osv.dev/v1/vulns/UBUNTU-CVE-2024-3094). 다음 회차에 다시 받는다
+EPSS 사본이 없어 새 CVE 4건의 EPSS 는 다음 fetch 가 채운다
+osv: 정상 · 자산 0개 대조 · 질의 0개 · 기록 0개(상세 0, 실패 0) · 자산 취약점 0건 · 주목 CVE 4개(기록 있음 2 · 없음 1 · 조회 실패 1) · EPSS 채움 0건 · 원본 cti/v1/source=osv/date=2026-09-25/567d4d55cce971ec.json
+EPSS 사본이 없어 새 CVE 2건의 EPSS 는 다음 fetch 가 채운다
+osv: 정상 · 자산 0개 대조 · 질의 0개 · 기록 0개(상세 0, 실패 0) · 자산 취약점 0건 · 주목 CVE 2개(기록 있음 1 · 없음 1 · 조회 실패 0) · EPSS 채움 0건 · 원본 cti/v1/source=osv/date=2026-09-25/76ee28d1819c7af9.json
+....s............
+----------------------------------------------------------------------
+Ran 129 tests in 2.197s
+
+OK (skipped=1)
+Suite: collector
+...............................................................................................................opsloop-pull 그룹이 없어 관리 원장 그룹을 바꾸지 못했다
+..opsloop-pull 그룹이 없어 관리 원장 그룹을 바꾸지 못했다
+opsloop-pull 그룹이 없어 관리 원장 그룹을 바꾸지 못했다
+................................................
+----------------------------------------------------------------------
+Ran 161 tests in 33.734s
+
+OK
+Suite: detector
+..............................................................sssssss.............................................................................................sssssssss........................................................................................
+----------------------------------------------------------------------
+Ran 259 tests in 2.514s
+
+OK (skipped=16)
+Suite: parser
+.................................................................
+----------------------------------------------------------------------
+Ran 65 tests in 0.103s
+
+OK
+Suite: puller
+/repo/puller/test_ingest.py:83: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpd95aybxj/rc' mode='w' encoding='UTF-8'>
+  open(self.rc_file, "w").write(str(rc))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:71: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpd95aybxj/s3.env' mode='w' encoding='UTF-8'>
+  open(s3env, "w").write("AWS_ACCESS_KEY_ID=x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:72: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpd95aybxj/db.env' mode='w' encoding='UTF-8'>
+  open(dbenv, "w").write("DATABASE_URL=postgresql://x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:245: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpd95aybxj/heartbeats' mode='r' encoding='UTF-8'>
+  return [json.loads(line) for line in open(self.hb).read().splitlines()]
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./repo/puller/test_ingest.py:83: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpji31qi8i/rc' mode='w' encoding='UTF-8'>
+  open(self.rc_file, "w").write(str(rc))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:71: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpji31qi8i/s3.env' mode='w' encoding='UTF-8'>
+  open(s3env, "w").write("AWS_ACCESS_KEY_ID=x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:72: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpji31qi8i/db.env' mode='w' encoding='UTF-8'>
+  open(dbenv, "w").write("DATABASE_URL=postgresql://x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./repo/puller/test_ingest.py:83: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpd1dxsovy/rc' mode='w' encoding='UTF-8'>
+  open(self.rc_file, "w").write(str(rc))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:71: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpd1dxsovy/s3.env' mode='w' encoding='UTF-8'>
+  open(s3env, "w").write("AWS_ACCESS_KEY_ID=x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:72: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpd1dxsovy/db.env' mode='w' encoding='UTF-8'>
+  open(dbenv, "w").write("DATABASE_URL=postgresql://x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:90: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpd1dxsovy/loaded' mode='r' encoding='UTF-8'>
+  return open(self.log).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:93: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpd1dxsovy/detect' mode='r' encoding='UTF-8'>
+  return len(open(self.detect).read().splitlines())
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./repo/puller/test_ingest.py:83: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpqf9sxgy3/rc' mode='w' encoding='UTF-8'>
+  open(self.rc_file, "w").write(str(rc))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:71: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpqf9sxgy3/s3.env' mode='w' encoding='UTF-8'>
+  open(s3env, "w").write("AWS_ACCESS_KEY_ID=x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:72: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpqf9sxgy3/db.env' mode='w' encoding='UTF-8'>
+  open(dbenv, "w").write("DATABASE_URL=postgresql://x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:90: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpqf9sxgy3/loaded' mode='r' encoding='UTF-8'>
+  return open(self.log).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:93: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpqf9sxgy3/detect' mode='r' encoding='UTF-8'>
+  return len(open(self.detect).read().splitlines())
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./repo/puller/test_ingest.py:83: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp3tv2w06o/rc' mode='w' encoding='UTF-8'>
+  open(self.rc_file, "w").write(str(rc))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:71: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp3tv2w06o/s3.env' mode='w' encoding='UTF-8'>
+  open(s3env, "w").write("AWS_ACCESS_KEY_ID=x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:72: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp3tv2w06o/db.env' mode='w' encoding='UTF-8'>
+  open(dbenv, "w").write("DATABASE_URL=postgresql://x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:90: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp3tv2w06o/loaded' mode='r' encoding='UTF-8'>
+  return open(self.log).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/usr/local/bin/python: can't open file '/tmp/tmp3tv2w06o/app/parser/parse_gateway.py': [Errno 2] No such file or directory
+/usr/local/bin/python: can't open file '/tmp/tmp3tv2w06o/app/parser/parse_gateway.py': [Errno 2] No such file or directory
+./repo/puller/test_ingest.py:83: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpqpp3tkrd/rc' mode='w' encoding='UTF-8'>
+  open(self.rc_file, "w").write(str(rc))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:71: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpqpp3tkrd/s3.env' mode='w' encoding='UTF-8'>
+  open(s3env, "w").write("AWS_ACCESS_KEY_ID=x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:72: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpqpp3tkrd/db.env' mode='w' encoding='UTF-8'>
+  open(dbenv, "w").write("DATABASE_URL=postgresql://x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:90: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpqpp3tkrd/loaded' mode='r' encoding='UTF-8'>
+  return open(self.log).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:93: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpqpp3tkrd/detect' mode='r' encoding='UTF-8'>
+  return len(open(self.detect).read().splitlines())
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./repo/puller/test_ingest.py:83: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpri0uyuj7/rc' mode='w' encoding='UTF-8'>
+  open(self.rc_file, "w").write(str(rc))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:71: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpri0uyuj7/s3.env' mode='w' encoding='UTF-8'>
+  open(s3env, "w").write("AWS_ACCESS_KEY_ID=x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:72: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpri0uyuj7/db.env' mode='w' encoding='UTF-8'>
+  open(dbenv, "w").write("DATABASE_URL=postgresql://x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:90: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpri0uyuj7/loaded' mode='r' encoding='UTF-8'>
+  return open(self.log).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:93: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpri0uyuj7/detect' mode='r' encoding='UTF-8'>
+  return len(open(self.detect).read().splitlines())
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./repo/puller/test_ingest.py:83: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp8zuze0cz/rc' mode='w' encoding='UTF-8'>
+  open(self.rc_file, "w").write(str(rc))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:71: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp8zuze0cz/s3.env' mode='w' encoding='UTF-8'>
+  open(s3env, "w").write("AWS_ACCESS_KEY_ID=x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:72: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp8zuze0cz/db.env' mode='w' encoding='UTF-8'>
+  open(dbenv, "w").write("DATABASE_URL=postgresql://x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:90: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp8zuze0cz/loaded' mode='r' encoding='UTF-8'>
+  return open(self.log).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:93: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp8zuze0cz/detect' mode='r' encoding='UTF-8'>
+  return len(open(self.detect).read().splitlines())
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./repo/puller/test_ingest.py:83: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpyudha4bk/rc' mode='w' encoding='UTF-8'>
+  open(self.rc_file, "w").write(str(rc))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:71: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpyudha4bk/s3.env' mode='w' encoding='UTF-8'>
+  open(s3env, "w").write("AWS_ACCESS_KEY_ID=x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:72: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpyudha4bk/db.env' mode='w' encoding='UTF-8'>
+  open(dbenv, "w").write("DATABASE_URL=postgresql://x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:90: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpyudha4bk/loaded' mode='r' encoding='UTF-8'>
+  return open(self.log).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./repo/puller/test_ingest.py:83: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpcsnmg_7z/rc' mode='w' encoding='UTF-8'>
+  open(self.rc_file, "w").write(str(rc))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:71: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpcsnmg_7z/s3.env' mode='w' encoding='UTF-8'>
+  open(s3env, "w").write("AWS_ACCESS_KEY_ID=x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:72: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpcsnmg_7z/db.env' mode='w' encoding='UTF-8'>
+  open(dbenv, "w").write("DATABASE_URL=postgresql://x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:93: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpcsnmg_7z/detect' mode='r' encoding='UTF-8'>
+  return len(open(self.detect).read().splitlines())
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/usr/local/bin/python: can't open file '/tmp/tmpcsnmg_7z/app/puller/record_heartbeats.py': [Errno 2] No such file or directory
+/repo/puller/test_ingest.py:90: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpcsnmg_7z/loaded' mode='r' encoding='UTF-8'>
+  return open(self.log).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./repo/puller/test_ingest.py:83: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp0wjqugj3/rc' mode='w' encoding='UTF-8'>
+  open(self.rc_file, "w").write(str(rc))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:71: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp0wjqugj3/s3.env' mode='w' encoding='UTF-8'>
+  open(s3env, "w").write("AWS_ACCESS_KEY_ID=x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:72: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp0wjqugj3/db.env' mode='w' encoding='UTF-8'>
+  open(dbenv, "w").write("DATABASE_URL=postgresql://x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:245: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp0wjqugj3/heartbeats' mode='r' encoding='UTF-8'>
+  return [json.loads(line) for line in open(self.hb).read().splitlines()]
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:90: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp0wjqugj3/loaded' mode='r' encoding='UTF-8'>
+  return open(self.log).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./repo/puller/test_ingest.py:83: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp2w80wf0x/rc' mode='w' encoding='UTF-8'>
+  open(self.rc_file, "w").write(str(rc))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:71: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp2w80wf0x/s3.env' mode='w' encoding='UTF-8'>
+  open(s3env, "w").write("AWS_ACCESS_KEY_ID=x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:72: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp2w80wf0x/db.env' mode='w' encoding='UTF-8'>
+  open(dbenv, "w").write("DATABASE_URL=postgresql://x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:93: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmp2w80wf0x/detect' mode='r' encoding='UTF-8'>
+  return len(open(self.detect).read().splitlines())
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./repo/puller/test_ingest.py:83: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpe95l0a81/rc' mode='w' encoding='UTF-8'>
+  open(self.rc_file, "w").write(str(rc))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:71: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpe95l0a81/s3.env' mode='w' encoding='UTF-8'>
+  open(s3env, "w").write("AWS_ACCESS_KEY_ID=x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:72: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpe95l0a81/db.env' mode='w' encoding='UTF-8'>
+  open(dbenv, "w").write("DATABASE_URL=postgresql://x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:90: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpe95l0a81/loaded' mode='r' encoding='UTF-8'>
+  return open(self.log).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./repo/puller/test_ingest.py:83: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpxw733ibq/rc' mode='w' encoding='UTF-8'>
+  open(self.rc_file, "w").write(str(rc))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:71: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpxw733ibq/s3.env' mode='w' encoding='UTF-8'>
+  open(s3env, "w").write("AWS_ACCESS_KEY_ID=x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:72: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpxw733ibq/db.env' mode='w' encoding='UTF-8'>
+  open(dbenv, "w").write("DATABASE_URL=postgresql://x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:90: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpxw733ibq/loaded' mode='r' encoding='UTF-8'>
+  return open(self.log).read().split()
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:93: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpxw733ibq/detect' mode='r' encoding='UTF-8'>
+  return len(open(self.detect).read().splitlines())
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./repo/puller/test_ingest.py:83: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpk5pi10d9/rc' mode='w' encoding='UTF-8'>
+  open(self.rc_file, "w").write(str(rc))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:71: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpk5pi10d9/s3.env' mode='w' encoding='UTF-8'>
+  open(s3env, "w").write("AWS_ACCESS_KEY_ID=x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:72: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpk5pi10d9/db.env' mode='w' encoding='UTF-8'>
+  open(dbenv, "w").write("DATABASE_URL=postgresql://x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:96: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmpk5pi10d9/detect' mode='r' encoding='UTF-8'>
+  return [json.loads(line) for line in open(self.detect).read().splitlines()]
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+./repo/puller/test_ingest.py:83: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmprfxmhj1b/rc' mode='w' encoding='UTF-8'>
+  open(self.rc_file, "w").write(str(rc))
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:71: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmprfxmhj1b/s3.env' mode='w' encoding='UTF-8'>
+  open(s3env, "w").write("AWS_ACCESS_KEY_ID=x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:72: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmprfxmhj1b/db.env' mode='w' encoding='UTF-8'>
+  open(dbenv, "w").write("DATABASE_URL=postgresql://x\n")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/repo/puller/test_ingest.py:285: ResourceWarning: unclosed file <_io.TextIOWrapper name='/tmp/tmprfxmhj1b/env' mode='r' encoding='UTF-8'>
+  self.assertEqual(open(seen).read(), "none")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+.......경고: i-058726c1a0671fe1d 생존 신호 없음 (NoSuchKey). 이 호스트 조각은 받지 않는다
+받음 0개 0 B · 대기 1개 · 한도로 미룸 없음 · 일시 오류 0 · 보관 0개 · 구멍 0(일시 0) · 생존 신호 이상 1
+.원장 구멍 cowrie/i-058726c1a0671fe1d/ino=11.g0: 72 ~ 141 B 없음 (S3 에 없거나 받지 않은 조각). 확인 뒤 인정하려면 구멍 인정 목록에 이 세대를 넣는다
+받음 1개 72 B · 대기 0개 · 한도로 미룸 없음 · 일시 오류 0 · 보관 1개 · 구멍 1(일시 0) · 생존 신호 이상 0
+.받음 1개 72 B · 대기 1개 · 한도로 미룸 없음 · 일시 오류 0 · 보관 1개 · 구멍 0(일시 0) · 생존 신호 이상 0
+받음 2개 140 B · 대기 0개 · 한도로 미룸 없음 · 일시 오류 0 · 보관 3개 · 구멍 0(일시 0) · 생존 신호 이상 0
+...받음 2개 213 B · 대기 0개 · 한도로 미룸 없음 · 일시 오류 0 · 보관 2개 · 구멍 0(일시 0) · 생존 신호 이상 0
+.받음 1개 102 B · 대기 0개 · 한도로 미룸 없음 · 일시 오류 0 · 보관 1개 · 구멍 0(일시 0) · 생존 신호 이상 0
+....원장 구멍 cowrie/i-058726c1a0671fe1d/ino=11.g0: 72 ~ 141 B 없음 (S3 에 없거나 받지 않은 조각). 확인 뒤 인정하려면 구멍 인정 목록에 이 세대를 넣는다
+받음 2개 143 B · 대기 0개 · 한도로 미룸 없음 · 일시 오류 0 · 보관 2개 · 구멍 1(일시 0) · 생존 신호 이상 0
+....받음 0개 0 B · 대기 0개 · 한도로 미룸 없음 · 일시 오류 0 · 보관 0개 · 구멍 0(일시 0) · 생존 신호 이상 0
+.받음 1개 72 B · 대기 0개 · 한도로 미룸 없음 · 일시 오류 0 · 보관 1개 · 구멍 0(일시 0) · 생존 신호 이상 0
+.받음 0개 0 B · 대기 0개 · 한도로 미룸 없음 · 일시 오류 0 · 보관 1개 · 구멍 0(일시 0) · 생존 신호 이상 0
+..받음 1개 141 B · 대기 0개 · 한도로 미룸 없음 · 일시 오류 0 · 보관 1개 · 구멍 0(일시 0) · 생존 신호 이상 0
+..받음 1개 72 B · 대기 0개 · 한도로 미룸 없음 · 일시 오류 0 · 보관 1개 · 구멍 0(일시 0) · 생존 신호 이상 0
+..받음 1개 72 B · 대기 0개 · 한도로 미룸 없음 · 일시 오류 0 · 보관 1개 · 구멍 0(일시 0) · 생존 신호 이상 0
+받음 1개 72 B · 대기 0개 · 한도로 미룸 없음 · 일시 오류 0 · 보관 1개 · 구멍 0(일시 0) · 생존 신호 이상 0
+.받음 2개 212 B · 대기 0개 · 한도로 미룸 없음 · 일시 오류 0 · 보관 2개 · 구멍 0(일시 0) · 생존 신호 이상 0
+......받지 않음 raw/v1/sensor=cowrie/host=i-058726c1a0671fe1d/ino=11.g0/000000000000-000000000072.jsonl: 줄바꿈으로 끝나지 않음
+원장 구멍 cowrie/i-058726c1a0671fe1d/ino=11.g0: 0 ~ 72 B 없음 (S3 에 없거나 받지 않은 조각). 확인 뒤 인정하려면 구멍 인정 목록에 이 세대를 넣는다
+받음 0개 0 B · 대기 0개 · 한도로 미룸 없음 · 일시 오류 0 · 보관 0개 · 구멍 1(일시 0) · 생존 신호 이상 0
+.받지 않음 raw/v1/sensor=cowrie/host=i-058726c1a0671fe1d/ino=11.g0/000000000000-000000000072.jsonl: SHA256 불일치
+원장 구멍 cowrie/i-058726c1a0671fe1d/ino=11.g0: 0 ~ 72 B 없음 (S3 에 없거나 받지 않은 조각). 확인 뒤 인정하려면 구멍 인정 목록에 이 세대를 넣는다
+받음 0개 0 B · 대기 0개 · 한도로 미룸 없음 · 일시 오류 0 · 보관 0개 · 구멍 1(일시 0) · 생존 신호 이상 0
+.받지 않음 raw/v1/sensor=cowrie/host=i-058726c1a0671fe1d/ino=11.g0/000000000000-000000000072.jsonl: 업로드 체크섬 없음
+원장 구멍 cowrie/i-058726c1a0671fe1d/ino=11.g0: 0 ~ 72 B 없음 (S3 에 없거나 받지 않은 조각). 확인 뒤 인정하려면 구멍 인정 목록에 이 세대를 넣는다
+받음 0개 0 B · 대기 0개 · 한도로 미룸 없음 · 일시 오류 0 · 보관 0개 · 구멍 1(일시 0) · 생존 신호 이상 0
+.받지 않음 raw/v1/sensor=cowrie/host=i-058726c1a0671fe1d/ino=11.g0/000000000000-000000000005.jsonl: 크기 불일치 (구간 5, 객체 72)
+원장 구멍 cowrie/i-058726c1a0671fe1d/ino=11.g0: 0 ~ 5 B 없음 (S3 에 없거나 받지 않은 조각). 확인 뒤 인정하려면 구멍 인정 목록에 이 세대를 넣는다
+받음 0개 0 B · 대기 0개 · 한도로 미룸 없음 · 일시 오류 0 · 보관 0개 · 구멍 1(일시 0) · 생존 신호 이상 0
+.받음 0개 0 B · 대기 0개 · 한도로 미룸 없음 · 일시 오류 0 · 보관 0개 · 구멍 0(일시 0) · 생존 신호 이상 0
+.받음 1개 72 B · 대기 0개 · 한도로 미룸 없음 · 일시 오류 0 · 보관 1개 · 구멍 0(일시 0) · 생존 신호 이상 0
+..................
+----------------------------------------------------------------------
+Ran 74 tests in 3.672s
+
+OK
+Suite: enforcer
+.........내부 방화벽 장부를 기존 장부에서 다시 만들었다 (옛 상태 파일 · 옛 집행기가 그 사이 돌았다)
+.............s.....................s..................................................................................................EEEEEEEE.........................................
+======================================================================
+ERROR: test_triage_판정 (test_block_enforcer.RearmPgTest.test_triage_판정)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/repo/enforcer/test_block_enforcer.py", line 2974, in test_triage_판정
+    self.scenario(self.expire, rearm, "console.block.extended")
+  File "/repo/enforcer/test_block_enforcer.py", line 2913, in scenario
+    rearm()
+  File "/repo/enforcer/test_block_enforcer.py", line 2973, in rearm
+    self.assertIsNone(tr.record(self.app, key, self.IP, "threat", "근거", 1.0, "han", None, True))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/repo/detector/triage.py", line 758, in record
+    raise ValueError("읽은 사건의 expected_version이 필요합니다")
+ValueError: 읽은 사건의 expected_version이 필요합니다
+
+======================================================================
+ERROR: test_triage_판정_관문_포함_관문이_뺀_뒤 (test_block_enforcer.RearmPgTest.test_triage_판정_관문_포함_관문이_뺀_뒤)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/repo/enforcer/test_block_enforcer.py", line 3201, in test_triage_판정_관문_포함_관문이_뺀_뒤
+    self.triage_gw("뺀 뒤")
+  File "/repo/enforcer/test_block_enforcer.py", line 3180, in triage_gw
+    self.gw_scenario(self.system_release, self.triage_rearm(), case)
+  File "/repo/enforcer/test_block_enforcer.py", line 3064, in gw_scenario
+    rearm()
+  File "/repo/enforcer/test_block_enforcer.py", line 3176, in rearm
+    self.assertIsNone(tr.record(self.app, key, self.IP, "threat", "근거", 1.0, "han", None, True))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/repo/detector/triage.py", line 758, in record
+    raise ValueError("읽은 사건의 expected_version이 필요합니다")
+ValueError: 읽은 사건의 expected_version이 필요합니다
+
+======================================================================
+ERROR: test_triage_판정_관문_포함_덮인_보고 (test_block_enforcer.RearmPgTest.test_triage_판정_관문_포함_덮인_보고)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/repo/enforcer/test_block_enforcer.py", line 3198, in test_triage_판정_관문_포함_덮인_보고
+    self.triage_gw("덮임")
+  File "/repo/enforcer/test_block_enforcer.py", line 3180, in triage_gw
+    self.gw_scenario(self.system_release, self.triage_rearm(), case)
+  File "/repo/enforcer/test_block_enforcer.py", line 3064, in gw_scenario
+    rearm()
+  File "/repo/enforcer/test_block_enforcer.py", line 3176, in rearm
+    self.assertIsNone(tr.record(self.app, key, self.IP, "threat", "근거", 1.0, "han", None, True))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/repo/detector/triage.py", line 758, in record
+    raise ValueError("읽은 사건의 expected_version이 필요합니다")
+ValueError: 읽은 사건의 expected_version이 필요합니다
+
+======================================================================
+ERROR: test_triage_판정_관문_포함_만료_뒤 (test_block_enforcer.RearmPgTest.test_triage_판정_관문_포함_만료_뒤)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/repo/enforcer/test_block_enforcer.py", line 3189, in test_triage_판정_관문_포함_만료_뒤
+    self.triage_gw("만료")
+  File "/repo/enforcer/test_block_enforcer.py", line 3180, in triage_gw
+    self.gw_scenario(self.system_release, self.triage_rearm(), case)
+  File "/repo/enforcer/test_block_enforcer.py", line 3064, in gw_scenario
+    rearm()
+  File "/repo/enforcer/test_block_enforcer.py", line 3176, in rearm
+    self.assertIsNone(tr.record(self.app, key, self.IP, "threat", "근거", 1.0, "han", None, True))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/repo/detector/triage.py", line 758, in record
+    raise ValueError("읽은 사건의 expected_version이 필요합니다")
+ValueError: 읽은 사건의 expected_version이 필요합니다
+
+======================================================================
+ERROR: test_triage_판정_관문_포함_보고_누락 (test_block_enforcer.RearmPgTest.test_triage_판정_관문_포함_보고_누락)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/repo/enforcer/test_block_enforcer.py", line 3195, in test_triage_판정_관문_포함_보고_누락
+    self.triage_gw("누락")
+  File "/repo/enforcer/test_block_enforcer.py", line 3180, in triage_gw
+    self.gw_scenario(self.system_release, self.triage_rearm(), case)
+  File "/repo/enforcer/test_block_enforcer.py", line 3064, in gw_scenario
+    rearm()
+  File "/repo/enforcer/test_block_enforcer.py", line 3176, in rearm
+    self.assertIsNone(tr.record(self.app, key, self.IP, "threat", "근거", 1.0, "han", None, True))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/repo/detector/triage.py", line 758, in record
+    raise ValueError("읽은 사건의 expected_version이 필요합니다")
+ValueError: 읽은 사건의 expected_version이 필요합니다
+
+======================================================================
+ERROR: test_triage_판정_관문_포함_오류_보고 (test_block_enforcer.RearmPgTest.test_triage_판정_관문_포함_오류_보고)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/repo/enforcer/test_block_enforcer.py", line 3192, in test_triage_판정_관문_포함_오류_보고
+    self.triage_gw("오류")
+  File "/repo/enforcer/test_block_enforcer.py", line 3180, in triage_gw
+    self.gw_scenario(self.system_release, self.triage_rearm(), case)
+  File "/repo/enforcer/test_block_enforcer.py", line 3064, in gw_scenario
+    rearm()
+  File "/repo/enforcer/test_block_enforcer.py", line 3176, in rearm
+    self.assertIsNone(tr.record(self.app, key, self.IP, "threat", "근거", 1.0, "han", None, True))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/repo/detector/triage.py", line 758, in record
+    raise ValueError("읽은 사건의 expected_version이 필요합니다")
+ValueError: 읽은 사건의 expected_version이 필요합니다
+
+======================================================================
+ERROR: test_triage_판정_관문_포함_유지 (test_block_enforcer.RearmPgTest.test_triage_판정_관문_포함_유지)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/repo/enforcer/test_block_enforcer.py", line 3183, in test_triage_판정_관문_포함_유지
+    self.triage_gw("유지")
+  File "/repo/enforcer/test_block_enforcer.py", line 3180, in triage_gw
+    self.gw_scenario(self.system_release, self.triage_rearm(), case)
+  File "/repo/enforcer/test_block_enforcer.py", line 3064, in gw_scenario
+    rearm()
+  File "/repo/enforcer/test_block_enforcer.py", line 3176, in rearm
+    self.assertIsNone(tr.record(self.app, key, self.IP, "threat", "근거", 1.0, "han", None, True))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/repo/detector/triage.py", line 758, in record
+    raise ValueError("읽은 사건의 expected_version이 필요합니다")
+ValueError: 읽은 사건의 expected_version이 필요합니다
+
+======================================================================
+ERROR: test_triage_판정_관문_포함_전체_모드 (test_block_enforcer.RearmPgTest.test_triage_판정_관문_포함_전체_모드)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/repo/enforcer/test_block_enforcer.py", line 3186, in test_triage_판정_관문_포함_전체_모드
+    self.triage_gw("전체 모드")
+  File "/repo/enforcer/test_block_enforcer.py", line 3180, in triage_gw
+    self.gw_scenario(self.system_release, self.triage_rearm(), case)
+  File "/repo/enforcer/test_block_enforcer.py", line 3064, in gw_scenario
+    rearm()
+  File "/repo/enforcer/test_block_enforcer.py", line 3176, in rearm
+    self.assertIsNone(tr.record(self.app, key, self.IP, "threat", "근거", 1.0, "han", None, True))
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/repo/detector/triage.py", line 758, in record
+    raise ValueError("읽은 사건의 expected_version이 필요합니다")
+ValueError: 읽은 사건의 expected_version이 필요합니다
+
+----------------------------------------------------------------------
+Ran 192 tests in 38.345s
+
+FAILED (errors=8, skipped=2)

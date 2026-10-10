@@ -1,0 +1,409 @@
+
+> console@0.0.0 test
+> vitest run
+
+
+ RUN  v5.0.1 /Users/hanseongmin/opsloop-repo/console
+
+ ❯ src/pages/assets/AssetsPage.test.tsx (24 tests | 2 failed) 2803ms
+   ❯ 자산 · 취약점 (15)
+     × 자산 표에 역할 · 수집 · 재부팅 대기 · KEV · 수집 오류를 보이고 신선도를 요약한다 430ms
+   ❯ 주목 CVE (8)
+     × 자산 목록 다음에 CVE · 주목 이유 · KEV · EPSS · 판정 요약 · 자산별 판정을 서버 순서대로 보인다 56ms
+ ❯ src/pages/incident-detail/IncidentDetailPage.test.tsx (70 tests | 1 failed) 15704ms
+   ❯ IncidentDetailPage (30)
+     × 다른 담당 변경은 열어 둔 차단 메모를 보존하고 새 기준 확인을 요구한다(#105) 440ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  src/pages/assets/AssetsPage.test.tsx > 자산 · 취약점 > 자산 표에 역할 · 수집 · 재부팅 대기 · KEV · 수집 오류를 보이고 신선도를 요약한다
+Error: expect(element).toHaveTextContent()
+
+Expected element to have text content:
+  공개 정보 신선도
+Received:
+  공개 정보·자산 수집 시각 · 12:00:00 KST 조회 기준KEV 수집2026-09-25 11:00원천 기준 2026-09-23 09:00EPSS 수집2026-09-25 11:01원천 기준 2026-09-24 21:00배포판 대조2026-09-25 11:05NVD 수집2026-09-25 11:20자산 수집 (가장 오래된)2026-09-25 05:1048시간 넘게 새로 받지 못하면 오래됨입니다.배포판 대조는 Ubuntu 보안 정보(OSV) 기준이며, 직접 설치한 프로그램은 대조하지 않습니다(해당 여부 미확인).수정 여부 미확인은 현재 수집 정책에서 상세 정보를 조회하지 않는 기록(커널 질의에서만 나온 KEV 밖 기록)을 포함합니다. 수정판 없음이라는 뜻은 아닙니다.취약점 수는 패키지별 대조 행 수입니다. 같은 CVE 가 여러 패키지에 걸리면 여러 번 셉니다.
+ ❯ src/pages/assets/AssetsPage.test.tsx:86:78
+     84|     expect(screen.getByText('KEV 수집')).toBeInTheDocument()
+     85|     // 오래됨 기준 · 대조 범위는 신선도 접힘 안에 둔다
+     86|     expect(screen.getByText('48시간 넘게 새로 받지 못하면 오래됨입니다.').closest('deta…
+       |                                                                              ^
+     87|     expect(screen.queryByText(/공개 정보가 오래됐습니다/)).toBeNull()
+     88|     expect(screen.getByRole('link', { name: '수집 · 관제 상태' })).toHaveAtt…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  src/pages/assets/AssetsPage.test.tsx > 주목 CVE > 자산 목록 다음에 CVE · 주목 이유 · KEV · EPSS · 판정 요약 · 자산별 판정을 서버 순서대로 보인다
+TestingLibraryElementError: Unable to find an element with the text: 정해 둔 CVE 마다 자산의 설치 버전을 배포판(Ubuntu) 수정판과 견줍니다.. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+[36m<div[39m
+  [33maria-label[39m=[32m"주목 CVE"[39m
+  [33mclass[39m=[32m"rounded-card bg-surface shadow-card min-w-0"[39m
+  [33mrole[39m=[32m"region"[39m
+[36m>[39m
+  [36m<div[39m
+    [33mclass[39m=[32m"flex flex-wrap items-center justify-between gap-2 rounded-t-card border-b border-line bg-canvas/60 px-4 py-2.5"[39m
+  [36m>[39m
+    [36m<h2[39m
+      [33mclass[39m=[32m"m-0 text-md font-semibold tracking-heading"[39m
+    [36m>[39m
+      [0m주목 CVE[0m
+    [36m</h2>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"flex items-center gap-3 text-xs text-ink-muted"[39m
+    [36m>[39m
+      [36m<span>[39m
+        [0m3[0m
+        [0m건 · 해당 [0m
+        [0m1[0m
+        [0m건 · 미확인 [0m
+        [0m1[0m
+        [0m건 · [0m
+        [36m<time[39m
+          [33mclass[39m=[32m"tabular-nums"[39m
+          [33mdatetime[39m=[32m"2026-09-25T03:00:00.000Z"[39m
+          [33mtitle[39m=[32m"2026-09-25 12:00:00 KST"[39m
+        [36m>[39m
+          [0m12:00:00 KST[0m
+        [36m</time>[39m
+        [0m 조회[0m
+      [36m</span>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+  [36m<div[39m
+    [33mclass[39m=[32m"flex flex-col gap-3 p-4"[39m
+  [36m>[39m
+    [36m<p[39m
+      [33mclass[39m=[32m"m-0 text-xs leading-5 text-ink-muted"[39m
+    [36m>[39m
+      [0m정해 둔 CVE마다 자산의 설치 버전을 배포판(Ubuntu) 수정판과 자동 대조합니다. 미확인은 대조 근거 부족이며, 사람의 판정 대기가 아닙니다. CVE를 펼치면 자산별 이유를 볼 수 있습니다.[0m
+    [36m</p>[39m
+    [36m<details[39m
+      [33mclass[39m=[32m"text-xs leading-5 text-ink-muted"[39m
+    [36m>[39m
+      [36m<summary[39m
+        [33mclass[39m=[32m"cursor-pointer"[39m
+      [36m>[39m
+        [0m선정·갱신 기준[0m
+      [36m</summary>[39m
+      [36m<p[39m
+        [33mclass[39m=[32m"mb-0"[39m
+      [36m>[39m
+        [0m현재 자산과의 관련성·영향·알려진 악용 여부를 고려해 운영자가 선정한 목록입니다. 점수순 자동 선정은 아니며 목록 변경은 관리 설정에서 반영합니다. 공개 정보와 자산 정보가 갱신되면 다음 조회에서 다시 대조합니다. 화면 새로고침은 저장된 정보를 다시 조회하며 자산 조사를 실행하지 않습니다.[0m
+      [36m</p>[39m
+    [36m</details>[39m
+  [36m</div>[39m
+  [36m<div[39m
+    [33maria-label[39m=[32m"주목 CVE 표"[39m
+    [33mclass[39m=[32m"overflow-x-auto border-t border-line"[39m
+    [33mrole[39m=[32m"region"[39m
+    [33mtabindex[39m=[32m"0"[39m
+  [36m>[39m
+    [36m<table[39m
+      [33mclass[39m=[32m"responsive-table w-full table-fixed text-left text-sm"[39m
+    [36m>[39m
+      [36m<thead[39m
+        [33mclass[39m=[32m"border-b border-line text-xs text-ink-muted"[39m
+      [36m>[39m
+        [36m<tr>[39m
+          [36m<th[39m
+            [33mclass[39m=[32m"px-4 py-3 align-top whitespace-nowrap"[39m
+            [33mscope[39m=[32m"col"[39m
+          [36m>[39m
+            [0mCVE[0m
+          [36m</th>[39m
+          [36m<th[39m
+            [33mclass[39m=[32m"px-4 py-3 align-top whitespace-nowrap"[39m
+            [33mscope[39m=[32m"col"[39m
+          [36m>[39m
+            [0m주목 이유[0m
+          [36m</th>[39m
+          [36m<th[39m
+            [33mclass[39m=[32m"px-4 py-3 align-top whitespace-nowrap"[39m
+            [33mscope[39m=[32m"col"[39m
+          [36m>[39m
+            [0mKEV[0m
+          [36m</th>[39m
+          [36m<th[39m
+            [33mclass[39m=[32m"px-4 py-3 align-top whitespace-nowrap"[39m
+            [33mscope[39m=[32m"col"[39m
+          [36m>[39m
+            [0mEPSS (백분위)[0m
+          [36m</th>[39m
+          [36m<th[39m
+            [33mclass[39m=[32m"px-4 py-3 align-top whitespace-nowrap"[39m
+            [33mscope[39m=[32m"col"[39m
+          [36m>[39m
+            [0m자산 해당 여부[0m
+          [36m</th>[39m
+          [36m<th[39m
+            [33mclass[39m=[32m"px-4 py-3 align-top whitespace-nowrap"[39m
+            [33mscope[39m=[32m"col"[39m
+          [36m>[39m
+            [0m자산별 해당 여부[0m
+          [36m</th>[39m
+        [36m</tr>[39m
+      [36m</thead>[39m
+      [36m<tbody[39m
+        [33mclass[39m=[32m"divide-y divide-line"[39m
+      [36m>[39m
+        [36m<tr[39m
+          [33mdata-cve[39m=[32m"CVE-2026-53266"[39m
+          [33mdata-summary[39m=[32m"affected"[39m
+        [36m>[39m
+          [36m<th[39m
+            [33mclass[39m=[32m"px-4 py-3 align-top font-normal whitespace-nowrap"[39m
+            [33mscope[39m=[32m"row"[39m
+          [36m>[39m
+            [36m<button[39m
+              [33maria-controls[39m=[32m"_r_2u_-CVE-2026-53266"[39m
+              [33maria-expanded[39m=[32m"false"[39m
+              [33mclass[39m=[32m"inline-flex cursor-pointer items-center gap-1 font-mono text-xs font-semibold text-primary hover:underline"[39m
+              [33mtitle[39m=[32m"CVE-2026-53266"[39m
+              [33mtype[39m=[32m"button"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33maria-hidden[39m=[32m"true"[39m
+                [33mclass[39m=[32m"inline-block w-3 text-ink-muted"[39m
+              [36m>[39m
+                [0m▸[0m
+              [36m</span>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"[overflow-wrap:anywhere]"[39m
+                [33mdata-untrusted[39m=[32m""[39m
+              [36m>[39m
+                [36m<bdi[39m
+                  [33mdir[39m=[32m"ltr"[39m
+                [36m>[39m
+                  [0mCVE-2026-53266[0m
+                [36m</bdi>[39m
+              [36m</span>[39m
+            [36m</button>[39m
+          [36m</th>[39m
+          [36m<td[39m
+            [33mclass[39m=[32m"px-4 py-3 align-top text-xs leading-5"[39m
+            [33mdata-label[39m=[32m"주목 이유"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"[overflow-wrap:anywhere]"[39m
+              [33mdata-untrusted[39m=[32m""[39m
+            [36m>[39m
+              [36m<bdi[39m
+                [33mdir[39m=[32m"ltr"[39m
+              [36m>[39m
+                [0m커널 netfilter ebtables · KEV 2026-09-18 등재[0m
+              [36m</bdi>[39m
+            [36m</span>[39m
+          [36m</td>[39m
+          [36m<td[39m
+            [33mclass[39m=[32m"px-4 py-3 align-top text-xs"[39m
+            [33mdata-label[39m=[32m"KEV"[39m
+          [36m>[39m
+            [36m<span[39m
+              [33mclass[39m=[32m"inline-flex items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-xs leading-4 font-medium bg-danger-soft text-danger"[39m
+            [36m>[39m
+              [0mKEV[0m
+            [36m</span>[39m
+            [0m [0m
+            [36m<span[39m
+              [33mclass[39m=[32m"font-mono"[39m
+            [36m>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"[overflow-wrap:anywhere]"[39m
+                [33mdata-untrusted[39m=[32m""[39m
+              [36m>[39m
+                [36m<bdi[39m
+                  [33mdir[39m=[32m"ltr"[39m
+                [36m>[39m
+                  [0m2026-09-18[0m
+                [36m</bdi>[39m
+      ...
+ ❯ Object.getElementError node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/pages/assets/AssetsPage.test.tsx:285:25
+    283|     expect(assetTable.compareDocumentPosition(card) & Node.DOCUMENT_PO…
+    284|     expect(within(card).getByText(/3건 · 해당 1건/)).toBeInTheDocument()
+    285|     expect(within(card).getByText('정해 둔 CVE 마다 자산의 설치 버전을 배포판(Ubuntu) …
+       |                         ^
+    286|     // '판정 근거 아님' 은 제목 옆 ⓘ 한 곳에만 둔다
+    287|     expect(within(card).queryByText(/판정 근거가 아닙니다/)).toBeNull()
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  src/pages/incident-detail/IncidentDetailPage.test.tsx > IncidentDetailPage > 다른 담당 변경은 열어 둔 차단 메모를 보존하고 새 기준 확인을 요구한다(#105)
+TestingLibraryElementError: Unable to find an element with the text: other. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+Ignored nodes: comments, script, style
+[36m<div[39m
+  [33maria-labelledby[39m=[32m"_r_1b_"[39m
+  [33mclass[39m=[32m"rounded-card bg-surface shadow-card flex flex-col scroll-mt-16 min-w-0"[39m
+  [33mid[39m=[32m"incident-response"[39m
+  [33mrole[39m=[32m"region"[39m
+  [33mtabindex[39m=[32m"-1"[39m
+[36m>[39m
+  [36m<div[39m
+    [33mclass[39m=[32m"flex flex-wrap items-center justify-between gap-2 rounded-t-card border-b border-line bg-canvas/60 px-4 py-2.5"[39m
+  [36m>[39m
+    [36m<h2[39m
+      [33mclass[39m=[32m"m-0 text-md font-semibold tracking-heading"[39m
+    [36m>[39m
+      [36m<span[39m
+        [33mclass[39m=[32m"inline-flex items-center gap-2"[39m
+        [33mid[39m=[32m"_r_1b_"[39m
+      [36m>[39m
+        [36m<span[39m
+          [33maria-hidden[39m=[32m"true"[39m
+          [33mclass[39m=[32m"text-ink-muted"[39m
+        [36m>[39m
+          [0m⑤[0m
+        [36m</span>[39m
+        [0m조치와 판정[0m
+      [36m</span>[39m
+    [36m</h2>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"flex items-center gap-3 text-xs text-ink-muted"[39m
+    [36m>[39m
+      [36m<span[39m
+        [33mclass[39m=[32m"inline-flex items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-xs leading-4 font-medium bg-muted-soft text-muted"[39m
+        [33mdata-status[39m=[32m"open"[39m
+      [36m>[39m
+        [0m신규[0m
+      [36m</span>[39m
+    [36m</div>[39m
+  [36m</div>[39m
+  [36m<div[39m
+    [33mclass[39m=[32m"flex min-w-0 flex-col gap-3 p-4"[39m
+  [36m>[39m
+    [36m<div[39m
+      [33mclass[39m=[32m"rounded-panel border border-warning/40 bg-warning/5 p-3 text-sm"[39m
+      [33mrole[39m=[32m"alert"[39m
+    [36m>[39m
+      [36m<p[39m
+        [33mclass[39m=[32m"mt-0"[39m
+      [36m>[39m
+        [0m다른 변경이 저장됐습니다. 작성한 내용은 유지됩니다. 아래 이력과 현재 상태를 확인해 주세요.[0m
+      [36m</p>[39m
+      [36m<button[39m
+        [33mclass[39m=[32m"inline-flex shrink-0 cursor-pointer select-none items-center justify-center gap-1.5 whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary bg-surface text-ink shadow-control h-[30px] rounded-control px-3 text-xs hover:bg-canvas"[39m
+        [33mtype[39m=[32m"button"[39m
+      [36m>[39m
+        [0m최신 이력 확인 후 계속[0m
+      [36m</button>[39m
+    [36m</div>[39m
+    [36m<fieldset[39m
+      [33mclass[39m=[32m"m-0 flex min-w-0 flex-col gap-3 border-0 p-0"[39m
+      [33mdisabled[39m=[32m""[39m
+    [36m>[39m
+      [36m<p[39m
+        [33mclass[39m=[32m"m-0 text-xs text-ink-muted"[39m
+      [36m>[39m
+        [0m판정과 조치는 현재 로그인한 계정과 저장 시각으로 이력에 남습니다.[0m
+      [36m</p>[39m
+      [36m<div[39m
+        [33mclass[39m=[32m"flex flex-col gap-3"[39m
+      [36m>[39m
+        [36m<div[39m
+          [33maria-label[39m=[32m"조치"[39m
+          [33mclass[39m=[32m"flex flex-wrap gap-2"[39m
+          [33mrole[39m=[32m"group"[39m
+        [36m>[39m
+          [36m<button[39m
+            [33mclass[39m=[32m"inline-flex shrink-0 cursor-pointer select-none items-center justify-center gap-1.5 whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary bg-surface text-ink shadow-control h-8 rounded-control px-3 text-sm hover:bg-canvas"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [0m확인[0m
+          [36m</button>[39m
+          [36m<button[39m
+            [33maria-controls[39m=[32m"_r_1c_"[39m
+            [33maria-expanded[39m=[32m"true"[39m
+            [33mclass[39m=[32m"inline-flex shrink-0 cursor-pointer select-none items-center justify-center gap-1.5 whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary bg-surface shadow-control h-8 rounded-control px-3 text-sm hover:bg-canvas text-danger"[39m
+            [33mtype[39m=[32m"button"[39m
+          [36m>[39m
+            [0m차단[0m
+          [36m</button>[39m
+        [36m</div>[39m
+        [36m<form[39m
+          [33maria-label[39m=[32m"차단 확인"[39m
+          [33mclass[39m=[32m"flex flex-col gap-3 rounded-panel bg-canvas p-3"[39m
+          [33mid[39m=[32m"_r_1c_"[39m
+        [36m>[39m
+          [36m<p[39m
+            [33mclass[39m=[32m"m-0 text-sm"[39m
+          [36m>[39m
+            [0m출발지 [0m
+            [36m<span[39m
+              [33mclass[39m=[32m"font-mono font-medium"[39m
+            [36m>[39m
+              [0m4.4.66.84[0m
+            [36m</span>[39m
+            [0m 를 [0m
+            [36m<strong>[39m
+              [0m1일 (24시간)[0m
+            [36m</strong>[39m
+            [0m 동안[0m
+            [0m [0m
+            [36m<span[39m
+              [33mclass[39m=[32m"whitespace-nowrap"[39m
+            [36m>[39m
+              [0m차단합니다.[0m
+              [0m [0m
+              [36m<button[39m
+                [33maria-controls[39m=[32m"_r_20_"[39m
+                [33maria-describedby[39m=[32m"_r_20_"[39m
+                [33maria-expanded[39m=[32m"false"[39m
+                [33maria-label[39m=[32m"차단 설명"[39m
+                [33mclass[39m=[32m"relative inline-flex size-4 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 align-[-0.2em] text-ink-muted hover:text-primary after:absolute after:-inset-1 after:content-[''] print:hidden"[39m
+                [33mtype[39m=[32m"button"[39m
+              [36m>[39m
+                [36m<svg[39m
+                  [33maria-hidden[39m=[32m"true"[39m
+                  [33mfill[39m=[32m"none"[39m
+                  [33mfocusable[39m=[32m"false"[39m
+                  [33mheight[39m=[32m"16"[39m
+                  [33mstroke[39m=[32m"currentColor"[39m
+                  [33mstroke-linecap[39m=[32m"round"[39m
+                  [33mstroke-width[39m=[32m"2"[39m
+                  [33mviewBox[39m=[32m"0 0 24 24"[39m
+                  [33mwidth[39m=[32m"16"[39m
+                [36m>[39m
+                  [36m<circle[39m
+                    [33mcx[39m=[32m"12"[39m
+                    [33mcy[39m=[32m"12"[39m
+                    [33mr[39m=[32m"9"[39m
+                  [36m/>[39m
+                  [36m<path[39m
+                    [33md[39m=[32m"M12 11v5.5M12 7.6h.01"[39m
+                  [36m/>[39m
+                [36m</svg>[39m
+              [36m</button>[39m
+              [36m<span[39m
+                [33mclass[39m=[32m"w-max max-w-[min(22rem,var(--tip-max,calc(100vw-2rem)))] max-h-[60vh] overflow-y-auto rounded-control border border-line bg-surface px-2.5 py-1.5 text-left text-xs leading-5 font-normal tracking-normal normal-case whitespace-normal text-ink shadow-raised print:hidden fixed inset-auto m-0 left-(--tip-x) top-(--tip-y) z-50 hidden"[39m
+                [33mdata-infotip[39m=[32m""[39m
+                [33mid[39m=[32m"_r_20_"...
+ ❯ Object.getElementError node_modules/@testing-library/dom/dist/config.js:37:19
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+ ❯ node_modules/@testing-library/dom/dist/query-helpers.js:95:19
+ ❯ src/pages/incident-detail/IncidentDetailPage.test.tsx:202:18
+    200|     expect(panel.getByLabelText('메모 (선택)')).toHaveValue('현재 증거 확인 중')
+    201|     expect(panel.getByRole('button', { name: '차단 확정' })).toBeDisabled()
+    202|     expect(panel.getByText('other')).toBeInTheDocument()
+       |                  ^
+    203|   })
+    204|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  2 failed | 68 passed (70)
+      Tests  3 failed | 1106 passed (1109)
+   Start at  10:16:52
+   Duration  31.53s (tests 49%, environment 35%, transform 7%, setup 6%, import 3%)
+
+Environment  jsdom was created 70 times · 73.25s total, 35% of tracked time
+             create it once per worker with pool: 'vmThreads' (keeps per-file isolation) or isolate: false (shares it across files)
+             learn more: https://vitest.dev/guide/improving-performance#test-environments
+

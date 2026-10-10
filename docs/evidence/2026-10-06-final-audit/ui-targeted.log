@@ -1,0 +1,13 @@
+
+> console@0.0.0 test
+> vitest run --run src/pages/assets/AssetsPage.test.tsx src/pages/incident-detail/IncidentDetailPage.test.tsx
+
+
+ RUN  v5.0.1 /Users/hanseongmin/opsloop-repo/console
+
+
+ Test Files  2 passed (2)
+      Tests  94 passed (94)
+   Start at  10:20:26
+   Duration  8.11s (tests 56%, transform 20%, environment 18%, import 3%, setup 3%)
+

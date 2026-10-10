@@ -1,0 +1,8 @@
+active
+Oct 06 09:08:39 opsloop-web-02 systemd[1]: Started alloy.service - Vendor-agnostic OpenTelemetry Collector distribution with programmable pipelines.
+Oct 06 10:04:34 opsloop-web-02 alloy[1247]: ts=2026-10-06T01:04:34.96029684Z level=error msg="final error sending batch, no retries left, dropping data" component_path=/ component_id=loki.write.gate component=endpoint host=192.168.60.11:3101 status=-1 tenant="" error="Post \"http://192.168.60.11:3101/loki/api/v1/push\": context deadline exceeded"
+Oct 06 10:27:20 opsloop-web-02 systemd[1]: Stopping alloy.service - Vendor-agnostic OpenTelemetry Collector distribution with programmable pipelines...
+Oct 06 10:27:20 opsloop-web-02 systemd[1]: alloy.service: Deactivated successfully.
+Oct 06 10:27:20 opsloop-web-02 systemd[1]: Stopped alloy.service - Vendor-agnostic OpenTelemetry Collector distribution with programmable pipelines.
+Oct 06 10:27:20 opsloop-web-02 systemd[1]: alloy.service: Consumed 17.614s CPU time.
+Oct 06 10:27:20 opsloop-web-02 systemd[1]: Started alloy.service - Vendor-agnostic OpenTelemetry Collector distribution with programmable pipelines.

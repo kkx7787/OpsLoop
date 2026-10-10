@@ -1,0 +1,10 @@
+/var/log/opsloop/metrics.jsonl 2026-10-06 10:28:36.742270751 +0900 211354
+/var/log/nginx/opsloop.json 2026-10-03 03:06:36.641750929 +0900 508
+ExecMainStartTimestamp=Tue 2026-10-06 10:28:36 KST
+ExecMainStatus=0
+Oct 06 10:27:20 opsloop-web-02 systemd[1]: Stopping alloy.service - Vendor-agnostic OpenTelemetry Collector distribution with programmable pipelines...
+Oct 06 10:27:20 opsloop-web-02 systemd[1]: alloy.service: Deactivated successfully.
+Oct 06 10:27:20 opsloop-web-02 systemd[1]: Stopped alloy.service - Vendor-agnostic OpenTelemetry Collector distribution with programmable pipelines.
+Oct 06 10:27:20 opsloop-web-02 systemd[1]: alloy.service: Consumed 17.614s CPU time.
+Oct 06 10:27:20 opsloop-web-02 systemd[1]: Started alloy.service - Vendor-agnostic OpenTelemetry Collector distribution with programmable pipelines.
+{"ts":"2026-10-06T01:28:36.742381+00:00","host":"opsloop-web-02","seq":955,"cpu_pct":2.0,"mem_used_pct":38.6,"mem_avail_mb":430,"swap_used_pct":0.0,"disk_root_pct":20.7,"load1":0.11,"nginx_active":true,"sshd_active":true}

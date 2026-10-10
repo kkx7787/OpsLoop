@@ -1,0 +1,15 @@
+== 2026-10-06 10:24:20 KST 자산 수집 시작
+== 2026-10-06 10:24:22 KST 자산 조사
+  web-01        수집  opsloop-web-01 · 패키지 690 · 이미지 0 · 조사 오류 0
+  web-02        수집  opsloop-web-02 · 패키지 683 · 이미지 0 · 조사 오류 0
+  fw            수집  opsloop-fw · 패키지 691 · 이미지 0 · 조사 오류 0
+  console-a     수집  opsloop-console-a · 패키지 696 · 이미지 1 · 조사 오류 0
+  console-b     실패  연결 실패: channel 0: open failed: connect failed: No route to host / stdio forwarding failed / Connection closed by UNKNOWN port 65535
+  data-01       수집  opsloop-data-01 · 패키지 699 · 이미지 2 · 조사 오류 0
+  gateway       수집  i-0ffeb29efad03546d · 패키지 659 · 이미지 0 · 조사 오류 0
+  honeypot-dmz  수집  i-0f8f7c0f698ca941a · 패키지 668 · 이미지 2 · 조사 오류 0
+수집 7 · 실패 1 · 묶음 602,293 바이트
+assets: 정상 · 자산 8개: 조사 7 · 조사 실패 기록 1 · 형식 오류 0 · 버림 0 · 옛 조사라 건너뜀 0 · 원본 cti/v1/source=assets/date=2026-10-06/3b2d63a5b3d9bc38.json
+osv: 정상 · 자산 7개 대조 · 질의 521개 · 기록 5162개(상세 0, 실패 0) · 자산 취약점 29365건 · EPSS 채움 0건 · 원본 cti/v1/source=osv/date=2026-10-06/16ac4856b0f20305.json
+적재: data01 opsloop-cti load-assets
+== 2026-10-06 10:25:17 KST 자산 수집 일부 실패 (적재는 됐다. 4시간 뒤 재시도)

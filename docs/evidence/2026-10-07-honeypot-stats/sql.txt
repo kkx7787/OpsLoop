@@ -1,0 +1,205 @@
+-- honeypot-stats.sh 가 만든 SQL. 읽기만 한다. 기간 [2026-09-04, 2026-10-07) KST · R003 출발지 46.59.178.143 · 기준 2026-10-05 16:50 KST ± 10 분
+\set ON_ERROR_STOP on
+\pset pager off
+\pset null '-'
+\timing off
+BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY;
+SET LOCAL TIME ZONE 'Asia/Seoul';
+SET LOCAL statement_timeout = '600s';
+
+\echo '== 0. 실행 정보 =='
+SELECT now() AS run_at_kst, now() AT TIME ZONE 'UTC' AS run_at_utc, current_user, current_database() AS db,
+       current_setting('transaction_read_only') AS read_only, current_setting('TimeZone') AS tz,
+       split_part(version(), ' on ', 1) AS pg;
+SELECT ('2026-09-04'::timestamp AT TIME ZONE 'Asia/Seoul') AS since_kst, ('2026-10-07'::timestamp AT TIME ZONE 'Asia/Seoul') AS until_kst, ('2026-09-04'::timestamp AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'UTC' AS since_utc, ('2026-10-07'::timestamp AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'UTC' AS until_utc;
+\echo '-- 센서별 마지막 기록(자료가 어디까지 있는가)'
+SELECT sensor, max(ts) AS last_event_kst, count(*) AS events_all_time
+FROM events WHERE sensor IN ('cowrie', 'decoy') GROUP BY sensor ORDER BY sensor;
+\echo '-- 기간 안 센서 · 출처(provenance)별 수 (제외 전)'
+SELECT sensor, provenance, count(*) AS events, count(DISTINCT src_ip) AS src_ips, count(DISTINCT session) AS sessions,
+       min(ts) AS first_kst, max(ts) AS last_kst
+FROM events e WHERE e.sensor IN ('cowrie', 'decoy') AND e.ts >= ('2026-09-04'::timestamp AT TIME ZONE 'Asia/Seoul') AND e.ts < ('2026-10-07'::timestamp AT TIME ZONE 'Asia/Seoul')
+GROUP BY sensor, provenance ORDER BY sensor, provenance;
+
+\echo '== 1. 제외 기준 =='
+\echo '-- 시험 대역(test_ranges · is_test_source)'
+SELECT cidr, note FROM test_ranges ORDER BY cidr;
+\echo '-- 자기 인프라 대역(block_exempt)'
+SELECT cidr, note FROM block_exempt ORDER BY cidr;
+\echo '-- 자체 확인 접속(provenance = fixture, parser/exclusions.txt) 기간 안 출발지'
+SELECT host(src_ip) AS fixture_src_ip, sensor, count(*) AS events, min(ts) AS first_kst, max(ts) AS last_kst
+FROM events e WHERE e.sensor IN ('cowrie', 'decoy') AND e.provenance = 'fixture' AND e.ts >= ('2026-09-04'::timestamp AT TIME ZONE 'Asia/Seoul') AND e.ts < ('2026-10-07'::timestamp AT TIME ZONE 'Asia/Seoul')
+GROUP BY 1, 2 ORDER BY 3 DESC;
+\echo '-- 기준을 하나씩 더할 때 출발지 · 세션 수 (기간 안, 센서 합산)'
+SELECT 0 AS n, '전체(제외 없음)' AS step, count(DISTINCT src_ip) AS src_ips, count(DISTINCT session) AS sessions, count(*) AS events
+FROM events e WHERE e.sensor IN ('cowrie', 'decoy') AND e.ts >= ('2026-09-04'::timestamp AT TIME ZONE 'Asia/Seoul') AND e.ts < ('2026-10-07'::timestamp AT TIME ZONE 'Asia/Seoul') AND e.src_ip IS NOT NULL
+UNION ALL
+SELECT 1, '① fixture 제외', count(DISTINCT src_ip), count(DISTINCT session), count(*)
+FROM events e WHERE e.sensor IN ('cowrie', 'decoy') AND e.ts >= ('2026-09-04'::timestamp AT TIME ZONE 'Asia/Seoul') AND e.ts < ('2026-10-07'::timestamp AT TIME ZONE 'Asia/Seoul') AND e.src_ip IS NOT NULL
+  AND e.provenance = 'real'
+UNION ALL
+SELECT 2, '② + 시험 대역 제외', count(DISTINCT src_ip), count(DISTINCT session), count(*)
+FROM events e WHERE e.sensor IN ('cowrie', 'decoy') AND e.ts >= ('2026-09-04'::timestamp AT TIME ZONE 'Asia/Seoul') AND e.ts < ('2026-10-07'::timestamp AT TIME ZONE 'Asia/Seoul') AND e.src_ip IS NOT NULL
+  AND e.provenance = 'real' AND NOT is_test_source(e.src_ip)
+UNION ALL
+SELECT 3, '③ + 자기 인프라 대역 제외 (최종)', count(DISTINCT src_ip), count(DISTINCT session), count(*)
+FROM events e WHERE e.sensor IN ('cowrie', 'decoy') AND e.provenance = 'real' AND e.ts >= ('2026-09-04'::timestamp AT TIME ZONE 'Asia/Seoul') AND e.ts < ('2026-10-07'::timestamp AT TIME ZONE 'Asia/Seoul')
+       AND e.src_ip IS NOT NULL AND NOT is_test_source(e.src_ip) AND NOT EXISTS (SELECT 1 FROM block_exempt x WHERE e.src_ip <<= x.cidr)
+ORDER BY n;
+
+\echo '== 2. 출발지 · 세션 (최종 기준) =='
+\echo '-- 센서별. 합계 줄의 출발지는 두 센서를 합친 뒤 중복을 뺀 수'
+SELECT coalesce(sensor, '합계') AS sensor, count(*) AS events, count(DISTINCT src_ip) AS src_ips,
+       count(DISTINCT session) AS sessions
+FROM events e WHERE e.sensor IN ('cowrie', 'decoy') AND e.provenance = 'real' AND e.ts >= ('2026-09-04'::timestamp AT TIME ZONE 'Asia/Seoul') AND e.ts < ('2026-10-07'::timestamp AT TIME ZONE 'Asia/Seoul')
+       AND e.src_ip IS NOT NULL AND NOT is_test_source(e.src_ip) AND NOT EXISTS (SELECT 1 FROM block_exempt x WHERE e.src_ip <<= x.cidr)
+GROUP BY ROLLUP (sensor) ORDER BY sensor NULLS LAST;
+\echo '-- 교차 확인: sessions 표(파서 재집계, first_ts 기준) · 프로토콜별'
+SELECT CASE WHEN grouping(s.sensor) = 1 THEN '합계' ELSE s.sensor END AS sensor,
+       CASE WHEN grouping(s.protocol) = 1 THEN '(모두)' ELSE coalesce(s.protocol, '-') END AS protocol, count(*) AS sessions,
+       count(DISTINCT s.src_ip) AS src_ips,
+       count(*) FILTER (WHERE s.login_success) AS login_ok,
+       count(*) FILTER (WHERE s.login_success AND s.command_count > 0) AS login_ok_with_cmd,
+       count(*) FILTER (WHERE s.downloads > 0) AS with_files
+FROM sessions s
+WHERE s.sensor IN ('cowrie', 'decoy') AND s.provenance = 'real' AND s.first_ts >= ('2026-09-04'::timestamp AT TIME ZONE 'Asia/Seoul') AND s.first_ts < ('2026-10-07'::timestamp AT TIME ZONE 'Asia/Seoul')
+  AND s.src_ip IS NOT NULL AND NOT is_test_source(s.src_ip)
+  AND NOT EXISTS (SELECT 1 FROM block_exempt x WHERE s.src_ip <<= x.cidr)
+GROUP BY ROLLUP (s.sensor, s.protocol) ORDER BY s.sensor NULLS LAST, s.protocol NULLS LAST;
+
+\echo '== 3. 로그인 성공 세션 · 첫 명령까지 시간 (최종 기준, events 표) =='
+WITH hp AS (SELECT e.session, e.sensor, e.ts, e.eventid FROM events e WHERE e.sensor IN ('cowrie', 'decoy') AND e.provenance = 'real' AND e.ts >= ('2026-09-04'::timestamp AT TIME ZONE 'Asia/Seoul') AND e.ts < ('2026-10-07'::timestamp AT TIME ZONE 'Asia/Seoul')
+       AND e.src_ip IS NOT NULL AND NOT is_test_source(e.src_ip) AND NOT EXISTS (SELECT 1 FROM block_exempt x WHERE e.src_ip <<= x.cidr) AND e.session IS NOT NULL),
+login AS (
+  SELECT session, sensor, min(ts) AS login_ts FROM hp
+  WHERE eventid IN ('cowrie.login.success', 'decoy.login.success') GROUP BY session, sensor),
+cmd AS (
+  SELECT h.session, min(h.ts) AS cmd_ts FROM hp h JOIN login l USING (session)
+  WHERE h.eventid IN ('cowrie.command.input', 'decoy.action.command') AND h.ts >= l.login_ts GROUP BY h.session),
+j AS (SELECT l.sensor, l.login_ts, c.cmd_ts, extract(epoch FROM c.cmd_ts - l.login_ts)::float8 AS d FROM login l LEFT JOIN cmd c USING (session))
+SELECT coalesce(sensor, '합계') AS sensor,
+       count(*) AS login_sessions,
+       count(cmd_ts) AS with_command,
+       round(100.0 * count(cmd_ts) / nullif(count(*), 0), 1) AS pct_with_command,
+       count(*) FILTER (WHERE d <= 10) AS cmd_within_10s,
+       round(100.0 * count(*) FILTER (WHERE d <= 10) / nullif(count(*), 0), 1) AS pct_within_10s,
+       round((percentile_cont(0.5) WITHIN GROUP (ORDER BY d))::numeric, 2) AS median_s_of_with_command,
+       round((percentile_cont(0.9) WITHIN GROUP (ORDER BY d))::numeric, 2) AS p90_s_of_with_command
+FROM j GROUP BY ROLLUP (sensor) ORDER BY sensor NULLS LAST;
+\echo '-- 첫 로그인 성공 → 첫 명령 구간 분포'
+WITH hp AS (SELECT e.session, e.sensor, e.ts, e.eventid FROM events e WHERE e.sensor IN ('cowrie', 'decoy') AND e.provenance = 'real' AND e.ts >= ('2026-09-04'::timestamp AT TIME ZONE 'Asia/Seoul') AND e.ts < ('2026-10-07'::timestamp AT TIME ZONE 'Asia/Seoul')
+       AND e.src_ip IS NOT NULL AND NOT is_test_source(e.src_ip) AND NOT EXISTS (SELECT 1 FROM block_exempt x WHERE e.src_ip <<= x.cidr) AND e.session IS NOT NULL),
+login AS (
+  SELECT session, sensor, min(ts) AS login_ts FROM hp
+  WHERE eventid IN ('cowrie.login.success', 'decoy.login.success') GROUP BY session, sensor),
+cmd AS (
+  SELECT h.session, min(h.ts) AS cmd_ts FROM hp h JOIN login l USING (session)
+  WHERE h.eventid IN ('cowrie.command.input', 'decoy.action.command') AND h.ts >= l.login_ts GROUP BY h.session),
+j AS (SELECT l.sensor, extract(epoch FROM c.cmd_ts - l.login_ts)::float8 AS d FROM login l LEFT JOIN cmd c USING (session)),
+b AS (
+  SELECT sensor,
+         CASE WHEN d IS NULL THEN 6 WHEN d <= 1 THEN 1 WHEN d <= 5 THEN 2 WHEN d <= 10 THEN 3 WHEN d <= 60 THEN 4 ELSE 5 END AS k
+  FROM j)
+SELECT sensor, (ARRAY['≤1초', '≤5초', '≤10초', '≤60초', '>60초', '명령 없음'])[k] AS bucket, count(*) AS sessions,
+       round(100.0 * count(*) / sum(count(*)) OVER (PARTITION BY sensor), 1) AS pct
+FROM b GROUP BY sensor, k ORDER BY sensor, k;
+
+\echo '== 4. 파일 반입 시도 · 고유 해시 (최종 기준) =='
+WITH f AS (
+  SELECT e.ts, e.sensor, e.session, e.src_ip, e.eventid, e.shasum,
+         CASE WHEN e.eventid = 'cowrie.session.file_upload' THEN 'cowrie 업로드(SFTP · SCP)'
+              WHEN e.eventid = 'cowrie.session.file_download' AND e.url IS NOT NULL THEN 'cowrie URL 내려받기'
+              WHEN e.eventid = 'cowrie.session.file_download' AND e.message LIKE 'Saved redir contents%' THEN 'cowrie 리다이렉트 저장'
+              WHEN e.eventid = 'decoy.action.upload' THEN 'decoy 업로드'
+              ELSE '기타: ' || e.eventid END AS kind
+  FROM events e WHERE e.sensor IN ('cowrie', 'decoy') AND e.provenance = 'real' AND e.ts >= ('2026-09-04'::timestamp AT TIME ZONE 'Asia/Seoul') AND e.ts < ('2026-10-07'::timestamp AT TIME ZONE 'Asia/Seoul')
+       AND e.src_ip IS NOT NULL AND NOT is_test_source(e.src_ip) AND NOT EXISTS (SELECT 1 FROM block_exempt x WHERE e.src_ip <<= x.cidr) AND (e.eventid LIKE 'cowrie.session.file_%' OR e.eventid = 'decoy.action.upload'))
+SELECT coalesce(kind, '합계') AS kind, count(*) AS attempts, count(DISTINCT session) AS sessions, count(DISTINCT src_ip) AS src_ips,
+       count(DISTINCT shasum) AS hashes,
+       count(DISTINCT shasum) FILTER (WHERE shasum NOT LIKE 'e3b0c44298fc1c14%' AND shasum NOT LIKE '01ba4719c80b6fe9%') AS hashes_nonempty
+FROM f GROUP BY ROLLUP (kind) ORDER BY kind NULLS LAST;
+\echo '-- 후보 수치: 업로드 + URL 내려받기 + decoy 업로드의 고유 해시(빈 파일 · 줄바꿈 1바이트 제외) — 리다이렉트 저장은 뺀다'
+SELECT count(DISTINCT e.shasum) AS unique_hashes_brought_in
+FROM events e WHERE e.sensor IN ('cowrie', 'decoy') AND e.provenance = 'real' AND e.ts >= ('2026-09-04'::timestamp AT TIME ZONE 'Asia/Seoul') AND e.ts < ('2026-10-07'::timestamp AT TIME ZONE 'Asia/Seoul')
+       AND e.src_ip IS NOT NULL AND NOT is_test_source(e.src_ip) AND NOT EXISTS (SELECT 1 FROM block_exempt x WHERE e.src_ip <<= x.cidr) AND e.shasum IS NOT NULL
+  AND (e.eventid = 'cowrie.session.file_upload' OR (e.eventid = 'cowrie.session.file_download' AND e.url IS NOT NULL)
+       OR e.eventid = 'decoy.action.upload')
+  AND e.shasum NOT LIKE 'e3b0c44298fc1c14%' AND e.shasum NOT LIKE '01ba4719c80b6fe9%';
+\echo '-- 해시별 (앞 16자 · 종류 · 시도 · 세션 · 출발지 · 처음 · 마지막). 빈 파일 · 줄바꿈 제외, 처음 본 순서, 최대 80줄'
+WITH f AS (
+  SELECT e.ts, e.session, e.src_ip, e.shasum,
+         CASE WHEN e.eventid = 'cowrie.session.file_upload' THEN '업로드'
+              WHEN e.eventid = 'cowrie.session.file_download' AND e.url IS NOT NULL THEN 'URL'
+              WHEN e.eventid = 'cowrie.session.file_download' AND e.message LIKE 'Saved redir contents%' THEN '리다이렉트'
+              WHEN e.eventid = 'decoy.action.upload' THEN 'decoy'
+              ELSE '기타' END AS kind
+  FROM events e WHERE e.sensor IN ('cowrie', 'decoy') AND e.provenance = 'real' AND e.ts >= ('2026-09-04'::timestamp AT TIME ZONE 'Asia/Seoul') AND e.ts < ('2026-10-07'::timestamp AT TIME ZONE 'Asia/Seoul')
+       AND e.src_ip IS NOT NULL AND NOT is_test_source(e.src_ip) AND NOT EXISTS (SELECT 1 FROM block_exempt x WHERE e.src_ip <<= x.cidr) AND e.shasum IS NOT NULL AND (e.eventid LIKE 'cowrie.session.file_%' OR e.eventid = 'decoy.action.upload')
+    AND e.shasum NOT LIKE 'e3b0c44298fc1c14%' AND e.shasum NOT LIKE '01ba4719c80b6fe9%')
+SELECT left(shasum, 16) AS sha16, string_agg(DISTINCT kind, '·') AS kinds, count(*) AS attempts,
+       count(DISTINCT session) AS sessions, count(DISTINCT src_ip) AS src_ips, min(ts) AS first_kst, max(ts) AS last_kst
+FROM f GROUP BY shasum ORDER BY min(ts) LIMIT 80;
+
+\echo '== 5. R003 세션 (출발지 46.59.178.143) =='
+\echo '-- 이 출발지의 사건 전부 (규칙 무관)'
+SELECT incident_key, rule_id, rule_version, severity, first_ts AS first_kst, last_ts AS last_kst, signal_count, session_count,
+       status, created_at AS created_kst, evidence -> 'sessions' AS evidence_sessions
+FROM incidents WHERE actor_ip = '46.59.178.143'::inet ORDER BY first_ts;
+\echo '-- 판정'
+SELECT v.incident_key, v.verdict, v.proposed, v.operator, v.created_at AS created_kst, v.decision_seconds
+FROM verdicts v JOIN incidents i USING (incident_key) WHERE i.actor_ip = '46.59.178.143'::inet ORDER BY v.created_at, v.id;
+\echo '-- 조치'
+SELECT a.incident_key, a.action, a.operator, a.created_at AS created_kst, left(a.note, 80) AS note
+FROM actions a JOIN incidents i USING (incident_key) WHERE i.actor_ip = '46.59.178.143'::inet ORDER BY a.created_at, a.id;
+\echo '-- 차단 목록 행 (열 전부 · 시각은 KST 오프셋 표기). 지점별 집행 결과(enforcement)가 같이 나온다'
+SELECT jsonb_pretty(to_jsonb(b)) AS blocklist_row FROM blocklist b WHERE b.actor_ip = '46.59.178.143'::inet;
+\echo '-- 기준 시각 ± 창 안에 시작한 세션 (sessions 표)'
+SELECT s.session, s.sensor, s.protocol, s.first_ts AS first_kst, s.last_ts AS last_kst, s.duration_ms, s.login_attempts,
+       s.login_success, s.command_count, s.downloads, s.provenance
+FROM sessions s WHERE s.src_ip = '46.59.178.143'::inet AND s.first_ts >= ('2026-10-05 16:50'::timestamp AT TIME ZONE 'Asia/Seoul') - (interval '10 minutes') AND s.first_ts < ('2026-10-05 16:50'::timestamp AT TIME ZONE 'Asia/Seoul') + (interval '10 minutes')
+ORDER BY s.first_ts;
+\echo '-- 세션 요약: 접속 · 로그인 성공 · 첫 업로드 · 첫 명령 · 마지막 명령 · 종료 (KST) 와 초 단위 간격'
+WITH sel AS (
+  SELECT DISTINCT session FROM events e
+  WHERE e.src_ip = '46.59.178.143'::inet AND e.session IS NOT NULL AND e.ts >= ('2026-10-05 16:50'::timestamp AT TIME ZONE 'Asia/Seoul') - (interval '10 minutes') AND e.ts < ('2026-10-05 16:50'::timestamp AT TIME ZONE 'Asia/Seoul') + (interval '10 minutes')),
+ev AS (SELECT e.* FROM events e JOIN sel USING (session)),
+t AS (
+  SELECT session,
+         min(ts) AS first_ts,
+         min(ts) FILTER (WHERE eventid = 'cowrie.session.connect') AS connect_ts,
+         min(ts) FILTER (WHERE eventid = 'cowrie.login.success') AS login_ts,
+         min(ts) FILTER (WHERE eventid LIKE 'cowrie.session.file_%') AS first_file_ts,
+         min(ts) FILTER (WHERE eventid = 'cowrie.command.input') AS first_cmd_ts,
+         max(ts) FILTER (WHERE eventid = 'cowrie.command.input') AS last_cmd_ts,
+         min(ts) FILTER (WHERE eventid = 'cowrie.session.closed') AS closed_ts,
+         count(*) FILTER (WHERE eventid = 'cowrie.command.input') AS commands
+  FROM ev GROUP BY session)
+SELECT session, to_char(connect_ts, 'HH24:MI:SS.MS') AS connect_kst, to_char(login_ts, 'HH24:MI:SS.MS') AS login_kst,
+       to_char(first_file_ts, 'HH24:MI:SS.MS') AS first_file_kst, to_char(first_cmd_ts, 'HH24:MI:SS.MS') AS first_cmd_kst,
+       to_char(last_cmd_ts, 'HH24:MI:SS.MS') AS last_cmd_kst, to_char(closed_ts, 'HH24:MI:SS.MS') AS closed_kst, commands,
+       round(extract(epoch FROM login_ts - connect_ts)::numeric, 3) AS connect_to_login_s,
+       round(extract(epoch FROM first_cmd_ts - login_ts)::numeric, 3) AS login_to_first_cmd_s,
+       round(extract(epoch FROM last_cmd_ts - login_ts)::numeric, 3) AS login_to_last_cmd_s,
+       round(extract(epoch FROM last_cmd_ts - connect_ts)::numeric, 3) AS connect_to_last_cmd_s
+FROM t ORDER BY first_ts;
+\echo '-- 그 세션들의 이벤트 전부 (시각순 · KST · UTC · 세션 첫 이벤트부터 초). 비밀번호 열 · 로그인 메시지는 싣지 않는다'
+WITH sel AS (
+  SELECT DISTINCT session FROM events e
+  WHERE e.src_ip = '46.59.178.143'::inet AND e.session IS NOT NULL AND e.ts >= ('2026-10-05 16:50'::timestamp AT TIME ZONE 'Asia/Seoul') - (interval '10 minutes') AND e.ts < ('2026-10-05 16:50'::timestamp AT TIME ZONE 'Asia/Seoul') + (interval '10 minutes')),
+ev AS (SELECT e.* FROM events e JOIN sel USING (session))
+SELECT row_number() OVER (ORDER BY ts, line_hash) AS n,
+       to_char(ts, 'YYYY-MM-DD HH24:MI:SS.MS') AS kst, to_char(ts AT TIME ZONE 'UTC', 'HH24:MI:SS.MS') AS utc,
+       round(extract(epoch FROM ts - min(ts) OVER (PARTITION BY session))::numeric, 3) AS s_from_first,
+       left(session, 12) AS session, eventid,
+       CASE WHEN eventid LIKE '%.login.%' THEN username END AS username,
+       left(regexp_replace(coalesce(input, url, ''), '[^[:print:]]', '·', 'g'), 120) AS input_or_url,
+       left(shasum, 16) AS sha16,
+       CASE WHEN eventid LIKE '%.login.%' THEN '(비밀번호 포함 · 생략)'
+            WHEN eventid = 'cowrie.command.input' THEN NULL
+            ELSE left(regexp_replace(coalesce(message, ''), '[^[:print:]]', '·', 'g'), 80) END AS message
+FROM ev ORDER BY ts, line_hash;
+\echo '-- 같은 출발지의 전체 기간 세션 수 · 첫 · 마지막 기록 (참고)'
+SELECT count(DISTINCT session) AS sessions, count(*) AS events, min(ts) AS first_kst, max(ts) AS last_kst
+FROM events e WHERE e.src_ip = '46.59.178.143'::inet AND e.sensor IN ('cowrie', 'decoy');
+
+ROLLBACK;   -- 읽기만 했다. 남길 것이 없다
