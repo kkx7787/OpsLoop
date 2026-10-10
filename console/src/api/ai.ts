@@ -19,6 +19,8 @@ export interface AiRecommendation {
   /** 차단 제안 시간. 위협이고 차단 금지 대역이 아닐 때만 24, 아니면 0 */
   block_hours: number
   seconds: number | null
+  /** 추천이 사용한 사건 근거와 현재 근거의 관계. 이전 서버는 이 칸이 없다 */
+  evidence_status?: 'current' | 'changed' | 'unknown'
 }
 
 /** 데이터 노드 추천 작업기의 최근 상태 한 행(ai_status). 학교 밖에서는 AI 서버에 닿지 않는 것이 정상이다 */
@@ -29,6 +31,8 @@ export interface AiStatus {
   model: string | null
   pending: number | null
   error: string | null
+  /** 서버 시각으로 작업기 확인이 15분 넘게 갱신되지 않았음 */
+  stale?: boolean
 }
 
 /** 사건 상세의 AI 구역. 서버가 추천 표를 읽을 수 없으면(마이그레이션 전) 생략 · null 이고 화면은 그리지 않는다 */

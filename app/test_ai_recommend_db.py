@@ -50,6 +50,18 @@ class AiRecommendDB(DbCase):
         self.assertIsNotNone(st["last_ok_at"])
         self.assertEqual((c["ai"]["recommendation"], c["ai"]["failed"]), (None, 0))
 
+    async def test_옛추천_근거변경_작업기중단을_구별한다(self):
+        import ai_recommend
+        async def detail():
+            return await ai_recommend.incident(self.console, 'a')
+        self.assertEqual((await detail())['recommendation']['evidence_status'], 'unknown')
+        await self.owner.execute("UPDATE ai_recommendations a SET evidence_fingerprint = " + ai_recommend.EVIDENCE_FINGERPRINT_SQL + " FROM incidents i WHERE i.incident_key = a.incident_key")
+        self.assertEqual((await detail())['recommendation']['evidence_status'], 'current')
+        await self.owner.execute("UPDATE incidents SET signal_count = signal_count + 1 WHERE incident_key = 'a'")
+        self.assertEqual((await detail())['recommendation']['evidence_status'], 'changed')
+        await self.owner.execute("UPDATE ai_status SET reachable = true, checked_at = clock_timestamp() - interval '16 minutes'")
+        self.assertTrue((await detail())['status']['stale'])
+
     async def test_판정에는_같은_사건의_정상_추천만_붙고_일치를_센다(self):
         for rid in (self.b_ok, self.a_failed, 999999):              # 다른 사건 · 실패 행 · 없는 번호
             with self.subTest(rid=rid), self.assertRaises(HTTPException) as e:

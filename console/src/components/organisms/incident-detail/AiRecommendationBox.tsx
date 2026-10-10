@@ -29,6 +29,14 @@ export function AiRecommendationBox({ ai, chosen, className }: AiRecommendationB
       </p>
       {rec ? (
         <>
+          {rec.evidence_status !== 'current' && (
+            <p className="mb-0 mt-2 font-medium text-warning" data-ai-evidence-warning="">
+              {rec.evidence_status === 'changed'
+                ? '추천 이후 사건 근거가 바뀌었습니다. 현재 근거를 직접 확인하세요.'
+                : '이 추천이 사용한 근거의 기준을 확인할 수 없습니다. 현재 근거를 직접 확인하세요.'}
+            </p>
+          )}
+          {ai.status?.stale && <p className="mb-0 mt-2 text-xs text-warning">AI 작업기 상태가 15분 넘게 갱신되지 않았습니다. 위 추천의 생성 시각과 현재 근거를 확인하세요.</p>}
           <ul className="mb-0 mt-2 list-disc space-y-1 pl-4 text-xs text-ink-muted">
             {rec.reasons.map((line, i) => (
               <li key={`${i}-${line}`}>
@@ -58,6 +66,8 @@ export function AiRecommendationBox({ ai, chosen, className }: AiRecommendationB
 /** 추천이 없는 까닭. 닿지 않음이 먼저다(그때는 실패 횟수가 늘지 않는다) */
 function emptyReason(ai: IncidentAi): ReactNode {
   const st = ai.status
+  if (!st) return 'AI 작업기의 실행 상태를 아직 확인하지 못했습니다. 판정은 평소대로 할 수 있습니다.'
+  if (st.stale) return 'AI 작업기 상태가 15분 넘게 갱신되지 않았습니다. 판정은 평소대로 할 수 있습니다.'
   if (st && !st.reachable) {
     return (
       <>
@@ -72,5 +82,5 @@ function emptyReason(ai: IncidentAi): ReactNode {
     )
   }
   if (ai.failed > 0) return `추천을 ${ai.failed}번 만들지 못했습니다. 판정은 평소대로 할 수 있습니다.`
-  return '아직 추천이 없습니다. 판정 대기 사건에는 5분 안팎으로 붙습니다.'
+  return '아직 추천이 없습니다. 약 5분 주기로 처리하며 대기량과 연결 상태에 따라 지연될 수 있습니다.'
 }

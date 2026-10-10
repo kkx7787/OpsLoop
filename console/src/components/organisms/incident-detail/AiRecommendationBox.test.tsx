@@ -15,6 +15,7 @@ const REC: AiRecommendation = {
   reasons: ['출발지가 로그인 뒤 uname -a 를 실행했습니다.', '로그인 성공 뒤 명령 실행은 위협 조건입니다.', '출발지 차단을 검토하십시오.'],
   block_hours: 24,
   seconds: 5.3,
+  evidence_status: 'current',
 }
 const UP = { checked_at: '2026-10-06T06:05:00+00:00', reachable: true, last_ok_at: '2026-10-06T06:05:00+00:00', model: 'gpt-oss:20b', pending: 0, error: null }
 
@@ -23,6 +24,26 @@ function ai(extra: Partial<IncidentAi> = {}): IncidentAi {
 }
 
 describe('AiRecommendationBox', () => {
+  it.each(['changed', 'unknown'] as const)('근거 기준이 %s이면 현재 근거를 확인하도록 안내한다', (evidence_status) => {
+    render(<AiRecommendationBox ai={ai({ recommendation: { ...REC, evidence_status } })} chosen={null} />)
+    expect(screen.getByLabelText('AI 추천')).toHaveTextContent('현재 근거를 직접 확인하세요.')
+  })
+
+  it('마지막 연결이 성공이어도 작업기 상태가 오래되면 갱신 지연을 알린다', () => {
+    render(<AiRecommendationBox ai={ai({ recommendation: null, status: { ...UP, stale: true } })} chosen={null} />)
+    expect(screen.getByLabelText('AI 추천')).toHaveTextContent('15분 넘게 갱신되지 않았습니다')
+    expect(screen.getByLabelText('AI 추천')).not.toHaveTextContent('약 5분 주기로')
+  })
+
+  it('기존 추천이 있어도 작업기 상태가 오래되면 갱신 지연을 알린다', () => {
+    render(<AiRecommendationBox ai={ai({ status: { ...UP, stale: true } })} chosen={null} />)
+    expect(screen.getByLabelText('AI 추천')).toHaveTextContent('15분 넘게 갱신되지 않았습니다')
+  })
+
+  it('상태 기록이 없으면 추천 도착 시간을 약속하지 않는다', () => {
+    render(<AiRecommendationBox ai={ai({ recommendation: null, status: null })} chosen={null} />)
+    expect(screen.getByLabelText('AI 추천')).toHaveTextContent('실행 상태를 아직 확인하지 못했습니다')
+  })
   it('추천값 · 근거 세 줄 · 차단 제안 · 모델을 보이고 확신도는 없다', () => {
     render(<AiRecommendationBox ai={ai()} chosen={null} />)
     const box = screen.getByLabelText('AI 추천')

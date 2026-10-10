@@ -30,6 +30,9 @@ CREATE TABLE IF NOT EXISTS ai_recommendations (
 );
 CREATE INDEX IF NOT EXISTS idx_ai_rec_incident ON ai_recommendations (incident_key, created_at DESC);
 
+-- 2026-10-07: 추천이 읽은 사건 근거의 지문. 옛 추천(NULL)은 근거 기준 미확인으로 표시한다.
+ALTER TABLE ai_recommendations ADD COLUMN IF NOT EXISTS evidence_fingerprint text;
+
 -- 추천 작업기의 최근 상태 한 행. AI 서버에 닿지 않는 것은 장애가 아니라 정상 상황(학교 밖)이라 알림을 보내지 않고
 -- 콘솔이 '마지막 성공 시각'과 함께 보인다. last_ok_at 은 닿지 않은 회차에도 지켜진다(작업기의 UPSERT 가 그렇게 쓴다).
 CREATE TABLE IF NOT EXISTS ai_status (

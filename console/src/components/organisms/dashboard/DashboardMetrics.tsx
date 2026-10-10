@@ -129,7 +129,9 @@ function AiLine({ ai }: { ai: AiSummary }) {
       render={({ button, panel }) => (
         <div className="border-t border-line px-4 py-2 text-xs text-ink-muted" data-ai-agreement="">
           <span className="font-medium text-ink tabular-nums">AI 추천 일치 {ai.judged > 0 ? `${n(ai.agreed)}/${n(ai.judged)}` : '아직 없음'}</span>
-          {st && !st.reachable && (
+          {st?.stale && <span className="text-warning"> · AI 작업기 상태 갱신 지연</span>}
+          {!st && ' · AI 작업기 상태 확인 전'}
+          {st && !st.stale && !st.reachable && (
             <>
               {' · AI 서버 연결 안 됨'}
               {st.last_ok_at && (
@@ -149,7 +151,7 @@ function AiLine({ ai }: { ai: AiSummary }) {
   )
 }
 
-const AI_NOTE = '관제자가 AI 추천을 보고 남긴 판정 중 판정값이 추천과 같은 수입니다. 추천은 판정이 아니며, 판정과 차단은 사람이 합니다.'
+const AI_NOTE = '추천이 연결된 판정 기록 중 판정값이 추천과 같은 수입니다. 재판정과 시험 사건도 포함하며, 오프라인 평가 점수나 독립적인 정확도가 아닙니다. 추천은 판정이 아니며, 판정과 차단은 사람이 합니다.'
 
 const UNDETERMINED_NOTE = '최신 판정이 사람이 남긴 미결인 사건입니다. 시스템 전환 처리 제외.'
 
