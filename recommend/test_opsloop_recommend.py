@@ -228,6 +228,45 @@ class OllamaTests(unittest.TestCase):
         self.assertEqual(len(r.short("x" * 1000)), 300)
 
 
+class EvidencePrivacyTests(unittest.TestCase):
+    def test_중첩_비밀필드와_명령_URL_인증정보를_전송에서_뺀다(self):
+        case = {"rule_id": "R003", "rule_evidence": {"nested": {"access_token": "MARKER_A", "password": "MARKER_B"}},
+                "commands": [{"input": "curl -u user:MARKER_C https://example.test/path"},
+                             {"input": "TOKEN=MARKER_D command"}, {"input": "uname -a"}],
+                "files": [{"url": "https://user:MARKER_E@example.test/file?x=MARKER_F#MARKER_G"}]}
+        raw = json.dumps(case)
+        clean = r.sanitize_evidence(case)
+        text = json.dumps(clean)
+        for marker in ("MARKER_A", "MARKER_B", "MARKER_C", "MARKER_D", "MARKER_E", "MARKER_F", "MARKER_G"):
+            self.assertNotIn(marker, text)
+        self.assertIn("uname -a", text)
+        self.assertIn("https://example.test/file", text)
+        self.assertEqual(raw, json.dumps(case))  # 원자료는 그대로
+
+    def test_큰_규칙_근거도_정제한_뒤_자른다(self):
+        case = {'rule_evidence': {'password': 'DO_NOT_SEND', 'padding': 'x' * 5000}}
+        clean = r.inference_case(case)
+        self.assertNotIn('DO_NOT_SEND', json.dumps(clean))
+        self.assertLess(len(clean['rule_evidence']), 3040)
+        self.assertEqual(case['rule_evidence']['password'], 'DO_NOT_SEND')
+        self.assertEqual(r.sanitize_evidence('{"password": "DO_NOT_SEND"'), '[인증정보 포함 문자열 제외]')
+
+    def test_실제_HTTP_본문에도_비밀값과_내부_지문을_넣지_않는다(self):
+        with FakeServer() as f:
+            r.Ollama(f.url, 'm').chat(SSH_CASE | {"_evidence_fingerprint": "INTERNAL", "password": "SECRET"}, 7, '0')
+            sent = f.httpd.seen[0]['messages'][1]['content']
+            self.assertNotIn('INTERNAL', sent)
+            self.assertNotIn('SECRET', sent)
+
+    def test_작업기와_콘솔의_근거_지문이_같다(self):
+        path = os.path.join(os.path.dirname(HERE), 'app', 'ai_recommend.py')
+        with open(path) as f:
+            tree = ast.parse(f.read())
+        value = next(ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign)
+                     and any(isinstance(t, ast.Name) and t.id == 'EVIDENCE_FINGERPRINT_SQL' for t in n.targets))
+        self.assertEqual(value, r.EVIDENCE_FINGERPRINT_SQL)
+
+
 class PromptTests(unittest.TestCase):
     """작업기의 지시문 · 출력 양식은 평가한 것(docs/evidence/2026-10-06-ai-pilot, p3-1006)과 같아야 한다.
     바꾸면 PROMPT_VERSION 을 올리고 다시 평가한다."""
@@ -237,7 +276,8 @@ class PromptTests(unittest.TestCase):
         tree = ast.parse(open(PILOT, encoding="utf-8").read())
         got = {t.id: ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign)
                for t in n.targets if isinstance(t, ast.Name) and t.id in ("SYSTEM", "SCHEMA", "PROMPT_VERSION")}
-        self.assertEqual(got["PROMPT_VERSION"], r.PROMPT_VERSION)
+        self.assertEqual(got["PROMPT_VERSION"], "p3-1006")
+        self.assertEqual(r.PROMPT_VERSION, "p4-1007")  # 새 입력 정제 판을 과거 평가 판과 구별
         self.assertEqual(got["SYSTEM"], r.SYSTEM)
         self.assertEqual(got["SCHEMA"], r.SCHEMA)
 

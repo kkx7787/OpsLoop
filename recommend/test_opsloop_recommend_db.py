@@ -85,6 +85,24 @@ class RecommendDbTests(base.DbCase):
         self.scur.execute("SELECT reachable, last_ok_at IS NOT NULL, pending, error FROM ai_status")
         return self.scur.fetchone()
 
+    def test_근거가_늘면_재추천하고_같은_근거는_반복하지_않는다(self):
+        self.run_as_ai(FakeClient())
+        self.assertEqual(self.run_as_ai(FakeClient())[0]['done'], 0)
+        self.scur.execute("UPDATE incidents SET signal_count = signal_count + 1, evidence = '{\"sessions\":[\"s1\"],\"new\":true}' WHERE incident_key = 'K1'")
+        self.assertEqual(self.run_as_ai(FakeClient())[0]['done'], 1)
+        self.scur.execute("SELECT count(DISTINCT evidence_fingerprint) FROM ai_recommendations WHERE incident_key = 'K1'")
+        self.assertEqual(self.scur.fetchone()[0], 2)
+
+    def test_추론_중_근거가_바뀌면_다음_회차에_다시_처리한다(self):
+        outer = self
+        class DuringInference(FakeClient):
+            def chat(self, case, seed, keep_alive):
+                if case['source_ip'] == '198.51.100.7':
+                    outer.scur.execute("UPDATE incidents SET signal_count = signal_count + 1 WHERE incident_key = 'K1'")
+                return super().chat(case, seed, keep_alive)
+        self.run_as_ai(DuringInference())
+        self.assertEqual(self.run_as_ai(FakeClient())[0]['done'], 1)
+
     # ── 권한 ─────────────────────────────────────────────────────
     def test_작업기_역할은_추천_표와_상태만_쓴다(self):
         with self.as_role("ai"):

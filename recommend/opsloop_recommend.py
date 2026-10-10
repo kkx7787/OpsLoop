@@ -18,12 +18,14 @@ import argparse
 import ipaddress
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
-PROMPT_VERSION = "p3-1006"   # p3: p2 지시문 그대로, 근거에서 비밀번호 원문을 뺐다
+PROMPT_VERSION = "p4-1007"   # p3 지시문 유지, 전송 전 인증정보 정제. p3 평가 수치를 이 판의 성적으로 쓰지 않는다
 DEFAULTS = {"OPSLOOP_AI_URL": "http://127.0.0.1:21434", "OPSLOOP_AI_MODEL": "gpt-oss:20b", "OPSLOOP_AI_MAX_PER_RUN": "10"}
 MAX_ATTEMPTS = 3         # 같은 모델 · 지시문으로 실패한 사건은 세 번까지만 다시 묻는다(서버를 계속 두드리지 않는다)
 STOP_AFTER = 2           # 회차 안에서 연속 두 번 실패하면 그 회차는 멈춘다
@@ -77,23 +79,28 @@ SCHEMA = {
 
 # 판정 대기 사건. 판정이 없고 종결 · 억제가 아닌 것 중, 지금 모델 · 지시문의 추천이 없고 실패가 상한 미만인 것.
 # 시험 출발지 사건도 넣는다(시연에서 관제자가 보는 사건이다). 새 사건부터 본다.
-PENDING_SQL = """
+EVIDENCE_FINGERPRINT_SQL = "md5(jsonb_build_array(i.rule_id, i.rule_version, i.severity, host(i.actor_ip), extract(epoch from i.first_ts), extract(epoch from i.last_ts), i.signal_count, i.session_count, i.evidence)::text)"
+
+PENDING_SQL = f"""
 SELECT i.incident_key FROM incidents i
 WHERE i.status IN ('open', 'acknowledged', 'in_progress')
   AND NOT EXISTS (SELECT 1 FROM verdicts v WHERE v.incident_key = i.incident_key)
   AND NOT EXISTS (SELECT 1 FROM ai_recommendations r WHERE r.incident_key = i.incident_key
-                  AND r.status = 'ok' AND r.model = %(model)s AND r.prompt_version = %(pv)s)
+                  AND r.status = 'ok' AND r.model = %(model)s AND r.prompt_version = %(pv)s
+                  AND r.evidence_fingerprint = {EVIDENCE_FINGERPRINT_SQL})
   AND (SELECT count(*) FROM ai_recommendations r WHERE r.incident_key = i.incident_key
-       AND r.status = 'failed' AND r.model = %(model)s AND r.prompt_version = %(pv)s) < %(attempts)s
+       AND r.status = 'failed' AND r.model = %(model)s AND r.prompt_version = %(pv)s
+       AND r.evidence_fingerprint = {EVIDENCE_FINGERPRINT_SQL}) < %(attempts)s
 ORDER BY i.created_at DESC, i.incident_key
 LIMIT %(limit)s"""
 
-WAITING_SQL = """
+WAITING_SQL = f"""
 SELECT count(*) FROM incidents i
 WHERE i.status IN ('open', 'acknowledged', 'in_progress')
   AND NOT EXISTS (SELECT 1 FROM verdicts v WHERE v.incident_key = i.incident_key)
   AND NOT EXISTS (SELECT 1 FROM ai_recommendations r WHERE r.incident_key = i.incident_key
-                  AND r.status = 'ok' AND r.model = %(model)s AND r.prompt_version = %(pv)s)"""
+                  AND r.status = 'ok' AND r.model = %(model)s AND r.prompt_version = %(pv)s
+                  AND r.evidence_fingerprint = {EVIDENCE_FINGERPRINT_SQL})"""
 
 # 근거. detector/triage.py gather() 가 사람에게 보이는 범위와 같고, 평가(docs/evidence/2026-10-06-ai-pilot) 때와 같은 칸이다.
 # 같은 페이로드 중복은 규칙이 흡수하지 않던 v1 · v2 사건에만 계산한다(v3 는 규칙이 흡수해 따로 뜬 사건이 첫 사건이다).
@@ -104,10 +111,11 @@ WITH k AS (
   FROM incidents i WHERE i.incident_key = %(key)s
 )
 SELECT json_build_object(
+    '_evidence_fingerprint', md5(jsonb_build_array(k.rule_id, k.rule_version, k.severity, host(k.actor_ip), extract(epoch from k.first_ts), extract(epoch from k.last_ts), k.signal_count, k.session_count, k.evidence)::text),
     'rule_id', k.rule_id, 'rule_name', k.rule_name, 'severity', k.severity, 'rule_version', k.rule_version,
     'source_ip', host(k.actor_ip), 'first_ts', k.first_ts, 'last_ts', k.last_ts,
     'signal_count', k.signal_count, 'session_count', k.session_count,
-    'rule_evidence', CASE WHEN length(k.evidence::text) > 3000 THEN to_jsonb(left(k.evidence::text, 3000) || ' (잘림)') ELSE k.evidence END,
+    'rule_evidence', k.evidence,
     'event_counts', (SELECT json_object_agg(eventid, c) FROM (
         SELECT e.eventid, count(*) c FROM events e
         WHERE e.src_ip = k.actor_ip AND (e.session = ANY(k.sess) OR e.ts BETWEEN k.first_ts AND k.last_ts) GROUP BY 1) x),
@@ -149,9 +157,9 @@ FROM k"""
 
 INSERT_SQL = """
 INSERT INTO ai_recommendations (incident_key, model, prompt_version, status, recommendation, needs_human,
-                                guard, reasons, block_hours, seconds, error)
+                                guard, reasons, block_hours, seconds, error, evidence_fingerprint)
 VALUES (%(key)s, %(model)s, %(pv)s, %(status)s, %(recommendation)s, %(needs_human)s,
-        %(guard)s, %(reasons)s, %(block_hours)s, %(seconds)s, %(error)s)"""
+        %(guard)s, %(reasons)s, %(block_hours)s, %(seconds)s, %(error)s, %(fingerprint)s)"""
 
 # 닿지 않은 회차에도 마지막 성공 시각은 지킨다
 STATUS_SQL = """
@@ -221,6 +229,45 @@ def short(text):
     return text if len(text) <= ERROR_MAX else text[:ERROR_MAX - 1] + "…"
 
 
+# 정해진 비밀 필드와 식별 가능한 인증정보를 제거한다. 임의 자유문장의 비밀까지 보장하지는 않는다.
+SECRET_KEY = re.compile(r"(?:password|passwd|passphrase|pwd|secret|token|credential|authorization|cookie|api.?key|private.?key|비밀번호)", re.I)
+SECRET_TEXT = re.compile(r"(?:password|passwd|passphrase|pwd|secret|token|authorization|cookie|api[_-]?key)[\"\']?\s*[=:]|--(?:password|passwd|token|secret|api-key)\b|(?:^|\s)-u\s|\b(?:Bearer|Basic)\s+|-----BEGIN .*PRIVATE KEY-----", re.I)
+URL_TEXT = re.compile(r"(?:https?|ftp)://[^\s\"'<>]+", re.I)
+
+
+def sanitize_evidence(value):
+    """새 객체를 만든다. 원자료/판정 근거는 바꾸지 않고 추론 입력만 줄인다."""
+    if isinstance(value, dict):
+        return {k: sanitize_evidence(v) for k, v in value.items()
+                if not SECRET_KEY.search(str(k)) and not str(k).startswith('_')}
+    if isinstance(value, list):
+        return [sanitize_evidence(v) for v in value]
+    if not isinstance(value, str):
+        return value
+    # 인라인 인증정보가 있는 자유문장은 일부만 남겨 비밀값의 꼬리가 새지 않도록 전체를 제외한다.
+    if SECRET_TEXT.search(value):
+        return '[인증정보 포함 문자열 제외]'
+    def clean_url(match):
+        try:
+            u = urllib.parse.urlsplit(match.group(0))
+            # userinfo, query, fragment는 보내지 않는다. 경로는 탐지 근거로 유지한다.
+            host = u.netloc.rsplit('@', 1)[-1]
+            return urllib.parse.urlunsplit((u.scheme, host, u.path, '', ''))
+        except ValueError:
+            return '[URL 제외]'
+    return URL_TEXT.sub(clean_url, value)
+
+
+def inference_case(case):
+    """JSON 구조를 유지한 채 정제한 뒤 크기를 제한한다. 잘린 원문을 먼저 보내지 않는다."""
+    clean = sanitize_evidence(case)
+    if isinstance(clean, dict) and 'rule_evidence' in clean:
+        rendered = json.dumps(clean['rule_evidence'], ensure_ascii=False, default=str)
+        if len(rendered) > 3000:
+            clean['rule_evidence'] = rendered[:3000] + ' (정제 후 잘림)'
+    return clean
+
+
 class Ollama:
     def __init__(self, url, model, opener=urllib.request.urlopen):
         self.url, self.model, self.open = url, model, opener
@@ -254,7 +301,7 @@ class Ollama:
             "options": {"temperature": 0, "seed": seed, "num_ctx": 8192, "num_predict": 700},
             "messages": [
                 {"role": "system", "content": SYSTEM},
-                {"role": "user", "content": "<자료>\n" + json.dumps(case, ensure_ascii=False, default=str) +
+                {"role": "user", "content": "<자료>\n" + json.dumps(inference_case(case), ensure_ascii=False, default=str) +
                  "\n</자료>\n위 사건을 판정 기준에 따라 추천하라."},
             ],
         }
@@ -314,8 +361,8 @@ def recommend(client, case, keep_alive):
     return None, err, time.monotonic() - t0
 
 
-def row(key, cfg, rec, err, seconds):
-    base = {"key": key, "model": cfg["model"], "pv": PROMPT_VERSION, "seconds": round(seconds, 1)}
+def row(key, cfg, rec, err, seconds, fingerprint=None):
+    base = {"key": key, "model": cfg["model"], "pv": PROMPT_VERSION, "seconds": round(seconds, 1), "fingerprint": fingerprint}
     if rec:
         return base | {"status": "ok", "error": None, **rec}
     return base | {"status": "failed", "recommendation": None, "needs_human": None, "guard": [], "reasons": None,
@@ -354,13 +401,16 @@ def run(conn, client, cfg, out=print):
         if not got or got[0] is None:
             continue                                   # 그 사이 사건이 사라졌다
         case = got[0] if isinstance(got[0], dict) else json.loads(got[0])
+        fingerprint = case.pop("_evidence_fingerprint")
+        case = inference_case(case)
+        status(True, None)  # 긴 회차에도 작업기 생존 시각을 갱신한다
         # 회차의 마지막 요청에서 모델을 내린다(공용 서버)
         try:
             rec, err, sec = recommend(client, case, "0" if n == len(keys) else "5m")
         except Unreachable as e:
             stop, reachable = short(e), False
             break
-        cur.execute(INSERT_SQL, row(key, cfg, rec, err, sec))
+        cur.execute(INSERT_SQL, row(key, cfg, rec, err, sec, fingerprint))
         conn.commit()
         if rec:
             done, streak = done + 1, 0

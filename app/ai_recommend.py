@@ -11,12 +11,18 @@ READABLE_SQL = ("SELECT CASE WHEN to_regclass('ai_recommendations') IS NULL OR t
                 " ELSE has_table_privilege('ai_recommendations', 'SELECT') AND has_table_privilege('ai_status', 'SELECT') END")
 
 # 사건의 최신 추천. 실패한 시도는 따로 센다(작업기가 사건마다 세 번까지만 묻는다)
-LATEST_SQL = """
-SELECT id, created_at, model, prompt_version, recommendation, needs_human, guard, reasons, block_hours, seconds
-FROM ai_recommendations WHERE incident_key = $1 AND status = 'ok'
-ORDER BY created_at DESC, id DESC LIMIT 1"""
+EVIDENCE_FINGERPRINT_SQL = "md5(jsonb_build_array(i.rule_id, i.rule_version, i.severity, host(i.actor_ip), extract(epoch from i.first_ts), extract(epoch from i.last_ts), i.signal_count, i.session_count, i.evidence)::text)"
+
+LATEST_SQL = f"""
+SELECT a.id, a.created_at, a.model, a.prompt_version, a.recommendation, a.needs_human, a.guard, a.reasons, a.block_hours, a.seconds,
+       CASE WHEN to_jsonb(a)->>'evidence_fingerprint' IS NULL THEN 'unknown'
+            WHEN to_jsonb(a)->>'evidence_fingerprint' = {EVIDENCE_FINGERPRINT_SQL} THEN 'current'
+            ELSE 'changed' END AS evidence_status
+FROM ai_recommendations a JOIN incidents i ON i.incident_key = a.incident_key
+WHERE a.incident_key = $1 AND a.status = 'ok'
+ORDER BY a.created_at DESC, a.id DESC LIMIT 1"""
 FAILED_SQL = "SELECT count(*) FROM ai_recommendations WHERE incident_key = $1 AND status = 'failed'"
-STATUS_SQL = "SELECT checked_at, reachable, last_ok_at, model, pending, error FROM ai_status"
+STATUS_SQL = "SELECT checked_at, reachable, last_ok_at, model, pending, error, checked_at < clock_timestamp() - interval '15 minutes' AS stale FROM ai_status"
 
 # 추천 일치: 관제자가 추천을 보고 남긴 판정 중 판정값이 추천값과 같은 것. 오탐 · 양성 정탐은 추천값이 될 수 없어 다름으로 센다.
 #   재판정이 있으면 판정마다 센다(그때 본 추천과 그때의 판정을 맞춘다)
