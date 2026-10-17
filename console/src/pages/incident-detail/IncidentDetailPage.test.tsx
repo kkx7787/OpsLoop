@@ -1078,6 +1078,17 @@ describe('IncidentDetailPage · 차단 집행(#47)', () => {
 
   const base = detail().actor.blocked!
 
+  it('해제 가능 여부는 단말 시계보다 서버의 살아 있는 요청 판정을 따른다', async () => {
+    stubApi({ role: 'admin', body: detail({
+      actor: { ...detail().actor, blocked: { ...base, expires_at: '2000-01-01T00:00:00Z' } },
+      block_points: { default: ['fw'], basis: 'protected', requested: ['fw'] },
+    }) })
+    renderRoutes(routes(), PATH)
+    const { panel } = await readyPanel()
+    fireEvent.click(panel.getByRole('button', { name: '차단 해제' }))
+    expect(panel.getByRole('form', { name: '차단 해제 확인' })).toBeInTheDocument()
+  })
+
   it('③ 차단 칸은 관문 불일치 · 집행 제외를 까닭과 함께 보인다', async () => {
     stubApi({ body: detail({ actor: { ...detail().actor, blocked: { ...base, enforce_note: '관문 불일치 · 관문 상태가 7분 전', requested_by: 'triage:han' } } }) })
     renderRoutes(routes(), PATH)

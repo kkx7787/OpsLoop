@@ -61,7 +61,8 @@ export function ActionBar({ detail, blocked = false, expectedVersion, onSaved, c
   const panelId = useId()
 
   const acked = detail.status !== 'open'
-  const activeBlock = isActiveBlock(detail.actor.blocked)
+  // 새 서버의 판정은 DB 시계 기준이다. 단말 시계가 어긋나도 지점 표시와 조치가 서로 모순되지 않게 한다.
+  const activeBlock = detail.block_points ? detail.block_points.requested !== null : isActiveBlock(detail.actor.blocked)
   // 만료 없는 옛 차단이 살아 있다(운영 13건 꼴). 살아 있는 차단의 만료는 앞당기지 않으므로 다시 걸어도 만료가 그대로 없고
   // 집행기는 만료 없는 행을 어느 지점에도 넘기지 않는다(집행 제외). 확인 창이 '몇 시간 동안 차단' 이라 하지 않는다
   const legacyBlock = activeBlock && !detail.actor.blocked?.expires_at

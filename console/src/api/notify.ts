@@ -155,8 +155,8 @@ export function createChannel(input: ChannelInput) {
   return api.post<NotifyChannel>('/api/notify/channels', input)
 }
 
-export function updateChannel(id: number, input: ChannelInput) {
-  return api.put<NotifyChannel>(`/api/notify/channels/${id}`, input)
+export function updateChannel(id: number, input: ChannelInput, expectedUpdatedAt: string) {
+  return api.put<NotifyChannel>(`/api/notify/channels/${id}`, { ...input, expected_updated_at: expectedUpdatedAt })
 }
 
 /** 동기 시험 발송(서버 시간 초과 10초). 이력에 event='test' 로 남는다. */

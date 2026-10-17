@@ -63,7 +63,7 @@ export function AlertsPage() {
     if (pending.current || !editing) return
     pending.current = true; setSaving(true); setNotice(null)
     try {
-      const saved = editing === 'new' ? await createChannel(input) : await updateChannel(editing.id, input)
+      const saved = editing === 'new' ? await createChannel(input) : await updateChannel(editing.id, input, editing.updated_at)
       setNotice({ tone: 'info', title: editing === 'new' ? `채널 ${revealHidden(saved.name)} 을(를) 추가했습니다.` : `채널 ${revealHidden(saved.name)} 을(를) 바꿨습니다.` })
       setEditing(null)
       await refresh()
@@ -73,7 +73,7 @@ export function AlertsPage() {
   async function toggle(c: NotifyChannel) {
     if (busyId !== null) return
     setBusyId(c.id); setNotice(null)
-    try { await updateChannel(c.id, inputOf(c, !c.enabled)); setNotice({ tone: 'info', title: `채널 ${revealHidden(c.name)} 을(를) ${c.enabled ? '중지' : '사용'}했습니다.` }) }
+    try { await updateChannel(c.id, inputOf(c, !c.enabled), c.updated_at); setNotice({ tone: 'info', title: `채널 ${revealHidden(c.name)} 을(를) ${c.enabled ? '중지' : '사용'}했습니다.` }) }
     catch (e) { setNotice({ tone: 'danger', title: describeError(e) }) }
     finally { setBusyId(null); await refresh() }
   }

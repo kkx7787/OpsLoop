@@ -29,6 +29,7 @@ import asyncio
 import logging
 
 from block_points import DEFAULT as DEFAULT_POINTS, UNION_SQL, union_of
+from live import EVENT_CHANNEL, event_payload
 
 log = logging.getLogger("opsloop.absorbed")
 
@@ -354,10 +355,12 @@ class AbsorbedFollower:
                                                      f["expires_at"], nets, f["points"])
                         added = state["blocked"] - before
                         if added > 0:
-                            await c.execute(
-                                "INSERT INTO actions (incident_key, action, operator, note) VALUES ($1, 'note', $2, $3)",
+                            action_id = await c.fetchval(
+                                "INSERT INTO actions (incident_key, action, operator, note) VALUES ($1, 'note', $2, $3) RETURNING id",
                                 f["first_key"], FOLLOW_ACTOR,
                                 f"[흡수 후속 차단 {added}곳 · 만료 {f['expires_at'].isoformat(timespec='minutes')}]")
+                            await c.execute('SELECT pg_notify($1, $2)', EVENT_CHANNEL,
+                                            event_payload('action.created', f['first_key'], action_id))
                 except Exception as error:
                     if not is_refused(error):
                         raise
