@@ -462,6 +462,38 @@ class NonSshBulkAcceptDatabaseTests(unittest.TestCase):
         self.assertEqual(self.cur.fetchall(), [("R002|v3|k", "threat", "threat")])
         self.assertIn("판정 1건 · 건너뜀 2건", out.getvalue())
 
+    def check_verdict_saved_after_list_is_not_overwritten(self, answers):
+        later = 'R002|v3|later'
+        self.cur.execute("""INSERT INTO incidents (incident_key, rule_id, rule_name, rule_version,
+            severity, actor_ip, first_ts, last_ts, evidence)
+            VALUES (%s, 'R002', 'later', 'v3', 'high', %s, %s, %s, '{"sessions": ["c1"]}')""",
+            (later, ACTOR, T0 + timedelta(seconds=1), T0 + timedelta(minutes=1)))
+        original = triage.gather
+        changed = False
+
+        def gather_after_another_save(*args, **kwargs):
+            nonlocal changed
+            if not changed:
+                changed = True
+                # 목록을 읽은 뒤, 뒤쪽 사건을 표시하기 전에 다른 판정이 저장된 상황.
+                self.cur.execute("INSERT INTO verdicts (incident_key, verdict, operator) VALUES (%s, 'false_positive', 'other')", (later,))
+                self.conn.commit()
+            return original(*args, **kwargs)
+
+        with mock.patch.object(triage, 'gather', side_effect=gather_after_another_save), \
+                mock.patch('builtins.input', side_effect=answers), \
+                mock.patch('sys.stdout', io.StringIO()) as out:
+            triage.triage(self.conn, None, 10, 'reviewer')
+        self.cur.execute('SELECT verdict, operator FROM verdicts WHERE incident_key=%s', (later,))
+        self.assertEqual(self.cur.fetchall(), [('false_positive', 'other')])
+        self.assertIn('저장 안 됨', out.getvalue())
+
+    def test_bulk_accept_preserves_verdict_saved_after_list(self):
+        self.check_verdict_saved_after_list_is_not_overwritten(['a', 'y'])
+
+    def test_interactive_accept_preserves_verdict_saved_after_list(self):
+        self.check_verdict_saved_after_list_is_not_overwritten(['n', 'review', 'n', 'review', 's', 's'])
+
 
 FIRST = "R006|v3|192.0.2.1|2026-09-20T00:00:00+00:00"
 OWN = "192.0.2.1"
