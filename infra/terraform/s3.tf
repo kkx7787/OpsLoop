@@ -6,23 +6,10 @@
 #  원문이 사라지면 리플레이 평가도 재생성 대조도 할 수 없다.
 #  그래서 쓰기는 센서 역할만, 덮어쓴 이전 판은 버저닝으로 남긴다.
 #
-#  버킷은 2026-09-21 CLI 로 먼저 만들었고 여기서 코드 관리로 가져온다.
+#  버킷은 2026-09-21 CLI 로 먼저 만들고 import 블록으로 코드 관리로 가져왔다.
+#  2026-10-16 철거 때 버킷을 지워 import 블록은 뺐다. 다시 세우면 새 버킷을 만든다.
+#  같은 이름을 다른 계정이 이미 쓰고 있으면 bucket 값을 바꾼다.
 # ══════════════════════════════════════════════════════════════
-
-import {
-  to = aws_s3_bucket.archive
-  id = "opsloop-archive-739272173045"
-}
-
-import {
-  to = aws_s3_bucket_public_access_block.archive
-  id = "opsloop-archive-739272173045"
-}
-
-import {
-  to = aws_s3_bucket_server_side_encryption_configuration.archive
-  id = "opsloop-archive-739272173045"
-}
 
 resource "aws_s3_bucket" "archive" {
   bucket = "opsloop-archive-739272173045"

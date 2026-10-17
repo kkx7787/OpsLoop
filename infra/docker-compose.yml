@@ -1,3 +1,5 @@
+# [레거시] 2026-09-25 철거한 AWS EC2 앱 노드 구성이다. 지금 구성은 infra/vmware/compose/(console.yml · data.yml)를 본다.
+#
 # OpsLoop 앱 노드 (EC2-2)
 #   postgres : 운영 데이터. 인시던트·조치·판정은 영구 보존한다.
 #   api      : FastAPI. 콘솔이 붙는 지점.
