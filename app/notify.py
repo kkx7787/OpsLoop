@@ -3,10 +3,10 @@ import json
 import re
 import uuid
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Annotated, Literal
 
 import asyncpg
-from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 import notifier
@@ -15,6 +15,8 @@ from operations import audit
 
 
 router = APIRouter(route_class=MaskedValidationRoute)
+MAX_DB_INT = 2**63 - 1
+ChannelId = Annotated[int, Path(ge=1, le=MAX_DB_INT)]
 
 KINDS = Literal["teams", "webhook"]
 GRADES = Literal["immediate", "daily"]
@@ -146,7 +148,7 @@ async def create_channel(body: ChannelIn, request: Request, response: Response):
 
 
 @router.put("/api/notify/channels/{channel_id}")
-async def update_channel(channel_id: int, body: ChannelUpdate, request: Request, response: Response):
+async def update_channel(channel_id: ChannelId, body: ChannelUpdate, request: Request, response: Response):
     user = require_role(request, "admin")
     try:
         async with request.app.state.pool.acquire() as c, c.transaction():
@@ -193,7 +195,7 @@ async def update_channel(channel_id: int, body: ChannelUpdate, request: Request,
 
 
 @router.post("/api/notify/channels/{channel_id}/test")
-async def test_channel(channel_id: int, request: Request):
+async def test_channel(channel_id: ChannelId, request: Request):
     """그 채널의 틀로 예시 값을 그려 한 번 보낸다. 결과는 이력에 event='test' 로 남는다."""
     require_role(request, "admin")
     async with request.app.state.pool.acquire() as c:
@@ -218,8 +220,9 @@ async def test_channel(channel_id: int, request: Request):
 
 
 @router.get("/api/notify/deliveries")
-async def list_deliveries(request: Request, channel_id: int | None = None, status: DELIVERY_STATUS | None = None,
-                          limit: int = Query(default=25, ge=1, le=100), offset: int = Query(default=0, ge=0)):
+async def list_deliveries(request: Request, channel_id: Annotated[int | None, Query(ge=1, le=MAX_DB_INT)] = None,
+                          status: DELIVERY_STATUS | None = None, limit: int = Query(default=25, ge=1, le=100),
+                          offset: int = Query(default=0, ge=0, le=MAX_DB_INT)):
     require_role(request, "admin")
     where = "WHERE ($1::bigint IS NULL OR d.channel_id = $1) AND ($2::text IS NULL OR d.status = $2)"
     async with request.app.state.pool.acquire() as c, c.transaction(isolation="repeatable_read", readonly=True):

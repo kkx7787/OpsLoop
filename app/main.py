@@ -923,6 +923,8 @@ async def add_action(incident_key: str, body: ActionIn, request: Request):
                 raise HTTPException(404, "인시던트를 찾을 수 없습니다")
             await workflow.check(c, incident_key, body.expected_version)
             inc_rule, inc_version = inc["rule_id"], inc["rule_version"]
+            if body.action == "block_ip" and not inc["actor_ip"]:
+                raise HTTPException(400, "출발지가 없는 사건은 차단할 수 없습니다")
 
             with_absorbed = body.include_absorbed and body.action in ("block_ip", "unblock_ip")
             # 요청한 행이 이 사건 출발지의 차단인가, 이 사건의 흡수 차단 한 행인가

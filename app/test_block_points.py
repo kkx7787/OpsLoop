@@ -378,6 +378,15 @@ class SchemaTests(unittest.IsolatedAsyncioTestCase):
             await self.console.execute("SELECT set_config('opsloop.actor', 'han', true)")
             await self.console.execute(main.BLOCK_SQL, ip, "시험", None, "han", hours, points, False)
 
+    async def test_block_without_source_is_rejected_without_action_or_status_change(self):
+        key = 'R301|i1|node:review'
+        await self.incident(key, 'R301', None, target='node:review')
+        with self.assertRaises(main.HTTPException) as raised:
+            await self.act(key, main.ActionIn(action='block_ip'))
+        self.assertEqual(raised.exception.status_code, 400)
+        self.assertEqual(await self.owner.fetchval("SELECT count(*) FROM actions WHERE incident_key=$1", key), 0)
+        self.assertEqual(await self.owner.fetchval("SELECT status FROM incidents WHERE incident_key=$1", key), 'open')
+
     async def test_BLOCK_SQL_은_새_요청이면_받은_값_살아_있으면_합집합이다(self):
         ip = "198.51.100.10"
         await self.block(ip, ["fw"], hours=5)

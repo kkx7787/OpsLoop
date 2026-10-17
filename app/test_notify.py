@@ -399,6 +399,14 @@ class ValidationEchoTests(unittest.TestCase):
             return await call_next(request)
         self.client = TestClient(app)
 
+    def test_ids_and_offsets_outside_database_range_are_rejected_before_query(self):
+        for query in ('offset=9223372036854775808', 'channel_id=9223372036854775808', 'channel_id=0'):
+            with self.subTest(query=query):
+                self.assertEqual(self.client.get('/api/notify/deliveries?' + query).status_code, 422)
+        for channel_id in ('0', '9223372036854775808'):
+            self.assertEqual(self.client.post('/api/notify/channels/' + channel_id + '/test').status_code, 422)
+            self.assertEqual(self.client.put('/api/notify/channels/' + channel_id, json=InputTests.base).status_code, 422)
+
     def test_422_never_echoes_the_url(self):
         secret = "SECRETSIG"
         bodies = [

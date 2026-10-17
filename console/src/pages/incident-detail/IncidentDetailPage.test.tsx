@@ -584,6 +584,26 @@ describe('IncidentDetailPage', () => {
     expect(panel.getByText('아직 판정 · 조치 기록이 없습니다.')).toBeInTheDocument()
   })
 
+  it('차단 요청을 기다리는 동안 다른 조치가 결과를 버리거나 중복 요청하지 않는다', async () => {
+    const fetch = stubApi({ role: 'admin' })
+    renderRoutes(routes(), PATH)
+    const { panel } = await readyPanel()
+    const original = fetch.getMockImplementation()!
+    let finish!: (response: Response) => void
+    const response = new Promise<Response>(resolve => { finish = resolve })
+    fetch.mockImplementation((input, init) => init?.method === 'POST' ? response : original(input, init))
+    fireEvent.click(panel.getByRole('button', { name: '차단' }))
+    fireEvent.click(panel.getByRole('button', { name: '차단 확정' }))
+    await waitFor(() => expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1))
+    fireEvent.click(panel.getByRole('button', { name: '차단 해제' }))
+    fireEvent.click(panel.getByRole('button', { name: '확인' }))
+    expect(panel.getByRole('form', { name: '차단 확인' })).toBeInTheDocument()
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1)
+    await act(async () => finish(json({ detail: '시험 지연 뒤 거부' }, 409)))
+    expect(await panel.findByText('조치를 기록하지 못했습니다')).toBeInTheDocument()
+    expect(panel.getByRole('alert')).toHaveTextContent('시험 지연 뒤 거부')
+  })
+
   it('권한 밖(403) · 서버 오류(5xx)는 공통 상태 화면', async () => {
     stubApi({ body: { detail: '권한이 없습니다' }, status: 403 })
     const { unmount } = renderRoutes(routes(), PATH, noRetryClient())

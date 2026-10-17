@@ -86,6 +86,7 @@ export function ActionBar({ detail, blocked = false, expectedVersion, onSaved, c
   const canConfirm = pending === 'block_ip' ? block.allowed : release.allowed
 
   function open(action: Confirmable) {
+    if (busy || blocked) return
     mutation.reset()
     setPending((current) => (current === action ? null : action))
   }
@@ -99,11 +100,12 @@ export function ActionBar({ detail, blocked = false, expectedVersion, onSaved, c
   }
 
   function send(input: ActionInput) {
-    if (blocked) return
+    if (blocked || busy) return
     mutation.mutate({ ...input, expected_version: expectedVersion ?? detail.workflow_version }, { onSuccess: (created) => { onSaved?.(created.workflow_version); close() } })
   }
 
   function acknowledge() {
+    if (busy || blocked) return
     mutation.reset()
     send({ action: 'acknowledge' })
   }
@@ -141,8 +143,8 @@ export function ActionBar({ detail, blocked = false, expectedVersion, onSaved, c
     <div className={cn('flex flex-col gap-3', className)}>
       <div className="flex flex-wrap gap-2" role="group" aria-label="조치">
         {ack.allowed && <Button
-          disabled={!ack.allowed || acked}
-          disabledReason={!ack.allowed ? ack.reason : `이미 ${INCIDENT_STATUS_LABEL[detail.status] ?? detail.status} 상태라 확인할 것이 없습니다`}
+          disabled={busy || blocked || !ack.allowed || acked}
+          disabledReason={busy ? '조치 저장 중입니다' : !ack.allowed ? ack.reason : `이미 ${INCIDENT_STATUS_LABEL[detail.status] ?? detail.status} 상태라 확인할 것이 없습니다`}
           loading={busy && mutation.variables?.action === 'acknowledge'}
           onClick={acknowledge}
         >
@@ -151,8 +153,8 @@ export function ActionBar({ detail, blocked = false, expectedVersion, onSaved, c
         {block.allowed && <Button
           variant="secondary"
           className="text-danger"
-          disabled={!block.allowed || !detail.actor_ip || !!exempt}
-          disabledReason={blockReason}
+          disabled={busy || blocked || !block.allowed || !detail.actor_ip || !!exempt}
+          disabledReason={busy ? '조치 저장 중입니다' : blockReason}
           aria-expanded={pending === 'block_ip'}
           aria-controls={panelId}
           onClick={() => open('block_ip')}
@@ -160,8 +162,8 @@ export function ActionBar({ detail, blocked = false, expectedVersion, onSaved, c
           {ACTION_LABEL.block_ip}
         </Button>}
         {release.allowed && <Button
-          disabled={releaseReason !== ''}
-          disabledReason={releaseReason}
+          disabled={busy || blocked || releaseReason !== ''}
+          disabledReason={busy ? '조치 저장 중입니다' : releaseReason}
           aria-expanded={pending === 'unblock_ip'}
           aria-controls={panelId}
           onClick={() => open('unblock_ip')}

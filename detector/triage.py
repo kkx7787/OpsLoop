@@ -986,10 +986,16 @@ def triage(conn, rule_id, limit, operator, absorbed_hours=ABSORBED_HOURS, block_
 #  집계
 # ────────────────────────────────────────────────────────────────
 
+# 재판정 이력은 보존하되 규칙 개선의 표본은 사건별 마지막 판정 하나다.
+# 화면의 rule_quality와 같은 순서(시각, 동률이면 id)로 고른다.
+LATEST_VERDICTS_SQL = """SELECT DISTINCT ON (incident_key) *
+    FROM verdicts ORDER BY incident_key, created_at DESC, id DESC"""
+
+
 def summary(conn):
     cur = conn.cursor()
-    cur.execute("""SELECT count(*), count(v.id) FROM incidents i
-                   LEFT JOIN verdicts v ON v.incident_key = i.incident_key""")
+    cur.execute(f"""SELECT count(*), count(v.id) FROM incidents i
+                   LEFT JOIN ({LATEST_VERDICTS_SQL}) v ON v.incident_key = i.incident_key""")
     total, judged = cur.fetchone()
     if not total:
         print("\n  인시던트가 없습니다.\n"); cur.close(); return
@@ -1005,15 +1011,15 @@ def summary(conn):
         print(f"{r[0]:<6} {r[1]:<5} {r[2]:>8,} {r[3]:>5,} {r[4]:>5,} "
               f"{r[5]:>5,} {r[6]:>5,} {fp:>8} {na:>9}")
 
-    cur.execute("""
+    cur.execute(f"""
         SELECT count(*) FILTER (WHERE proposed IS NOT NULL),
                count(*) FILTER (WHERE proposed IS NOT NULL AND proposed = verdict)
-        FROM verdicts""")
+        FROM ({LATEST_VERDICTS_SQL}) v""")
     n, ok = cur.fetchone()
     if n:
         print(f"\n  제안이 붙은 판정 {n}건 중 {ok}건 수락, {n - ok}건 뒤집힘"
               f"  (뒤집힌 비율 {100 * (n - ok) / n:.0f}%)")
-        print("  뒤집힌 비율이 높으면 판정 기준 문서를 고쳐야 한다는 뜻입니다.")
+        print("  뒤집힌 비율은 판정 기준과 재판정 근거를 함께 검토할 신호입니다.")
     print()
     cur.close()
 
@@ -1041,10 +1047,10 @@ def thresholds(conn):
     TUNABLE = {
         "actor_rate":         ("threshold", "시간창 최대 누적 횟수"),
         "baseline_deviation": ("sigma",     "표준편차 배수"),
-        "session_threshold":  ("threshold", "세션 지표"),
+        "session_threshold":  ("value",     "세션 지표"),
     }
 
-    cur.execute("""
+    cur.execute(f"""
         SELECT i.rule_id, i.rule_version,
                min(v.observed_value) FILTER (WHERE v.verdict = 'threat'),
                max(v.observed_value) FILTER (WHERE v.verdict = 'threat'),
@@ -1054,7 +1060,7 @@ def thresholds(conn):
                min(v.observed_value) FILTER (WHERE v.verdict NOT IN ('threat', 'undetermined')),
                max(v.observed_value) FILTER (WHERE v.verdict NOT IN ('threat', 'undetermined')),
                count(*)              FILTER (WHERE v.verdict NOT IN ('threat', 'undetermined'))
-        FROM incidents i JOIN verdicts v ON v.incident_key = i.incident_key
+        FROM incidents i JOIN ({LATEST_VERDICTS_SQL}) v ON v.incident_key = i.incident_key
         WHERE v.observed_value IS NOT NULL
         GROUP BY i.rule_id, i.rule_version ORDER BY i.rule_id""")
     rows = cur.fetchall()
