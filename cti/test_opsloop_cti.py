@@ -180,8 +180,6 @@ def kev_doc(entries=None):
                  "vulnerabilityName": "Apache Log4j2 Remote Code Execution Vulnerability", "dateAdded": "2021-12-10",
                  "shortDescription": "Apache Log4j2 contains a JNDI injection vulnerability.",
                  "dueDate": "2021-12-24", "knownRansomwareCampaignUse": "Known"},
-                {"cveID": "bogus", "vendorProject": "X", "product": "Y", "vulnerabilityName": "Z",
-                 "dateAdded": "2024-01-01"},
             ]}
 
 
@@ -302,7 +300,9 @@ class ParseTest(unittest.TestCase):
 
 class KevTest(unittest.TestCase):
     def test_파싱_틀린_항목은_건너뛴다(self):
-        rows, meta = cti.parse_kev(json.dumps(kev_doc()).encode())
+        doc = kev_doc()
+        doc['vulnerabilities'].append({'cveID': 'bogus'})
+        rows, meta = cti.parse_kev(json.dumps(doc).encode())
         self.assertEqual([r[0] for r in rows], ["CVE-2021-44228", "CVE-2022-24816", "CVE-2024-36401"])
         self.assertEqual(rows[2], ("CVE-2024-36401", "OSGeo", "GeoServer", "OSGeo GeoServer Eval Injection Vulnerability",
                                    "OSGeo GeoServer contains an eval injection vulnerability.", "2024-07-15",

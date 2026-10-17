@@ -666,7 +666,7 @@ def fetch_kev(ctx):
         body = ctx.http.fetch(KEV_URL, LIMITS["kev"])
         rows, meta = parse_kev(body)
         if meta["bad"]:
-            log(f"kev: 형식이 틀린 항목 {meta['bad']}개를 건너뛴다", 4)
+            raise CtiError(f"KEV 형식 오류 {meta['bad']}건: 불완전한 목록으로 기존 자료를 갱신하지 않는다")
         return Payload(body, "json", KEV_URL, rows, meta["source_ts"], meta["version"], len(rows))
     return run_source(ctx, "kev", produce, apply_kev)
 

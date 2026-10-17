@@ -53,6 +53,7 @@ OpsLoop - 탐지 엔진 (WBS 2.3 / PostgreSQL)
 import argparse
 import base64
 import binascii
+import copy
 import hashlib
 import json
 import os
@@ -336,7 +337,7 @@ def signals_baseline_trailing(cur, rule, since, until):
       - 칸은 끝나고 settle_seconds 가 지난 뒤에만 본다(기준 시각은 until 과 지금 중 이른 쪽). R001 은 15분 창이
         차야, R002 는 세션이 끝나야 인시던트가 되므로 칸이 끝나자마자 보면 그 칸에서 알림이 날 행위자가 아직 제외
         목록에 없다. 한 번 뜬 인시던트는 다음 회차에 신호가 사라져도 지워지지 않으므로 기다렸다가 본다
-      - since 가 있으면 기준선을 위해 since - baseline_days일부터 읽고, h + 1시간 + settle >= since 인 칸부터 낸다.
+      - since 가 있으면 아직 대기 중인 첫 시간 칸의 기준선 시작부터 읽고, h + 1시간 + settle >= since 인 칸부터 낸다.
         앞 구간(until = since)이 기다림이 덜 차 보지 못한 끝 칸을 이번 구간이 본다. 같은 칸을 두 번 보면 키가 같다
     칸 최소 수(min_buckets) · sigma · 표준편차 0 이면 신호 없음은 v2 와 같다. 신호에는 기준선 칸 수와, 반올림 전
     평균 · 표준편차로 잰 z 를 더 남긴다. 근거의 mean · sigma 는 한 자리로 반올림돼 그것으로 다시 재면 임계선 근처에서
@@ -350,7 +351,9 @@ def signals_baseline_trailing(cur, rule, since, until):
         raise ValueError(f"{rule['id']}: settle_seconds 는 0 이상의 정수여야 합니다")
     c, prm = ["provenance = 'real'"], []
     if since:
-        c.append("ts >= %s::timestamptz - make_interval(days => %s)"); prm += [since, days]
+        # since에 아직 대기 중이던 칸도 대상이다. 그 칸의 이전 기준선 전체를 읽는다.
+        c.append("ts >= date_trunc('hour', %s::timestamptz - interval '1 hour' - make_interval(secs => %s)) "
+                 "- make_interval(days => %s)"); prm += [since, settle, days]
     if until:
         c.append("ts < %s"); prm.append(until)
     c.append("sensor = ANY(%s)"); prm.append(rule_sensors(rule, BASELINE_SENSORS))
@@ -705,6 +708,8 @@ def regex_gap(text):
                 return "{,n} 을 파이썬은 0~n 회로, PostgreSQL 은 글자로 읽는다"
             m = REGEX_BOUND_RE.match(text, i)
             if m:
+                if any(int(v) > 255 for v in m.group()[1:-1].split(',') if v):
+                    return "PostgreSQL 수량자의 상한·하한은 255를 넘을 수 없다"
                 i, quant = m.end(), True
                 continue
         if c in "*+?":
@@ -1282,16 +1287,23 @@ ABSORB_VIA_SQL = (
 
 
 def run(conn, rules_doc, since, until, verbose=True):
+    rules_doc = copy.deepcopy(rules_doc)  # prepare_rule의 실행용 속성을 원본 정의에 섞지 않는다.
     version = rules_doc["rule_version"]
     gap = rules_doc["aggregation"]["window_gap_seconds"]
     cur = conn.cursor()
 
+    # 시간 칸과 사건 키는 접속 설정과 무관하게 UTC로 고정한다. 트랜잭션 밖 설정은 바꾸지 않는다.
+    cur.execute("SET LOCAL TIME ZONE 'UTC'")
     # 규칙 정의를 남긴다. 나중에 "그때 임계치가 뭐였지"를 코드가 아니라 DB 가 답한다.
     cur.execute(
         """INSERT INTO rule_versions (rule_version, definition, reason)
            VALUES (%s, %s::jsonb, %s)
            ON CONFLICT (rule_version) DO NOTHING""",
         (version, json.dumps(rules_doc, ensure_ascii=False), rules_doc.get("note")))
+    cur.execute("SELECT definition = %s::jsonb FROM rule_versions WHERE rule_version = %s",
+                (json.dumps(rules_doc, ensure_ascii=False), version))
+    if not cur.fetchone()[0]:
+        raise ValueError(f"규칙 버전 {version}: 저장된 정의와 다릅니다. 새 버전 이름을 사용하세요")
 
     # 흡수 · 이전 7일 기준선(v3)은 incident_absorbed 를 쓰고 읽는다. 표가 없으면 문장 중간이 아니라 여기서 멈춘다
     if any(r.get("enabled", True) and (absorb_conf(r) or "baseline_days" in r.get("params", {}))

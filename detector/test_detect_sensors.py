@@ -210,7 +210,7 @@ class FakeCursor:
 
     def execute(self, sql, params=None):
         self.log.append((sql, None if params is None else copy.deepcopy(list(params))))
-        self.rows = self.answer(sql)
+        self.rows = [(True,)] if sql.startswith('SELECT definition =') else self.answer(sql)
 
     def fetchall(self):
         return list(self.rows)
@@ -337,7 +337,7 @@ class BeforeAfterTest(unittest.TestCase):
             cur, conn, _ = run_quiet(doc, since=SINCE, until=UNTIL)
             got = [(sql, prm) for sql, prm in cur.log
                    if sql.startswith("SELECT") and "FROM incidents WHERE rule_id" not in sql
-                   and "to_regclass" not in sql]
+                   and "to_regclass" not in sql and "SELECT definition =" not in sql]
             want = []
             for rule in doc["rules"]:
                 key = (doc["rule_version"], rule["id"], True)
@@ -464,7 +464,7 @@ class RuleFileTest(unittest.TestCase):
             with self.subTest(rules=name):
                 doc = load(name)
                 cur, _, _ = run_quiet(doc)
-                sql, prm = cur.log[0]
+                sql, prm = next((s, p) for s, p in cur.log if "INSERT INTO rule_versions" in s)
                 self.assertIn("INSERT INTO rule_versions", sql)
                 self.assertIn("ON CONFLICT (rule_version) DO NOTHING", sql)
                 self.assertEqual(prm[0], doc["rule_version"])
@@ -2047,7 +2047,7 @@ class RuleFileV3Test(unittest.TestCase):
         self.assertEqual(len(set(versions)), len(versions))
         doc = load("rules_v3.json")
         cur, _, _ = run_quiet(doc, v3_answer())
-        sql, prm = cur.log[0]
+        sql, prm = next((s, p) for s, p in cur.log if "INSERT INTO rule_versions" in s)
         self.assertIn("INSERT INTO rule_versions", sql)
         self.assertEqual((prm[0], json.loads(prm[1]), prm[2]), ("v3", doc, doc["note"]))
 
@@ -2201,15 +2201,15 @@ class BaselineTrailingTest(unittest.TestCase):
 
     def test_문장과_인자(self):
         sig, log = v3_collect(self.rule(), self.answer(), SINCE, UNTIL)
-        w = ("provenance = 'real' AND ts >= %s::timestamptz - make_interval(days => %s) AND ts < %s "
+        w = ("provenance = 'real' AND ts >= date_trunc('hour', %s::timestamptz - interval '1 hour' - make_interval(secs => %s)) - make_interval(days => %s) AND ts < %s "
              "AND sensor = ANY(%s)")
         self.assertEqual(log, [
             (REF_SQL, [SINCE, UNTIL]),
             (f"SELECT date_trunc('hour', ts) h, count(*) FROM events WHERE {w} GROUP BY 1 ORDER BY 1",
-             [SINCE, 7, UNTIL, HONEYPOT]),
+             [SINCE, 1800, 7, UNTIL, HONEYPOT]),
             (detect.ALERTED_SQL, ["v3", "R005", "v3", "R005"]),
             (f"SELECT date_trunc('hour', ts), host(src_ip), count(*) FROM events WHERE {w} "
-             f"AND host(src_ip) = ANY(%s) GROUP BY 1, 2", [SINCE, 7, UNTIL, HONEYPOT, ["8.8.8.8", "9.9.9.9"]])])
+             f"AND host(src_ip) = ANY(%s) GROUP BY 1, 2", [SINCE, 1800, 7, UNTIL, HONEYPOT, ["8.8.8.8", "9.9.9.9"]])])
         _, log = v3_collect(self.rule(), self.answer())
         self.assertEqual(log[1][1], [HONEYPOT])
         self.assertNotIn("make_interval", log[1][0])
