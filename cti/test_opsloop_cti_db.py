@@ -257,6 +257,9 @@ class CtiDatabaseTest(unittest.TestCase):
     def test_NVD_초점_갱신과_14일_건너뛰기(self):
         self.load_kev()
         self.assertEqual(self.load_bundle([data_asset()]), 0)
+        # 최근 조회 여부는 DB 시계로 판단한다. 고정된 9월 표본 시각을 쓰면
+        # 시험 실행일이 14일을 넘었을 때 방금 받은 자료도 오래된 것으로 보인다.
+        fetched_at = self.q("SELECT clock_timestamp()")[0][0]
 
         def route(url, _):
             cve = url.split("cveId=")[1]
@@ -268,7 +271,7 @@ class CtiDatabaseTest(unittest.TestCase):
                 "metrics": {"cvssMetricV31": [{"type": "Primary", "cvssData": {
                     "version": "3.1", "baseScore": 9.8, "vectorString": "CVSS:3.1/AV:N", "baseSeverity": "CRITICAL"}}]}}}]}
         sleeps, http = [], FakeHttp(route)
-        self.assertTrue(cti.fetch_nvd(self.ctx(http, sleeps=sleeps)))
+        self.assertTrue(cti.fetch_nvd(self.ctx(http, sleeps=sleeps, now=fetched_at)))
         asked = [u.split("cveId=")[1] for u, _ in http.calls]
         # 서명 CVE 8개 → 서명 제품(geoserver)의 KEV 2개 → 자산 CVE 중 EPSS 상위(없음 · EPSS 를 받지 않았다)
         self.assertEqual(asked, ["CVE-2017-9841", "CVE-2018-10561", "CVE-2018-10562", "CVE-2021-36260", "CVE-2021-41773",
@@ -282,8 +285,16 @@ class CtiDatabaseTest(unittest.TestCase):
                          [(None, True)])
         n = self.q("SELECT count(*) FROM cti_snapshots WHERE source = 'nvd'")[0][0]
         http2 = FakeHttp(route)
-        self.assertTrue(cti.fetch_nvd(self.ctx(http2)))               # 모두 14일 안에 받았다
+        self.assertTrue(cti.fetch_nvd(self.ctx(http2, now=fetched_at)))  # 모두 14일 안에 받았다
         self.assertEqual((http2.calls, self.q("SELECT count(*) FROM cti_snapshots WHERE source = 'nvd'")[0][0]), ([], n))
+
+        # 시계를 맞춰 건너뛰기만 통과시키지 않도록, 만료된 자료의 재조회도 확인한다.
+        with self.conn.cursor() as cur:
+            cur.execute("UPDATE cti_cve SET nvd_fetched_at = %s - interval '15 days'", (fetched_at,))
+        self.conn.commit()
+        http3 = FakeHttp(route)
+        self.assertTrue(cti.fetch_nvd(self.ctx(http3, now=fetched_at)))
+        self.assertEqual([u.split("cveId=")[1] for u, _ in http3.calls], asked)
 
     def test_수집기_역할의_권한만으로_돈다(self):
         """마이그레이션의 권한 블록(opsloop_cti)을 임시 역할에 그대로 주고 SET ROLE 로 모든 출처 · 적재 · 상태를 돌린다.

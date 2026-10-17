@@ -91,7 +91,7 @@ export function BlocklistPage() {
           <Input aria-label="차단 검색" placeholder="출발지 · 사유 · 사건 검색" className="max-w-[260px]" value={search} onChange={event => { setSearch(event.target.value); setPage(1) }} />
         </div>
         <div className={cn('hidden gap-3 border-b border-line bg-canvas/60 px-4 py-2 text-xs text-ink-muted lg:grid', COLUMNS)} aria-hidden="true">{['출발지', '사유 · 근거 사건', '집행 결과', '만료 시각 (KST)', '요청자', '조치'].map(label => <span key={label}>{label}</span>)}</div>
-        <div className="worklist-scroll" key={`${tab}:${currentPage}:${pageSize}:${search}`}><ul className="m-0 list-none divide-y divide-line p-0">{shown.map(entry => <BlockRow key={`${entry.actor_ip}:${entry.created_at}`} entry={entry} now={now} allowed={permission.allowed} stale={query.isError} onNotice={setNotice} refresh={() => void query.refetch()} />)}</ul>
+        <div className="worklist-scroll" key={`${tab}:${currentPage}:${pageSize}`}><ul className="m-0 list-none divide-y divide-line p-0">{shown.map(entry => <BlockRow key={`${entry.actor_ip}:${entry.created_at}`} entry={entry} now={now} allowed={permission.allowed} stale={query.isError} onNotice={setNotice} refresh={() => void query.refetch()} />)}</ul>
         {!shown.length && <p className="m-0 px-4 py-10 text-center text-ink-muted">{search ? '검색 조건에 맞는 차단이 없습니다.' : `${TABS.find(([value]) => value === tab)?.[1]} 항목이 없습니다.`}</p>}</div>
         <IncidentPagination label="차단 목록 페이지" page={currentPage} pageSize={pageSize} total={filtered.length} busy={query.isPending} onPage={setPage} onPageSize={size => { setPageSize(size); setPage(1) }} />
       </Card>

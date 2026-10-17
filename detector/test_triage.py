@@ -495,6 +495,51 @@ class NonSshBulkAcceptDatabaseTests(unittest.TestCase):
         self.check_verdict_saved_after_list_is_not_overwritten(['n', 'review', 'n', 'review', 's', 's'])
 
 
+@unittest.skipUnless(REAL_PG and os.environ.get("OPSLOOP_TEST_DATABASE_URL"), "PostgreSQL 시험 연결 미지정")
+class LatestVerdictReportingTests(unittest.TestCase):
+    def setUp(self):
+        self.conn = psycopg2.connect(os.environ["OPSLOOP_TEST_DATABASE_URL"])
+        self.cur = self.conn.cursor()
+        self.cur.execute("""
+            SET search_path TO pg_temp;
+            CREATE TEMP TABLE incidents (incident_key text PRIMARY KEY, rule_id text, rule_version text);
+            CREATE TEMP TABLE verdicts (id bigint GENERATED ALWAYS AS IDENTITY, incident_key text,
+                verdict text, proposed text, observed_value double precision, created_at timestamptz DEFAULT now());
+            CREATE TEMP TABLE rule_versions (rule_version text, definition jsonb);
+            CREATE TEMP VIEW rule_quality (rule_id, rule_version, incidents, judged, threats,
+                non_actionable, false_positives, false_positive_rate, non_action_rate)
+                AS SELECT 'R001'::text, 'v1'::text,
+                0, 0, 0, 0, 0, NULL::numeric, NULL::numeric WHERE false;
+            INSERT INTO incidents VALUES ('a','R001','v1'), ('b','R001','v1');
+            INSERT INTO rule_versions VALUES ('v1', '{"rules":[{"id":"R001","type":"session_threshold",
+                "params":{"field":"cmd_count","op":">=","value":7}}]}');
+            INSERT INTO verdicts (incident_key, verdict, proposed, observed_value) VALUES
+                ('a','threat','threat',9), ('a','false_positive','threat',1);
+        """)
+
+    def tearDown(self):
+        self.conn.rollback()
+        self.conn.close()
+
+    def test_summary_counts_incidents_and_latest_verdict_only(self):
+        with mock.patch('sys.stdout', io.StringIO()) as out:
+            triage.summary(self.conn)
+        self.assertIn('판정 진척  1 / 2', out.getvalue())
+        self.assertIn('제안이 붙은 판정 1건 중 0건 수락, 1건 뒤집힘', out.getvalue())
+
+    def test_threshold_uses_latest_verdict_and_actual_parameter(self):
+        self.cur.execute("INSERT INTO verdicts (incident_key,verdict,observed_value) VALUES ('b','threat',5)")
+        with mock.patch('sys.stdout', io.StringIO()) as out:
+            triage.thresholds(self.conn)
+        self.assertRegex(out.getvalue(), r'R001\s+7\s+5~5\s+1\s+1~1\s+1')
+
+    def test_latest_unmeasured_verdict_does_not_revive_old_observation(self):
+        self.cur.execute("INSERT INTO verdicts (incident_key,verdict,observed_value) VALUES ('a','undetermined',NULL)")
+        with mock.patch('sys.stdout', io.StringIO()) as out:
+            triage.thresholds(self.conn)
+        self.assertIn('판정 기록이 없습니다', out.getvalue())
+
+
 FIRST = "R006|v3|192.0.2.1|2026-09-20T00:00:00+00:00"
 OWN = "192.0.2.1"
 

@@ -31,6 +31,15 @@ function setup(role = 'admin', failing = false) {
 }
 
 describe('차단 목록', () => {
+  it('검색 뒤에도 남는 행의 열린 해제 확인을 유지한다', async () => {
+    setup()
+    const ip = await screen.findByText('192.0.2.8')
+    const row = within(ip.closest('li')!)
+    fireEvent.click(row.getByRole('button', { name: '해제' }))
+    expect(row.getByRole('button', { name: '해제 확정' })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('차단 검색'), { target: { value: '192.0.2' } })
+    expect(within(screen.getByText('192.0.2.8').closest('li')!).getByRole('button', { name: '해제 확정' })).toBeInTheDocument()
+  })
   it('활성 행에 집행 지점별 결과를 보이고 까닭은 글자로만 그린다(이슈 #51)', async () => {
     const rows = [
       blockEntry({ actor_ip: '203.0.113.10', method: 'nft', enforced_at: '2026-09-23T07:59:00Z', enforce_note: '관문 반영 · abcd1234 · 2026-09-23T07:59:00Z',
