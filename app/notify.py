@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 
 import asyncpg
 from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
 import notifier
 from access import MaskedValidationRoute, require_role
@@ -68,6 +68,7 @@ class ChannelIn(BaseModel):
 class ChannelUpdate(ChannelIn):
     # 비어 있으면 저장된 주소를 유지한다. 화면은 저장된 주소를 받지 못하므로 되돌려 보낼 수 없다.
     url: str | None = Field(default=None, max_length=2048)
+    expected_updated_at: AwareDatetime | None = None
 
 
 def checked_url(kind: str, url: str) -> str:
@@ -155,7 +156,11 @@ async def update_channel(channel_id: ChannelId, body: ChannelUpdate, request: Re
             current = await c.fetchrow("SELECT * FROM notify_channels WHERE id = $1 FOR UPDATE", channel_id)
             if current is None:
                 raise HTTPException(404, "알림 채널을 찾을 수 없습니다")
-            values = body.model_dump()
+            if body.expected_updated_at is None:
+                raise HTTPException(428, "조회한 채널의 수정 시각이 필요합니다. 새로 조회해 주세요")
+            if current['updated_at'] != body.expected_updated_at:
+                raise HTTPException(409, "다른 관리자가 채널을 변경했습니다. 입력은 유지됩니다. 양식을 닫고 최신 설정을 확인한 뒤 다시 수정해 주세요")
+            values = body.model_dump(exclude={'expected_updated_at'})
             if values["url"]:
                 checked_url(values["kind"], values["url"])
             else:
@@ -176,7 +181,8 @@ async def update_channel(channel_id: ChannelId, body: ChannelUpdate, request: Re
                 await c.execute("""
                     UPDATE notify_channels SET name = $2, kind = $3, url = $4, grade = $5, events = $6, min_severity = $7,
                            batch_seconds = $8, template_header = $9, template_item = $10, enabled = $11,
-                           updated_by = $12, updated_at = now(), enabled_at = CASE WHEN $13 THEN now() ELSE enabled_at END
+                           updated_by = $12, updated_at = greatest(clock_timestamp(), updated_at + interval '1 microsecond'),
+                           enabled_at = CASE WHEN $13 THEN now() ELSE enabled_at END
                      WHERE id = $1""",
                     channel_id, values["name"], values["kind"], values["url"], values["grade"], values["events"],
                     values["min_severity"], values["batch_seconds"], values["template_header"], values["template_item"],

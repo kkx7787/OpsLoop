@@ -28,7 +28,7 @@ import asyncpg
 from fastapi import FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import AwareDatetime, BaseModel, Field, field_validator
 
 import auth
 import login_limits
@@ -374,8 +374,8 @@ async def list_incidents(
     rule_version: Optional[str] = Query(None, max_length=128),
     actor_ip: Optional[str] = None,
     target: Optional[str] = Query(None, max_length=256),
-    since: Optional[datetime] = None,
-    until: Optional[datetime] = None,
+    since: Optional[AwareDatetime] = None,
+    until: Optional[AwareDatetime] = None,
     judged: Optional[bool] = None,
     undetermined: Optional[bool] = None,
     device: Optional[str] = Query(None, pattern=DEVICE_PATTERN),

@@ -158,6 +158,7 @@ describe('알림 설정', () => {
     const body = JSON.parse(String(calls(fetch, 'PUT', /^\/api\/notify\/channels\/1$/)[0][1]?.body))
     expect(body).not.toHaveProperty('url')
     expect(body.name).toBe('SOC Teams 2')
+    expect(body.expected_updated_at).toBe('2026-09-24T00:00:00Z')
     expect(body.template_item).toBe(DEFAULT_TEMPLATE_ITEM)
   })
 
@@ -206,7 +207,7 @@ describe('알림 설정', () => {
     fireEvent.click(await screen.findByRole('switch', { name: 'SOC Teams 사용' }))
     await waitFor(() => expect(calls(fetch, 'PUT', /^\/api\/notify\/channels\/1$/)).toHaveLength(1))
     const body = JSON.parse(String(calls(fetch, 'PUT', /^\/api\/notify\/channels\/1$/)[0][1]?.body))
-    expect(body).toEqual({ name: 'SOC Teams', kind: 'teams', grade: 'immediate', events: ['incident.created', 'pending.overdue'], min_severity: 'high', batch_seconds: 300, template_header: DEFAULT_TEMPLATE_HEADER, template_item: DEFAULT_TEMPLATE_ITEM, enabled: false })
+    expect(body).toEqual({ name: 'SOC Teams', kind: 'teams', grade: 'immediate', events: ['incident.created', 'pending.overdue'], min_severity: 'high', batch_seconds: 300, template_header: DEFAULT_TEMPLATE_HEADER, template_item: DEFAULT_TEMPLATE_ITEM, enabled: false, expected_updated_at: '2026-09-24T00:00:00Z' })
     expect(await screen.findByText('채널 SOC Teams 을(를) 중지했습니다.')).toBeInTheDocument()
   })
 

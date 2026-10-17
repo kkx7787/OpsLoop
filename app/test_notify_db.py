@@ -83,6 +83,23 @@ class NotifyDatabaseTests(unittest.IsolatedAsyncioTestCase):
             VALUES($1, $2, $3, $4, $5, $6, $7, $8, now() - interval '{created_ago}', now() - interval '{created_ago}') RETURNING id""",
             name, kind, url, grade, list(events), min_severity, batch_seconds, enabled)
 
+    async def update_channel(self, channel_id, body, request, response):
+        stamp = await self.conn.fetchval("SELECT updated_at FROM notify_channels WHERE id=$1", channel_id)
+        return await notify.update_channel(channel_id, body.model_copy(update={'expected_updated_at': stamp}), request, response)
+
+    async def test_stale_toggle_and_edit_cannot_erase_another_admin_change(self):
+        cid = await self.channel()
+        row = dict(await self.conn.fetchrow("SELECT * FROM notify_channels WHERE id=$1", cid))
+        body = notify.ChannelUpdate(**{k: row[k] for k in notify.FIELDS}, expected_updated_at=row['updated_at'])
+        changed = await notify.update_channel(cid, body.model_copy(update={'name': 'new name'}), self.request, Response())
+        for update in ({'enabled': False}, {'name': 'stale edit'}):
+            with self.assertRaises(HTTPException) as caught:
+                await notify.update_channel(cid, body.model_copy(update=update), self.request, Response())
+            self.assertEqual(caught.exception.status_code, 409)
+        current = await self.conn.fetchrow("SELECT name, enabled FROM notify_channels WHERE id=$1", cid)
+        self.assertEqual(tuple(current), ('new name', True))
+        self.assertNotEqual(changed['updated_at'], row['updated_at'])
+
     async def incident(self, key, severity="high", first_ago="5 minutes", created_ago="1 minute", rule="R001", actor="192.0.2.8"):
         await self.conn.execute(f"""
             INSERT INTO incidents(incident_key, rule_id, rule_version, rule_name, severity, actor_ip, first_ts, last_ts, evidence, created_at)
@@ -262,13 +279,13 @@ class NotifyDatabaseTests(unittest.IsolatedAsyncioTestCase):
         await self.notifier.fill(self.conn)
         self.assertEqual({r["subject_key"] for r in await self.deliveries(status="queued")}, {"before-off"})
         update = notify.ChannelUpdate(**(body.model_dump() | {"url": None}))
-        await notify.update_channel(created["id"], notify.ChannelUpdate(**(update.model_dump() | {"enabled": False})), self.request, Response())
+        await self.update_channel(created["id"], notify.ChannelUpdate(**(update.model_dump() | {"enabled": False})), self.request, Response())
         rows = await self.deliveries()
         self.assertEqual({(r["status"], r["error"]) for r in rows}, {("failed", "ChannelDisabled")})
         # 꺼져 있는 동안 생긴 사건 · 목표를 넘긴 미판정은 다시 켜도 한꺼번에 나가지 않는다
         await self.incident("while-off", severity="critical", first_ago="70 minutes", created_ago="30 minutes")
         before = await self.conn.fetchval("SELECT enabled_at FROM notify_channels")
-        await notify.update_channel(created["id"], update, self.request, Response())
+        await self.update_channel(created["id"], update, self.request, Response())
         self.assertGreater(await self.conn.fetchval("SELECT enabled_at FROM notify_channels"), before)
         await self.notifier.fill(self.conn)
         self.assertEqual(await self.deliveries(status="queued"), [])
@@ -277,13 +294,13 @@ class NotifyDatabaseTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual({r["subject_key"] for r in await self.deliveries(status="queued")}, {"after-on"})
         # 사건 종류를 빼면 그 종류의 대기 행은 닫고, 이름만 바꾸면 기준 시각을 옮기지 않는다
         narrowed = notify.ChannelUpdate(**(update.model_dump() | {"events": ["pending.overdue"]}))
-        await notify.update_channel(created["id"], narrowed, self.request, Response())
+        await self.update_channel(created["id"], narrowed, self.request, Response())
         self.assertEqual({(r["subject_key"], r["status"], r["error"]) for r in await self.deliveries(subject_key="after-on")},
                          {("after-on", "failed", "ChannelChanged")})
         before = await self.conn.fetchval("SELECT enabled_at FROM notify_channels")
-        await notify.update_channel(created["id"], notify.ChannelUpdate(**(narrowed.model_dump() | {"name": "야간 팀즈 2"})), self.request, Response())
+        await self.update_channel(created["id"], notify.ChannelUpdate(**(narrowed.model_dump() | {"name": "야간 팀즈 2"})), self.request, Response())
         self.assertEqual(await self.conn.fetchval("SELECT enabled_at FROM notify_channels"), before)
-        await notify.update_channel(created["id"], update, self.request, Response())
+        await self.update_channel(created["id"], update, self.request, Response())
         self.assertGreater(await self.conn.fetchval("SELECT enabled_at FROM notify_channels"), before)
 
     async def test_settle_and_send_leave_rows_taken_by_a_peer_alone(self):
@@ -361,16 +378,16 @@ class NotifyDatabaseTests(unittest.IsolatedAsyncioTestCase):
         listing = await notify.list_channels(self.request, Response())
         self.assertEqual([c["name"] for c in listing], ["운영 웹훅"])
         update = notify.ChannelUpdate(**(body.model_dump() | {"url": "", "name": "웹훅2", "batch_seconds": 60}))
-        changed = await notify.update_channel(created["id"], update, self.request, Response())
+        changed = await self.update_channel(created["id"], update, self.request, Response())
         self.assertEqual((changed["name"], changed["batch_seconds"], changed["url_tail"], changed["updated_by"]), ("웹훅2", 60, "PATH", "test-admin"))
         self.assertEqual(await self.conn.fetchval("SELECT url FROM notify_channels"), "https://hooks.example.com/opsloop/SECRETPATH")
-        same = await notify.update_channel(created["id"], update, self.request, Response())
+        same = await self.update_channel(created["id"], update, self.request, Response())
         self.assertEqual(same["updated_at"], changed["updated_at"])
         with self.assertRaises(HTTPException) as error:
-            await notify.update_channel(created["id"], notify.ChannelUpdate(**(update.model_dump() | {"kind": "teams"})), self.request, Response())
+            await self.update_channel(created["id"], notify.ChannelUpdate(**(update.model_dump() | {"kind": "teams"})), self.request, Response())
         self.assertEqual(error.exception.status_code, 422)
         with self.assertRaises(HTTPException) as error:
-            await notify.update_channel(created["id"] + 99, update, self.request, Response())
+            await self.update_channel(created["id"] + 99, update, self.request, Response())
         self.assertEqual(error.exception.status_code, 404)
         audit = [dict(r) for r in await self.conn.fetch("SELECT eventid, detail FROM audit_log ORDER BY ts")]
         self.assertEqual([a["eventid"] for a in audit], ["console.notify.channel.created", "console.notify.channel.changed"])

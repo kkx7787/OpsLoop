@@ -113,6 +113,15 @@ class AppBase(unittest.TestCase):
 class IncidentListTests(AppBase):
     role = "viewer"
 
+    def test_naive_datetimes_are_rejected_before_db(self):
+        for field in ('since', 'until'):
+            self.assert_masked(self.client.get('/api/incidents', params={field: '2026-10-01T12:00:00'}), field)
+        self.assert_no_db()
+
+    def test_explicit_timezone_filters_are_accepted(self):
+        for stamp in ('2026-10-01T12:00:00Z', '2026-10-01T21:00:00+09:00'):
+            self.assertEqual(self.client.get('/api/incidents', params={'since': stamp}).status_code, 200)
+
     def test_offset_상한을_넘으면_DB_에_닿기_전에_422(self):
         for offset in (cti.MAX_OFFSET + 1, 2 ** 63, 10 ** 20, -1):
             with self.subTest(offset=offset):

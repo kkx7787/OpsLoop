@@ -22,6 +22,8 @@ DB 시험은 OPSLOOP_TEST_DATABASE_URL 이 있을 때만 돈다. 연결 전용 �
     감사(console.block.points) · 좁히기 거부 트리거는 실제 스키마로 test_block_points 가 본다
 """
 import os
+import asyncio
+import json
 import secrets
 import unittest
 from contextlib import asynccontextmanager
@@ -313,7 +315,13 @@ class AbsorbedDatabaseTests(unittest.IsolatedAsyncioTestCase):
         await self.absorb("198.51.100.3", 95)
         await self.absorb("10.20.0.7", 96)                                  # 차단 금지 대역은 넣지 않는다
         follower = absorbed_mod.AbsorbedFollower(self.pool)
+        notices = []
+        await self.conn.add_listener(absorbed_mod.EVENT_CHANNEL, lambda *args: notices.append(json.loads(args[-1])))
         self.assertEqual(await follower.step(self.conn), [(FIRST, 2)])
+        await asyncio.sleep(0)
+        self.assertEqual(len(notices), 1)
+        self.assertEqual(notices[0]['type'], 'action.created')
+        self.assertEqual(notices[0]['data']['incident_key'], FIRST)
         rows = await self.block_rows()
         self.assertEqual(set(rows), {OWN, "198.51.100.2", "198.51.100.3"})
         for ip in ("198.51.100.2", "198.51.100.3"):
@@ -327,6 +335,8 @@ class AbsorbedDatabaseTests(unittest.IsolatedAsyncioTestCase):
                          "in_progress")                                    # 상태는 바꾸지 않는다(차단이 바꾼 그대로)
         # 할 것이 없으면 아무것도 쓰지 않는다
         self.assertEqual(await follower.step(self.conn), [])
+        await asyncio.sleep(0)
+        self.assertEqual(len(notices), 1)
         self.assertEqual(await self.conn.fetchval("SELECT count(*) FROM actions WHERE action = 'note'"), 1)
 
     async def test_follow_skips_released_rows_and_stops_after_release_all(self):
