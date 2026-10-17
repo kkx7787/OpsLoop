@@ -24,6 +24,7 @@
 탐지를 막는 구멍은 운영자가 확인한 뒤 인정 목록으로 풀 수 있어야 한다.
 
 종료 코드 (여러 개면 앞의 것)
+  14  예상 밖 내부 오류. 일시 S3 오류나 잘못된 원장으로 처리하지 않는다 (탐지 보류)
   13  디스크 여유가 하한 아래라 받기를 멈춤 (탐지 보류)
    1  S3 일시 오류 (연결 끊김 · 시간 초과 · 5xx). 받지 못한 조각은 다음 회차에 다시 받는다 (탐지 보류)
   10  원장 구멍 (탐지 보류)
@@ -45,6 +46,7 @@
   OPSLOOP_HOME       작업 폴더 (기본 /var/lib/opsloop)
   OPSLOOP_GAP_ACK    운영자가 확인한 구멍 목록 (기본 /etc/opsloop/gap-ack.json).
                      ["cowrie/i-.../ino=123.g0", ...] 형식. 여기 있는 세대는 구멍 판정에서 뺀다
+                     격리 해제와는 별개다. 원인 해결 뒤 --retry-group <세대>로 해당 세대만 재검사한다
   OPSLOOP_RUN_BYTES  한 회차에 받을 최대 바이트 (기본 512MiB, 실패한 받기 포함). 넘으면 다음 회차로 미룬다
 """
 import argparse
@@ -79,7 +81,7 @@ CAP = 2000                        # 상태에 남기는 거부 · 무시 · 경�
 SAVE_EVERY_N, SAVE_EVERY_S = 200, 30
 READ = 1024 * 1024
 
-EXIT_GAP, EXIT_STALE, EXIT_DISK = 10, 11, 13
+EXIT_GAP, EXIT_STALE, EXIT_DISK, EXIT_INTERNAL = 10, 11, 13, 14
 
 # systemd 가 표준 출력의 <N> 접두사를 로그 등급으로 읽는다. 손으로 돌릴 때는 붙이지 않는다
 _JOURNAL = bool(os.environ.get("JOURNAL_STREAM"))
@@ -98,6 +100,10 @@ def log(msg, level=6):
 
 class Terminated(Exception):
     pass
+
+
+class InvalidChunk(ValueError):
+    """원장 검증에서 확인한 형식·무결성 오류. 예상 밖 코드 오류와 구분한다."""
 
 
 def _on_term(signum, frame):
@@ -169,7 +175,7 @@ def client_errors():
         from botocore.exceptions import BotoCoreError, ClientError
         return (ClientError, BotoCoreError)
     except ImportError:                 # 시험용 가짜 S3
-        return (Exception,)
+        return ()                      # 시험은 자기 가짜 오류형을 명시한다. 코드 오류를 일시 오류로 삼지 않는다.
 
 
 def _no_float(v):
@@ -295,7 +301,7 @@ def fetch(s3, bucket, key, size, home, sensor, name):
                     break
                 n += len(buf)
                 if n > size:
-                    raise ValueError(f"크기 초과 {n} > {size}")
+                    raise InvalidChunk(f"크기 초과 {n} > {size}")
                 h.update(buf)
                 f.write(buf)
                 last = buf[-1:]
@@ -303,12 +309,12 @@ def fetch(s3, bucket, key, size, home, sensor, name):
             os.fsync(f.fileno())
         got = base64.b64encode(h.digest()).decode()
         if n != size:
-            raise ValueError(f"크기 불일치 {n} != {size}")
+            raise InvalidChunk(f"크기 불일치 {n} != {size}")
         if got != want:
-            raise ValueError("SHA256 불일치")
+            raise InvalidChunk("SHA256 불일치")
         if last != b"\n":
-            raise ValueError("줄바꿈으로 끝나지 않음")
-    except ValueError as e:
+            raise InvalidChunk("줄바꿈으로 끝나지 않음")
+    except InvalidChunk as e:
         os.unlink(part)
         return None, str(e), "reject", n
     except client_errors() as e:
@@ -393,7 +399,7 @@ def role_ok(sensor, host, gateway_hosts):
     return (sensor == "gateway") == (host in gateway_hosts)
 
 
-def run(s3, bucket, hosts, home, now=None, ack=frozenset(), gateway_hosts=frozenset()):
+def run(s3, bucket, hosts, home, now=None, ack=frozenset(), gateway_hosts=frozenset(), retry_groups=frozenset()):
     now = now or datetime.now(timezone.utc)
     state_path = os.path.join(home, "pull-state.json")
     cleanup_temp(home)
@@ -401,6 +407,22 @@ def run(s3, bucket, hosts, home, now=None, ack=frozenset(), gateway_hosts=frozen
     objects, alerts, rejected, ignored = state["objects"], state["alerts"], state["rejected"], state["ignored"]
     bad_groups = state["bad_groups"]
     overflow_before = state["overflow"]
+    unknown = set(retry_groups) - set(bad_groups)
+    if unknown:
+        raise ValueError("재시도 세대는 현재 격리된 세대여야 합니다")
+    for gid in sorted(retry_groups):
+        keys = [key for key in rejected if (m := KEY_RE.fullmatch(key))
+                and group_id(m[1], m[2], m[3], int(m[4])) == gid]
+        for key in keys:
+            del rejected[key]
+        bad_groups.remove(gid)
+        # 기존 정상 사본과 ETag는 그대로 둔다. 재시도한 자료도 검증을 다시 통과해야 한다.
+        recovery = state.setdefault('recoveries', [])
+        recovery.append({'group': gid, 'at': now.isoformat(), 'rejected_reset': len(keys)})
+        del recovery[:-CAP]
+        log(f"운영자 재시도 {gid}: 격리를 해제하고 거부 기록 {len(keys)}건을 다시 검사한다", 4)
+    if retry_groups:
+        save_state(state_path, state)
 
     def remember(table, key, value, why, level):
         """상한 안에서만 기록한다. 같은 이유면 다시 알리지 않는다. 기록했으면 True."""
@@ -424,8 +446,6 @@ def run(s3, bucket, hosts, home, now=None, ack=frozenset(), gateway_hosts=frozen
         except client_errors() as e:
             files, when, problem = None, None, f"읽기 일시 오류 ({safe(error_code(e))})"
             transient += 1
-        except Exception as e:                     # 한 호스트의 이상한 값이 다른 호스트를 막지 않게 한다
-            files, when, problem = None, None, f"형식이 틀림 ({safe(type(e).__name__)})"
         if files:
             wrong = sorted(n for n, f in files.items() if not role_ok(f["sensor"], host, gateway_hosts))
             if wrong:
@@ -536,6 +556,13 @@ def run(s3, bucket, hosts, home, now=None, ack=frozenset(), gateway_hosts=frozen
         save_state(state_path, state)
         log("종료 신호를 받아 받은 만큼 저장하고 멈춘다", 4)
         return 1
+    except client_errors() as e:
+        save_state(state_path, state)
+        log(f"S3 목록 읽기 일시 오류 ({safe(error_code(e))}). 받은 위치를 보존한다", 4)
+        return 1
+    except Exception:
+        save_state(state_path, state)
+        raise
     finally:
         signal.signal(signal.SIGTERM, old)
 
@@ -571,7 +598,9 @@ def run(s3, bucket, hosts, home, now=None, ack=frozenset(), gateway_hosts=frozen
 
 def main():
     ap = argparse.ArgumentParser(description="OpsLoop 원장 풀러")
-    ap.parse_args()
+    ap.add_argument('--retry-group', action='append', default=[],
+                    help='원인 확인 뒤 지정한 격리 세대만 재검사한다. 정상 원장은 유지한다')
+    args = ap.parse_args()
     bucket = os.environ.get("OPSLOOP_BUCKET")
     hosts = {h.strip() for h in os.environ.get("OPSLOOP_HOSTS", "").split(",") if h.strip()}
     home = os.environ.get("OPSLOOP_HOME", "/var/lib/opsloop")
@@ -580,7 +609,13 @@ def main():
     ack = load_ack(os.environ.get("OPSLOOP_GAP_ACK", "/etc/opsloop/gap-ack.json"))
     gateway_hosts = frozenset(h.strip() for h in os.environ.get("OPSLOOP_GATEWAY_HOSTS", "").split(",") if h.strip())
     import boto3
-    sys.exit(run(boto3.client("s3"), bucket, hosts, home, ack=ack, gateway_hosts=gateway_hosts))
+    try:
+        rc = run(boto3.client("s3"), bucket, hosts, home, ack=ack, gateway_hosts=gateway_hosts,
+                 retry_groups=frozenset(args.retry_group))
+    except Exception as error:
+        log(f"풀러 내부 오류 ({type(error).__name__}). 탐지를 보류하고 코드·설정을 확인한다", 3)
+        rc = EXIT_INTERNAL
+    sys.exit(rc)
 
 
 if __name__ == "__main__":
