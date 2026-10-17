@@ -127,6 +127,15 @@ class CtiDatabaseTest(unittest.TestCase):
 
     # ── 시험 ──
 
+    def test_invalid_kev_entry_preserves_complete_previous_snapshot(self):
+        self.load_kev()
+        before = self.q("SELECT * FROM cti_kev ORDER BY 1")
+        entries = kev_doc()["vulnerabilities"]
+        entries[0] = dict(entries[0], dateAdded="invalid-date")
+        self.assertFalse(cti.fetch_kev(self.ctx(FakeHttp({cti.KEV_URL: kev_doc(entries)}))))
+        self.assertEqual(self.q("SELECT * FROM cti_kev ORDER BY 1"), before)
+        self.assertEqual(self.q("SELECT status FROM cti_snapshots ORDER BY id DESC LIMIT 1"), [('failed',)])
+
     def test_KEV_는_목록과_같게_맞추고_원본_기록을_남긴다(self):
         self.load_kev()
         self.assertEqual(self.q("SELECT cve_id, vendor_project, product, date_added::text, due_date::text, ransomware"

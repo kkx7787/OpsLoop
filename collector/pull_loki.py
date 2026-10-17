@@ -736,6 +736,7 @@ def read_ledgers(store, agent, state, save):
     """관문 · 관리 원장의 새 줄을 넣는다. 끝까지 문제없으면 True."""
     led = state["ledgers"]
     files = []                      # (이름, 종류, 폴더)
+    listed = set()
     ok = True
     for folder, want in ((GATE_DIR, "collector"), (ADMIN_DIR, "admin")):
         try:
@@ -747,6 +748,7 @@ def read_ledgers(store, agent, state, save):
             log(f"원장 폴더 {folder} 를 읽지 못했다 ({safe(e)})", 3)
             ok = False
             continue
+        listed.add(want)
         for name in names:
             m = LEDGER_RE.fullmatch(name)
             if not m:
@@ -758,9 +760,8 @@ def read_ledgers(store, agent, state, save):
             files.append((name, want, folder))
     budget = LEDGER_BYTES
     tot = dict.fromkeys(("lines", "new", "bad", "forged"), 0)
-    present = set()
+    present = {name for name, _, _ in files}
     for name, kind, folder in files:
-        present.add(name)
         if budget <= 0:
             log("원장 읽기 한도를 넘었다. 나머지는 다음 회차에 읽는다", 4)
             break
@@ -772,7 +773,8 @@ def read_ledgers(store, agent, state, save):
         for k in tot:
             tot[k] += res[k]
     for name in list(led):
-        if name not in present:
+        match = LEDGER_RE.fullmatch(name)
+        if name not in present and match and match.group(1) in listed:
             del led[name]
     if tot["lines"]:
         log(f"원장: 줄 {tot['lines']:,} · 신규 {tot['new']:,} · 건너뜀 {tot['bad']:,} · 위조 의심 {tot['forged']:,}")
