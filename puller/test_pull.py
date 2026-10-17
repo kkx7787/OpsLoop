@@ -125,6 +125,41 @@ class PullTest(unittest.TestCase):
             self.assertEqual(f.read(), L1 + L2)
         self.assertEqual(len(self.inbox()), 1)
 
+    def test_explicit_retry_recovers_only_selected_quarantine(self):
+        key = self.s3.chunk('cowrie', 11, 0, 0, L1, T0)
+        self.s3.hb({'cowrie.json': hbfile('cowrie', 11, 0, len(L1))}, T0)
+        gid = pull.group_id('cowrie', HOST, '11', 0)
+        path = os.path.join(self.dir, 'pull-state.json')
+        state = pull.load_state(path)
+        state['bad_groups'] = [gid, 'cowrie/other/ino=2.g0']
+        state['rejected'] = {key: {'etag': self.s3.objs[key]['etag'], 'why': 'past failure'},
+                             'unrelated': {'etag': 'old', 'why': 'keep'}}
+        pull.save_state(path, state)
+        with mock.patch.object(pull, 'coverage', return_value=[]):
+            self.assertEqual(pull.run(self.s3, 'b', {HOST}, self.dir, now=T0,
+                                      retry_groups={gid}), 0)
+        state = pull.load_state(path)
+        self.assertIn(key, state['objects'])
+        self.assertIn('unrelated', state['rejected'])
+        self.assertEqual(state['bad_groups'], ['cowrie/other/ino=2.g0'])
+        self.assertEqual(state['recoveries'][0]['group'], gid)
+
+    def test_unexpected_heartbeat_bug_is_not_a_stale_source(self):
+        with mock.patch.object(pull, 'read_hb', side_effect=RuntimeError('synthetic bug')):
+            with self.assertRaises(RuntimeError):
+                self.run_pull()
+
+    def test_unexpected_download_error_keeps_progress_and_is_not_quarantined(self):
+        first = self.s3.chunk('cowrie', 11, 0, 0, L1, T0)
+        second = self.s3.chunk('cowrie', 11, 0, len(L1), L2, T0)
+        self.s3.hb({'cowrie.json': hbfile('cowrie', 11, 0, len(L1 + L2))}, T0)
+        self.s3.read_fail[second] = ValueError('unexpected reader bug')
+        with self.assertRaises(ValueError):
+            self.run_pull()
+        state = pull.load_state(os.path.join(self.dir, 'pull-state.json'))
+        self.assertIn(first, state['objects'])
+        self.assertNotIn(second, state['rejected'])
+
     def test_두번_돌려도_다시_받지_않음(self):
         self.s3.chunk("cowrie", 11, 0, 0, L1, T0)
         self.s3.hb({"cowrie.json": hbfile("cowrie", 11, 0, len(L1))}, T0)
