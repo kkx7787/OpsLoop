@@ -1,0 +1,115 @@
+2026-10-17 #129. Counts include skipped tests; repeated runs are not additive.
+Intermediate FAILED runs are retained; see README for final valid runs.
+
+[integrity-before.log]
+FAIL: test_partial_since_keeps_full_baseline_bucket (test_integrity.DetectorIntegrityTests.test_partial_since_keeps_full_baseline_bucket)
+FAIL: test_timezone_does_not_change_incident_key (test_integrity.DetectorIntegrityTests.test_timezone_does_not_change_incident_key)
+FAIL: test_version_cannot_be_redefined (test_integrity.DetectorIntegrityTests.test_version_cannot_be_redefined)
+FAIL: test_postgres_quantity_limit (test_integrity.RegexIntegrityTests.test_postgres_quantity_limit) (pattern='a{256}')
+FAIL: test_postgres_quantity_limit (test_integrity.RegexIntegrityTests.test_postgres_quantity_limit) (pattern='a{1,256}')
+FAIL: test_postgres_quantity_limit (test_integrity.RegexIntegrityTests.test_postgres_quantity_limit) (pattern='a{256,}')
+Ran 4 tests in 0.049s
+FAILED (failures=6)
+ERROR: test_unreadable_directory_does_not_erase_offsets (test_ledger_integrity.LedgerIntegrityTests.test_unreadable_directory_does_not_erase_offsets)
+FAIL: test_budget_does_not_forget_unvisited_offsets (test_ledger_integrity.LedgerIntegrityTests.test_budget_does_not_forget_unvisited_offsets)
+Ran 3 tests in 0.001s
+FAILED (failures=1, errors=1)
+FAIL: test_invalid_kev_entry_preserves_complete_previous_snapshot (test_opsloop_cti_db.CtiDatabaseTest.test_invalid_kev_entry_preserves_complete_previous_snapshot)
+FAILED (failures=1)
+
+[integrity-after-core.log]
+Ran 4 tests in 0.076s
+OK
+Ran 3 tests in 0.001s
+OK
+OK
+
+[integrity-regression-1.log]
+ERROR: test_timezone_does_not_change_incident_key (test_integrity.DetectorIntegrityTests.test_timezone_does_not_change_incident_key)
+ERROR: test_version_cannot_be_redefined (test_integrity.DetectorIntegrityTests.test_version_cannot_be_redefined)
+FAIL: test_run_전체도_기준선_말고는_같은_문장 (test_detect_sensors.BeforeAfterTest.test_run_전체도_기준선_말고는_같은_문장) (rules='rules.json')
+FAIL: test_run_전체도_기준선_말고는_같은_문장 (test_detect_sensors.BeforeAfterTest.test_run_전체도_기준선_말고는_같은_문장) (rules='rules_v2.json')
+Ran 272 tests in 2.510s
+FAILED (failures=2, errors=2, skipped=16)
+Ran 13 tests in 0.674s
+OK
+Ran 76 tests in 2.648s
+OK
+Ran 130 tests in 1.913s
+OK (skipped=1)
+
+[integrity-regression-2.log]
+Ran 272 tests in 2.450s
+OK (skipped=16)
+Ran 775 tests in 36.177s
+OK
+Ran 164 tests in 33.523s
+OK
+
+[integrity-regression-3.log]
+Ran 10 tests in 0.158s
+OK
+Ran 67 tests in 2.338s
+OK
+Ran 77 tests in 3.388s
+OK
+FAIL: test_구조_수치는_복원_훈련_기대값과_같고_지문이_지점을_읽는다 (test_block_points_choice_db.PointsChoiceDatabaseTest.test_구조_수치는_복원_훈련_기대값과_같고_지문이_지점을_읽는다)
+FAIL: test_구조_수치는_복원_훈련_기대값과_같다 (test_console_accounts_db.ConsoleAccountsDatabaseTest.test_구조_수치는_복원_훈련_기대값과_같다)
+FAIL: test_구조_수치는_복원_훈련_기대값과_같다 (test_console_accounts_manage_db.ManageDatabaseTest.test_구조_수치는_복원_훈련_기대값과_같다)
+Ran 152 tests in 13.443s
+FAILED (failures=3)
+
+[integrity-regression-4.log]
+FAIL: test_복원_훈련은_새_트리거_함수를_세고_지문에_지점을_넣는다 (test_block_points_choice_db.PointsChoiceTextTest.test_복원_훈련은_새_트리거_함수를_세고_지문에_지점을_넣는다)
+FAIL: test_복원_훈련은_새_트리거_함수를_세고_계정_지문에_비활성과_변경_시각을_넣는다 (test_console_accounts_db.ConsoleAccountsTextTest.test_복원_훈련은_새_트리거_함수를_세고_계정_지문에_비활성과_변경_시각을_넣는다)
+FAIL: test_복원_훈련은_새_함수_셋을_센다 (test_console_accounts_manage_db.ManageTextTest.test_복원_훈련은_새_함수_셋을_센다)
+FAIL: test_복원_훈련은_새_표를_백업_대상으로_세고_구조_기대값이_늘었다 (test_status_board_db.StatusBoardTextTest.test_복원_훈련은_새_표를_백업_대상으로_세고_구조_기대값이_늘었다)
+Ran 152 tests in 8.267s
+FAILED (failures=4)
+Ran 48 tests in 4.392s
+OK
+Ran 3 tests in 0.014s
+OK
+
+[integrity-regression-5.log]
+Ran 152 tests in 8.138s
+OK
+Ran 11 tests in 0.158s
+OK
+
+[detector-integrity-final.log]
+Ran 275 tests in 2.487s
+OK (skipped=16)
+
+[frontend-integrity.log]
+ Test Files  1 failed | 1 passed (2)
+      Tests  1 failed | 93 passed (94)
+
+[frontend-all.log]
+ Test Files  71 passed (71)
+      Tests  1131 passed (1131)
+
+[frontend-build.log]
+No count lines; command success recorded in README.
+
+[frontend-lint.log]
+No count lines; command success recorded in README.
+
+[restore-tools.log]
+Ran 48 tests in 21.318s
+OK
+
+[schema-check.log]
+No count lines; command success recorded in README.
+
+[history-dump-restore.log]
+PASS: full-schema synthetic pg_dump/pg_restore retains history + recommendation JSON + notification reference
+PASS: all restore fingerprints identical; notification orphan count 0; migration reapply unchanged
+
+[issue126-isolated.log]
+Ran 6 tests in 0.521s
+OK
+Ran 3 tests in 0.065s
+OK
+Ran 3 tests in 0.013s
+OK

@@ -1,0 +1,103 @@
+LOG app-tests-final.log
+Ran 772 tests in 35.208s
+OK
+
+LOG app-tests.log
+ERROR: test_send_groups_by_channel_and_event_and_marks_sent (test_notify_db.NotifyDatabaseTests.test_send_groups_by_channel_and_event_and_marks_sent)
+Ran 772 tests in 45.626s
+FAILED (errors=1)
+
+LOG backend-tests.log
+SUITE recommend
+Ran 48 tests in 4.368s
+OK
+RESULT recommend 0
+SUITE detector
+Ran 264 tests in 2.530s
+OK (skipped=16)
+RESULT detector 0
+SUITE decoy
+Ran 3 tests in 0.012s
+OK
+RESULT decoy 0
+SUITE parser
+Ran 65 tests in 0.092s
+OK
+RESULT parser 0
+SUITE cti
+FAIL: test_NVD_초점_갱신과_14일_건너뛰기 (test_opsloop_cti_db.CtiDatabaseTest.test_NVD_초점_갱신과_14일_건너뛰기)
+Ran 129 tests in 1.713s
+FAILED (failures=1, skipped=1)
+RESULT cti 1
+SUITE collector
+Ran 161 tests in 33.782s
+OK
+RESULT collector 0
+SUITE puller
+Ran 74 tests in 2.675s
+OK
+RESULT puller 0
+SUITE enforcer
+Ran 192 tests in 19.822s
+OK (skipped=2)
+RESULT enforcer 0
+SUITE sensor
+Ran 18 tests in 0.012s
+OK
+RESULT sensor 0
+SUITE infra
+Ran 152 tests in 8.006s
+OK
+RESULT infra 0
+SUITE infra/aws/gateway
+Ran 72 tests in 3.463s
+OK (skipped=2)
+RESULT infra/aws/gateway 0
+SUITE infra/vmware/scripts
+FAIL: test_대기_기본값은_180초이고_창_안에_못_돌면_다시_돌지_않는다 (test_backup_db.BackupAgentTest.test_대기_기본값은_180초이고_창_안에_못_돌면_다시_돌지_않는다)
+FAIL: test_모두_실패하면_한_번_더_알리고_실패로_끝난다 (test_backup_db.BackupAgentTest.test_모두_실패하면_한_번_더_알리고_실패로_끝난다)
+FAIL: test_재시도_대기_동안에도_잠자기_방지가_걸려_있다 (test_backup_db.BackupAgentTest.test_재시도_대기_동안에도_잠자기_방지가_걸려_있다)
+FAIL: test_재시도_뒤_성공은_기록하고_알린다 (test_backup_db.BackupAgentTest.test_재시도_뒤_성공은_기록하고_알린다)
+FAIL: test_정해_둔_끝_밖에서_끝나도_잠자기_방지를_끈다 (test_backup_db.BackupAgentTest.test_정해_둔_끝_밖에서_끝나도_잠자기_방지를_끈다)
+Ran 150 tests in 62.850s
+FAILED (failures=5, skipped=8)
+RESULT infra/vmware/scripts 1
+SUITE infra/ansible
+Ran 32 tests in 7.865s
+OK
+RESULT infra/ansible 0
+FAILED_SUITES ['cti', 'infra/vmware/scripts']
+
+LOG backup-macos.log
+Ran 29 tests in 25.529s
+OK
+
+LOG core-tests.log
+Ran 83 tests in 4.634s
+OK
+
+LOG cti-tests-final.log
+test_dpkg_가_없으면_패키지_커널이_비고_오류에_남는다 (test_probe.ProbeTest.test_dpkg_가_없으면_패키지_커널이_비고_오류에_남는다) ... skipped '이 기계에 dpkg-query 가 있다'
+Ran 129 tests in 2.279s
+OK (skipped=1)
+
+LOG frontend-build.log
+> console@0.0.0 build
+> tsc -b && vite build
+✓ built in 228ms
+
+LOG frontend-lint.log
+> console@0.0.0 lint
+> oxlint
+
+LOG frontend-tests.log
+> console@0.0.0 test
+> vitest run
+ Test Files  71 passed (71)
+      Tests  1130 passed (1130)
+
+LOG ui-tests.log
+> console@0.0.0 test
+> vitest run src/pages/incident-detail/IncidentDetailPage.test.tsx src/pages/blocklist/BlocklistPage.test.tsx
+ Test Files  2 passed (2)
+      Tests  90 passed (90)

@@ -1,0 +1,40 @@
+LOG before-tests.log
+FAIL: test_relative_url_field_keeps_path_only_without_mutating_evidence (recommend.test_opsloop_recommend.EvidencePrivacyTests.test_relative_url_field_keeps_path_only_without_mutating_evidence)
+FAIL: test_relative_urls_and_shell_credentials_never_reach_model (recommend.test_opsloop_recommend.EvidencePrivacyTests.test_relative_urls_and_shell_credentials_never_reach_model) (value='/login?user=admin&pass=PRIVATE_MARKER')
+FAIL: test_relative_urls_and_shell_credentials_never_reach_model (recommend.test_opsloop_recommend.EvidencePrivacyTests.test_relative_urls_and_shell_credentials_never_reach_model) (value='GET /api?access=PRIVATE_MARKER HTTP/1.1')
+FAIL: test_relative_urls_and_shell_credentials_never_reach_model (recommend.test_opsloop_recommend.EvidencePrivacyTests.test_relative_urls_and_shell_credentials_never_reach_model) (value='mysql -pPRIVATE_MARKER -e status')
+FAIL: test_relative_urls_and_shell_credentials_never_reach_model (recommend.test_opsloop_recommend.EvidencePrivacyTests.test_relative_urls_and_shell_credentials_never_reach_model) (value='sshpass -p PRIVATE_MARKER ssh example.test')
+FAIL: test_relative_urls_and_shell_credentials_never_reach_model (recommend.test_opsloop_recommend.EvidencePrivacyTests.test_relative_urls_and_shell_credentials_never_reach_model) (value='AWS_SECRET_ACCESS_KEY=PRIVATE_MARKER command')
+FAIL: test_bulk_accept_preserves_verdict_saved_after_list (detector.test_triage.NonSshBulkAcceptDatabaseTests.test_bulk_accept_preserves_verdict_saved_after_list)
+FAIL: test_interactive_accept_preserves_verdict_saved_after_list (detector.test_triage.NonSshBulkAcceptDatabaseTests.test_interactive_accept_preserves_verdict_saved_after_list)
+FAIL: test_first_failed_login_has_session (decoy.test_app.SessionLoggingTests.test_first_failed_login_has_session)
+FAIL: test_first_login_and_followup_share_session (decoy.test_app.SessionLoggingTests.test_first_login_and_followup_share_session)
+Ran 12 tests in 0.650s
+FAILED (failures=10)
+
+LOG before-reporting.log
+FAIL: test_latest_unmeasured_verdict_does_not_revive_old_observation (detector.test_triage.LatestVerdictReportingTests.test_latest_unmeasured_verdict_does_not_revive_old_observation)
+FAIL: test_summary_counts_incidents_and_latest_verdict_only (detector.test_triage.LatestVerdictReportingTests.test_summary_counts_incidents_and_latest_verdict_only)
+FAIL: test_threshold_uses_latest_verdict_and_actual_parameter (detector.test_triage.LatestVerdictReportingTests.test_threshold_uses_latest_verdict_and_actual_parameter)
+Ran 3 tests in 0.029s
+FAILED (failures=3)
+
+LOG before-api.log
+ERROR: test_notify (unittest.loader._FailedTest.test_notify)
+FAIL: test_block_without_source_is_rejected_without_action_or_status_change (app.test_block_points.SchemaTests.test_block_without_source_is_rejected_without_action_or_status_change)
+Ran 2 tests in 0.209s
+FAILED (failures=1, errors=1)
+
+LOG before-input.log
+ERROR: test_ids_and_offsets_outside_database_range_are_rejected_before_query (test_notify.ValidationEchoTests.test_ids_and_offsets_outside_database_range_are_rejected_before_query) (query='offset=9223372036854775808')
+ERROR: test_ids_and_offsets_outside_database_range_are_rejected_before_query (test_notify.ValidationEchoTests.test_ids_and_offsets_outside_database_range_are_rejected_before_query) (query='channel_id=9223372036854775808')
+ERROR: test_ids_and_offsets_outside_database_range_are_rejected_before_query (test_notify.ValidationEchoTests.test_ids_and_offsets_outside_database_range_are_rejected_before_query) (query='channel_id=0')
+ERROR: test_ids_and_offsets_outside_database_range_are_rejected_before_query (test_notify.ValidationEchoTests.test_ids_and_offsets_outside_database_range_are_rejected_before_query)
+Ran 2 tests in 0.037s
+FAILED (errors=4)
+
+LOG before-ui.log
+     × 검색 뒤에도 남는 행의 열린 해제 확인을 유지한다 132ms
+     × 차단 요청을 기다리는 동안 다른 조치가 결과를 버리거나 중복 요청하지 않는다 107ms
+ Test Files  2 failed (2)
+      Tests  2 failed | 88 passed (90)
