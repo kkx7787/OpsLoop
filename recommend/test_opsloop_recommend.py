@@ -229,6 +229,31 @@ class OllamaTests(unittest.TestCase):
 
 
 class EvidencePrivacyTests(unittest.TestCase):
+    def test_relative_urls_and_shell_credentials_never_reach_model(self):
+        inputs = [
+            '/login?user=admin&pass=PRIVATE_MARKER',
+            'GET /api?access=PRIVATE_MARKER HTTP/1.1',
+            'mysql -pPRIVATE_MARKER -e status',
+            'sshpass -p PRIVATE_MARKER ssh example.test',
+            'AWS_SECRET_ACCESS_KEY=PRIVATE_MARKER command',
+            'export CLIENT_SECRET=PRIVATE_MARKER',
+        ]
+        for value in inputs:
+            with self.subTest(value=value):
+                client = r.Ollama('http://127.0.0.1:1', 'test')
+                with mock.patch.object(client, '_json', return_value={'message': {'content': json.dumps(GOOD)}}) as call:
+                    client.chat({'rule_id': 'R003', 'commands': [{'input': value}]}, 0, 0)
+                body = call.call_args.args[1]
+                self.assertNotIn('PRIVATE_MARKER', json.dumps(body))
+
+    def test_relative_url_field_keeps_path_only_without_mutating_evidence(self):
+        case = {'web': [{'url': 'admin/login?x=PRIVATE_MARKER#SECRET_FRAGMENT'}],
+                'commands': [{'input': 'uname -a'}]}
+        clean = r.inference_case(case)
+        self.assertEqual(clean['web'][0]['url'], 'admin/login')
+        self.assertEqual(clean['commands'][0]['input'], 'uname -a')
+        self.assertIn('PRIVATE_MARKER', case['web'][0]['url'])
+
     def test_중첩_비밀필드와_명령_URL_인증정보를_전송에서_뺀다(self):
         case = {"rule_id": "R003", "rule_evidence": {"nested": {"access_token": "MARKER_A", "password": "MARKER_B"}},
                 "commands": [{"input": "curl -u user:MARKER_C https://example.test/path"},
@@ -277,7 +302,7 @@ class PromptTests(unittest.TestCase):
         got = {t.id: ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign)
                for t in n.targets if isinstance(t, ast.Name) and t.id in ("SYSTEM", "SCHEMA", "PROMPT_VERSION")}
         self.assertEqual(got["PROMPT_VERSION"], "p3-1006")
-        self.assertEqual(r.PROMPT_VERSION, "p4-1007")  # 새 입력 정제 판을 과거 평가 판과 구별
+        self.assertEqual(r.PROMPT_VERSION, "p5-1017")  # 새 입력 정제 판을 과거 평가 판과 구별
         self.assertEqual(got["SYSTEM"], r.SYSTEM)
         self.assertEqual(got["SCHEMA"], r.SCHEMA)
 

@@ -835,7 +835,9 @@ def triage(conn, rule_id, limit, operator, absorbed_hours=ABSORBED_HOURS, block_
     cur.execute(f"""
         SELECT i.incident_key, i.rule_id, i.rule_version, i.rule_name, i.severity,
                host(i.actor_ip), i.first_ts, i.last_ts, i.signal_count,
-               i.session_count, i.evidence, i.status, i.target
+               i.session_count, i.evidence, i.status, i.target,
+               coalesce((SELECT max(id) FROM actions WHERE incident_key=i.incident_key),0)::text || ':' ||
+               coalesce((SELECT max(id) FROM verdicts WHERE incident_key=i.incident_key),0)::text AS workflow_version
         FROM incidents i LEFT JOIN verdicts v ON v.incident_key = i.incident_key
         WHERE {' AND '.join(c)}
         ORDER BY CASE i.severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1
@@ -862,8 +864,10 @@ def triage(conn, rule_id, limit, operator, absorbed_hours=ABSORBED_HOURS, block_
             return {"conflict": True}
 
     for i, row in enumerate(rows, 1):
+        # 목록과 같은 SELECT 스냅샷에서 읽은 토큰. 표시 직전에 새 토큰을 읽으면
+        # 기다리는 동안 저장된 다른 판정을 자기 화면에서 본 것으로 오인한다.
+        row, expected_version = row[:-1], row[-1]
         key, rid, ip, n_sig, sev = row[0], row[1], row[5], row[8], row[4]
-        expected_version = workflow_version(cur, key)
         evidence = row[10] or {}
         sessions = list(evidence.get("sessions") or [])
         observed, unit = observed_of(evidence, n_sig)

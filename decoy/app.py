@@ -83,7 +83,7 @@ def log_event(request: Request, eventid: str, **fields) -> None:
     record = {
         "ts": now.isoformat(),
         "eventid": eventid,
-        "session": request.cookies.get("sid") or fields.pop("session", None),
+        "session": fields.pop("session", None) or request.scope.get("decoy_sid") or request.cookies.get("sid"),
         # 방화벽이 포트를 그대로 전달하므로 연결 주소가 공격자의 주소다.
         # 역방향 프록시를 두게 되면 전달 헤더의 신뢰 경계를 먼저 정해야 한다.
         "src_ip": client.host if client else None,
@@ -119,9 +119,10 @@ async def record_request(request: Request, call_next):
     new_session = sid is None
     if new_session:
         sid = "d" + secrets.token_hex(8)
-        request.scope["decoy_sid"] = sid
-        # 쿠키가 아직 없으므로 log_event 가 읽지 못한다. 직접 넘긴다.
-        log_event(request, "decoy.session.connect", session=sid)
+    # 첫 요청의 로그인·행위도 응답 쿠키를 기다리지 않고 같은 세션으로 기록한다.
+    request.scope["decoy_sid"] = sid
+    if new_session:
+        log_event(request, "decoy.session.connect")
 
     try:
         response = await call_next(request)
@@ -131,7 +132,6 @@ async def record_request(request: Request, call_next):
                   message="처리 중 예외")
         raise
 
-    request.scope.setdefault("decoy_sid", sid)
     log_event(request, "decoy.request", session=sid, http_status=response.status_code)
     if new_session:
         response.set_cookie("sid", sid, httponly=True, samesite="lax")

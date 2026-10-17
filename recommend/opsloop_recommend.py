@@ -25,7 +25,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-PROMPT_VERSION = "p4-1007"   # p3 지시문 유지, 전송 전 인증정보 정제. p3 평가 수치를 이 판의 성적으로 쓰지 않는다
+PROMPT_VERSION = "p5-1017"   # p3 지시문 유지, 상대 URL·셸 인증정보 정제 보강. 과거 평가 수치를 재사용하지 않는다
 DEFAULTS = {"OPSLOOP_AI_URL": "http://127.0.0.1:21434", "OPSLOOP_AI_MODEL": "gpt-oss:20b", "OPSLOOP_AI_MAX_PER_RUN": "10"}
 MAX_ATTEMPTS = 3         # 같은 모델 · 지시문으로 실패한 사건은 세 번까지만 다시 묻는다(서버를 계속 두드리지 않는다)
 STOP_AFTER = 2           # 회차 안에서 연속 두 번 실패하면 그 회차는 멈춘다
@@ -231,14 +231,31 @@ def short(text):
 
 # 정해진 비밀 필드와 식별 가능한 인증정보를 제거한다. 임의 자유문장의 비밀까지 보장하지는 않는다.
 SECRET_KEY = re.compile(r"(?:password|passwd|passphrase|pwd|secret|token|credential|authorization|cookie|api.?key|private.?key|비밀번호)", re.I)
-SECRET_TEXT = re.compile(r"(?:password|passwd|passphrase|pwd|secret|token|authorization|cookie|api[_-]?key)[\"\']?\s*[=:]|--(?:password|passwd|token|secret|api-key)\b|(?:^|\s)-u\s|\b(?:Bearer|Basic)\s+|-----BEGIN .*PRIVATE KEY-----", re.I)
-URL_TEXT = re.compile(r"(?:https?|ftp)://[^\s\"'<>]+", re.I)
+SECRET_TEXT = re.compile(
+    r"\b[\w-]*(?:password|passwd|passphrase|pwd|secret|token|credential|authorization|cookie|api[_-]?key)"
+    r"[\w-]*[\"']?\s*[=:]|--(?:password|passwd|token|secret|api-key)\b|(?:^|\s)-u\s|"
+    r"\b(?:Bearer|Basic)\s+|-----BEGIN .*PRIVATE KEY-----|"
+    r"\b(?:mysql|mariadb|sshpass)\b[^\r\n]*\s-p", re.I)
+# 자유문장 속 절대 URL과 HTTP 요청 등의 /path?query를 처리한다.
+URL_TEXT = re.compile(r"(?:\b(?:https?|ftp)://|(?<![\w/])/{1,2})[^\s\"'<>]+", re.I)
+URL_FIELDS = frozenset(("url", "uri", "path", "request_uri", "request_url"))
+
+
+def clean_evidence_url(value):
+    try:
+        u = urllib.parse.urlsplit(value)
+        host = u.netloc.rsplit('@', 1)[-1]
+        return urllib.parse.urlunsplit((u.scheme, host, u.path, '', ''))
+    except ValueError:
+        return '[URL 제외]'
 
 
 def sanitize_evidence(value):
     """새 객체를 만든다. 원자료/판정 근거는 바꾸지 않고 추론 입력만 줄인다."""
     if isinstance(value, dict):
-        return {k: sanitize_evidence(v) for k, v in value.items()
+        return {k: sanitize_evidence(clean_evidence_url(v)
+                                    if isinstance(v, str) and str(k).lower() in URL_FIELDS else v)
+                for k, v in value.items()
                 if not SECRET_KEY.search(str(k)) and not str(k).startswith('_')}
     if isinstance(value, list):
         return [sanitize_evidence(v) for v in value]
@@ -247,15 +264,7 @@ def sanitize_evidence(value):
     # 인라인 인증정보가 있는 자유문장은 일부만 남겨 비밀값의 꼬리가 새지 않도록 전체를 제외한다.
     if SECRET_TEXT.search(value):
         return '[인증정보 포함 문자열 제외]'
-    def clean_url(match):
-        try:
-            u = urllib.parse.urlsplit(match.group(0))
-            # userinfo, query, fragment는 보내지 않는다. 경로는 탐지 근거로 유지한다.
-            host = u.netloc.rsplit('@', 1)[-1]
-            return urllib.parse.urlunsplit((u.scheme, host, u.path, '', ''))
-        except ValueError:
-            return '[URL 제외]'
-    return URL_TEXT.sub(clean_url, value)
+    return URL_TEXT.sub(lambda match: clean_evidence_url(match.group(0)), value)
 
 
 def inference_case(case):
