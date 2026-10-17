@@ -50,6 +50,14 @@ raise SystemExit(0 if c.fetchone()[0] else 1)'" \
   echo "  incident_absorbed 표 · 탐지 역할 쓰기 권한 확인"
 fi
 
+# 억제 삭제·재등장 전에 감사 트리거가 있어야 한다. 기존 설치는 마이그레이션을 먼저 적용한다.
+sudo -u opsloop-pull sh -c "set -a; . /etc/opsloop/detector.env; python3 -c '
+import os, psycopg2
+c = psycopg2.connect(os.environ[\"DATABASE_URL\"], connect_timeout=10).cursor()
+c.execute(\"SELECT count(*) = 2 FROM pg_trigger WHERE tgrelid = to_regclass(%s) AND tgname = ANY(%s) AND tgenabled = %s\", (\"incidents\", [\"trg_incident_history_delete\", \"trg_incident_history_insert\"], \"O\"))
+raise SystemExit(0 if c.fetchone()[0] else 1)'" \
+    || { echo "  사건 감사 트리거가 없다. infra/migrations/20261017_incident_history.sql 을 먼저 적용한다" >&2; exit 1; }
+
 echo "== 코드 $VERSION (root 소유. 파이프라인이 자기 코드를 바꿀 수 없다)"
 rm -rf /opt/opsloop/app.new
 install -d -m 755 /opt/opsloop /opt/opsloop/app.new

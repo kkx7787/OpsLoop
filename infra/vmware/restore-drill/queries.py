@@ -24,12 +24,12 @@ PROD_GUARD = ("DO $ro$ BEGIN IF current_setting('transaction_read_only') <> 'on'
 PROD_HEAD = "\\set ON_ERROR_STOP on\n" + PROD_GUARD + "\n" + SESSION + "\n"
 
 IDENT = re.compile(r"^[a-z_][a-z0-9_]{0,62}$")
-# 덤프의 28개 표 (#103 로그인 제한 · #109 데이터 노드 최신 상태 포함). 복원 뒤 건수 대조는 덤프 목차의 표 이름으로 한다
+# 현재 덤프 표. 복원 뒤 건수 대조는 덤프 목차의 표 이름으로 한다.
 TABLES = ("events", "sessions", "rule_versions", "incidents", "actions", "verdicts", "blocklist", "nodes",
           "console_users", "node_enrollments", "node_metrics", "detector_runs", "incident_absorbed",
           "absorbed_blocks", "notify_channels", "notify_deliveries", "cti_snapshots", "cti_kev", "cti_cve",
           "cti_osv", "cti_watch", "asset_inventory", "asset_vulnerabilities", "block_exempt", "test_ranges",
-          "sensor_heartbeats", "console_login_limits", "data_node_health", "ai_recommendations", "ai_status")
+          "sensor_heartbeats", "console_login_limits", "data_node_health", "ai_recommendations", "ai_status", "incident_history")
 # 계약의 구조 수치 (참고). 합격은 운영 카탈로그(사전 점검 때 읽음)와 같은지로 본다.
 # 이슈 #47 뒤: 표 +1(block_exempt) · 트리거 +1(blocklist_guard) · 함수 +2(blocklist_guard · note_block_expired)
 # 이슈 #51 뒤: 표 +1(test_ranges) · 트리거 +1(blocklist_enforcement_guard) · 함수 +2(is_test_source · blocklist_enforcement_guard).
@@ -43,7 +43,7 @@ TABLES = ("events", "sessions", "rule_versions", "incidents", "actions", "verdic
 #   더한다) · FK · 뷰 · 시퀀스는 그대로다
 # 이슈 #120 뒤: 표 +2(ai_recommendations · ai_status) · FK +2(ai_recommendations → incidents · verdicts → ai_recommendations) ·
 #   시퀀스 +1(ai_recommendations_id_seq). 트리거 · 함수 · 뷰는 그대로다
-EXPECT = {"tables": 30, "fk": 18, "triggers": 10, "functions": 20, "views": 3}  # #120 AI 판정 추천 표
+EXPECT = {"tables": 31, "fk": 18, "triggers": 13, "functions": 22, "views": 3}  # #129 삭제·재등장 감사 보존
 S3_SENSORS = ("cowrie", "decoy", "gateway")      # opsloop-ingest SENSORS. 나머지 센서는 관제 대상 로그(Loki · 관문 · 관리 원장)
 DB_ONLY_SENSORS = ("audit", "console")           # DB 에만 있는 이벤트. 원장에서 다시 만들 수 없다
 
@@ -175,10 +175,12 @@ ZERO = (
      " WHERE NOT EXISTS (SELECT 1 FROM rule_versions r WHERE r.rule_version = a.rule_version)"),
     ("absorbed_block_orphan", "흡수 차단 → 첫 사건 없음",
      "SELECT count(*) FROM absorbed_blocks ab WHERE NOT EXISTS (SELECT 1 FROM incidents i WHERE i.incident_key = ab.first_key)"),
-    ("notify_subject", "알림 대상 사건 · 노드 없음",
+    ("notify_subject", "알림 대상 사건(현재 · 보관 · 흡수) · 노드 없음",
      "SELECT count(*) FROM notify_deliveries d"
      " WHERE (d.event IN ('incident.created', 'pending.overdue')"
-     " AND NOT EXISTS (SELECT 1 FROM incidents i WHERE i.incident_key = d.subject_key))"
+     " AND NOT EXISTS (SELECT 1 FROM incidents i WHERE i.incident_key = d.subject_key)"
+     " AND NOT EXISTS (SELECT 1 FROM incident_history h WHERE h.incident_key = d.subject_key AND h.kind='removed')"
+     " AND NOT EXISTS (SELECT 1 FROM incident_absorbed a WHERE a.member_key = d.subject_key))"
      " OR (d.event = 'node.silent'"
      " AND NOT EXISTS (SELECT 1 FROM nodes n WHERE 'node:' || n.node_id = split_part(d.subject_key, '@', 1)))"),
     ("notify_channel_orphan", "알림 → 채널 고아",
@@ -269,6 +271,8 @@ def q_console_after(base_id) -> str:
 # 비밀 열은 md5 로만 넣는다. 알림 채널 url 은 넣지 않는다(흐름 주소가 곧 비밀이다).
 # 시각 식은 그 행이 마지막으로 생기거나 바뀐 때다. 운영에만 있는 행 · 바뀐 행을 T_f 앞뒤로 나눈다(RPO 손실)
 FINGERPRINTS = (
+    ("incident_history", "id::text", "ROW(id, recorded_at, kind, incident_key, snapshot, recommendations)",
+     "recorded_at", "incident_history", ""),
     ("incident_assignments", "incident_key", "ROW(incident_key, assigned_to)",
      "coalesce((SELECT max(a.created_at) FROM actions a WHERE a.incident_key=i.incident_key AND a.action='assign'), i.created_at)",
      "incidents i", "WHERE assigned_to IS NOT NULL OR EXISTS (SELECT 1 FROM actions a WHERE a.incident_key=i.incident_key AND a.action='assign')"),
@@ -299,7 +303,7 @@ FINGERPRINTS = (
     ("audit", "line_hash", "ROW(line_hash, ts, sensor, eventid, input, provenance)", "ts", "events",
      "WHERE sensor IN ('audit', 'console')"),
 )
-IMMUTABLE = ("verdicts", "actions", "audit")      # 추가만 되는 기록. 바뀐 행 · 사라진 행이 있으면 불합격
+IMMUTABLE = ("verdicts", "actions", "audit", "incident_history")  # 추가만 되는 기록. 바뀐 행 · 사라진 행이 있으면 불합격
 
 
 def q_fingerprint() -> str:
