@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# [레거시] 옛 EC2 앱 노드 백업이다. 지금 백업은 infra/vmware/scripts/backup-db.sh(Mac launchd)다.
 # ============================================================
 #  OpsLoop 데이터베이스 백업 설치 (앱 노드에서 실행)
 #

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# [레거시] 2026-09-25 철거한 AWS EC2 앱 노드용이다. 지금 내부망 구축은 infra/vmware/README.md 를 본다.
 # OpsLoop 앱 노드 초기 설정 (EC2-2 에서 실행)
 # 재실행해도 안전하다.
 set -euo pipefail
