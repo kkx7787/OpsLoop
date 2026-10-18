@@ -910,7 +910,8 @@ class ConfigTest(unittest.TestCase):
                 be.settings()
         with mock.patch.dict(os.environ, {"OPSLOOP_ENFORCER_DEFAULTS": "/nonexistent"}):
             os.environ.pop("OPSLOOP_GATEWAY_ID", None)
-            self.assertEqual(be.settings()["gateway"], GW)
+            with self.assertRaises(be.ConfigError):
+                be.settings()
 
     def test_금지_대역_상수는_계약_목록과_같다(self):
         want = ["0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12",
@@ -942,6 +943,7 @@ class ConfigTest(unittest.TestCase):
                 "class C:\n    def close(self): pass\n"
                 "be.db_connect = lambda: C()\nbe.PgStore = lambda c: s\nsys.exit(be.main(['list']))\n") % HERE
         env = {k: v for k, v in os.environ.items() if k != "JOURNAL_STREAM"}
+        env["OPSLOOP_GATEWAY_ID"] = GW
         p = subprocess.run([sys.executable, "-c", code], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                            timeout=60, env=env)
         self.assertEqual(p.returncode, 0, p.stdout)
@@ -1535,10 +1537,10 @@ class PointsTest(Base):
         self.assertEqual((got, why), (None, "내부 방화벽 시각이 앞섬"))
 
     def test_설정의_내부_방화벽_ID(self):
-        with mock.patch.dict(os.environ, {"OPSLOOP_ENFORCER_DEFAULTS": "/nonexistent", "OPSLOOP_BUCKET": "b",
+        with mock.patch.dict(os.environ, {"OPSLOOP_ENFORCER_DEFAULTS": "/nonexistent", "OPSLOOP_BUCKET": "b", "OPSLOOP_GATEWAY_ID": GW,
                                           "OPSLOOP_FW_ID": " fw-opsloop "}):
             self.assertEqual(be.settings()["fw"], "fw-opsloop")
-        with mock.patch.dict(os.environ, {"OPSLOOP_ENFORCER_DEFAULTS": "/nonexistent", "OPSLOOP_BUCKET": "b",
+        with mock.patch.dict(os.environ, {"OPSLOOP_ENFORCER_DEFAULTS": "/nonexistent", "OPSLOOP_BUCKET": "b", "OPSLOOP_GATEWAY_ID": GW,
                                           "OPSLOOP_FW_ID": ""}):
             self.assertIsNone(be.settings()["fw"])
         for bad in ("i-0ffeb29efad03546d", "fw-", "fw-Opsloop", "fw-" + "a" * 41):

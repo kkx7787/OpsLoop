@@ -5,6 +5,11 @@
 #      ps -eo uid,cmd | grep twistd
 set -euo pipefail
 
+# 새 이미지를 임의로 고르지 않는다. 검증한 다이제스트를 재구축 설정으로 지정한다.
+: "${OPSLOOP_COWRIE_IMAGE:?검증한 cowrie/cowrie@sha256:<64자리> 이미지를 지정하세요}"
+[[ "$OPSLOOP_COWRIE_IMAGE" =~ ^cowrie/cowrie@sha256:[a-f0-9]{64}$ ]] || {
+  echo "태그 대신 검증한 Cowrie 이미지 다이제스트가 필요합니다" >&2; exit 1;
+}
 BASE=/opt/cowrie
 CUID=999
 
@@ -16,6 +21,8 @@ if [ ! -f "$BASE/etc/cowrie.cfg" ]; then
   exit 1
 fi
 
+# 다운로드 실패 때문에 기존 컨테이너부터 지우지 않는다.
+sudo docker pull "$OPSLOOP_COWRIE_IMAGE"
 sudo docker rm -f cowrie 2>/dev/null || true
 sudo docker run -d --name cowrie --restart always \
   -p 22:2222 -p 23:2223 \
@@ -24,7 +31,7 @@ sudo docker run -d --name cowrie --restart always \
   -v "$BASE/lib:/cowrie/cowrie-git/var/lib/cowrie" \
   --memory=512m --cpus=0.5 \
   --log-opt max-size=50m --log-opt max-file=3 \
-  cowrie/cowrie:latest
+  "$OPSLOOP_COWRIE_IMAGE"
 
 sleep 8
 sudo docker ps --filter name=cowrie

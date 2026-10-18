@@ -160,7 +160,7 @@ class FakeAccounts(dict):
         self.calls = []
         self.error = None
 
-    async def lookup(self, _pool, username):
+    async def lookup(self, _pool, username, token=None):
         self.calls.append(username)
         if self.error is not None:
             raise self.error

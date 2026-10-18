@@ -18,6 +18,8 @@
 # DB 역할의 비밀번호는 여기서 만들어 /etc/opsloop/ai.env 에만 둔다. 화면 · 셸 이력 · 명령행 인자(ps)에 남기지 않는다.
 #
 # 사용 (Mac, 저장소 루트):
+#   새 설치는 아래 sudo 뒤에 OPSLOOP_AI_HOST=<현재 IPv4> OPSLOOP_AI_SSH_USER=<계정>을 명시한다.
+#   아래 주소는 당시 예시다. 현재 서버와 독립적으로 대조한 지문을 사용한다.
 #   C=$(git rev-parse --short HEAD); FP=$(ssh-keygen -l -F 192.168.217.248 -f ~/.ssh/known_hosts | awk '/ED25519/{print $3}')
 #   git archive "$C" recommend infra/migrations/20261006_ai_recommend.sql | ssh -F ~/.ssh/config.opsloop data01 \
 #     "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo OPSLOOP_AI_HOSTKEY=$FP bash /tmp/ol/recommend/install-recommend.sh $C"
@@ -31,10 +33,16 @@ STATE=/var/lib/opsloop-ai
 KEY=$STATE/.ssh/id_ed25519
 KNOWN=/etc/opsloop/ai-known_hosts
 MIGRATION=infra/migrations/20261006_ai_recommend.sql
-AI_HOST=${OPSLOOP_AI_HOST:-192.168.217.248}
-AI_USER=${OPSLOOP_AI_SSH_USER:-hsm}
+AI_HOST=${OPSLOOP_AI_HOST:-}
+AI_USER=${OPSLOOP_AI_SSH_USER:-}
 AI_PORT=${OPSLOOP_AI_REMOTE_PORT:-21434}
 HOSTKEY=${OPSLOOP_AI_HOSTKEY:-}
+# 기존 설치 설정은 자료로만 읽는다. 새 설치에 과거 환경 값을 자동 사용하지 않는다.
+setting() { sed -n "s/^$1=//p" /etc/default/opsloop-recommend 2>/dev/null | tail -1; }
+[ -n "$AI_HOST" ] || AI_HOST=$(setting OPSLOOP_AI_HOST || true)
+: "${AI_HOST:?OPSLOOP_AI_HOST를 현재 환경에 맞게 명시하세요}"
+[ -n "$AI_USER" ] || AI_USER=$(setting OPSLOOP_AI_SSH_USER || true)
+: "${AI_USER:?OPSLOOP_AI_SSH_USER를 현재 환경에 맞게 명시하세요}"
 PSQL=(docker exec -i -e "PGOPTIONS=-c client_min_messages=warning" "$DB" psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -qAt)
 
 echo "== 사전 확인"

@@ -145,7 +145,7 @@ resource "aws_instance" "gateway" {
     volume_size           = 20
     volume_type           = "gp3"
     delete_on_termination = true
-    encrypted             = false
+    encrypted             = true
   }
 
   # 메타데이터 서비스는 토큰을 요구하는 방식만 허용한다 (DMZ 허니팟과 같다)

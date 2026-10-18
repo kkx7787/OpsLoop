@@ -10,6 +10,8 @@ AWS DMZ·S3·IAM의 구축 코드와 운영 당시 절차다. OpsLoop용 AWS 자
 4. IAM 접근 키·SSM 접근·S3 경로 권한과 새 인스턴스 ID를 다시 구성한다. 비밀값은 저장소 밖에서 주입한다. 반환된 관문 주소·host ID를 내부망의 풀러·집행기 설정에도 반영한다.
 5. `terraform fmt -check`와 `terraform validate`로 정적 구성을 확인한 뒤 별도로 `terraform plan`을 검토한다. 검증 통과는 해당 계정에서 생성 가능하거나 서비스가 동작한다는 뜻이 아니다. 현재 코드는 [#130의 재사용 전 검증 항목](https://github.com/kkx7787/OpsLoop/issues/130)을 포함해 다시 점검해야 한다.
 
+10/18 코드에서 허니팟·관문의 루트 EBS는 암호화를 사용하도록 바꿨다. 실제 생성·복원 시험은 아직 하지 않았다. Cowrie 실행에는 `OPSLOOP_COWRIE_IMAGE=cowrie/cowrie@sha256:<검증한 다이제스트>`가 필요하며 `latest`를 자동 사용하지 않는다. 집행기는 새 버킷·관문 ID와 `OPSLOOP_BUCKET_OWNER`를 지정한다. [수정·검증 범위](../../docs/evidence/2026-10-18-restart-safety/README.md)를 확인한다.
+
 이 마감 회차에서는 AWS 조회·plan·apply나 재구축 시험을 하지 않았다. 아래는 명시된 시점의 구축·변경 절차를 보존한 것이며, 새 환경에서는 위 준비를 먼저 마친다.
 
 ## 관리하는 자원

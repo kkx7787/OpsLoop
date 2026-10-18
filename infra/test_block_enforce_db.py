@@ -620,8 +620,8 @@ class BlockEnforceDatabaseTest(DbCase):
                                                                    "who": "triage:han", "hours": 24, "points": TWO_POINTS})
         self.assertIn("192.168.0.0/16", e.diag.message_primary)
 
-    def test_재차단이_집행_기록을_비우면_두_줄이_남는다(self):
-        # 트리거는 한 갱신의 재차단 · 집행 해제를 따로 남긴다. 지금 콘솔 문장은 집행 열을 두므로(결정 2) 옛 콘솔 문장 꼴로 본다
+    def test_콘솔_재차단은_집행_기록을_보존하고_옛_초기화는_거부한다(self):
+        # 현재 재차단은 집행 증거를 유지한다. #130부터 옛 콘솔의 초기화 문장도 거부한다.
         ip = "203.0.113.32"
         self.console_block(ip)
         self.enforce(ip)
@@ -632,9 +632,10 @@ class BlockEnforceDatabaseTest(DbCase):
         with self.as_role("console", "admin1"):
             self.cur.execute("UPDATE blocklist SET released_at = now(), released_by = 'admin1' WHERE actor_ip = %s", (ip,))
         with self.as_role("console", "han"):
-            self.cur.execute("UPDATE blocklist SET released_at = NULL, released_by = NULL, enforced_at = NULL, method = NULL,"
+            self.denied("UPDATE blocklist SET released_at = NULL, released_by = NULL, enforced_at = NULL, method = NULL,"
                              " enforce_note = NULL WHERE actor_ip = %s", (ip,))
-        self.assertEqual(self.events_of(ip)[-2:], ["console.block.rearmed", "console.block.unenforced"])
+        self.assertEqual(self.events_of(ip)[-1], "console.block.released")
+        self.assertIsNotNone(self.one("SELECT enforced_at FROM blocklist WHERE actor_ip=%s", (ip,))[0])
 
     def test_기존_분류는_그대로다(self):
         a, b = "198.51.100.50", "198.51.100.51"
@@ -780,7 +781,7 @@ class BlockEnforceDatabaseTest(DbCase):
         # console_account_set(#59)은 콘솔의 계정 변경 통로다(관제사 ↔ 조회자 · 비활성 · 재활성. infra/test_console_accounts_db.py).
         #   계정 추가 · 삭제 · 비밀번호(#63)도 함수로만 한다(infra/test_console_accounts_manage_db.py)
         self.assertEqual(definer(console) - public, {"console_account_set", "console_account_create", "console_account_delete",
-                                                     "console_account_password", "console_login_take"})
+                                                     "console_account_password", "console_login_take", "console_session_revoke"})
         self.assertEqual(definer(self.roles["detector"]) - public, set())
         self.assertEqual(definer(self.roles["gate"]) - public, {"enroll_node"})
         self.assertTrue(public <= definer(console))
@@ -853,7 +854,7 @@ class BlockEnforceDatabaseTest(DbCase):
                           " WHERE tgrelid = 'blocklist'::regclass AND NOT tgisinternal"))
         # blocklist_enforcement_guard 는 #51 블록(지점별 결과 열 보호, 시험은 infra/test_block_points_db.py),
         # trg_blocklist_points 는 #77 블록(지점 좁히기 거부 · 넓히기 감사, 시험은 infra/test_block_points_choice_db.py)이 더한다
-        self.assertEqual(sorted(set(trg) - {"blocklist_enforcement_guard", "trg_blocklist_points"}),
+        self.assertEqual(sorted(set(trg) - {"blocklist_enforcement_guard", "trg_blocklist_points", "blocklist_legacy_enforcement_guard"}),
                          ["blocklist_guard", "trg_audit_blocklist"])
         self.assertIn("BEFORE INSERT OR UPDATE OF actor_ip ON public.blocklist", trg["blocklist_guard"])
         self.assertIn("AFTER INSERT OR DELETE OR UPDATE OF released_at, expires_at, actor_ip, enforced_at ON public.blocklist",

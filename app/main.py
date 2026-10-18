@@ -217,7 +217,7 @@ async def require_session(request: Request, call_next):
     session = auth.read(request.cookies.get(auth.COOKIE, ""))
     if session is not None:
         try:
-            row = await auth.lookup(request.app.state.pool, session["u"])
+            row = await auth.lookup(request.app.state.pool, session["u"], request.cookies[auth.COOKIE])
         except Exception as exc:
             print(f"[auth] 계정 확인 실패: {type(exc).__name__}: {exc}", flush=True)
             if path.startswith("/api"):
@@ -288,8 +288,14 @@ async def login(request: Request):
 @app.post("/logout")
 async def logout(request: Request):
     # /logout 은 OPEN_PATHS 라 세션 검사를 거치지 않아 state.user 가 없다. 쿠키를 직접 읽어 누가 나갔는지 남긴다.
-    # 서명 · 만료만 본다. 나가는 길에 계정 확인(DB 조회)을 더하지 않는다
-    session = auth.read(request.cookies.get(auth.COOKIE, ""))
+    # 쿠키 하나를 공유 DB에서 철회한다. 실패 시 쿠키를 지우지 않아 재시도할 수 있다.
+    token = request.cookies.get(auth.COOKIE, "")
+    session = auth.read(token)
+    try:
+        await auth.revoke(app.state.pool, token)
+    except Exception as exc:
+        print(f"[auth] 세션 철회 실패: {type(exc).__name__}", flush=True)
+        return PlainTextResponse("로그아웃을 완료하지 못했습니다. 잠시 뒤 다시 시도해 주세요", status_code=503)
     await auth.log_event(app.state.pool, request, "console.logout",
                          username=session["u"] if session else None, status=302)
     response = RedirectResponse("/login", status_code=302)
@@ -1145,7 +1151,7 @@ async def ws_session_valid(token: str) -> bool:
     session = auth.read(token)
     if session is None:
         return False
-    return auth.session_valid(session, await auth.lookup(app.state.pool, session["u"]))
+    return auth.session_valid(session, await auth.lookup(app.state.pool, session["u"], token))
 
 
 async def ws_recheck(ws: WebSocket, token: str):

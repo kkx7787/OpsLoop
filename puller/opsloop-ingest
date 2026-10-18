@@ -41,6 +41,10 @@ import time
 
 APP = os.environ.get("OPSLOOP_APP", "/opt/opsloop/app")
 HOME = os.environ.get("OPSLOOP_HOME", "/var/lib/opsloop")
+sys.path.insert(0, os.path.join(APP, "puller"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from run_lock import Busy, run_lock
+
 S3_ENV = os.environ.get("OPSLOOP_S3_ENV", "/etc/opsloop/s3-pull.env")
 DB_ENV = os.environ.get("OPSLOOP_DB_ENV", "/etc/opsloop/collector.env")
 # 탐지기는 자기 역할(opsloop_detector)로 붙는다. 파일이 없으면 적재기와 같은 접속 정보로 돈다 (이슈 #31)
@@ -56,6 +60,12 @@ HEARTBEAT_TIMEOUT = 60               # 생존 신호 기록 하위 프로세스�
 PULL_KNOWN = (0, 1, 10, 11, 13)      # 풀러가 판단을 끝낸 코드 (1 은 일시 오류)
 DETECT_OK = (0, 11)                  # 데이터가 다 들어온 상태
 _just_quarantined = set()            # 이번 회차에 격리한 파일. 같은 회차에 다시 시도하지 않는다
+_run_fd = None
+
+
+def lock_fds():
+    # 부모가 강제 종료돼도 실행 중인 파서·탐지기가 끝날 때까지 잠금을 유지한다.
+    return () if _run_fd is None else (_run_fd,)
 
 _JOURNAL = bool(os.environ.get("JOURNAL_STREAM"))
 
@@ -86,7 +96,10 @@ def base_env():
 def pull():
     env = base_env()
     env.update(read_env(S3_ENV))
-    return subprocess.run([sys.executable, os.path.join(APP, "puller", "pull.py")], env=env).returncode
+    fd = _run_fd
+    env["OPSLOOP_RUN_LOCK_FD"] = str(fd)
+    return subprocess.run([sys.executable, os.path.join(APP, "puller", "pull.py")],
+                          env=env, pass_fds=(fd,)).returncode
 
 
 def relink_all():
@@ -120,7 +133,7 @@ def relink_all():
 def db_ok(env):
     code = "import os,psycopg2; psycopg2.connect(os.environ['DATABASE_URL'], connect_timeout=10).close()"
     return subprocess.run([sys.executable, "-c", code], env=env,
-                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, pass_fds=lock_fds()).returncode == 0
 
 
 def record_heartbeats(env):
@@ -129,7 +142,7 @@ def record_heartbeats(env):
     child = dict(env, OPSLOOP_HOME=HOME)
     try:
         rc = subprocess.run([sys.executable, os.path.join(APP, "puller", "record_heartbeats.py")], env=child, cwd=APP,
-                            timeout=HEARTBEAT_TIMEOUT).returncode
+                            timeout=HEARTBEAT_TIMEOUT, pass_fds=lock_fds()).returncode
     except subprocess.TimeoutExpired:
         rc = f"{HEARTBEAT_TIMEOUT}초 초과"
     except OSError as e:
@@ -149,7 +162,7 @@ def parse(sensor, files, env):
     r = subprocess.run([sys.executable, os.path.join(APP, "parser", f"parse_{sensor}.py"),
                         "--load", "--files-from", "-"],
                        input="".join(p + "\n" for p in files), text=True, env=env, cwd=APP,
-                       preexec_fn=_limit_memory)
+                       preexec_fn=_limit_memory, pass_fds=lock_fds())
     return r.returncode == 0
 
 
@@ -242,7 +255,7 @@ def retry_quarantine(env, budget=RETRY_PER_RUN, now=None):
     return left
 
 
-def main():
+def run():
     ap = argparse.ArgumentParser(description="OpsLoop 원장 가져오기 · 적재 · 탐지 한 회차")
     ap.add_argument("--full", action="store_true", help="미러 전체를 다시 적재한다 (DB 복원 뒤)")
     args = ap.parse_args()
@@ -269,7 +282,8 @@ def main():
     detect_failed = False
     if rc_pull in DETECT_OK:
         r = subprocess.run([sys.executable, os.path.join(APP, "detector", "detect.py"), "--run",
-                            "--rules", os.path.join(APP, "detector", RULES)], env=env_detect, cwd=APP)
+                            "--rules", os.path.join(APP, "detector", RULES)], env=env_detect, cwd=APP,
+                           pass_fds=lock_fds())
         detect_failed = r.returncode != 0
         if detect_failed:
             log(f"탐지 실패 (종료 코드 {r.returncode})", 3)
@@ -286,6 +300,26 @@ def main():
         if bad:
             return code
     return 0
+
+
+def main():
+    global _run_fd
+    try:
+        with run_lock(HOME) as fd:
+            _run_fd = fd
+            old = os.environ.get("OPSLOOP_RUN_LOCK_FD")
+            os.environ["OPSLOOP_RUN_LOCK_FD"] = str(fd)
+            try:
+                return run()
+            finally:
+                _run_fd = None
+                if old is None:
+                    os.environ.pop("OPSLOOP_RUN_LOCK_FD", None)
+                else:
+                    os.environ["OPSLOOP_RUN_LOCK_FD"] = old
+    except Busy as exc:
+        log(str(exc), 4)
+        return 75
 
 
 if __name__ == "__main__":

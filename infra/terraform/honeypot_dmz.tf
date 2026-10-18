@@ -83,7 +83,7 @@ resource "aws_instance" "honeypot_dmz" {
     volume_size           = 20
     volume_type           = "gp3"
     delete_on_termination = true
-    encrypted             = false
+    encrypted             = true
   }
 
   metadata_options {

@@ -37,8 +37,14 @@ p() { # $1 역할  $2 has_*_privilege 식  $3 기대(t|f)  — 실행하지 않�
   if [ "$got" = "$3" ]; then row "$1" "$2" "$3" "✔"; else row "$1" "$2" "$3" "✘ $got"; fail=1; fi
 }
 
+# #130 마이그레이션 뒤에는 세션 철회·구형 집행 결과 보호도 확인한다.
 echo "== 역할별 문장 (데이터 노드 컨테이너 안)"
 printf "  %-17s %-62s %-5s %s\n" 역할 문장 기대 결과
+q opsloop_console  "SELECT token_hash FROM console_session_revocations LIMIT 0" 허용
+q opsloop_console  "DELETE FROM console_session_revocations WHERE false" 거부
+p opsloop_console  "has_function_privilege('opsloop_console','console_session_revoke(text,timestamptz)','EXECUTE')" t
+# 트리거는 실제 행에만 작동한다. 여기서는 카탈로그 확인, 실제 쓰기 거부는 임시 DB 시험으로 본다.
+p opsloop_console  "EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid='blocklist'::regclass AND tgname='blocklist_legacy_enforcement_guard' AND tgenabled='O')" t
 q opsloop_console  "DELETE FROM events WHERE false" 거부
 q opsloop_console  "UPDATE events SET input='' WHERE false" 거부
 q opsloop_console  "SELECT token_hash FROM nodes LIMIT 0" 거부

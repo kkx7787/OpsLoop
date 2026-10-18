@@ -24,6 +24,8 @@
 # 먼저 puller/install-ingest.sh · collector/install-collector.sh 가 깔려 있어야 한다 (스키마 · /etc/opsloop · DB 컨테이너).
 #
 # 사용 (Mac, 저장소 루트):
+#   새 설치는 아래 sudo 뒤에 OPSLOOP_BUCKET=<버킷> OPSLOOP_GATEWAY_ID=<인스턴스> OPSLOOP_BUCKET_OWNER=<12자리>를 명시한다.
+#   기존 설치는 /etc/default/opsloop-enforcer의 현재 대상 값을 읽는다. 다른 대상으로 바꿀 때는 파일을 먼저 고친다.
 #   C=$(git rev-parse --short HEAD); git archive "$C" enforcer infra/migrations/20260927_block_enforce.sql infra/migrations/20260929_block_points.sql infra/migrations/20260930_status_board.sql infra/migrations/20261003_block_points_choice.sql | ssh -F ~/.ssh/config.opsloop data01 "rm -rf /tmp/ol && mkdir /tmp/ol && tar -x -C /tmp/ol && sudo bash /tmp/ol/enforcer/install-enforcer.sh $C"
 #   내부 방화벽까지: 마지막을 "sudo OPSLOOP_FW_ID=fw-opsloop bash /tmp/ol/enforcer/install-enforcer.sh $C" 로
 set -euo pipefail
@@ -44,8 +46,17 @@ MIGRATION52=infra/migrations/20260930_status_board.sql
 MIGRATION77=infra/migrations/20261003_block_points_choice.sql
 # 내부 방화벽 동기화의 OPSLOOP_HOST (선택 · 이슈 #51). 주면 설정 파일에 없을 때만 더한다
 FW_ID=${OPSLOOP_FW_ID:-}
-BUCKET=${OPSLOOP_BUCKET:-opsloop-archive-739272173045}
-GATEWAY_ID=${OPSLOOP_GATEWAY_ID:-i-0ffeb29efad03546d}   # 관문 인스턴스 (terraform state show aws_instance.gateway)
+BUCKET=${OPSLOOP_BUCKET:-}
+GATEWAY_ID=${OPSLOOP_GATEWAY_ID:-}
+BUCKET_OWNER=${OPSLOOP_BUCKET_OWNER:-}
+# 기존 설치 설정은 자료로만 읽는다. 새 설치에 과거 환경 값을 자동 사용하지 않는다.
+setting() { sed -n "s/^$1=//p" /etc/default/opsloop-enforcer 2>/dev/null | tail -1; }
+[ -n "$BUCKET" ] || BUCKET=$(setting OPSLOOP_BUCKET || true)
+: "${BUCKET:?OPSLOOP_BUCKET를 현재 환경에 맞게 명시하세요}"
+[ -n "$GATEWAY_ID" ] || GATEWAY_ID=$(setting OPSLOOP_GATEWAY_ID || true)
+: "${GATEWAY_ID:?OPSLOOP_GATEWAY_ID를 현재 환경에 맞게 명시하세요}"
+[ -n "$BUCKET_OWNER" ] || BUCKET_OWNER=$(setting OPSLOOP_BUCKET_OWNER || true)
+[[ "$BUCKET_OWNER" =~ ^[0-9]{12}$ ]] || { echo "OPSLOOP_BUCKET_OWNER에 현재 버킷 소유 계정 12자리를 명시하세요" >&2; exit 1; }
 PSQL=(docker exec -i -e "PGOPTIONS=-c client_min_messages=warning" "$DB" psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -qAt)
 
 echo "== 사전 확인"
@@ -253,12 +264,17 @@ echo "== 설정 (/etc/default/opsloop-enforcer, 비밀 아님)"
 if [ ! -s /etc/default/opsloop-enforcer ]; then
   cat > /etc/default/opsloop-enforcer <<EOT
 OPSLOOP_BUCKET=$BUCKET
+OPSLOOP_BUCKET_OWNER=$BUCKET_OWNER
 OPSLOOP_GATEWAY_ID=$GATEWAY_ID
 OPSLOOP_ENFORCER_HOME=$STATE
 AWS_DEFAULT_REGION=ap-northeast-2
 EOT
   chmod 644 /etc/default/opsloop-enforcer
   echo "  만들었다"
+fi
+# 기존 설치에는 소유자 조건을 명시적으로 추가한다. 기존 값은 자동 교체하지 않는다.
+if ! grep -q '^OPSLOOP_BUCKET_OWNER=' /etc/default/opsloop-enforcer; then
+  echo "OPSLOOP_BUCKET_OWNER=$BUCKET_OWNER" >> /etc/default/opsloop-enforcer
 fi
 # 내부 방화벽 (이슈 #51). 이미 있는 설정 파일에도 줄이 없을 때만 더한다 (손으로 바꾼 값은 지킨다)
 if [ -n "$FW_ID" ] && ! grep -q '^OPSLOOP_FW_ID=' /etc/default/opsloop-enforcer; then

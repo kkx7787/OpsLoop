@@ -23,6 +23,18 @@
 # 자동 실행: install-backup-agent.sh 가 launchd 에 올려 매일 04:30 · 12:30 · 20:30 에 복원 시험까지 돌린다
 #   (실패하면 backup-agent.sh 가 제한된 횟수로 다시 돈다).
 set -euo pipefail
+# 목적지가 달라도 원격 시험 DB 이름은 같다. 같은 Mac 계정의 회차 전체를 잠근다.
+# fd 9는 bash와 자식이 공유하므로 정리 작업까지 유지되고 종료 시 자동 해제된다.
+umask 077
+exec 9>>"$HOME/.opsloop-backup.lock"
+python3 - <<'PY'
+import fcntl, sys
+try:
+    fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)
+except BlockingIOError:
+    print('다른 백업 회차가 실행 중입니다. 원격 DB와 파일을 변경하지 않습니다', file=sys.stderr)
+    sys.exit(75)
+PY
 DEST=${1:-$HOME/opsloop-backup}
 KEEP=${KEEP:-21}
 # 끊긴 연결에 매달리지 않게 15초마다 살아 있는지 묻고, 4번 답이 없으면(약 1분) 끊는다
