@@ -1,26 +1,38 @@
 #!/usr/bin/env bash
 # 복제본에 호스트명과 고정 주소를 넣는다. 네트워크가 아직 없으므로
 # VMware Tools 를 통해 게스트 안에서 실행한다 (SSH 아님).
-# 사용: GUEST_PW='...' scripts/configure.sh
+# 사용: scripts/configure.sh (vmrun이 각 게스트 명령에서 비밀번호를 직접 묻는다)
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 VMDIR="${VMDIR:-$HOME/Virtual Machines.localized}"
 VMRUN="/Applications/VMware Fusion.app/Contents/Library/vmrun"
 GU="${GUEST_USER:-ops}"
-: "${GUEST_PW:?GUEST_PW 환경변수에 VM 콘솔 비밀번호를 넣으세요}"
+
 KEY="${SSH_PUB:-$HOME/.ssh/opsloop_ed25519.pub}"
 
-g() { "$VMRUN" -gu "$GU" -gp "$GUEST_PW" "$@"; }
+# -gp는 프로세스 목록에 비밀번호를 노출한다. vmrun의 내장 비밀 입력을 쓴다.
+# 자동 비밀번호 전달·환경변수 상속은 하지 않는다. 실제 Fusion 프롬프트는 재구축 때 확인한다.
+unset GUEST_PW
+[ -t 0 ] || { echo "VM 콘솔 비밀번호를 직접 입력할 터미널에서 실행하세요" >&2; exit 1; }
+g() { "$VMRUN" -gu "$GU" "$@"; }
 
 apply() { # $1 VM 이름  $2 netplan 파일
   local name=$1 plan=$2 vmx="$VMDIR/$1.vmwarevm/$1.vmx"
   echo "== $name"
   "$VMRUN" list | grep -q "$vmx" || "$VMRUN" start "$vmx" nogui
   echo "-- VMware Tools 응답 대기"
-  for _ in $(seq 1 60); do g runProgramInGuest "$vmx" /bin/true >/dev/null 2>&1 && break; sleep 5; done
+  local ready=0
+  for _ in $(seq 1 60); do "$VMRUN" checkToolsState "$vmx" 2>/dev/null | grep -qx running && { ready=1; break; }; sleep 5; done
+  [ "$ready" = 1 ] || { echo "VMware Tools가 준비되지 않았습니다" >&2; return 1; }
   g CopyFileFromHostToGuest "$vmx" "$plan" /tmp/50-opsloop.yaml
   g runScriptInGuest "$vmx" /bin/bash "
     set -e
+    if ! sudo -n test -f /etc/opsloop-clone-identity; then
+      sudo -n sh -c 'rm -f /etc/ssh/ssh_host_* && ssh-keygen -A'
+      sudo -n sh -c 'rm -f /etc/machine-id /var/lib/dbus/machine-id && systemd-machine-id-setup'
+      sudo -n touch /etc/opsloop-clone-identity
+      sudo -n systemctl restart ssh
+    fi
     sudo -n hostnamectl set-hostname $name
     sudo -n sed -i 's/opsloop-base/$name/g' /etc/hosts
     sudo -n install -m 600 -o root -g root /tmp/50-opsloop.yaml /etc/netplan/50-opsloop.yaml

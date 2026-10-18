@@ -29,7 +29,7 @@ TABLES = ("events", "sessions", "rule_versions", "incidents", "actions", "verdic
           "console_users", "node_enrollments", "node_metrics", "detector_runs", "incident_absorbed",
           "absorbed_blocks", "notify_channels", "notify_deliveries", "cti_snapshots", "cti_kev", "cti_cve",
           "cti_osv", "cti_watch", "asset_inventory", "asset_vulnerabilities", "block_exempt", "test_ranges",
-          "sensor_heartbeats", "console_login_limits", "data_node_health", "ai_recommendations", "ai_status", "incident_history")
+          "sensor_heartbeats", "console_login_limits", "data_node_health", "ai_recommendations", "ai_status", "incident_history", "console_session_revocations")
 # 계약의 구조 수치 (참고). 합격은 운영 카탈로그(사전 점검 때 읽음)와 같은지로 본다.
 # 이슈 #47 뒤: 표 +1(block_exempt) · 트리거 +1(blocklist_guard) · 함수 +2(blocklist_guard · note_block_expired)
 # 이슈 #51 뒤: 표 +1(test_ranges) · 트리거 +1(blocklist_enforcement_guard) · 함수 +2(is_test_source · blocklist_enforcement_guard).
@@ -43,7 +43,7 @@ TABLES = ("events", "sessions", "rule_versions", "incidents", "actions", "verdic
 #   더한다) · FK · 뷰 · 시퀀스는 그대로다
 # 이슈 #120 뒤: 표 +2(ai_recommendations · ai_status) · FK +2(ai_recommendations → incidents · verdicts → ai_recommendations) ·
 #   시퀀스 +1(ai_recommendations_id_seq). 트리거 · 함수 · 뷰는 그대로다
-EXPECT = {"tables": 31, "fk": 18, "triggers": 13, "functions": 22, "views": 3}  # #129 삭제·재등장 감사 보존
+EXPECT = {"tables": 32, "fk": 18, "triggers": 14, "functions": 24, "views": 3}  # #130 세션 철회·집행 결과 보호
 S3_SENSORS = ("cowrie", "decoy", "gateway")      # opsloop-ingest SENSORS. 나머지 센서는 관제 대상 로그(Loki · 관문 · 관리 원장)
 DB_ONLY_SENSORS = ("audit", "console")           # DB 에만 있는 이벤트. 원장에서 다시 만들 수 없다
 

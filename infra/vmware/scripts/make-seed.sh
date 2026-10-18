@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # 무인 설치용 seed 이미지를 만든다. 결과물은 저장소 밖(빌드 폴더)에 둔다.
 set -euo pipefail
+set +x  # 비밀번호·해시를 추적 출력하지 않는다
+umask 077
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 OUT="${1:-$HOME/Virtual Machines.localized/opsloop-seed.iso}"
 KEY="${SSH_PUB:-$HOME/.ssh/opsloop_ed25519.pub}"
@@ -10,14 +12,18 @@ read -rsp "VM 콘솔 로그인 비밀번호 (ops 계정): " PW1; echo
 read -rsp "다시 입력: " PW2; echo
 [ "$PW1" = "$PW2" ] || { echo "입력이 일치하지 않습니다"; exit 1; }
 [ ${#PW1} -ge 12 ] || { echo "12자 이상이어야 합니다"; exit 1; }
-HASH="$(openssl passwd -6 "$PW1")"
+HASH="$(printf '%s\n' "$PW1" | openssl passwd -6 -stdin)"
+unset PW1 PW2
 
 BUILD="$(mktemp -d)"; trap 'rm -rf "$BUILD"' EXIT
-python3 - "$HERE/seed/user-data.template" "$BUILD/user-data" "$HASH" "$(cat "$KEY")" <<'PY'
-import sys
-src,dst,pwhash,key=sys.argv[1:5]
+python3 - "$HERE/seed/user-data.template" "$BUILD/user-data" "$KEY" 3<<< "$HASH" <<'PY'
+import os, sys
+src,dst,keypath=sys.argv[1:4]
+pwhash=os.fdopen(3).read().strip()
+key=open(keypath).read()
 open(dst,'w').write(open(src).read().replace('__PWHASH__',pwhash).replace('__SSHKEY__',key.strip()))
 PY
+unset HASH
 cp "$HERE/seed/meta-data" "$BUILD/meta-data"
 mkdir -p "$(dirname "$OUT")"
 rm -f "$OUT"

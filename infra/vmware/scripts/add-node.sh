@@ -27,8 +27,12 @@ case "$PLAN" in /*) ;; *) PLAN="$HERE/$PLAN" ;; esac
 [ -f "$PLAN" ] || { echo "netplan 파일이 없습니다: $PLAN"; exit 1; }
 [ -f "$TARGET" ] && { echo "$NAME 이미 있습니다"; exit 1; }
 "$VMRUN" list | grep -q "$BASE" && { echo "기본 VM 이 켜져 있습니다. 끄고 다시 실행하세요"; exit 1; }
-if [ -z "${GUEST_PW:-}" ]; then read -rs -p "VM 콘솔 비밀번호 (ops): " GUEST_PW; echo; fi
-g() { "$VMRUN" -gu "$GU" -gp "$GUEST_PW" "$@"; }
+
+# -gp는 프로세스 목록에 비밀번호를 노출한다. vmrun의 내장 비밀 입력을 쓴다.
+# 자동 비밀번호 전달·환경변수 상속은 하지 않는다. 실제 Fusion 프롬프트는 재구축 때 확인한다.
+unset GUEST_PW
+[ -t 0 ] || { echo "VM 콘솔 비밀번호를 직접 입력할 터미널에서 실행하세요" >&2; exit 1; }
+g() { "$VMRUN" -gu "$GU" "$@"; }
 
 echo "== 1. 복제 ($VNET · $MAC · ${MEM}MB · ${CPU}core)"
 "$VMRUN" listSnapshots "$BASE" | grep -q '^base$' || "$VMRUN" snapshot "$BASE" base
@@ -49,8 +53,8 @@ PY
 
 echo "== 2. VMware Tools 응답 대기"
 ok=0
-for _ in $(seq 1 60); do g runProgramInGuest "$TARGET" /bin/true >/dev/null 2>&1 && { ok=1; break; }; sleep 5; done
-[ "$ok" = 1 ] || { echo "응답이 없습니다 (비밀번호가 틀렸거나 부팅이 끝나지 않음)"; exit 1; }
+for _ in $(seq 1 60); do "$VMRUN" checkToolsState "$TARGET" 2>/dev/null | grep -qx running && { ok=1; break; }; sleep 5; done
+[ "$ok" = 1 ] || { echo "VMware Tools가 준비되지 않았습니다. 부팅과 Tools 상태를 확인하세요"; exit 1; }
 
 echo "== 3. 게스트 구성"
 g CopyFileFromHostToGuest "$TARGET" "$PLAN" /tmp/50-opsloop.yaml

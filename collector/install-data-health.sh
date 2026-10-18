@@ -26,7 +26,8 @@ print(json.dumps(paths))
 ROLES=$(docker exec opsloop-db psql -U opsloop -d opsloop -Atqc "SELECT count(*) FROM pg_roles WHERE rolname IN ('opsloop_ingest','opsloop_console')")
 [ "$ROLES" = 2 ] || { echo "적재/콘솔 DB 역할이 없습니다" >&2; exit 1; }
 docker exec -i opsloop-db psql -U opsloop -d opsloop -v ON_ERROR_STOP=1 -q < "$SRC/infra/migrations/20261003_data_node_health.sql"
-install -d -m 755 /opt/opsloop/app/collector /etc/opsloop
+# /etc/opsloop은 이미 존재한다. 기존 소유권·그룹·ACL·0750을 넓히지 않는다.
+install -d -m 755 /opt/opsloop/app/collector
 install -m 644 "$SRC/collector/data_node_health.py" /opt/opsloop/app/collector/data_node_health.py
 printf '%s\n' "$DATA_PATHS" > /etc/opsloop/data-health.json
 chmod 600 /etc/opsloop/data-health.json

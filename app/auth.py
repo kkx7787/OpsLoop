@@ -73,9 +73,8 @@ def verify_password(password: str, stored: str) -> bool:
 # ──────────────────────────────────────────────────────────────
 #  세션 쿠키
 #
-#  서버에 세션 저장소를 두지 않는다. 쿠키에 사용자·역할·발급·만료를 담고
-#  서명해서, 위조는 막되 상태는 갖지 않는다. 콘솔이 두 대로 이중화되므로
-#  어느 쪽에 붙어도 같은 쿠키가 통해야 한다.
+#  쿠키에 사용자·역할·발급·만료를 담고 서명한다. 로그아웃한 쿠키의 SHA-256만
+#  공유 DB에 만료까지 보관한다. 두 콘솔 모두 철회 여부를 확인한다.
 #
 #  쿠키만 믿지는 않는다(이슈 #59). 서명 · 만료가 맞으면 요청마다 계정 행을 한 번 읽어(lookup) 확인한다(session_valid).
 #  비활성이거나, 역할 · 활성 · 비밀번호가 마지막으로 바뀐 때(updated_at)보다 먼저 받은 쿠키는 무효다. 역할은 DB 값을 쓴다.
@@ -83,7 +82,8 @@ def verify_password(password: str, stored: str) -> bool:
 # ──────────────────────────────────────────────────────────────
 def issue(username: str, role: str, issued_at: float | None = None) -> str:
     now = time.time()
-    body = json.dumps({"u": username, "r": role, "i": now if issued_at is None else issued_at,
+    body = json.dumps({"u": username, "r": role, "j": secrets.token_hex(16),
+                       "i": now if issued_at is None else issued_at,
                        "e": int(now) + SESSION_HOURS * 3600},
                       separators=(",", ":")).encode()
     payload = base64.urlsafe_b64encode(body).decode().rstrip("=")
@@ -133,9 +133,21 @@ STALE_CONNECTION_ERRORS = tuple(e for e in (getattr(asyncpg, "PostgresConnection
                                             getattr(asyncpg, "InterfaceError", None), OSError) if isinstance(e, type))
 
 LOOKUP_SQL = "SELECT role, disabled_at, updated_at FROM console_users WHERE username = $1"
+SESSION_LOOKUP_SQL = LOOKUP_SQL + " AND NOT EXISTS (SELECT 1 FROM console_session_revocations WHERE token_hash = $2)"
 
 
-async def lookup(pool, username: str):
+async def revoke(pool, token: str):
+    """서명된 쿠키 하나만 철회한다. DB 실패를 숨기거나 성공한 로그아웃으로 표시하지 않는다."""
+    session = read(token)
+    if session is None:
+        return
+    async with pool.acquire() as c:
+        await c.execute("SELECT console_session_revoke($1, $2)",
+                        hashlib.sha256(token.encode()).hexdigest(),
+                        datetime.fromtimestamp(session["e"], timezone.utc))
+
+
+async def lookup(pool, username: str, token: str | None = None):
     """계정 행 하나(role · disabled_at · updated_at). 없으면 None. 세션이 있는 요청과 실시간 연결 점검마다 부른다.
 
     캐시를 두지 않는다. 다른 콘솔에서 바꾼 것도 다음 요청에 바로 보인다. DB 가 없으면 /health 도 실패해 두 콘솔이 함께
@@ -145,6 +157,9 @@ async def lookup(pool, username: str):
     for attempt in (1, 2):
         try:
             async with pool.acquire() as c:
+                if token is not None:
+                    return await c.fetchrow(SESSION_LOOKUP_SQL, username,
+                                            hashlib.sha256(token.encode()).hexdigest())
                 return await c.fetchrow(LOOKUP_SQL, username)
         except STALE_CONNECTION_ERRORS:
             if attempt == 2:

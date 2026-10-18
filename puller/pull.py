@@ -609,9 +609,14 @@ def main():
     ack = load_ack(os.environ.get("OPSLOOP_GAP_ACK", "/etc/opsloop/gap-ack.json"))
     gateway_hosts = frozenset(h.strip() for h in os.environ.get("OPSLOOP_GATEWAY_HOSTS", "").split(",") if h.strip())
     import boto3
+    from run_lock import Busy, run_lock
     try:
-        rc = run(boto3.client("s3"), bucket, hosts, home, ack=ack, gateway_hosts=gateway_hosts,
-                 retry_groups=frozenset(args.retry_group))
+        with run_lock(home, os.environ.get("OPSLOOP_RUN_LOCK_FD")):
+            rc = run(boto3.client("s3"), bucket, hosts, home, ack=ack, gateway_hosts=gateway_hosts,
+                     retry_groups=frozenset(args.retry_group))
+    except Busy as error:
+        log(str(error), 4)
+        rc = 75
     except Exception as error:
         log(f"풀러 내부 오류 ({type(error).__name__}). 탐지를 보류하고 코드·설정을 확인한다", 3)
         rc = EXIT_INTERNAL

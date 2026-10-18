@@ -170,7 +170,7 @@ GW_REJECTED_CAP = 200                    # 관문 block-sync.py 의 MAX_REJECTED
 ERRORS_MAX = 100
 TEXT_MAX = 160                           # 관문이 보낸 문구를 쪽지에 넣을 때의 상한
 LOCK_WAIT = 30
-DEFAULT_GATEWAY = "i-0ffeb29efad03546d"  # 설정 OPSLOOP_GATEWAY_ID 가 없을 때 (2026-09-27 조사)
+DEFAULT_GATEWAY = ""  # 재구축 대상은 설정으로 명시한다
 GATEWAY_ID_RE = re.compile(r"i-[0-9a-f]{8,17}")
 FW_ID_RE = re.compile(r"fw-[a-z0-9-]{1,40}")   # 내부 방화벽 동기화의 OPSLOOP_HOST (infra/aws/gateway/block-sync.py HOST_RE 의 fw 갈래)
 POINT_LABEL = {"gateway": "관문", "fw": "내부 방화벽"}
@@ -285,7 +285,7 @@ def settings():
     fw = (get("OPSLOOP_FW_ID") or "").strip() or None
     if fw is not None and not FW_ID_RE.fullmatch(fw):
         raise ConfigError(f"OPSLOOP_FW_ID 가 fw-<이름> 꼴이 아니다: {clean(fw, 40)}")
-    return {"bucket": get("OPSLOOP_BUCKET"), "gateway": gw, "fw": fw,
+    return {"bucket": get("OPSLOOP_BUCKET"), "bucket_owner": get("OPSLOOP_BUCKET_OWNER"), "gateway": gw, "fw": fw,
             "home": get("OPSLOOP_ENFORCER_HOME", "/var/lib/opsloop-enforcer"),
             "region": get("AWS_DEFAULT_REGION", "ap-northeast-2")}
 
@@ -319,6 +319,9 @@ def s3_client(cfg, name):
     """name 의 키로 만든 S3 클라이언트. 키는 이 클라이언트에만 넘기고 환경변수에 두지 않는다."""
     if not cfg["bucket"]:
         raise ConfigError("OPSLOOP_BUCKET 이 없다 (/etc/default/opsloop-enforcer)")
+    owner = cfg.get("bucket_owner") or ""
+    if not re.fullmatch(r"[0-9]{12}", owner):
+        raise ConfigError("OPSLOOP_BUCKET_OWNER에 실제 버킷 소유 계정 12자리를 명시한다")
     path = secret_path(name)
     try:
         keys = read_env(path)
@@ -332,9 +335,15 @@ def s3_client(cfg, name):
     os.environ.setdefault("AWS_EC2_METADATA_DISABLED", "true")
     import boto3
     from botocore.config import Config
-    return boto3.client("s3", region_name=cfg["region"], aws_access_key_id=keys["AWS_ACCESS_KEY_ID"],
+    client = boto3.client("s3", region_name=cfg["region"], aws_access_key_id=keys["AWS_ACCESS_KEY_ID"],
                         aws_secret_access_key=keys["AWS_SECRET_ACCESS_KEY"],
                         config=Config(connect_timeout=10, read_timeout=30, retries={"max_attempts": 3}))
+    # 목록 쓰기와 보고 읽기에 같은 소유자 조건을 붙인다. 버킷 이름만으로 대상을 신뢰하지 않는다.
+    def expected_owner(params, **_):
+        params["ExpectedBucketOwner"] = owner
+    for operation in ("GetObject", "PutObject"):
+        client.meta.events.register(f"provide-client-params.s3.{operation}", expected_owner)
+    return client
 
 
 def err_code(e):

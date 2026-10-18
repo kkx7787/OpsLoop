@@ -1,0 +1,61 @@
+#130 재가동 전 코드 보완 검증 — 2026-10-18 KST
+기반 main: dc05894deb41a632ab807eb41bcc09618319b707
+브랜치: fix/130-restart-safety
+코드 버전 식별: source-sha256.txt
+
+격리 시험: Python 3.12.15 / PostgreSQL 16, 내부 Docker 네트워크 opsloop-t130, DB tmpfs, 공개 포트 없음.
+macOS 시험: 외부 명령은 합성 응답으로 대체. AWS/VM/GPU/운영 DB를 재가동하지 않음.
+
+API·세션: 실행 778, 통과 778, 건너뜀 0
+  명령: python -m unittest discover -s app -q
+  원문: app-final.log
+
+DB 스키마·권한·업그레이드: 실행 156, 통과 156, 건너뜀 0
+  명령: python -m unittest discover -s infra -p test_*.py -q
+  원문: infra-final.log
+
+차단 집행기: 실행 194, 통과 192, 건너뜀 2
+  명령: python -m unittest discover -s enforcer -q
+  원문: enforcer-final.log
+
+수집·원장 잠금: 실행 81, 통과 81, 건너뜀 0
+  명령: python -m unittest discover -s puller -q
+  원문: puller-final.log
+
+관리 로그 수집기: 실행 164, 통과 164, 건너뜀 0
+  명령: python -m unittest discover -s collector -q
+  원문: collector-final.log
+
+복원 훈련 도구: 실행 48, 통과 47, 건너뜀 1
+  명령: python -m unittest discover -s infra/vmware/restore-drill -q
+  원문: restore-final.log
+
+macOS 백업: 실행 29, 통과 29, 건너뜀 0
+  명령: python3 -m unittest discover -s infra/vmware/scripts -p test_backup*.py -q
+  원문: backup-macos.log
+
+비밀 전달·잠금·설치 사전 조건: 실행 4, 통과 4, 건너뜀 0
+  명령: python3 -m unittest discover -s infra/vmware/scripts -p test_restart_safety.py -q
+  원문: install-focused.log
+
+합계: 실행 1454, 통과 1451, 건너뜀 3, 실패 0.
+집중 시험을 별도로 재실행한 결과는 중복 합산하지 않음.
+건너뜀: 시험 컨테이너에 git 없음(과거 P판 사본 대조), shellcheck 없음, /usr/bin/python3 없음(복원 도구 호환성 시험).
+변경 셸 9개는 호스트 ShellCheck·bash -n 별도 통과. Python AST 20개 통과. git diff --check 통과.
+Terraform fmt -check / validate 통과. plan·apply 미실행.
+실제 합성 DB pg_dump/pg_restore 1회 통과: 철회 기록·집행 증거 동일, 복원된 콘솔 권한의 직접 변경 거부.
+
+중요하게 확인한 경계:
+- 로그아웃한 쿠키만 거부, 다른 세션 유지, 다른 DB 풀도 철회 확인, 웹소켓 검증 거부.
+- 로그아웃 DB 실패는 503이고 쿠키 삭제 없음. 기존 요청을 소급 취소하지 않음.
+- 기존 DB에서 마이그레이션, 반복 적용·자료 보존, 제한된 콘솔/집행 역할 분리.
+- 수집·적재 두 진입점 실제 경쟁, 부모 종료 후 자식이 잠금 유지, 종료 후 재실행.
+- 백업 목적지 둘이 달라도 중복 회차는 원격 작업 전에 거부.
+- 비밀번호 표준 입력, 해시 fd, 추적 출력·인자 비밀 없음, seed 권한 0600.
+- ExpectedBucketOwner는 실제 botocore 요청 직렬화 전 매개변수로 확인. AWS 소유자/권한 시험은 Stubber 대체.
+
+실환경 미검증: Fusion 프롬프트와 VM 복제·재부팅 식별자, A/B 전환, 유효 DB 역할/ACL,
+관문 fail2ban 장애·차단·해제, 새 Cowrie 이미지 로그/UID, AWS EBS 암호화·소유자·SSM,
+실제 타이머/수동 실행 중첩 및 백업·복원. #130에서 추적하며 서비스 재개 완료로 처리하지 않음.
+L4 별도 두 연결 교차 흡수 재현과 L16 R006 새 버전 리플레이도 남음.
+기존 ResourceWarning 존재. 경고 0 또는 전체 실환경 시험 통과라는 뜻이 아님.
